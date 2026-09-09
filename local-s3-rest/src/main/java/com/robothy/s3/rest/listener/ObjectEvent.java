@@ -21,4 +21,8 @@ public class ObjectEvent extends S3Event {
         return objectKey;
     }
 
+    public String getObjectUrl() {
+        return "s3://" + bucketName + "/" + objectKey;
+    }
+
 }

@@ -8,6 +8,8 @@ import com.robothy.s3.core.service.DeleteObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.listener.ObjectEvent;
+import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -15,11 +17,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html">DeleteObject</a>
  */
-class DeleteObjectController implements HttpRequestHandler {
+class DeleteObjectController extends ObjectHttpRequestHandler {
 
   private final DeleteObjectService deleteObjectService;
 
   DeleteObjectController(ServiceFactory serviceFactory) {
+    super(serviceFactory);
     this.deleteObjectService = serviceFactory.getInstance(ObjectService.class);
   }
 
@@ -35,6 +38,7 @@ class DeleteObjectController implements HttpRequestHandler {
     ResponseUtils.addAmzRequestId(httpResponse);
     ResponseUtils.addDateHeader(httpResponse);
     ResponseUtils.addServerHeader(httpResponse);
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_DELETED,"",bucketName,key));
   }
 
 

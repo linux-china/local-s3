@@ -13,7 +13,7 @@ public class DefaultServiceFactory implements ServiceFactory {
   @Override
   public <T> void register(Class<T> clazz, Supplier<? extends T> factory) {
     factoryMap.put(clazz, factory);
-    log.debug("Registered service " + factory.get().getClass().getName() + ".");
+      log.debug("Registered service {}.", factory.get().getClass().getName());
   }
 
   @Override
@@ -26,4 +26,8 @@ public class DefaultServiceFactory implements ServiceFactory {
     return (T) factoryMap.get(clazz).get();
   }
 
+  @Override
+  public boolean containsInstance(Class<?> clazz) {
+    return factoryMap.containsKey(clazz);
+  }
 }

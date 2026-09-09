@@ -11,6 +11,8 @@ import com.robothy.s3.core.service.CopyObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.listener.ObjectEvent;
+import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.model.response.CopyObjectResult;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
@@ -31,15 +33,13 @@ import java.util.stream.Stream;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html">CopyObject</a>
  */
-class CopyObjectController implements HttpRequestHandler {
+class CopyObjectController extends ObjectHttpRequestHandler {
 
   private final CopyObjectService objectService;
 
-  private final XmlMapper xmlMapper;
-
   CopyObjectController(ServiceFactory serviceFactory) {
+    super(serviceFactory);
     this.objectService = serviceFactory.getInstance(ObjectService.class);
-    this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
 
   @Override
@@ -61,6 +61,7 @@ class CopyObjectController implements HttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED,"", destinationBucket,destinationKey));
   }
 
   /**

@@ -10,6 +10,9 @@ import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.LocalS3Constants;
+import com.robothy.s3.rest.listener.BucketEvent;
+import com.robothy.s3.rest.listener.BucketEventListener;
+import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBufInputStream;
@@ -22,15 +25,10 @@ import lombok.extern.slf4j.Slf4j;
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html">CreateBucket</a>.
  */
 @Slf4j
-class CreateBucketController implements HttpRequestHandler {
-
-  BucketService bucketService;
-
-  XmlMapper xmlMapper;
+class CreateBucketController extends BucketHttpRequestHandler {
 
   CreateBucketController(ServiceFactory serviceFactory) {
-    this.bucketService = serviceFactory.getInstance(BucketService.class);
-    this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
+    super(serviceFactory);
   }
 
   @Override
@@ -53,6 +51,8 @@ class CreateBucketController implements HttpRequestHandler {
         .write(xmlMapper.writeValueAsString(createBucketResult));
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
+    // fire bucket created event
+    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_CREATED,"", bucketName,"local"));
   }
 
 }

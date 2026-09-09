@@ -8,4 +8,5 @@ public interface ServiceFactory {
 
   <T> T getInstance(Class<T> clazz);
 
+  boolean containsInstance(Class<?> clazz);
 }

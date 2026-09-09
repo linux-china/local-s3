@@ -11,6 +11,8 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.robothy.netty.initializer.HttpServerInitializer;
+import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
@@ -18,6 +20,9 @@ import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
+import com.robothy.s3.rest.listener.BucketEventListener;
+import com.robothy.s3.rest.listener.ObjectEvent;
+import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.bootstrap.ServerBootstrap;
@@ -29,14 +34,19 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.EventExecutorGroup;
+
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ThreadFactory;
 import javax.xml.stream.XMLInputFactory;
+
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,282 +56,356 @@ import org.slf4j.LoggerFactory;
  */
 public class LocalS3 {
 
-  private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
+    private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
-  /* Configurations */
-  private int port = 8080;
+    /* Configurations */
+    private int port = 8080;
 
-  private Path dataPath;
+    private Path dataPath;
 
-  private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
+    private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
 
-  private boolean initialDataCacheEnabled = true;
+    private List<String> defaultBuckets = new ArrayList<>();
 
-  private int nettyParentEventGroupThreadNum = 1;
+    private BucketEventListener bucketEventListener;
 
-  private int nettyChildEventGroupThreadNum = 2;
+    private ObjectEventListener objectEventListener;
 
-  private int s3ExecutorThreadNum = 4;
+    private LocalS3Manager s3Manager;
+
+    private boolean initialDataCacheEnabled = true;
+
+    private int nettyParentEventGroupThreadNum = 1;
+
+    private int nettyChildEventGroupThreadNum = 2;
+
+    private int s3ExecutorThreadNum = 4;
 
 
-  /* Private fields. */
-  private NioEventLoopGroup parentGroup;
+    /* Private fields. */
+    private NioEventLoopGroup parentGroup;
 
-  private NioEventLoopGroup childGroup;
+    private NioEventLoopGroup childGroup;
 
-  private EventExecutorGroup executorGroup;
+    private EventExecutorGroup executorGroup;
 
-  private Channel serverSocketChannel;
-
-  /**
-   * Create a {@linkplain Builder}.
-   *
-   * @return a new {@linkplain Builder} instance.
-   */
-  public static Builder builder() {
-    return new Builder();
-  }
-
-  /**
-   * Startup the local-s3 service.
-   */
-  public void start() {
-    ServiceFactory serviceFactory = createServiceFactory();
-
-    this.parentGroup = new NioEventLoopGroup(nettyParentEventGroupThreadNum, new NamingThreadFactory("locals3-parent-event-group"));
-    this.childGroup = new NioEventLoopGroup(nettyChildEventGroupThreadNum, new NamingThreadFactory("locals3-child-event-group"));
-    this.executorGroup = new DefaultEventLoopGroup(s3ExecutorThreadNum, new NamingThreadFactory("locals3-executor-group"));
-    ServerBootstrap serverBootstrap = new ServerBootstrap();
-    ChannelFuture channelFuture = null;
-    try {
-      channelFuture = serverBootstrap.group(parentGroup, childGroup)
-          .handler(new LoggingHandler(LogLevel.DEBUG))
-          .channel(NioServerSocketChannel.class)
-          .childHandler(new HttpServerInitializer(executorGroup, LocalS3RouterFactory.create(serviceFactory)))
-          .bind(port)
-          .sync();
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-    log.info("LocalS3 started.");
-    this.serverSocketChannel = channelFuture.channel();
-    Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
-  }
-
-  private ServiceFactory createServiceFactory() {
-
-    LocalS3Manager s3Manager = createLocalS3Manager();
-
-    ServiceFactory serviceFactory = new DefaultServiceFactory();
-    BucketService bucketService = s3Manager.bucketService();
-    ObjectService objectService = s3Manager.objectService();
-    serviceFactory.register(BucketService.class, () -> bucketService);
-    serviceFactory.register(ObjectService.class, () -> objectService);
-
-    XMLInputFactory input = new WstxInputFactory();
-    input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
-    input.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE); // Disable DTDs
-    input.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE); // Disable external entities
-
-    XmlMapper xmlMapper = new XmlMapper(new XmlFactory(input, new WstxOutputFactory()));
-    xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    xmlMapper.registerModule(new Jdk8Module());
-    xmlMapper.registerModule(new JavaTimeModule());
-    serviceFactory.register(XmlMapper.class, () -> xmlMapper);
-
-    // Register ObjectMapper for JSON handling (used by S3 Vectors API)
-    ObjectMapper objectMapper = new ObjectMapper();
-    objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-    objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-    objectMapper.registerModule(new Jdk8Module());
-    objectMapper.registerModule(new JavaTimeModule());
-    serviceFactory.register(ObjectMapper.class, () -> objectMapper);
-
-    // Register S3 Vectors services
-    S3VectorsService s3VectorsService = createLocalS3VectorsManager().s3VectorsService();
-    serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
-
-    return serviceFactory;
-  }
-
-  LocalS3Manager createLocalS3Manager() {
-    if (mode == LocalS3Mode.IN_MEMORY) {
-      log.info("Created in-memory LocalS3 manager.");
-      return LocalS3Manager.createInMemoryS3Manager(dataPath, initialDataCacheEnabled);
-    } else {
-      log.info("Created file system LocalS3 manager.");
-      return LocalS3Manager.createFileSystemS3Manager(dataPath);
-    }
-  }
-
-  LocalS3VectorsManager createLocalS3VectorsManager() {
-    if (mode == LocalS3Mode.IN_MEMORY) {
-      log.info("Created in-memory LocalS3 Vectors manager.");
-      return LocalS3VectorsManager.createInMemory();
-    } else {
-      Path vectorsDataPath = dataPath.resolve("vectors");
-      log.info("Created file system LocalS3 Vectors manager.");
-      return LocalS3VectorsManager.createFileSystem(vectorsDataPath);
-    }
-  }
-
-  /**
-   * Shutdown the local-s3 service.
-   */
-  public void shutdown() {
-    if (null == this.parentGroup || null == this.childGroup) {
-      throw new IllegalStateException("LocalS3 is not started.");
-    }
-
-    try {
-      if (this.serverSocketChannel.isOpen()) {
-        this.serverSocketChannel.close().sync();
-      }
-    } catch (InterruptedException e) {
-      log.error("Close server socket channel failed.", e);
-    } finally {
-      shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
-    }
-  }
-
-  private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
-    boolean shutdownPerformed = false;
-    for (EventExecutorGroup eventExecutors : eventExecutorsList) {
-      if (!eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
-        shutdownPerformed = true;
-        eventExecutors.shutdownGracefully();
-      }
-    }
-
-    if (shutdownPerformed) {
-      log.info("LocalS3 stopped.");
-    }
-  }
-
-  /**
-   * Get the port that local-s3 service listen to.
-   */
-  public int getPort() {
-    return port;
-  }
-
-  /**
-   * Get the data path that was set in {@linkplain Builder#dataPath(String)}.
-   *
-   * @return data path.
-   */
-  public Path getDataPath() {
-    return dataPath;
-  }
-
-  public static class Builder {
-
-    private final LocalS3 propHolder = new LocalS3();
+    private Channel serverSocketChannel;
 
     /**
-     * Set the port that local-s3 service listen to. Default port is 8080.
-     * Set the value to {@code -1} if you want to assign a random port.
+     * Create a {@linkplain Builder}.
      *
-     * @param port customized port.
-     * @return builder.
+     * @return a new {@linkplain Builder} instance.
      */
-    public Builder port(int port) {
-      if (port < 0) {
-        propHolder.port = findFreeTcpPort();
-      } else {
-        propHolder.port = port;
-      }
-      return this;
+    public static Builder builder() {
+        return new Builder();
     }
 
     /**
-     * Set the LocalS3 data directory. The default value is {@code null},
-     * while data is stored in Java Heap.
-     *
-     * <p>
-     * If the path is specified and the {@code mode} is {@code PERSISTENCE},
-     * then the LocalS3 service load data from and store data in this directory.
-     *
-     * <p>
-     * If the data directory is set and LocalS3 runs in {@code IN_MEMORY} mode,
-     * then data from that path will be loaded as initial data. All changes are
-     * only available in the memory, i.e. won't write back to the specified path.
-     * <p>
-     * Besides, LocalS3 will cache accessed data from this path; which could reduce
-     * disk I/O when start LocalS3 in {@code IN_MEMORY} mode with the same initial
-     * data for multi-times.
-     *
-     * @param dataPath data path.
-     * @return builder.
+     * Startup the local-s3 service.
      */
-    public Builder dataPath(String dataPath) {
-      this.propHolder.dataPath = dataPath == null ? null : Paths.get(dataPath);
-      return this;
+    public void start() {
+        ServiceFactory serviceFactory = createServiceFactory();
+
+        this.parentGroup = new NioEventLoopGroup(nettyParentEventGroupThreadNum, new NamingThreadFactory("locals3-parent-event-group"));
+        this.childGroup = new NioEventLoopGroup(nettyChildEventGroupThreadNum, new NamingThreadFactory("locals3-child-event-group"));
+        this.executorGroup = new DefaultEventLoopGroup(s3ExecutorThreadNum, new NamingThreadFactory("locals3-executor-group"));
+        ServerBootstrap serverBootstrap = new ServerBootstrap();
+        ChannelFuture channelFuture = null;
+        try {
+            channelFuture = serverBootstrap.group(parentGroup, childGroup)
+                    .handler(new LoggingHandler(LogLevel.DEBUG))
+                    .channel(NioServerSocketChannel.class)
+                    .childHandler(new HttpServerInitializer(executorGroup, LocalS3RouterFactory.create(serviceFactory)))
+                    .bind(port)
+                    .sync();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        log.info("LocalS3 started.");
+        this.serverSocketChannel = channelFuture.channel();
+        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
+        if (!defaultBuckets.isEmpty()) {
+            log.info("Create default buckets:{}", String.join(",", defaultBuckets));
+            createBuckets();
+        }
+    }
+
+    private void createBuckets() {
+        BucketService bucketService = this.getS3Manager().bucketService();
+        for (String bucketName : defaultBuckets) {
+            try {
+                bucketService.getBucket(bucketName);
+            } catch (BucketNotExistException e) {
+                bucketService.createBucket(bucketName);
+            }
+        }
+    }
+
+    private ServiceFactory createServiceFactory() {
+
+        s3Manager = createLocalS3Manager();
+
+        ServiceFactory serviceFactory = new DefaultServiceFactory();
+        BucketService bucketService = s3Manager.bucketService();
+        ObjectService objectService = s3Manager.objectService();
+        serviceFactory.register(BucketService.class, () -> bucketService);
+        serviceFactory.register(ObjectService.class, () -> objectService);
+
+        XMLInputFactory input = new WstxInputFactory();
+        input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
+        input.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE); // Disable DTDs
+        input.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE); // Disable external entities
+
+        XmlMapper xmlMapper = new XmlMapper(new XmlFactory(input, new WstxOutputFactory()));
+        xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        xmlMapper.registerModule(new Jdk8Module());
+        xmlMapper.registerModule(new JavaTimeModule());
+        serviceFactory.register(XmlMapper.class, () -> xmlMapper);
+
+        // Register ObjectMapper for JSON handling (used by S3 Vectors API)
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        objectMapper.registerModule(new Jdk8Module());
+        objectMapper.registerModule(new JavaTimeModule());
+        serviceFactory.register(ObjectMapper.class, () -> objectMapper);
+
+        // Register S3 Vectors services
+        S3VectorsService s3VectorsService = createLocalS3VectorsManager().s3VectorsService();
+        serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
+
+        // register listeners
+        if(bucketEventListener != null) {
+            serviceFactory.register(BucketEventListener.class, () -> bucketEventListener);
+        }
+        if(objectEventListener != null) {
+            serviceFactory.register(ObjectEventListener.class, () -> objectEventListener);
+        }
+        return serviceFactory;
+    }
+
+    LocalS3Manager createLocalS3Manager() {
+        if (mode == LocalS3Mode.IN_MEMORY) {
+            log.info("Created in-memory LocalS3 manager.");
+            return LocalS3Manager.createInMemoryS3Manager(dataPath, initialDataCacheEnabled);
+        } else {
+            log.info("Created file system LocalS3 manager.");
+            return LocalS3Manager.createFileSystemS3Manager(dataPath);
+        }
+    }
+
+    LocalS3VectorsManager createLocalS3VectorsManager() {
+        if (mode == LocalS3Mode.IN_MEMORY) {
+            log.info("Created in-memory LocalS3 Vectors manager.");
+            return LocalS3VectorsManager.createInMemory();
+        } else {
+            Path vectorsDataPath = dataPath.resolve("vectors");
+            log.info("Created file system LocalS3 Vectors manager.");
+            return LocalS3VectorsManager.createFileSystem(vectorsDataPath);
+        }
     }
 
     /**
-     * Set LocalS3 service running mode. Default value is {@code PERSISTENCE}.
-     *
-     * @param mode LocalS3 service running mode.
-     * @return builder.
+     * Shutdown the local-s3 service.
      */
-    public Builder mode(LocalS3Mode mode) {
-      propHolder.mode = mode;
-      return this;
+    public void shutdown() {
+        if (null == this.parentGroup || null == this.childGroup) {
+            throw new IllegalStateException("LocalS3 is not started.");
+        }
+
+        try {
+            if (this.serverSocketChannel.isOpen()) {
+                this.serverSocketChannel.close().sync();
+            }
+        } catch (InterruptedException e) {
+            log.error("Close server socket channel failed.", e);
+        } finally {
+            shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
+        }
+    }
+
+    private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
+        boolean shutdownPerformed = false;
+        for (EventExecutorGroup eventExecutors : eventExecutorsList) {
+            if (!eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
+                shutdownPerformed = true;
+                eventExecutors.shutdownGracefully();
+            }
+        }
+
+        if (shutdownPerformed) {
+            log.info("LocalS3 stopped.");
+        }
     }
 
     /**
-     * This option only available when running LocalS3 in {@code IN_MEMORY} mode
-     * with initial data. If initial data cache is enabled, LocalS3 caches the
-     * accessed initial data in memory. This could reduce dist I/O when running
-     * tests with initial data in the same path.
-     *
-     * <p> The default value is {@code true}.
-     *
-     * @param enabled is the initial data cache enabled.
-     * @return if the initial data cache enabled.
+     * Get the port that local-s3 service listen to.
      */
-    public Builder initialDataCacheEnabled(boolean enabled) {
-      this.propHolder.initialDataCacheEnabled = enabled;
-      return this;
+    public int getPort() {
+        return port;
     }
 
     /**
-     * Set netty parent event group thread number.
-     * Default values is 1.
+     * Get the data path that was set in {@linkplain Builder#dataPath(String)}.
      *
-     * @param nettyParentEventGroupThreadNum netty parent event group thread number.
-     * @return builder.
+     * @return data path.
      */
-    public Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
-      propHolder.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
-      return this;
+    public Path getDataPath() {
+        return dataPath;
     }
 
     /**
-     * Set netty child event group thread number.
-     * Default value is 2.
+     * get Local S3 Manager after start()
      *
-     * @param nettyChildEventGroupThreadNum netty child event group thread number.
-     * @return builder.
+     * @return local s3 manager
      */
-    public Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
-      propHolder.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
-      return this;
+    public LocalS3Manager getS3Manager() {
+        return s3Manager;
     }
 
-    /**
-     * Set local-s3 executor thread number.
-     * Default value is 4.
-     *
-     * @param s3ExecutorThreadNum local-s3 executor thread number.
-     * @return builder.
-     */
-    public Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
-      propHolder.s3ExecutorThreadNum = s3ExecutorThreadNum;
-      return this;
-    }
+    public static class Builder {
+
+        private final LocalS3 propHolder = new LocalS3();
+
+        /**
+         * Set the port that local-s3 service listen to. Default port is 8080.
+         * Set the value to {@code -1} if you want to assign a random port.
+         *
+         * @param port customized port.
+         * @return builder.
+         */
+        public Builder port(int port) {
+            if (port < 0) {
+                propHolder.port = findFreeTcpPort();
+            } else {
+                propHolder.port = port;
+            }
+            return this;
+        }
+
+        /**
+         * Set the LocalS3 data directory. The default value is {@code null},
+         * while data is stored in Java Heap.
+         *
+         * <p>
+         * If the path is specified and the {@code mode} is {@code PERSISTENCE},
+         * then the LocalS3 service load data from and store data in this directory.
+         *
+         * <p>
+         * If the data directory is set and LocalS3 runs in {@code IN_MEMORY} mode,
+         * then data from that path will be loaded as initial data. All changes are
+         * only available in the memory, i.e. won't write back to the specified path.
+         * <p>
+         * Besides, LocalS3 will cache accessed data from this path; which could reduce
+         * disk I/O when start LocalS3 in {@code IN_MEMORY} mode with the same initial
+         * data for multi-times.
+         *
+         * @param dataPath data path.
+         * @return builder.
+         */
+        public Builder dataPath(String dataPath) {
+            this.propHolder.dataPath = dataPath == null ? null : Paths.get(dataPath);
+            return this;
+        }
+
+        /**
+         * Set default buckets
+         *
+         * @param buckets LocalS3 buckets
+         * @return builder.
+         */
+        public Builder buckets(String... buckets) {
+            if (buckets != null && buckets.length > 0) {
+                Collections.addAll(propHolder.defaultBuckets, buckets);
+            }
+            return this;
+        }
+
+        /**
+         * Set LocalS3 service running mode. Default value is {@code PERSISTENCE}.
+         *
+         * @param mode LocalS3 service running mode.
+         * @return builder.
+         */
+        public Builder mode(LocalS3Mode mode) {
+            propHolder.mode = mode;
+            return this;
+        }
+
+        /**
+         * Set bucket event listener
+         *
+         * @param bucketEventListener bucket event listener
+         * @return builder.
+         */
+        public Builder bucketEventListener(BucketEventListener bucketEventListener) {
+            propHolder.bucketEventListener = bucketEventListener;
+            return this;
+        }
+
+        /**
+         * Set object event listener
+         *
+         * @param objectEventListener bucket event listener
+         * @return builder.
+         */
+        public Builder objectEventListener(ObjectEventListener objectEventListener) {
+            propHolder.objectEventListener = objectEventListener;
+            return this;
+        }
+
+        /**
+         * This option only available when running LocalS3 in {@code IN_MEMORY} mode
+         * with initial data. If initial data cache is enabled, LocalS3 caches the
+         * accessed initial data in memory. This could reduce dist I/O when running
+         * tests with initial data in the same path.
+         *
+         * <p> The default value is {@code true}.
+         *
+         * @param enabled is the initial data cache enabled.
+         * @return if the initial data cache enabled.
+         */
+        public Builder initialDataCacheEnabled(boolean enabled) {
+            this.propHolder.initialDataCacheEnabled = enabled;
+            return this;
+        }
+
+        /**
+         * Set netty parent event group thread number.
+         * Default values is 1.
+         *
+         * @param nettyParentEventGroupThreadNum netty parent event group thread number.
+         * @return builder.
+         */
+        public Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
+            propHolder.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
+            return this;
+        }
+
+        /**
+         * Set netty child event group thread number.
+         * Default value is 2.
+         *
+         * @param nettyChildEventGroupThreadNum netty child event group thread number.
+         * @return builder.
+         */
+        public Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
+            propHolder.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
+            return this;
+        }
+
+        /**
+         * Set local-s3 executor thread number.
+         * Default value is 4.
+         *
+         * @param s3ExecutorThreadNum local-s3 executor thread number.
+         * @return builder.
+         */
+        public Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
+            propHolder.s3ExecutorThreadNum = s3ExecutorThreadNum;
+            return this;
+        }
 
     /**
      * Build a {@linkplain LocalS3} instance.
@@ -347,32 +431,32 @@ public class LocalS3 {
       return localS3;
     }
 
-    private int findFreeTcpPort() {
-      int freePort;
-      try (ServerSocket serverSocket = new ServerSocket(0)) {
-        freePort = serverSocket.getLocalPort();
-      } catch (IOException e) {
-        throw new IllegalStateException("TCP port is not available.");
-      }
-      return freePort;
+        private int findFreeTcpPort() {
+            int freePort;
+            try (ServerSocket serverSocket = new ServerSocket(0)) {
+                freePort = serverSocket.getLocalPort();
+            } catch (IOException e) {
+                throw new IllegalStateException("TCP port is not available.");
+            }
+            return freePort;
+        }
+
     }
 
-  }
+    private static final class NamingThreadFactory implements ThreadFactory {
 
-  private static final class NamingThreadFactory implements ThreadFactory {
+        private final String name;
 
-    private final String name;
+        private int counter = 0;
 
-    private int counter = 0;
+        public NamingThreadFactory(String name) {
+            this.name = name;
+        }
 
-    public NamingThreadFactory(String name) {
-      this.name = name;
+        @Override
+        public Thread newThread(Runnable r) {
+            return new Thread(r, name + "-" + counter++);
+        }
     }
-
-    @Override
-    public Thread newThread(Runnable r) {
-      return new Thread(r, name + "-" + counter++);
-    }
-  }
 
 }

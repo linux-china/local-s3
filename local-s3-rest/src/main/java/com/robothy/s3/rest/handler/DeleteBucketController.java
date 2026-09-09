@@ -5,6 +5,8 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
+import com.robothy.s3.rest.listener.BucketEvent;
+import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -12,12 +14,11 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html">DeleteBucket</a>
  */
-class DeleteBucketController implements HttpRequestHandler {
+class DeleteBucketController extends BucketHttpRequestHandler {
 
-  private final BucketService bucketService;
 
   DeleteBucketController(ServiceFactory serviceFactory) {
-    this.bucketService = serviceFactory.getInstance(BucketService.class);
+    super(serviceFactory);
   }
 
   @Override
@@ -28,6 +29,7 @@ class DeleteBucketController implements HttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);
+    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_DELETED,"",bucketName,"local"));
   }
 
 }
