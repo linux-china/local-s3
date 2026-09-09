@@ -9,7 +9,7 @@ repositories {
     mavenCentral()
 }
 
-task mergeReports(type: JacocoReport) {
+tasks.register('mergeReports', JacocoReport) {
     executionData.from(project.fileTree(dir: '.', include: '**/build/jacoco/test.exec'))
     sourceDirectories.from(project.fileTree(dir: '.', include: '**/src/main/java/**', exclude: 'local-s3-docker/src/main/java/**'))
     classDirectories.from(project.fileTree(dir: '.', include: '**/build/classes/java/main/**', exclude: 'local-s3-docker/build/classes/java/main/**'))
