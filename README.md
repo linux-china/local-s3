@@ -27,6 +27,9 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + DeleteObjectTagging
 + GetObject
 + GetObjectTagging
++ GetObjectAcl
++ PutObjectAcl
++ GetObjectAttributes
 + GetBucketAcl
 + GetBucketEncryption
 + GetBucketPolicy
@@ -40,6 +43,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + ListObjects
 + ListObjectsV2
 + ListObjectVersions
++ ListMultipartUploads
 + ListParts
 + PutBucketAcl
 + PutBucketEncryption
@@ -50,7 +54,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + PutObject
 + PutObjectTagging
 + UploadPart
-+ PubPublicAccessBlock
++ PutPublicAccessBlock
 + GetPublicAccessBlock
 + DeletePublicAccessBlock
 </details>
