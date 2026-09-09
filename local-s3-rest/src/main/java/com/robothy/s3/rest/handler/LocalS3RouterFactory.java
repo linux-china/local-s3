@@ -347,7 +347,7 @@ public class LocalS3RouterFactory {
         .method(HttpMethod.GET)
         .path(BUCKET_KEY_PATH)
         .paramMatcher(params -> params.containsKey("acl"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectAcl"))
+        .handler(new GetObjectAclController(serviceFactory))
         .build();
 
     Route GetObjectAttributes = Route.builder()
@@ -628,7 +628,7 @@ public class LocalS3RouterFactory {
         .method(HttpMethod.PUT)
         .path(BUCKET_KEY_PATH)
         .paramMatcher(params -> params.containsKey("acl"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutObjectAcl"))
+        .handler(new PutObjectAclController(serviceFactory))
         .build();
 
     Route PutObjectLegalHold = Route.builder()

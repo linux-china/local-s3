@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.internal;
 
+import com.robothy.s3.datatypes.AccessControlPolicy;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +29,8 @@ public class VersionedObjectMetadata {
 
   private String[][] tagging;
 
+  private AccessControlPolicy acl;
+
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingMetadata.html#UserMetadata">User-defined object metadata</a>.
    */
@@ -38,6 +41,13 @@ public class VersionedObjectMetadata {
    */
   public Optional<String[][]> getTagging() {
     return Optional.ofNullable(tagging);
+  }
+
+  /**
+   * Get object access control policy.
+   */
+  public Optional<AccessControlPolicy> getAcl() {
+    return Optional.ofNullable(acl);
   }
 
 }
