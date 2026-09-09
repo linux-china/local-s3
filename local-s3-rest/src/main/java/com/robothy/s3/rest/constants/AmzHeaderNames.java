@@ -21,6 +21,8 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_TAGGING_COUNT = "x-amz-tagging-count";
 
+  public static final String X_AMZ_OBJECT_ATTRIBUTES = "x-amz-object-attributes";
+
   public static final String X_AMZN_ERRORTYPE = "x-amzn-errortype";
 
   /**

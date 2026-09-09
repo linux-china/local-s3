@@ -338,6 +338,8 @@ public class LocalS3RouterFactory {
     Route GetObject = Route.builder()
         .method(HttpMethod.GET)
         .path(BUCKET_KEY_PATH)
+        .headerMatcher(headers -> headers.keySet().stream()
+            .noneMatch(name -> AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES.equalsIgnoreCase(name.toString())))
         .handler(new GetObjectController(serviceFactory))
         .build();
 
@@ -349,10 +351,11 @@ public class LocalS3RouterFactory {
         .build();
 
     Route GetObjectAttributes = Route.builder()
-        .method(HttpMethod.HEAD)
+        .method(HttpMethod.GET)
         .path(BUCKET_KEY_PATH)
-        .paramMatcher(params -> params.containsKey("attributes"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectAttributes"))
+        .headerMatcher(headers -> headers.keySet().stream()
+            .anyMatch(name -> AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES.equalsIgnoreCase(name.toString())))
+        .handler(new GetObjectAttributesController(serviceFactory))
         .build();
 
     Route GetObjectLegalHold = Route.builder()
@@ -849,9 +852,9 @@ public class LocalS3RouterFactory {
         .route(GetBucketTagging)
         .route(GetBucketVersioning)
         .route(GetBucketWebsite)
+        .route(GetObjectAttributes)
         .route(GetObject)
         .route(GetObjectAcl)
-        .route(GetObjectAttributes)
         .route(GetObjectLegalHold)
         .route(GetObjectLockConfiguration)
         .route(GetObjectRetention)

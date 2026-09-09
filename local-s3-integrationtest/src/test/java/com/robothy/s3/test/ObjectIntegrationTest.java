@@ -84,6 +84,35 @@ public class ObjectIntegrationTest {
 
   @Test
   @LocalS3
+  void testGetObjectAttributes(S3Client s3) {
+    String bucket = "object-attributes-bucket";
+    String key = "attributes.txt";
+    String content = "Text1";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+    s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromString(content));
+
+    GetObjectAttributesResponse attributes = s3.getObjectAttributes(GetObjectAttributesRequest.builder()
+        .bucket(bucket)
+        .key(key)
+        .objectAttributes(ObjectAttributes.E_TAG, ObjectAttributes.OBJECT_SIZE, ObjectAttributes.STORAGE_CLASS)
+        .build());
+
+    assertEquals(DigestUtils.md5Hex(content), attributes.eTag());
+    assertEquals(content.length(), attributes.objectSize());
+    assertEquals(StorageClass.STANDARD, attributes.storageClass());
+    assertEquals("null", attributes.versionId());
+    assertNotNull(attributes.lastModified());
+
+    GetObjectAttributesResponse etagOnly = s3.getObjectAttributes(GetObjectAttributesRequest.builder()
+        .bucket(bucket)
+        .key(key)
+        .objectAttributes(ObjectAttributes.E_TAG)
+        .build());
+    assertEquals(DigestUtils.md5Hex(content), etagOnly.eTag());
+  }
+
+  @Test
+  @LocalS3
   void listObjectVersions(S3Client s3) {
     String bucket = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
