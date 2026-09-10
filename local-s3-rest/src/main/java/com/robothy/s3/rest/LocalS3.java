@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
 /**
  * LocalS3 service launcher.
  */
-public class LocalS3 {
+public class LocalS3 implements AutoCloseable{
 
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
@@ -226,6 +226,11 @@ public class LocalS3 {
         } finally {
             shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
         }
+    }
+
+    @Override
+    public void close() throws Exception {
+        shutdown();
     }
 
     private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
