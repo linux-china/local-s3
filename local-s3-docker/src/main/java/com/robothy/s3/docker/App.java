@@ -10,11 +10,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class App {
 
+    private static final String LOCAL_S3_MODE = "MODE";
+    private static final String AWS_BUCKETS = "AWS_BUCKETS";
     private static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
     private static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
 
     public static void main(String[] args) {
-        String localS3Mode = getProperty("MODE");
+        String localS3Mode = getProperty(LOCAL_S3_MODE);
         if (localS3Mode == null) {
             log.info("\"MODE\" is not specified; use the default value \"PERSISTENCE\"");
         }
@@ -30,14 +32,13 @@ public class App {
                 .port(80)
                 .mode(LocalS3Mode.valueOf(localS3Mode.toUpperCase()))
                 .dataPath("/data");
-        if (getProperty("AWS_BUCKETS") != null) {
-            localS3Builder.buckets(getProperty("AWS_BUCKETS").split(","));
+        if (getProperty(AWS_BUCKETS) != null) {
+            localS3Builder.buckets(getProperty(AWS_BUCKETS).split(","));
         }
         String accessKeyId = getProperty(AWS_ACCESS_KEY_ID);
         String secretAccessKey = getProperty(AWS_SECRET_ACCESS_KEY);
         if ((accessKeyId == null) != (secretAccessKey == null)) {
-            throw new IllegalArgumentException(
-                    "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be configured together.");
+            throw new IllegalArgumentException("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be configured together.");
         }
         if (accessKeyId != null) {
             localS3Builder.credentials(accessKeyId, secretAccessKey);
