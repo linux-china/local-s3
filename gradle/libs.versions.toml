@@ -4,7 +4,7 @@ awssdkS3 = "2.54.14"
 jackson = "2.22.2"
 nettyHttpRouter = "1.15"
 apacheCommonsCodec = "1.22.1"
-netty = "4.2.17.Final"
+netty = "4.2.18.Final"
 apacheCommonsCollections4 = "4.6.0"
 commonsIo = "2.22.0"
 apacheCommonsLang3 = "3.20.0"
@@ -17,6 +17,7 @@ testContainers = "2.0.5"
 apacheCommonsCompress = "1.28.0"
 robothyCnRepo = "1.18"
 gradleLombok = "5.0.0"
+jspecify="1.0.1"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -45,3 +46,4 @@ testContainersJunit = { group = "org.testcontainers", name = "testcontainers-jun
 apacheCommonsCompress = { group = "org.apache.commons", name = "commons-compress", version.ref = "apacheCommonsCompress" }
 robothyCnRepo = { group = "com.robothy", name = "cn-repo", version.ref = "robothyCnRepo" }
 gradleLombok = { group = "io.franzbecker", name = "gradle-lombok", version.ref = "gradleLombok" }
+jspecify = { group = "org.jspecify", name = "jspecify", version.ref = "jspecify" }
