@@ -114,7 +114,7 @@ By default, LocalS3 runs in In-Memory mode; all data and metadata retain in the 
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .port(19090)
+    .port(29090)
     .build();
 
 localS3.start();
@@ -134,7 +134,7 @@ the specified path.
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .port(19090)
+    .port(29090)
     .mode(LocalS3Mode.PERSISTENCE)
     .dataDirectory("C://local-s3")
     .build();

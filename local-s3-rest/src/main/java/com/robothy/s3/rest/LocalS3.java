@@ -57,7 +57,7 @@ public class LocalS3 implements AutoCloseable{
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
     /* Configurations */
-    private int port = 8080;
+    private int port = 29090;
 
     private Path dataPath;
 
