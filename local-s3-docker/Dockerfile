@@ -1,4 +1,4 @@
-FROM openjdk:17-ea-slim
+FROM openjdk:21-ea-slim
 
 COPY build/libs/s3.jar /app/s3.jar
 
