@@ -1,4 +1,4 @@
-FROM frolvlad/alpine-glibc:glibc-2.34
+FROM frolvlad/alpine-glibc:alpine-3.22_glibc-2.42
 
 MAINTAINER Fuxiang Luo <robothyluo@gmail.com>
 
