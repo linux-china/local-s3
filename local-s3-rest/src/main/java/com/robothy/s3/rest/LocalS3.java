@@ -56,13 +56,15 @@ public class LocalS3 implements AutoCloseable{
 
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
-    /* Configurations */
+    private String bindHost = "127.0.0.1";
+
     private int port = 29090;
 
     private Path dataPath;
 
     private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
 
+    @SuppressWarnings("FieldMayBeFinal")
     private List<String> defaultBuckets = new ArrayList<>();
 
     private BucketEventListener bucketEventListener;
@@ -119,7 +121,7 @@ public class LocalS3 implements AutoCloseable{
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new HttpServerInitializer(executorGroup,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey)))
-                    .bind(port)
+                    .bind(bindHost, port)
                     .sync();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
@@ -248,6 +250,15 @@ public class LocalS3 implements AutoCloseable{
     }
 
     /**
+     * Get the host that local-s3 service listens on.
+     *
+     * @return bind host.
+     */
+    public String getBindHost() {
+        return bindHost;
+    }
+
+    /**
      * Get the port that local-s3 service listen to.
      */
     public int getPort() {
@@ -275,6 +286,27 @@ public class LocalS3 implements AutoCloseable{
     public static class Builder {
 
         private final LocalS3 propHolder = new LocalS3();
+
+        /**
+         * Set the host that local-s3 service listens on.
+         * The default value is {@code 127.0.0.1}, and local only,
+         * and {@code 0.0.0.0} makes the service accessible through all network interfaces.
+         *
+         * @param bindHost host or IP address to bind.
+         * @return builder.
+         */
+        public Builder bindHost(String bindHost) {
+            if (bindHost == null || bindHost.isBlank()) {
+                throw new IllegalArgumentException("bindHost must not be blank.");
+            }
+            propHolder.bindHost = bindHost;
+            return this;
+        }
+
+        public Builder acceptFromAnyHost() {
+            propHolder.bindHost = "0.0.0.0";
+            return this;
+        }
 
         /**
          * Set the port that local-s3 service listen to. Default port is 8080.
