@@ -1,7 +1,9 @@
 package com.robothy.s3.rest.listener;
 
+import org.jspecify.annotations.NonNull;
+
 @FunctionalInterface
 public interface ObjectEventListener {
-    void onObjectEvent(ObjectEvent event);
+    void onObjectEvent(@NonNull ObjectEvent event);
 
 }
