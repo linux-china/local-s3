@@ -26,8 +26,9 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.DefaultEventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.local.LocalIoHandler;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -46,13 +47,15 @@ import java.util.concurrent.ThreadFactory;
 import javax.xml.stream.XMLInputFactory;
 
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * LocalS3 service launcher.
  */
-public class LocalS3 implements AutoCloseable{
+@SuppressWarnings("LombokGetterMayBeUsed")
+public class LocalS3 implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
@@ -87,9 +90,9 @@ public class LocalS3 implements AutoCloseable{
 
 
     /* Private fields. */
-    private NioEventLoopGroup parentGroup;
+    private MultiThreadIoEventLoopGroup parentGroup;
 
-    private NioEventLoopGroup childGroup;
+    private MultiThreadIoEventLoopGroup childGroup;
 
     private EventExecutorGroup executorGroup;
 
@@ -110,11 +113,14 @@ public class LocalS3 implements AutoCloseable{
     public void start() {
         ServiceFactory serviceFactory = createServiceFactory();
 
-        this.parentGroup = new NioEventLoopGroup(nettyParentEventGroupThreadNum, new NamingThreadFactory("locals3-parent-event-group"));
-        this.childGroup = new NioEventLoopGroup(nettyChildEventGroupThreadNum, new NamingThreadFactory("locals3-child-event-group"));
-        this.executorGroup = new DefaultEventLoopGroup(s3ExecutorThreadNum, new NamingThreadFactory("locals3-executor-group"));
+        this.parentGroup = new MultiThreadIoEventLoopGroup(nettyParentEventGroupThreadNum,
+                new NamingThreadFactory("locals3-parent-event-group"), NioIoHandler.newFactory());
+        this.childGroup = new MultiThreadIoEventLoopGroup(nettyChildEventGroupThreadNum,
+                new NamingThreadFactory("locals3-child-event-group"), NioIoHandler.newFactory());
+        this.executorGroup = new MultiThreadIoEventLoopGroup(s3ExecutorThreadNum,
+                new NamingThreadFactory("locals3-executor-group"), LocalIoHandler.newFactory());
         ServerBootstrap serverBootstrap = new ServerBootstrap();
-        ChannelFuture channelFuture = null;
+        ChannelFuture channelFuture;
         try {
             channelFuture = serverBootstrap.group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
@@ -171,7 +177,7 @@ public class LocalS3 implements AutoCloseable{
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        objectMapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
         objectMapper.registerModule(new Jdk8Module());
         objectMapper.registerModule(new JavaTimeModule());
         serviceFactory.register(ObjectMapper.class, () -> objectMapper);
@@ -181,10 +187,10 @@ public class LocalS3 implements AutoCloseable{
         serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
 
         // register listeners
-        if(bucketEventListener != null) {
+        if (bucketEventListener != null) {
             serviceFactory.register(BucketEventListener.class, () -> bucketEventListener);
         }
-        if(objectEventListener != null) {
+        if (objectEventListener != null) {
             serviceFactory.register(ObjectEventListener.class, () -> objectEventListener);
         }
         return serviceFactory;
@@ -231,7 +237,7 @@ public class LocalS3 implements AutoCloseable{
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() {
         shutdown();
     }
 
@@ -450,7 +456,7 @@ public class LocalS3 implements AutoCloseable{
         /**
          * Enable AWS Signature Version 4 authentication with a static access key pair.
          *
-         * @param accessKeyId access key ID accepted by the server.
+         * @param accessKeyId     access key ID accepted by the server.
          * @param secretAccessKey secret access key used to verify request signatures.
          * @return builder.
          */
@@ -466,30 +472,30 @@ public class LocalS3 implements AutoCloseable{
             return this;
         }
 
-    /**
-     * Build a {@linkplain LocalS3} instance.
-     *
-     * @return created {@linkplain LocalS3} instance.
-     */
-    public LocalS3 build() {
-      LocalS3 localS3 = new LocalS3();
-      for (Field field : FieldUtils.getAllFields(LocalS3.class)) {
-        if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
-          continue;
-        }
+        /**
+         * Build a {@linkplain LocalS3} instance.
+         *
+         * @return created {@linkplain LocalS3} instance.
+         */
+        public LocalS3 build() {
+            LocalS3 localS3 = new LocalS3();
+            for (Field field : FieldUtils.getAllFields(LocalS3.class)) {
+                if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
+                    continue;
+                }
 
-        try {
-          field.setAccessible(true);
-          Object value = FieldUtils.readField(field, propHolder);
-          FieldUtils.writeField(field, localS3, value);
-          Object loggedValue = field.getName().toLowerCase().contains("secret") ? "******" : value;
-          log.debug(field.getName() + ": " + loggedValue);
-        } catch (IllegalAccessException e) {
-          throw new IllegalStateException(e);
+                try {
+                    field.setAccessible(true);
+                    Object value = FieldUtils.readField(field, propHolder);
+                    FieldUtils.writeField(field, localS3, value);
+                    Object loggedValue = field.getName().toLowerCase().contains("secret") ? "******" : value;
+                    log.debug(field.getName() + ": " + loggedValue);
+                } catch (IllegalAccessException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return localS3;
         }
-      }
-      return localS3;
-    }
 
         private int findFreeTcpPort() {
             int freePort;
@@ -514,7 +520,7 @@ public class LocalS3 implements AutoCloseable{
         }
 
         @Override
-        public Thread newThread(Runnable r) {
+        public Thread newThread(@NonNull Runnable r) {
             return new Thread(r, name + "-" + counter++);
         }
     }
