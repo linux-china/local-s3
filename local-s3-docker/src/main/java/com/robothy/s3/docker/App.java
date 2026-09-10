@@ -3,7 +3,6 @@ package com.robothy.s3.docker;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 
-import java.util.Arrays;
 import java.util.Optional;
 
 import lombok.extern.slf4j.Slf4j;
@@ -11,32 +10,39 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class App {
 
-    private static final String MODE = "MODE";
+    private static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
+    private static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
 
     public static void main(String[] args) {
-        if (getProperty(MODE) == null) {
+        String localS3Mode = getProperty("MODE");
+        if (localS3Mode == null) {
             log.info("\"MODE\" is not specified; use the default value \"PERSISTENCE\"");
         }
-
-        final String mode = Optional.ofNullable(getProperty(MODE)).orElse(LocalS3Mode.PERSISTENCE.name());
-        if (Arrays.stream(LocalS3Mode.values()).noneMatch(m -> m.name().equalsIgnoreCase(mode))) {
-            log.error("\"{}\" is not a valid mode. Valid values are {}", mode, LocalS3Mode.values());
+        localS3Mode = Optional.ofNullable(localS3Mode).orElse(LocalS3Mode.PERSISTENCE.name());
+        if (!LocalS3Mode.isLegalName(localS3Mode)) {
+            log.error("\"{}\" is not a valid mode. Valid values are {}", localS3Mode, LocalS3Mode.values());
             System.exit(1);
         }
 
-        log.info("Starting LocalS3 in {} mode.", mode);
+        log.info("Starting LocalS3 in {} mode.", localS3Mode);
 
-        String[] buckets = null;
-        if (System.getenv("AWS_BUCKETS") != null) {
-            buckets = System.getenv("AWS_BUCKETS").split(",");
-        }
-        LocalS3.builder()
+        LocalS3.Builder localS3Builder = LocalS3.builder()
                 .port(80)
-                .mode(LocalS3Mode.valueOf(mode.toUpperCase()))
-                .dataPath("/data")
-                .buckets(buckets)
-                .build()
-                .start();
+                .mode(LocalS3Mode.valueOf(localS3Mode.toUpperCase()))
+                .dataPath("/data");
+        if (getProperty("AWS_BUCKETS") != null) {
+            localS3Builder.buckets(getProperty("AWS_BUCKETS").split(","));
+        }
+        String accessKeyId = getProperty(AWS_ACCESS_KEY_ID);
+        String secretAccessKey = getProperty(AWS_SECRET_ACCESS_KEY);
+        if ((accessKeyId == null) != (secretAccessKey == null)) {
+            throw new IllegalArgumentException(
+                    "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be configured together.");
+        }
+        if (accessKeyId != null) {
+            localS3Builder.credentials(accessKeyId, secretAccessKey);
+        }
+        localS3Builder.build().start();
     }
 
     private static String getProperty(String name) {
