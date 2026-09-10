@@ -15,14 +15,17 @@ public class ObjectEvent extends S3Event {
         this.objectKey = objectKey;
     }
 
+    @NonNull
     public String getBucketName() {
         return bucketName;
     }
 
+    @NonNull
     public String getObjectKey() {
         return objectKey;
     }
 
+    @NonNull
     public String getObjectUrl() {
         return "s3://" + bucketName + "/" + objectKey;
     }

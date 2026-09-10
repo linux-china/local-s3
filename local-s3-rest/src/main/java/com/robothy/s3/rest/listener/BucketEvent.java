@@ -19,13 +19,14 @@ public class BucketEvent extends S3Event {
         super(eventType, source, metadata);
         this.bucketName = bucketName;
         this.bucketRegion = bucketRegion == null ? "local" : bucketRegion;
-        ;
     }
 
+    @NonNull
     public String getBucketName() {
         return bucketName;
     }
 
+    @NonNull
     public String getBucketRegion() {
         return bucketRegion;
     }
