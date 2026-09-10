@@ -19,7 +19,18 @@ public class LocalS3RouterFactory {
    * Create a new LocalS3Router instance.
    */
   public static Router create(ServiceFactory serviceFactory) {
+    return create(serviceFactory, null, null);
+  }
+
+  /**
+   * Create a new LocalS3Router instance with optional SigV4 authentication.
+   */
+  public static Router create(ServiceFactory serviceFactory, String accessKeyId,
+      String secretAccessKey) {
     Objects.requireNonNull(serviceFactory);
+    if ((accessKeyId == null) != (secretAccessKey == null)) {
+      throw new IllegalArgumentException("Both accessKeyId and secretAccessKey must be configured.");
+    }
     BucketPolicyController bucketPolicy = new BucketPolicyController(serviceFactory);
     BucketReplicationController bucketReplicationController = new BucketReplicationController(serviceFactory);
     BucketEncryptionController bucketEncryptionController = new BucketEncryptionController(serviceFactory);
@@ -807,7 +818,10 @@ public class LocalS3RouterFactory {
 //        .handler(new GetBucketController(serviceFactory))
 //        .build();
 
-    return new LocalS3Router()
+    LocalS3Router router = accessKeyId == null
+        ? new LocalS3Router()
+        : new LocalS3Router(accessKeyId, secretAccessKey);
+    return router
         .route(AbortMultipartUpload)
         .route(CompleteMultipartUpload)
         .route(CopyObject)

@@ -12,7 +12,6 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.robothy.netty.initializer.HttpServerInitializer;
 import com.robothy.s3.core.exception.BucketNotExistException;
-import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
@@ -21,7 +20,6 @@ import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
-import com.robothy.s3.rest.listener.ObjectEvent;
 import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -81,6 +79,10 @@ public class LocalS3 {
 
     private int s3ExecutorThreadNum = 4;
 
+    private String accessKeyId;
+
+    private String secretAccessKey;
+
 
     /* Private fields. */
     private NioEventLoopGroup parentGroup;
@@ -115,7 +117,8 @@ public class LocalS3 {
             channelFuture = serverBootstrap.group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new HttpServerInitializer(executorGroup, LocalS3RouterFactory.create(serviceFactory)))
+                    .childHandler(new HttpServerInitializer(executorGroup,
+                            LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey)))
                     .bind(port)
                     .sync();
         } catch (InterruptedException e) {
@@ -407,6 +410,25 @@ public class LocalS3 {
             return this;
         }
 
+        /**
+         * Enable AWS Signature Version 4 authentication with a static access key pair.
+         *
+         * @param accessKeyId access key ID accepted by the server.
+         * @param secretAccessKey secret access key used to verify request signatures.
+         * @return builder.
+         */
+        public Builder credentials(String accessKeyId, String secretAccessKey) {
+            if (accessKeyId == null || accessKeyId.isBlank()) {
+                throw new IllegalArgumentException("accessKeyId must not be blank.");
+            }
+            if (secretAccessKey == null || secretAccessKey.isBlank()) {
+                throw new IllegalArgumentException("secretAccessKey must not be blank.");
+            }
+            propHolder.accessKeyId = accessKeyId;
+            propHolder.secretAccessKey = secretAccessKey;
+            return this;
+        }
+
     /**
      * Build a {@linkplain LocalS3} instance.
      *
@@ -423,7 +445,8 @@ public class LocalS3 {
           field.setAccessible(true);
           Object value = FieldUtils.readField(field, propHolder);
           FieldUtils.writeField(field, localS3, value);
-          log.debug(field.getName() + ": " + value);
+          Object loggedValue = field.getName().toLowerCase().contains("secret") ? "******" : value;
+          log.debug(field.getName() + ": " + loggedValue);
         } catch (IllegalAccessException e) {
           throw new IllegalStateException(e);
         }

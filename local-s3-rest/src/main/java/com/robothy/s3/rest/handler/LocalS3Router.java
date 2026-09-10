@@ -27,8 +27,14 @@ class LocalS3Router extends AbstractRouter {
 
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
-  LocalS3Router() {
+  private final AwsSignatureV4Verifier signatureVerifier;
 
+  LocalS3Router() {
+    this.signatureVerifier = null;
+  }
+
+  LocalS3Router(String accessKeyId, String secretAccessKey) {
+    this.signatureVerifier = new AwsSignatureV4Verifier(accessKeyId, secretAccessKey);
   }
 
   @Override
@@ -43,6 +49,13 @@ class LocalS3Router extends AbstractRouter {
 
   @Override
   public HttpRequestHandler match(HttpRequest request) {
+    if (signatureVerifier != null) {
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      if (!result.authenticated()) {
+        return new AuthenticationFailureHandler(result);
+      }
+    }
+
     return matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
