@@ -301,8 +301,8 @@ public class LocalS3 implements AutoCloseable {
          * @param bindHost host or IP address to bind.
          * @return builder.
          */
-        public Builder bindHost(String bindHost) {
-            if (bindHost == null || bindHost.isBlank()) {
+        public Builder bindHost(@NonNull String bindHost) {
+            if (bindHost.isBlank()) {
                 throw new IllegalArgumentException("bindHost must not be blank.");
             }
             propHolder.bindHost = bindHost;
@@ -350,8 +350,8 @@ public class LocalS3 implements AutoCloseable {
          * @param dataPath data path.
          * @return builder.
          */
-        public Builder dataPath(String dataPath) {
-            this.propHolder.dataPath = dataPath == null ? null : Paths.get(dataPath);
+        public Builder dataPath(@NonNull String dataPath) {
+            this.propHolder.dataPath = Paths.get(dataPath);
             return this;
         }
 
@@ -374,7 +374,7 @@ public class LocalS3 implements AutoCloseable {
          * @param mode LocalS3 service running mode.
          * @return builder.
          */
-        public Builder mode(LocalS3Mode mode) {
+        public Builder mode(@NonNull LocalS3Mode mode) {
             propHolder.mode = mode;
             return this;
         }
@@ -385,7 +385,7 @@ public class LocalS3 implements AutoCloseable {
          * @param bucketEventListener bucket event listener
          * @return builder.
          */
-        public Builder bucketEventListener(BucketEventListener bucketEventListener) {
+        public Builder bucketEventListener(@NonNull BucketEventListener bucketEventListener) {
             propHolder.bucketEventListener = bucketEventListener;
             return this;
         }
@@ -396,7 +396,7 @@ public class LocalS3 implements AutoCloseable {
          * @param objectEventListener bucket event listener
          * @return builder.
          */
-        public Builder objectEventListener(ObjectEventListener objectEventListener) {
+        public Builder objectEventListener(@NonNull ObjectEventListener objectEventListener) {
             propHolder.objectEventListener = objectEventListener;
             return this;
         }
@@ -460,11 +460,11 @@ public class LocalS3 implements AutoCloseable {
          * @param secretAccessKey secret access key used to verify request signatures.
          * @return builder.
          */
-        public Builder credentials(String accessKeyId, String secretAccessKey) {
-            if (accessKeyId == null || accessKeyId.isBlank()) {
+        public Builder credentials(@NonNull String accessKeyId, @NonNull String secretAccessKey) {
+            if (accessKeyId.isBlank()) {
                 throw new IllegalArgumentException("accessKeyId must not be blank.");
             }
-            if (secretAccessKey == null || secretAccessKey.isBlank()) {
+            if (secretAccessKey.isBlank()) {
                 throw new IllegalArgumentException("secretAccessKey must not be blank.");
             }
             propHolder.accessKeyId = accessKeyId;
