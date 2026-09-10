@@ -137,7 +137,7 @@ public class LocalS3 {
         BucketService bucketService = this.getS3Manager().bucketService();
         for (String bucketName : defaultBuckets) {
             try {
-                bucketService.getBucket(bucketName);
+                bucketService.getBucket(bucketName.trim());
             } catch (BucketNotExistException e) {
                 bucketService.createBucket(bucketName);
             }
