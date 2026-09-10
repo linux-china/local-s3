@@ -5,6 +5,4 @@ public enum S3EventType {
     BUCKET_DELETED,
     OBJECT_CREATED,
     OBJECT_DELETED,
-    OBJECT_COPIED,
-    OBJECT_RESTORED
 }
