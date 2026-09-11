@@ -7,6 +7,7 @@ import com.robothy.s3.core.service.InMemoryBucketService;
 import com.robothy.s3.core.service.InMemoryObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
+import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.JsonUtils;
 import java.lang.reflect.Proxy;
@@ -28,6 +29,11 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   private final LocalS3Metadata s3Metadata;
 
   private final Storage storage;
+
+  /**
+   * Locks of the buckets of this service, shared by its bucket and object services.
+   */
+  private final BucketLock bucketLock = BucketLock.create();
 
   private static final InitialDataCache cache = new InitialDataCache();
 
@@ -77,7 +83,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   public BucketService bucketService() {
     BucketService bucketService = InMemoryBucketService.create(s3Metadata);
     LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(bucketService, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
+        new LocalS3ServicesInvocationHandler<>(bucketService, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
     return (BucketService) Proxy.newProxyInstance(BucketService.class.getClassLoader(), new Class[] {BucketService.class}, invocationHandler);
   }
 
@@ -85,7 +91,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   public ObjectService objectService() {
     ObjectService objectService = InMemoryObjectService.create(s3Metadata, storage);
     LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(objectService, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
+        new LocalS3ServicesInvocationHandler<>(objectService, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
     return (ObjectService) Proxy.newProxyInstance(ObjectService.class.getClassLoader(), new Class[] {ObjectService.class}, invocationHandler);
   }
 

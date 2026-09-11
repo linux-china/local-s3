@@ -27,8 +27,19 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
 
   private final Consumer<String> bucketMetadataReloader;
 
-  public LocalS3ServicesInvocationHandler(Object proxy, Function<String, T> bucketMetadataLoader, MetadataStore<T> bucketMetaStore) {
-    this(proxy, bucketMetadataLoader, bucketMetaStore, null, null);
+  private final BucketLock bucketLock;
+
+  /**
+   * Create an invocation handler.
+   *
+   * @param proxy the service to invoke.
+   * @param bucketLock the bucket locks, shared by all services of the same LocalS3 service.
+   * @param bucketMetadataLoader loads the in-memory metadata of a bucket.
+   * @param bucketMetaStore persists bucket metadata; {@code null} to not persist.
+   */
+  public LocalS3ServicesInvocationHandler(Object proxy, BucketLock bucketLock,
+                                          Function<String, T> bucketMetadataLoader, MetadataStore<T> bucketMetaStore) {
+    this(proxy, bucketLock, bucketMetadataLoader, bucketMetaStore, null, null);
   }
 
   /**
@@ -36,16 +47,18 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
    * consistent when a bucket changing method fails.
    *
    * @param proxy the service to invoke.
+   * @param bucketLock the bucket locks, shared by all services of the same LocalS3 service.
    * @param bucketMetadataLoader loads the in-memory metadata of a bucket.
    * @param bucketMetaStore persists bucket metadata; {@code null} to not persist.
    * @param storage the storage of the service; {@code null} if objects are deleted immediately.
    * @param bucketMetadataReloader replaces the in-memory metadata of a bucket with the persisted one;
    *     {@code null} to keep the in-memory metadata when a method fails.
    */
-  public LocalS3ServicesInvocationHandler(Object proxy, Function<String, T> bucketMetadataLoader,
+  public LocalS3ServicesInvocationHandler(Object proxy, BucketLock bucketLock, Function<String, T> bucketMetadataLoader,
                                           MetadataStore<T> bucketMetaStore, TransactionalStorage storage,
                                           Consumer<String> bucketMetadataReloader) {
     this.proxy = proxy;
+    this.bucketLock = Objects.requireNonNull(bucketLock);
     this.bucketMetaStore = bucketMetaStore;
     this.bucketMetadataLoader = bucketMetadataLoader;
     this.storage = storage;
@@ -134,7 +147,7 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
   void lockIfNeeded(Object[] args, boolean isRead, boolean isWrite) {
     if (isRead || isWrite) {
       String bucketName = (String) args[0];
-      BucketLock lock = BucketLock.getInstance();
+      BucketLock lock = this.bucketLock;
       if (isRead) {
         lock.readLock(bucketName).lock();
       }
@@ -148,7 +161,7 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
   void unlockIfNeeded(Object[] args, boolean isRead, boolean isWrite) {
     if (isRead || isWrite) {
       String bucketName = (String) args[0];
-      BucketLock lock = BucketLock.getInstance();
+      BucketLock lock = this.bucketLock;
       if (isRead) {
         lock.readLock(bucketName).unlock();
       }

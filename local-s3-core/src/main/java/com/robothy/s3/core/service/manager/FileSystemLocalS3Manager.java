@@ -7,6 +7,7 @@ import com.robothy.s3.core.service.InMemoryBucketService;
 import com.robothy.s3.core.service.InMemoryObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
+import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.FileSystemBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.Storage;
@@ -24,6 +25,11 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
   private final MetadataStore<BucketMetadata> bucketMetaStore;
 
   private final TransactionalStorage storage;
+
+  /**
+   * Locks of the buckets of this service, shared by its bucket and object services.
+   */
+  private final BucketLock bucketLock = BucketLock.create();
 
   FileSystemLocalS3Manager(Path dataDirectory) {
     Objects.requireNonNull(dataDirectory, "Data directory is required to create a persistent LocalS3 service.");
@@ -48,8 +54,8 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
   }
 
   private LocalS3ServicesInvocationHandler<BucketMetadata> createInvocationHandler(Object service) {
-    return new LocalS3ServicesInvocationHandler<>(service, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(),
-        bucketMetaStore, storage, this::reloadBucketMetadata);
+    return new LocalS3ServicesInvocationHandler<>(service, bucketLock,
+        bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), bucketMetaStore, storage, this::reloadBucketMetadata);
   }
 
   /**

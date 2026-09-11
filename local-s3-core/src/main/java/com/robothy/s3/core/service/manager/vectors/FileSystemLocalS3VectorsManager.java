@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.manager.vectors;
 import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.service.loader.MetadataLoader;
+import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.service.manager.LocalS3ServicesInvocationHandler;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.MetadataStore;
@@ -18,6 +19,11 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
   private static final int MAX_CACHE_SIZE = 2000;
 
   private final Path s3VectorsDataPath;
+
+  /**
+   * Locks of the vector buckets of this service.
+   */
+  private final BucketLock bucketLock = BucketLock.create();
 
   public FileSystemLocalS3VectorsManager(Path s3VectorsDataPath) {
     this.s3VectorsDataPath = s3VectorsDataPath;
@@ -35,7 +41,8 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
     MetadataStore<VectorBucketMetadata> metadataStore = FileSystemVectorBucketMetadataStore.create(this.s3VectorsDataPath);
 
     LocalS3ServicesInvocationHandler<VectorBucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(s3VectorsService, bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore);
+        new LocalS3ServicesInvocationHandler<>(s3VectorsService, bucketLock,
+            bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore);
     return (S3VectorsService) Proxy.newProxyInstance(S3VectorsService.class.getClassLoader(),
         new Class[] {S3VectorsService.class}, invocationHandler);
   }
