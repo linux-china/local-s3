@@ -29,7 +29,7 @@ public class App {
         log.info("Starting LocalS3 in {} mode.", localS3Mode);
 
         LocalS3.Builder localS3Builder = LocalS3.builder()
-                .port(80)
+                .port(29090)
                 .mode(LocalS3Mode.valueOf(localS3Mode.toUpperCase()))
                 .dataPath("/data");
         if (getProperty(AWS_BUCKETS) != null) {

@@ -403,7 +403,7 @@ public class ReachabilityMetadataGenerator {
     }
 
     CollectReachabilityMetadataContainer port(int port) {
-      super.addFixedExposedPort(port, 80);
+      super.addFixedExposedPort(port, 29090);
       return this;
     }
 

@@ -39,19 +39,19 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   }
 
   /**
-   * Bind the specified host port to container port 80.
+   * Bind the specified host port to container port 29090.
    *
    * @param port host port.
    * @return this.
    */
   public LocalS3Container withHttpPort(int port) {
     this.port = port;
-    super.addFixedExposedPort(port, 80);
+    super.addFixedExposedPort(port, 29090);
     return this;
   }
 
   /**
-   * Bind a random TCP port to container port 80.
+   * Bind a random TCP port to container port 29090.
    * Call {@linkplain #getPort()} to get the real bound port.
    *
    * @return this.
@@ -83,7 +83,7 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   /**
    * Get the actual bound port of LocalS3 container.
    * Call {@linkplain #withHttpPort(int)} or {@linkplain #withRandomHttpPort()}
-   * to bind a host port to container port 80.
+   * to bind a host port to container port 29090.
    *
    * @return the actual bound port of the container; or {@code 0} if the
    * container doesn't bound a host port.

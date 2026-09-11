@@ -6,6 +6,6 @@ WORKDIR /app
 
 COPY build/bin/s3 /app/s3
 
-EXPOSE 80
+EXPOSE 29090
 
 CMD exec ./s3

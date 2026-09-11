@@ -6,6 +6,6 @@ WORKDIR /app
 
 VOLUME /data
 
-EXPOSE 80
+EXPOSE 29090
 
 CMD exec java -jar s3.jar
