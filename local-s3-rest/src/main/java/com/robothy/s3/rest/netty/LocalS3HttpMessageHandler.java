@@ -47,7 +47,6 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
       if (!keepAlive) {
         future.addListener(ChannelFutureListener.CLOSE);
       }
-      log.info("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
     } finally {
       ByteBuf body = request.getBody();
       if (body != null && body.refCnt() > 0) {
