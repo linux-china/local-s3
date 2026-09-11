@@ -41,14 +41,19 @@ import java.net.URI;
 
 public class ReachabilityMetadataGenerator {
 
-  private static final String NATIVE_IMAGE_TAG = "24-ol9";
+  /**
+   * GraalVM image that runs the tracing agent. It must be the same version as the image that builds
+   * the native executable; the {@code collectReachabilityMetadata} Gradle task passes it in.
+   */
+  private static final String NATIVE_IMAGE = System.getProperty("graalvm.native-image",
+      "ghcr.io/graalvm/native-image-community:21.0.2-ol9");
 
   public static void main(String[] args) throws IOException {
     int port = 38080;
     File dataPath = Files.createTempDirectory("local-s3-data").toFile();
     dataPath.deleteOnExit();
 
-    try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE_TAG)) {
+    try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE)) {
 
       container.port(port)
           .withFileSystemBind("build/reachability-metadata/META-INF/native-image", "/metadata", BindMode.READ_WRITE)
@@ -72,7 +77,7 @@ public class ReachabilityMetadataGenerator {
     }
 
     /*======== Load data from data path. ========*/
-    try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE_TAG)) {
+    try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE)) {
       container.port(port)
           .withFileSystemBind("build/reachability-metadata/META-INF/native-image", "/metadata", BindMode.READ_WRITE)
           .withFileSystemBind("build/libs", "/app", BindMode.READ_WRITE)
@@ -397,8 +402,8 @@ public class ReachabilityMetadataGenerator {
    * Collect reachability metadata container.
    */
   static class CollectReachabilityMetadataContainer extends GenericContainer<CollectReachabilityMetadataContainer> {
-    CollectReachabilityMetadataContainer(String tag) {
-      super(DockerImageName.parse("ghcr.io/graalvm/native-image-community").withTag(tag));
+    CollectReachabilityMetadataContainer(String image) {
+      super(DockerImageName.parse(image));
       this.waitingFor(Wait.forLogMessage("^.{1,}LocalS3 started.\n$", 1));
     }
 

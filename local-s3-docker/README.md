@@ -1,7 +1,8 @@
 ## LocalS3 Docker Image
 
-LocalS3 provides two types of Docker images: `local-s3` and `local-s3-native`. The executable in `local-s3` is a Java application that runs on Java 17, 
-while the executable in `local-s3-native` is build using GraalVM. The `local-s3-native` image is much smaller than the `local-s3` image.
+LocalS3 provides two types of Docker images: `local-s3` and `local-s3-native`. The executable in `local-s3` is a Java application that runs on Java 21,
+while the executable in `local-s3-native` is built with GraalVM Community for JDK 21 (`ghcr.io/graalvm/native-image-community:21.0.2-ol9`).
+The `local-s3-native` image is much smaller than the `local-s3` image.
 
 ### Gradle tasks
 
@@ -23,18 +24,18 @@ graph BT;
   
   subgraph build Docker images
     buildGraalVMNativeImage --> collectReachabilityMetadata;
-    buildDockerImages --> buildJava17BasedDockerImage
+    buildDockerImages --> buildJava21BasedDockerImage
     buildGraalVMNativeBasedDockerImage --> buildGraalVMNativeImage
     buildDockerImages --> buildGraalVMNativeBasedDockerImage
   end
   
   test --> buildDockerImages
-  pushJava17BasedDockerImage --> test
+  pushJava21BasedDockerImage --> test
   pushGraalVMNativeBasedDockerImage --> test
   
   subgraph test and publish Docker images
     
-    pushLatestDockerImage --> pushJava17BasedDockerImage
+    pushLatestDockerImage --> pushJava21BasedDockerImage
     pushDockerImages --> pushLatestDockerImage
     pushDockerImages --> pushGraalVMNativeBasedDockerImage
   end
