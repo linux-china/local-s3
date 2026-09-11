@@ -38,6 +38,9 @@ public abstract class S3Event {
         return timestamp;
     }
 
+    /**
+     * The S3 operation that triggered the event, e.g. {@code PutObject}.
+     */
     public String getSource() {
         return source;
     }

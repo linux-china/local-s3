@@ -55,7 +55,8 @@ class PutObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
-    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED,"",bucketName, key));
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED, "PutObject", bucketName, key,
+        ans.getVersionId(), ans.getSize(), ans.getEtag(), false));
   }
 
 

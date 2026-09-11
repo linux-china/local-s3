@@ -13,4 +13,6 @@ public class CompleteMultipartUploadAns {
 
   private String etag;
 
+  private long size;
+
 }

@@ -87,6 +87,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .versionId(returnedVersionId)
         .creationDate(versionedObjectMetadata.getCreationDate())
         .etag(versionedObjectMetadata.getEtag())
+        .size(versionedObjectMetadata.getSize())
         .build();
   }
 

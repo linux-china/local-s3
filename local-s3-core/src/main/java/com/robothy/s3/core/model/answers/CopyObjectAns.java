@@ -9,6 +9,8 @@ public class CopyObjectAns {
 
   private String etag;
 
+  private long size;
+
   private String sourceVersionId;
 
   private String versionId;

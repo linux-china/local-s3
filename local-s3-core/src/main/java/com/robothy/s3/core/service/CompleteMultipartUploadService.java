@@ -92,6 +92,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
         .location("/" + bucket + "/" + key)
         .versionId(putObjectAns.getVersionId())
         .etag(putObjectAns.getEtag())
+        .size(putObjectAns.getSize())
         .build();
   }
 

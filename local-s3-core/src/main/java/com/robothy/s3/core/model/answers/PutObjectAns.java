@@ -13,6 +13,8 @@ public class PutObjectAns {
 
   private String etag;
 
+  private long size;
+
   private long creationDate;
 
 }

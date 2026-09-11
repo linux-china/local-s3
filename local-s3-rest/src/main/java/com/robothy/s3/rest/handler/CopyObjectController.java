@@ -61,7 +61,8 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
-    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED,"", destinationBucket,destinationKey));
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED, "CopyObject", destinationBucket, destinationKey,
+        copyObjectAns.getVersionId(), copyObjectAns.getSize(), copyObjectAns.getEtag(), false));
   }
 
   /**

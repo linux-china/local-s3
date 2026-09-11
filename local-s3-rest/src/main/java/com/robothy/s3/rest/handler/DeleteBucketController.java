@@ -29,7 +29,7 @@ class DeleteBucketController extends BucketHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);
-    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_DELETED,"",bucketName,"local"));
+    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_DELETED, "DeleteBucket", bucketName, "local"));
   }
 
 }

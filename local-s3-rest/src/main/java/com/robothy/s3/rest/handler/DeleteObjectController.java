@@ -38,7 +38,8 @@ class DeleteObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addAmzRequestId(httpResponse);
     ResponseUtils.addDateHeader(httpResponse);
     ResponseUtils.addServerHeader(httpResponse);
-    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_DELETED,"",bucketName,key));
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_DELETED, "DeleteObject", bucketName, key,
+        deleteObjectAns.getVersionId(), null, null, deleteObjectAns.isDeleteMarker()));
   }
 
 

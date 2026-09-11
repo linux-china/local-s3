@@ -52,7 +52,7 @@ class CreateBucketController extends BucketHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     // fire bucket created event
-    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_CREATED,"", bucketName,"local"));
+    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_CREATED, "CreateBucket", bucketName, "local"));
   }
 
 }

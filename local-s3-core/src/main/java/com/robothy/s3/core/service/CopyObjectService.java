@@ -53,6 +53,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .versionId(putObjectAns.getVersionId())
         .lastModified(putObjectAns.getCreationDate())
         .etag(putObjectAns.getEtag())
+        .size(putObjectAns.getSize())
         .build();
   }
 

@@ -20,6 +20,7 @@ import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
+import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -43,6 +44,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import javax.xml.stream.XMLInputFactory;
 
@@ -78,6 +81,8 @@ public class LocalS3 implements AutoCloseable {
     private BucketEventListener bucketEventListener;
 
     private ObjectEventListener objectEventListener;
+
+    private Executor eventListenerExecutor = Runnable::run;
 
     private LocalS3Manager s3Manager;
 
@@ -197,12 +202,11 @@ public class LocalS3 implements AutoCloseable {
         S3VectorsService s3VectorsService = createLocalS3VectorsManager().s3VectorsService();
         serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
 
-        // register listeners
-        if (bucketEventListener != null) {
-            serviceFactory.register(BucketEventListener.class, () -> bucketEventListener);
-        }
-        if (objectEventListener != null) {
-            serviceFactory.register(ObjectEventListener.class, () -> objectEventListener);
+        // register event dispatcher
+        if (bucketEventListener != null || objectEventListener != null) {
+            S3EventDispatcher eventDispatcher =
+                    new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor);
+            serviceFactory.register(S3EventDispatcher.class, () -> eventDispatcher);
         }
         return serviceFactory;
     }
@@ -414,6 +418,25 @@ public class LocalS3 implements AutoCloseable {
          */
         public Builder mode(@NonNull LocalS3Mode mode) {
             propHolder.mode = mode;
+            return this;
+        }
+
+        /**
+         * Set the executor that delivers events to the bucket and object event listeners.
+         *
+         * <p>By default, listeners run synchronously on the thread handling the request, so an event is
+         * delivered before the S3 response is sent. Pass an executor, e.g.
+         * {@code Executors.newSingleThreadExecutor()}, to deliver events asynchronously so that slow listeners
+         * don't hold up request handling; a single-threaded executor keeps the events in order. LocalS3 does not
+         * shut the executor down.
+         *
+         * <p>Either way, an exception thrown by a listener is logged and does not fail the S3 request.
+         *
+         * @param eventListenerExecutor executor that runs the event listeners.
+         * @return builder.
+         */
+        public Builder eventListenerExecutor(@NonNull Executor eventListenerExecutor) {
+            propHolder.eventListenerExecutor = Objects.requireNonNull(eventListenerExecutor);
             return this;
         }
 

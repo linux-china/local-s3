@@ -1,14 +1,14 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.service.CompleteMultipartUploadService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
+import com.robothy.s3.rest.listener.ObjectEvent;
+import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.CompleteMultipartUpload;
 import com.robothy.s3.rest.model.response.CompleteMultipartUploadResult;
@@ -23,15 +23,13 @@ import java.util.stream.Collectors;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html">CompleteMultipartUpload</a>
  */
-class CompleteMultipartUploadController implements HttpRequestHandler {
+class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
 
   private final CompleteMultipartUploadService uploadService;
 
-  private final XmlMapper xmlMapper;
-
   CompleteMultipartUploadController(ServiceFactory serviceFactory) {
+    super(serviceFactory);
     this.uploadService = serviceFactory.getInstance(ObjectService.class);
-    this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
 
   @Override
@@ -64,6 +62,9 @@ class CompleteMultipartUploadController implements HttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
+    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED, "CompleteMultipartUpload", bucket, key,
+        completeMultipartUploadAns.getVersionId(), completeMultipartUploadAns.getSize(),
+        completeMultipartUploadAns.getEtag(), false));
   }
 
 }
