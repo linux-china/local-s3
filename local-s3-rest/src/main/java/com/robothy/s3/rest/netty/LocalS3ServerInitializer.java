@@ -47,9 +47,9 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                 .addLast("http-request-decoder", new HttpRequestDecoder())
                 .addLast("http-response-encoder", new HttpResponseEncoder())
                 .addLast("chunked-writer", new ChunkedWriteHandler())
-                .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, xmlMapper))
-                .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
-                .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router));
+                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, xmlMapper))
+                .addLast(executorGroup, "local-s3-response-encoder", new LocalS3HttpResponseEncoder())
+                .addLast(executorGroup, "local-s3-message-handler", new LocalS3HttpMessageHandler(router));
     }
 
 }
