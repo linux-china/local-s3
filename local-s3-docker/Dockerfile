@@ -1,4 +1,4 @@
-FROM openjdk:21-ea-slim
+FROM eclipse-temurin:21-jre-noble
 
 COPY build/libs/s3.jar /app/s3.jar
 
