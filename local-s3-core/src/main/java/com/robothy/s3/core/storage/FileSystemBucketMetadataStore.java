@@ -26,6 +26,7 @@ public class FileSystemBucketMetadataStore implements MetadataStore<BucketMetada
         throw new IllegalStateException("Failed to create directory " + dataPath.toAbsolutePath());
       }
     }
+    JsonUtils.deleteTempFiles(dataPath);
     return new FileSystemBucketMetadataStore(dataPath);
   }
 

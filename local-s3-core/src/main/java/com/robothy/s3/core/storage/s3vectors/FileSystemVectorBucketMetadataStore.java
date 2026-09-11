@@ -39,6 +39,7 @@ public class FileSystemVectorBucketMetadataStore implements MetadataStore<Vector
         throw new IllegalStateException("Failed to create directory " + dataPath.toAbsolutePath());
       }
     }
+    JsonUtils.deleteTempFiles(dataPath);
     return new FileSystemVectorBucketMetadataStore(dataPath);
   }
 

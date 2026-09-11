@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -74,6 +75,16 @@ class FileSystemBucketMetadataStoreTest {
     bucketStore.store(bucketMetadata.getBucketName(), bucketMetadata);
 
     assertEquals(2, bucketStore.fetchAll().size());
+    FileUtils.deleteDirectory(tempDirectory.toFile());
+  }
+
+  @Test
+  void createDeletesTempFilesLeftByInterruptedWrites() throws Exception {
+    Path tempDirectory = Files.createTempDirectory("bucket-meta");
+    Path leftover = Files.writeString(tempDirectory.resolve(".bucket.bucket.meta.123.json.tmp"), "{\"bucketNa");
+    MetadataStore<BucketMetadata> bucketStore = FileSystemBucketMetadataStore.create(tempDirectory);
+    assertFalse(Files.exists(leftover));
+    assertEquals(0, bucketStore.fetchAll().size());
     FileUtils.deleteDirectory(tempDirectory.toFile());
   }
 }
