@@ -80,12 +80,12 @@ jobs:
 
       - name: Release(Info)
         if: ${{inputs.gradleLogLevel == 'Info'}}
-        run: .|
+        run: |
           ./gradlew check release --info
 
       - name: Release(Warn)
         if: ${{inputs.gradleLogLevel == 'Warn'}}
-        run: .|
+        run: |
           ./gradlew check release --warn
 
       - name: Release(Debug)
