@@ -33,6 +33,7 @@ import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 
 import java.io.IOException;
@@ -47,6 +48,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import javax.xml.stream.XMLInputFactory;
 
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -61,6 +63,8 @@ import org.slf4j.LoggerFactory;
 public class LocalS3 implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
+
+    private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
 
     /**
      * Default max request body size(256M), the largest body the in-memory request aggregation can hold.
@@ -279,13 +283,32 @@ public class LocalS3 implements AutoCloseable {
         for (EventExecutorGroup eventExecutors : eventExecutorsList) {
             if (!eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
                 shutdownPerformed = true;
-                eventExecutors.shutdownGracefully();
+                // No quiet period: the listening socket is only released once the event loops have terminated.
+                eventExecutors.shutdownGracefully(0, SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            }
+        }
+
+        for (EventExecutorGroup eventExecutors : eventExecutorsList) {
+            if (isInEventLoop(eventExecutors)) {
+                continue; // Waiting for our own event loop to terminate would deadlock.
+            }
+            if (!eventExecutors.terminationFuture().awaitUninterruptibly(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn("Event executors did not terminate within {} seconds.", SHUTDOWN_TIMEOUT_SECONDS);
             }
         }
 
         if (shutdownPerformed) {
             log.info("LocalS3 stopped.");
         }
+    }
+
+    private static boolean isInEventLoop(EventExecutorGroup eventExecutors) {
+        for (EventExecutor eventExecutor : eventExecutors) {
+            if (eventExecutor.inEventLoop()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
