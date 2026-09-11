@@ -250,7 +250,7 @@ service in the "after each" callback.
 You can run LocalS3 in Docker since it's image is published to [DockerHub](https://hub.docker.com/r/luofuxiang/local-s3).
 
 ```shell
-docker run --name s3 -d -v C:\\local-s3:/data -p 8080:80 luofuxiang/local-s3
+docker run --name s3 -d -v C:\\local-s3:/data -p 29090:29090 luofuxiang/local-s3
 ```
 
 ### LocalS3 test container
