@@ -2,10 +2,8 @@ package com.robothy.s3.jupiter.extensions;
 
 import com.robothy.s3.jupiter.LocalS3;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
-import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.net.ServerSocket;
 import java.util.Objects;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -77,11 +75,6 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
 
   @SneakyThrows
   private com.robothy.s3.rest.LocalS3 launch(LocalS3 s3Config) {
-    int port = s3Config.port();
-    if (port == -1) {
-      port = findFreeTcpPort();
-    }
-
     String dataPath = s3Config.dataPath();
     if (StringUtils.isBlank(dataPath) && s3Config.dataPathSupplier() != DataPathSupplier.class) {
       try {
@@ -94,7 +87,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     }
 
     com.robothy.s3.rest.LocalS3.Builder builder = com.robothy.s3.rest.LocalS3.builder()
-        .port(port)
+        .port(s3Config.port())
         .mode(s3Config.mode())
         .initialDataCacheEnabled(s3Config.initialDataCacheEnabled());
     if (StringUtils.isNotBlank(dataPath)) {
@@ -102,23 +95,13 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();
-    logger.debug("LocalS3 endpoint http://localhost:" + port);
+    logger.debug("LocalS3 endpoint http://localhost:" + localS3.getPort());
     return localS3;
   }
 
   @SneakyThrows
   private void shutdown(com.robothy.s3.rest.LocalS3 localS3) {
     localS3.shutdown();
-  }
-
-  private int findFreeTcpPort() {
-    int freePort;
-    try (ServerSocket serverSocket = new ServerSocket(0)) {
-      freePort = serverSocket.getLocalPort();
-    } catch (IOException e) {
-      throw new IllegalStateException("TCP port is not available.");
-    }
-    return freePort;
   }
 
 }

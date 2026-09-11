@@ -36,10 +36,9 @@ import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.net.ServerSocket;
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -162,8 +161,10 @@ public class LocalS3 implements AutoCloseable {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        log.info("LocalS3 started.");
         this.serverSocketChannel = channelFuture.channel();
+        // The actual port, in case a random one was requested.
+        this.port = ((InetSocketAddress) serverSocketChannel.localAddress()).getPort();
+        log.info("LocalS3 started on {}:{}.", bindHost, port);
         this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
         Runtime.getRuntime().addShutdownHook(this.shutdownHook);
     }
@@ -328,7 +329,10 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
-     * Get the port that local-s3 service listen to.
+     * Get the port that local-s3 service listen to. If a random port was requested,
+     * the port is only known once the service is started; before, this returns {@code 0}.
+     *
+     * @return the port.
      */
     public int getPort() {
         return port;
@@ -397,17 +401,18 @@ public class LocalS3 implements AutoCloseable {
 
         /**
          * Set the port that local-s3 service listen to. Default port is 29090.
-         * Set the value to {@code -1} if you want to assign a random port.
+         * Set the value to {@code -1} or {@code 0} to bind a random free port, which
+         * {@linkplain LocalS3#getPort()} returns once the service is started.
          *
          * @param port customized port.
          * @return builder.
          */
         public Builder port(int port) {
-            if (port < 0) {
-                propHolder.port = findFreeTcpPort();
-            } else {
-                propHolder.port = port;
+            if (port > 65535) {
+                throw new IllegalArgumentException("port must not be greater than 65535.");
             }
+            // Binding port 0 lets the OS pick a free port, with no window for another process to take it.
+            propHolder.port = Math.max(port, 0);
             return this;
         }
 
@@ -636,16 +641,6 @@ public class LocalS3 implements AutoCloseable {
                 }
             }
             return localS3;
-        }
-
-        private int findFreeTcpPort() {
-            int freePort;
-            try (ServerSocket serverSocket = new ServerSocket(0)) {
-                freePort = serverSocket.getLocalPort();
-            } catch (IOException e) {
-                throw new IllegalStateException("TCP port is not available.");
-            }
-            return freePort;
         }
 
     }

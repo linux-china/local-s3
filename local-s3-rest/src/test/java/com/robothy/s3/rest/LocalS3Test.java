@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -175,8 +176,34 @@ class LocalS3Test {
   }
 
   @Test
+  void bindsRandomPortOnStart() throws Exception {
+    LocalS3 first = LocalS3.builder().port(-1).build();
+    LocalS3 second = LocalS3.builder().port(0).build();
+    assertEquals(0, first.getPort(), "A random port is only known once bound.");
+    first.start();
+    second.start();
+    try {
+      assertTrue(first.getPort() > 0);
+      assertTrue(second.getPort() > 0);
+      assertNotEquals(first.getPort(), second.getPort());
+
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      HttpResponse<String> response = client.send(HttpRequest.newBuilder(
+          URI.create("http://127.0.0.1:" + first.getPort() + "/")).GET().build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, response.statusCode());
+    } finally {
+      first.shutdown();
+      second.shutdown();
+    }
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().port(65536));
+  }
+
+  @Test
   void restartsOnSamePort() {
-    int port = LocalS3.builder().port(-1).build().getPort();
+    LocalS3 random = LocalS3.builder().port(-1).build();
+    random.start();
+    int port = random.getPort();
+    random.shutdown();
     for (int i = 0; i < 3; i++) {
       LocalS3 localS3 = LocalS3.builder().port(port).build();
       localS3.start();
