@@ -1,0 +1,2 @@
+### health check for local S3
+GET http://localhost:29090/_health
