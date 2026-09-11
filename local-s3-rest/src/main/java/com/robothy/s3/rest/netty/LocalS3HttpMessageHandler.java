@@ -11,6 +11,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,7 +83,17 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    if (cause instanceof IOException) {
+      // The client closed or reset the connection; there is nobody left to send an error response to.
+      log.debug("Closing connection {} after an I/O error: {}", ctx.channel().id(), cause.toString());
+      ctx.close();
+      return;
+    }
+
     log.error("Caught exception.", cause);
+    if (!ctx.channel().isActive()) {
+      return;
+    }
     StreamingHttpResponse response = new StreamingHttpResponse();
     response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR).write("<h1>Internal Server Error.</h1>");
     if (cause.getMessage() != null) {

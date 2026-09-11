@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -91,5 +92,41 @@ class LocalS3Test {
 
     assertFalse(Runtime.getRuntime().removeShutdownHook(hook), "The shutdown hook should already be removed.");
     assertDoesNotThrow(localS3::shutdown);
+  }
+
+  @Test
+  void handlesRequestsOnExecutorThreads() throws Exception {
+    AtomicReference<String> handlerThread = new AtomicReference<>();
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .buckets("thread-bucket")
+        .objectEventListener(event -> handlerThread.set(Thread.currentThread().getName()))
+        .build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      HttpResponse<String> response = client.send(HttpRequest.newBuilder(
+              URI.create("http://127.0.0.1:" + localS3.getPort() + "/thread-bucket/a.txt"))
+          .PUT(HttpRequest.BodyPublishers.ofString("hello")).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, response.statusCode());
+      // Object event listeners run synchronously on the thread handling the request.
+      assertTrue(handlerThread.get().startsWith("locals3-executor-group"),
+          "Request handled on " + handlerThread.get() + " instead of the executor group.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void restartsOnSamePort() {
+    int port = LocalS3.builder().port(-1).build().getPort();
+    for (int i = 0; i < 3; i++) {
+      LocalS3 localS3 = LocalS3.builder().port(port).build();
+      localS3.start();
+      long begin = System.nanoTime();
+      localS3.shutdown();
+      long elapsedMillis = (System.nanoTime() - begin) / 1_000_000;
+      assertTrue(elapsedMillis < 5_000, "shutdown() took " + elapsedMillis + " ms");
+    }
   }
 }
