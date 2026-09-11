@@ -11,7 +11,6 @@ import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.platform.commons.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +75,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   @SneakyThrows
   private com.robothy.s3.rest.LocalS3 launch(LocalS3 s3Config) {
     String dataPath = s3Config.dataPath();
-    if (StringUtils.isBlank(dataPath) && s3Config.dataPathSupplier() != DataPathSupplier.class) {
+    if (dataPath.isBlank() && s3Config.dataPathSupplier() != DataPathSupplier.class) {
       try {
         Constructor<? extends DataPathSupplier> constructor = s3Config.dataPathSupplier().getDeclaredConstructor();
         DataPathSupplier dataPathSupplier = constructor.newInstance();
@@ -91,7 +90,8 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         .mode(s3Config.mode())
         .initialDataCacheEnabled(s3Config.initialDataCacheEnabled())
         .strictBucketNames(s3Config.strictBucketNames());
-    if (StringUtils.isNotBlank(dataPath)) {
+    // The data path supplier may return null.
+    if (dataPath != null && !dataPath.isBlank()) {
       builder.dataPath(dataPath);
     }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();

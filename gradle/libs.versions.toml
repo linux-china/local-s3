@@ -37,6 +37,7 @@ apacheCommonsLang3 = { group = "org.apache.commons", name = "commons-lang3", ver
 junit5 = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit5" }
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
 junit5JupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit5" }
+junit5JupiterApi = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit5" }
 #mockitoInline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockito" }
 mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }

@@ -1,17 +1,19 @@
 plugins {
+    id 'java-library'
     id 'local-s3.java-conventions'
     id 'local-s3.publish'
 }
 
 dependencies {
-    implementation project(":local-s3-rest")
-    compileOnly(libs.awssdkS3)
-    implementation(libs.commonsIo)
-    implementation(libs.apacheCommonsLang3)
-    implementation(libs.jacksonDataformatXml)
-    implementation(libs.junit5JupiterEngine)
-    implementation(libs.logbackClassic)
-    implementation(libs.awssdkS3)
-    implementation(libs.awssdkS3vectors)
-}
+    // Types of the public API: LocalS3Mode in @LocalS3, and the injected S3Client and S3VectorsClient.
+    api project(":local-s3-rest")
+    api(libs.awssdkS3)
+    api(libs.awssdkS3vectors)
 
+    // Test projects bring their own JUnit; don't impose a JUnit version or engine on them.
+    compileOnly(libs.junit5JupiterApi)
+
+    testImplementation(libs.commonsIo)
+    // A logging backend for the tests of this module only; users choose their own.
+    testRuntimeOnly(libs.logbackClassic)
+}
