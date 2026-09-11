@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.net.BindException;
@@ -291,6 +292,36 @@ class LocalS3Test {
     } finally {
       localS3.shutdown();
     }
+  }
+
+  @Test
+  void validatesBucketNamesStrictlyWhenEnabled() throws Exception {
+    assertThrows(InvalidBucketNameException.class,
+        () -> LocalS3.builder().port(-1).strictBucketNames(true).buckets("My_Bucket").build().start());
+
+    LocalS3 strict = LocalS3.builder().port(-1).strictBucketNames(true).build();
+    strict.start();
+    LocalS3 lenient = LocalS3.builder().port(-1).build();
+    lenient.start();
+    try {
+      assertTrue(strict.isStrictBucketNames());
+      HttpResponse<String> rejected = createBucket(strict.getPort(), "My_Bucket");
+      assertEquals(400, rejected.statusCode());
+      assertTrue(rejected.body().contains("<Code>InvalidBucketName</Code>"), rejected.body());
+      assertEquals(200, createBucket(strict.getPort(), "my-bucket").statusCode());
+
+      assertFalse(lenient.isStrictBucketNames());
+      assertEquals(200, createBucket(lenient.getPort(), "My_Bucket").statusCode());
+    } finally {
+      strict.shutdown();
+      lenient.shutdown();
+    }
+  }
+
+  private static HttpResponse<String> createBucket(int port, String bucketName) throws Exception {
+    HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+    return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/" + bucketName))
+        .PUT(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
   }
 
   @Test

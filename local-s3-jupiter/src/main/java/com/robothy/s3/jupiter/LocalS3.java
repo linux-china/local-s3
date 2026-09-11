@@ -111,4 +111,12 @@ public @interface LocalS3 {
    * @return if initial data cache enabled.
    */
   boolean initialDataCacheEnabled() default true;
+
+  /**
+   * Set whether the names of new buckets must follow the naming rules of Amazon S3 general purpose
+   * buckets, so that tests don't pass with bucket names that Amazon S3 rejects.
+   *
+   * @return if strict bucket name validation is enabled.
+   */
+  boolean strictBucketNames() default false;
 }

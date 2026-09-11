@@ -14,6 +14,7 @@ public class App {
     private static final String AWS_BUCKETS = "AWS_BUCKETS";
     private static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
     private static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
+    private static final String STRICT_BUCKET_NAMES = "STRICT_BUCKET_NAMES";
 
     public static void main(String[] args) {
         String localS3Mode = getProperty(LOCAL_S3_MODE);
@@ -36,6 +37,8 @@ public class App {
         if (getProperty(AWS_BUCKETS) != null) {
             localS3Builder.buckets(getProperty(AWS_BUCKETS).split(","));
         }
+        // STRICT_BUCKET_NAMES=true rejects bucket names that Amazon S3 doesn't accept.
+        localS3Builder.strictBucketNames(Boolean.parseBoolean(getProperty(STRICT_BUCKET_NAMES)));
         String accessKeyId = getProperty(AWS_ACCESS_KEY_ID);
         String secretAccessKey = getProperty(AWS_SECRET_ACCESS_KEY);
         if ((accessKeyId == null) != (secretAccessKey == null)) {

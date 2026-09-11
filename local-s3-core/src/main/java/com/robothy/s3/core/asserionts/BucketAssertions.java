@@ -11,7 +11,9 @@ import com.robothy.s3.core.exception.ServerSideEncryptionConfigurationNotFoundEx
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -30,6 +32,59 @@ public class BucketAssertions {
       throw new InvalidBucketNameException(bucketName);
     }
     return bucketName;
+  }
+
+  private static final Pattern BUCKET_NAME_CHARACTERS = Pattern.compile("[a-z0-9][a-z0-9.-]*[a-z0-9]");
+
+  private static final Pattern IP_ADDRESS = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
+
+  private static final List<String> RESERVED_PREFIXES = List.of("xn--", "sthree-", "amzn-s3-demo-");
+
+  private static final List<String> RESERVED_SUFFIXES = List.of("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3");
+
+  /**
+   * Assert that the bucket name follows the
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">naming rules</a>
+   * of Amazon S3 general purpose buckets.
+   *
+   * @param bucketName bucket name to validate.
+   * @return valid bucket name.
+   * @throws InvalidBucketNameException naming the rule that the bucket name breaks.
+   */
+  public static String assertBucketNameFollowsNamingRules(String bucketName) {
+    assertBucketNameIsValid(bucketName);
+    String violation = namingRuleViolation(bucketName);
+    if (violation != null) {
+      throw new InvalidBucketNameException(bucketName, violation);
+    }
+    return bucketName;
+  }
+
+  private static String namingRuleViolation(String bucketName) {
+    if (bucketName.length() < 3 || bucketName.length() > 63) {
+      return "Bucket names must be between 3 and 63 characters long.";
+    }
+    if (!BUCKET_NAME_CHARACTERS.matcher(bucketName).matches()) {
+      return "Bucket names can consist only of lowercase letters, numbers, periods and hyphens, "
+          + "and must begin and end with a letter or number.";
+    }
+    if (bucketName.contains("..")) {
+      return "Bucket names must not contain two adjacent periods.";
+    }
+    if (IP_ADDRESS.matcher(bucketName).matches()) {
+      return "Bucket names must not be formatted as an IP address.";
+    }
+    for (String prefix : RESERVED_PREFIXES) {
+      if (bucketName.startsWith(prefix)) {
+        return "Bucket names must not start with the prefix '" + prefix + "'.";
+      }
+    }
+    for (String suffix : RESERVED_SUFFIXES) {
+      if (bucketName.endsWith(suffix)) {
+        return "Bucket names must not end with the suffix '" + suffix + "'.";
+      }
+    }
+    return null;
   }
 
   /**

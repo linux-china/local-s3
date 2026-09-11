@@ -13,6 +13,7 @@ import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.listener.BucketEvent;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.S3EventType;
+import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBufInputStream;
@@ -27,8 +28,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class CreateBucketController extends BucketHttpRequestHandler {
 
+  private final BucketNameValidator bucketNameValidator;
+
   CreateBucketController(ServiceFactory serviceFactory) {
     super(serviceFactory);
+    // Without a registered validator, any non-blank bucket name is accepted.
+    this.bucketNameValidator = serviceFactory.containsInstance(BucketNameValidator.class)
+        ? serviceFactory.getInstance(BucketNameValidator.class)
+        : new BucketNameValidator(false);
   }
 
   @Override
@@ -42,6 +49,7 @@ class CreateBucketController extends BucketHttpRequestHandler {
     }
 
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
+    bucketNameValidator.validate(bucketName);
     bucketService.createBucket(bucketName, locationConstraint);
     CreateBucketResult createBucketResult = CreateBucketResult.builder()
         .bucketArn(IdUtils.nextUuid())

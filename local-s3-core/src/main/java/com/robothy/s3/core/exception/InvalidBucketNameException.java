@@ -14,4 +14,14 @@ public class InvalidBucketNameException extends LocalS3Exception {
     super(S3ErrorCode.InvalidBucketName, "The bucket name '" + bucketName + "' is invalid.");
   }
 
+  /**
+   * Construct an instance that names the rule the bucket name breaks.
+   *
+   * @param bucketName invalid bucket name.
+   * @param reason the naming rule that the bucket name breaks.
+   */
+  public InvalidBucketNameException(String bucketName, String reason) {
+    super(S3ErrorCode.InvalidBucketName, "The bucket name '" + bucketName + "' is invalid. " + reason);
+  }
+
 }

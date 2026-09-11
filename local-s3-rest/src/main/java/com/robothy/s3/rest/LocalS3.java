@@ -22,6 +22,7 @@ import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
+import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.bootstrap.ServerBootstrap;
@@ -107,6 +108,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final long requestBodyFileThreshold;
 
+    private final boolean strictBucketNames;
+
     /* Runtime state; start() and shutdown() are synchronized. */
 
     /**
@@ -146,6 +149,7 @@ public class LocalS3 implements AutoCloseable {
         this.secretAccessKey = builder.secretAccessKey;
         this.maxRequestBodySize = builder.maxRequestBodySize;
         this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
+        this.strictBucketNames = builder.strictBucketNames;
     }
 
     /**
@@ -218,10 +222,13 @@ public class LocalS3 implements AutoCloseable {
 
     private void createBuckets() {
         BucketService bucketService = this.getS3Manager().bucketService();
+        BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
         for (String bucketName : defaultBuckets) {
             try {
                 bucketService.getBucket(bucketName);
             } catch (BucketNotExistException e) {
+                // Existing buckets are accepted, like buckets loaded from the data path.
+                bucketNameValidator.validate(bucketName);
                 bucketService.createBucket(bucketName);
             }
         }
@@ -236,6 +243,8 @@ public class LocalS3 implements AutoCloseable {
         ObjectService objectService = s3Manager.objectService();
         serviceFactory.register(BucketService.class, () -> bucketService);
         serviceFactory.register(ObjectService.class, () -> objectService);
+        BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
+        serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
 
         XMLInputFactory input = new WstxInputFactory();
         input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
@@ -427,6 +436,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Whether the names of new buckets must follow the naming rules of Amazon S3.
+     *
+     * @return if strict bucket name validation is enabled.
+     */
+    public boolean isStrictBucketNames() {
+        return strictBucketNames;
+    }
+
+    /**
      * get Local S3 Manager after start()
      *
      * @return local s3 manager
@@ -472,6 +490,8 @@ public class LocalS3 implements AutoCloseable {
         private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
 
         private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+
+        private boolean strictBucketNames;
 
         /**
          * Set the host that local-s3 service listens on.
@@ -691,6 +711,23 @@ public class LocalS3 implements AutoCloseable {
                 throw new IllegalArgumentException("requestBodyFileThreshold must not be negative.");
             }
             this.requestBodyFileThreshold = requestBodyFileThreshold;
+            return this;
+        }
+
+        /**
+         * Set whether the names of new buckets must follow the
+         * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">naming rules</a>
+         * of Amazon S3 general purpose buckets, e.g. 3 to 63 lowercase letters, numbers, periods and hyphens.
+         * Creating a bucket with another name then fails with {@code InvalidBucketName}, so that tests don't pass
+         * with bucket names that Amazon S3 rejects. Existing buckets stay accessible.
+         *
+         * <p>The default value is {@code false}, which accepts any non-blank bucket name.
+         *
+         * @param strictBucketNames whether to validate bucket names strictly.
+         * @return builder.
+         */
+        public Builder strictBucketNames(boolean strictBucketNames) {
+            this.strictBucketNames = strictBucketNames;
             return this;
         }
 
