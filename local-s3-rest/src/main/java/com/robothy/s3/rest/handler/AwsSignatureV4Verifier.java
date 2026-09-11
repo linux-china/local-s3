@@ -8,6 +8,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -115,11 +116,16 @@ final class AwsSignatureV4Verifier {
       return malformed("The x-amz-date header must be signed.");
     }
 
-    String payloadHash = headers.getOrDefault(AmzHeaderNames.X_AMZ_CONTENT_SHA256,
-        sha256Hex(requestBody(request)));
-    VerificationResult payloadResult = validatePayloadHash(payloadHash, request);
-    if (!payloadResult.authenticated()) {
-      return payloadResult;
+    ByteBuf body = request.getBody();
+    String payloadHash = headers.get(AmzHeaderNames.X_AMZ_CONTENT_SHA256);
+    if (payloadHash == null) {
+      // Without x-amz-content-sha256, the signature covers the hash of the body as received.
+      payloadHash = sha256Hex(body);
+    } else {
+      VerificationResult payloadResult = validatePayloadHash(payloadHash, body);
+      if (!payloadResult.authenticated()) {
+        return payloadResult;
+      }
     }
 
     RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
@@ -133,12 +139,12 @@ final class AwsSignatureV4Verifier {
     }
 
     if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash)
-        && !verifyChunkSignatures(requestBody(request), signingKey, amzDate, scope.value(),
+        && !verifyChunkSignatures(body, signingKey, amzDate, scope.value(),
         parsed.signature(), false, null)) {
       return signatureMismatch();
     }
     if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash)
-        && !verifyChunkSignatures(requestBody(request), signingKey, amzDate, scope.value(),
+        && !verifyChunkSignatures(body, signingKey, amzDate, scope.value(),
         parsed.signature(), true, headers.get("x-amz-trailer"))) {
       return signatureMismatch();
     }
@@ -252,7 +258,7 @@ final class AwsSignatureV4Verifier {
     return VerificationResult.success();
   }
 
-  private VerificationResult validatePayloadHash(String payloadHash, HttpRequest request) {
+  private VerificationResult validatePayloadHash(String payloadHash, ByteBuf body) {
     if (UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payloadHash)
@@ -263,7 +269,7 @@ final class AwsSignatureV4Verifier {
     if (!payloadHash.matches("[0-9a-fA-F]{64}")) {
       return malformed("x-amz-content-sha256 is invalid.");
     }
-    return secureEquals(payloadHash, sha256Hex(requestBody(request)))
+    return secureEquals(payloadHash, sha256Hex(body))
         ? VerificationResult.success()
         : signatureMismatch();
   }
@@ -402,21 +408,32 @@ final class AwsSignatureV4Verifier {
   }
 
   private static String sha256Hex(byte[] value) {
+    return HexFormat.of().formatHex(sha256().digest(value));
+  }
+
+  /**
+   * Hash the readable bytes of a request body without copying them.
+   */
+  private static String sha256Hex(ByteBuf body) {
+    return body == null ? EMPTY_SHA256 : sha256Hex(body, body.readerIndex(), body.readableBytes());
+  }
+
+  private static String sha256Hex(ByteBuf value, int index, int length) {
+    MessageDigest digest = sha256();
+    if (length > 0) {
+      for (ByteBuffer buffer : value.nioBuffers(index, length)) {
+        digest.update(buffer);
+      }
+    }
+    return HexFormat.of().formatHex(digest.digest());
+  }
+
+  private static MessageDigest sha256() {
     try {
-      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+      return MessageDigest.getInstance("SHA-256");
     } catch (Exception e) {
       throw new IllegalStateException("Unable to calculate a SHA-256 digest.", e);
     }
-  }
-
-  private static byte[] requestBody(HttpRequest request) {
-    ByteBuf body = request.getBody();
-    if (body == null || !body.isReadable()) {
-      return new byte[0];
-    }
-    byte[] bytes = new byte[body.readableBytes()];
-    body.getBytes(body.readerIndex(), bytes);
-    return bytes;
   }
 
   private static boolean secureEquals(String expectedHex, String suppliedHex) {
@@ -428,17 +445,25 @@ final class AwsSignatureV4Verifier {
     }
   }
 
-  private static boolean verifyChunkSignatures(byte[] encodedBody, byte[] signingKey,
+  /**
+   * Verify the signatures of an {@code aws-chunked} encoded body. The body is read in place, by
+   * absolute index, so that neither the body nor its chunks are copied.
+   */
+  private static boolean verifyChunkSignatures(ByteBuf encodedBody, byte[] signingKey,
       String amzDate, String scope, String seedSignature, boolean hasTrailer,
       String trailerHeaderNames) {
-    int offset = 0;
+    if (encodedBody == null) {
+      return false;
+    }
+    int end = encodedBody.writerIndex();
+    int offset = encodedBody.readerIndex();
     String previousSignature = seedSignature;
-    while (offset < encodedBody.length) {
-      int lineEnd = indexOfCrlf(encodedBody, offset);
+    while (offset < end) {
+      int lineEnd = indexOfCrlf(encodedBody, offset, end);
       if (lineEnd < 0) {
         return false;
       }
-      String header = new String(encodedBody, offset, lineEnd - offset, StandardCharsets.US_ASCII);
+      String header = encodedBody.toString(offset, lineEnd - offset, StandardCharsets.US_ASCII);
       offset = lineEnd + 2;
       String[] headerParts = header.split(";");
       final int chunkLength;
@@ -455,12 +480,12 @@ final class AwsSignatureV4Verifier {
         }
       }
       if (chunkSignature == null || !chunkSignature.matches("[0-9a-fA-F]{64}")
-          || offset + chunkLength > encodedBody.length) {
+          || chunkLength < 0 || chunkLength > end - offset) {
         return false;
       }
-      byte[] chunk = Arrays.copyOfRange(encodedBody, offset, offset + chunkLength);
       String chunkStringToSign = CHUNK_ALGORITHM + '\n' + amzDate + '\n' + scope + '\n'
-          + previousSignature + '\n' + EMPTY_SHA256 + '\n' + sha256Hex(chunk);
+          + previousSignature + '\n' + EMPTY_SHA256 + '\n'
+          + sha256Hex(encodedBody, offset, chunkLength);
       String expected = signature(signingKey, chunkStringToSign);
       if (!secureEquals(expected, chunkSignature)) {
         return false;
@@ -469,12 +494,12 @@ final class AwsSignatureV4Verifier {
       offset += chunkLength;
       if (chunkLength == 0) {
         return hasTrailer
-            ? verifyTrailer(encodedBody, offset, signingKey, amzDate, scope,
+            ? verifyTrailer(encodedBody, offset, end, signingKey, amzDate, scope,
                 previousSignature, trailerHeaderNames)
-            : onlyCrlfRemains(encodedBody, offset);
+            : onlyCrlfRemains(encodedBody, offset, end);
       }
-      if (offset + 2 > encodedBody.length
-          || encodedBody[offset] != '\r' || encodedBody[offset + 1] != '\n') {
+      if (end - offset < 2
+          || encodedBody.getByte(offset) != '\r' || encodedBody.getByte(offset + 1) != '\n') {
         return false;
       }
       offset += 2;
@@ -482,11 +507,11 @@ final class AwsSignatureV4Verifier {
     return false;
   }
 
-  private static boolean verifyTrailer(byte[] encodedBody, int offset, byte[] signingKey,
+  private static boolean verifyTrailer(ByteBuf encodedBody, int offset, int end, byte[] signingKey,
       String amzDate, String scope, String previousSignature, String trailerHeaderNames) {
     Map<String, String> trailerHeaders = new HashMap<>();
-    while (offset < encodedBody.length) {
-      int lineEnd = indexOfCrlf(encodedBody, offset);
+    while (offset < end) {
+      int lineEnd = indexOfCrlf(encodedBody, offset, end);
       if (lineEnd < 0) {
         return false;
       }
@@ -494,7 +519,7 @@ final class AwsSignatureV4Verifier {
         offset += 2;
         break;
       }
-      String line = new String(encodedBody, offset, lineEnd - offset, StandardCharsets.UTF_8);
+      String line = encodedBody.toString(offset, lineEnd - offset, StandardCharsets.UTF_8);
       int separator = line.indexOf(':');
       if (separator <= 0) {
         return false;
@@ -503,7 +528,7 @@ final class AwsSignatureV4Verifier {
           normalizeHeaderValue(line.substring(separator + 1)));
       offset = lineEnd + 2;
     }
-    if (offset != encodedBody.length || trailerHeaderNames == null) {
+    if (offset != end || trailerHeaderNames == null) {
       return false;
     }
 
@@ -529,18 +554,28 @@ final class AwsSignatureV4Verifier {
     return secureEquals(signature(signingKey, trailerStringToSign), trailerSignature);
   }
 
-  private static boolean onlyCrlfRemains(byte[] value, int offset) {
-    return offset == value.length
-        || offset + 2 == value.length && value[offset] == '\r' && value[offset + 1] == '\n';
+  private static boolean onlyCrlfRemains(ByteBuf value, int offset, int end) {
+    return offset == end
+        || offset + 2 == end && value.getByte(offset) == '\r' && value.getByte(offset + 1) == '\n';
   }
 
-  private static int indexOfCrlf(byte[] value, int offset) {
-    for (int i = offset; i + 1 < value.length; i++) {
-      if (value[i] == '\r' && value[i + 1] == '\n') {
-        return i;
+  /**
+   * Find the first CRLF in {@code value} between {@code offset} (inclusive) and {@code end} (exclusive).
+   *
+   * @return the absolute index of the CR; {@code -1} if there is no CRLF.
+   */
+  private static int indexOfCrlf(ByteBuf value, int offset, int end) {
+    int from = offset;
+    while (true) {
+      int cr = value.indexOf(from, end, (byte) '\r');
+      if (cr < 0 || cr + 1 >= end) {
+        return -1;
       }
+      if (value.getByte(cr + 1) == '\n') {
+        return cr;
+      }
+      from = cr + 1;
     }
-    return -1;
   }
 
   private static String canonicalizeRaw(String value, boolean preserveSlash) {
@@ -572,7 +607,7 @@ final class AwsSignatureV4Verifier {
       }
       index += Character.charCount(codePoint);
     }
-    return result.length() == 0 && preserveSlash ? "/" : result.toString();
+    return result.isEmpty() && preserveSlash ? "/" : result.toString();
   }
 
   private static String percentDecode(String value) {
