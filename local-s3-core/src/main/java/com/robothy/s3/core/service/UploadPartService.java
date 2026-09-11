@@ -10,6 +10,7 @@ import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import java.security.DigestInputStream;
 import java.util.NavigableMap;
 
 /**
@@ -38,12 +39,13 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
       storage().delete(uploadPartMetadata.getFileId());
     }
 
-    Long fileId = storage().put(options.getData());
+    DigestInputStream data = S3ObjectUtils.md5DigestingStream(options.getData());
+    Long fileId = storage().put(data);
     UploadPartMetadata uploadPartMetadata = UploadPartMetadata.builder()
         .fileId(fileId)
         .lastModified(System.currentTimeMillis())
         .size(options.getContentLength())
-        .etag(options.getETag().orElseGet(() -> S3ObjectUtils.etag(storage().getInputStream(fileId))))
+        .etag(options.getETag().orElseGet(() -> S3ObjectUtils.etag(data.getMessageDigest())))
         .build();
     parts.put(partNumber, uploadPartMetadata);
     return UploadPartAns.builder()

@@ -1,5 +1,6 @@
 package com.robothy.s3.test;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -13,8 +14,14 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import com.robothy.s3.jupiter.LocalS3;
+import com.robothy.s3.jupiter.supplier.DataPathSupplier;
+import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Random;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -340,6 +347,54 @@ public class ObjectIntegrationTest {
     assertEquals(0, versionListing3.versions().size());
     ListObjectVersionsResponse versionListing4 = s3.listObjectVersions(ListObjectVersionsRequest.builder().bucket(bucketName).prefix("b.txt").build());
     assertEquals(0, versionListing4.versions().size());
+  }
+
+  @Test
+  @LocalS3
+  void testPutAndGetLargeObjectInMemory(S3Client s3) {
+    assertLargeObjectRoundTrip(s3);
+  }
+
+  @Test
+  @LocalS3(mode = LocalS3Mode.PERSISTENCE, dataPathSupplier = TempDataPathSupplier.class)
+  void testPutAndGetLargeObjectPersisted(S3Client s3) {
+    assertLargeObjectRoundTrip(s3);
+  }
+
+  private static void assertLargeObjectRoundTrip(S3Client s3) {
+    String bucket = "large-object-bucket";
+    String key = "large.bin";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+    byte[] data = new byte[20 * 1024 * 1024 + 123];
+    new Random(42).nextBytes(data);
+
+    PutObjectResponse putResponse = s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(),
+        RequestBody.fromBytes(data));
+    assertEquals(DigestUtils.md5Hex(data), putResponse.eTag());
+
+    ResponseBytes<GetObjectResponse> object = s3.getObject(
+        GetObjectRequest.builder().bucket(bucket).key(key).build(), ResponseTransformer.toBytes());
+    assertEquals(DigestUtils.md5Hex(data), object.response().eTag());
+    assertArrayEquals(data, object.asByteArray());
+
+    int start = 10 * 1024 * 1024 + 7;
+    int end = start + 3 * 1024 * 1024;
+    ResponseBytes<GetObjectResponse> range = s3.getObject(
+        GetObjectRequest.builder().bucket(bucket).key(key).range("bytes=" + start + "-" + end).build(),
+        ResponseTransformer.toBytes());
+    assertEquals("bytes " + start + "-" + end + "/" + data.length, range.response().contentRange());
+    assertArrayEquals(Arrays.copyOfRange(data, start, end + 1), range.asByteArray());
+  }
+
+  public static class TempDataPathSupplier implements DataPathSupplier {
+    @Override
+    public String get() {
+      try {
+        return Files.createTempDirectory("local-s3-large-object").toAbsolutePath().toString();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
   }
 
 }

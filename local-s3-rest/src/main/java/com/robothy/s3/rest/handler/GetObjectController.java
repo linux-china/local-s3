@@ -12,10 +12,11 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.utils.ByteBufUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBuf;
+import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.io.InputStream;
 
 /**
  * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html">GetObject</a>.
@@ -44,7 +45,7 @@ class GetObjectController implements HttpRequestHandler {
       response.putHeader(HttpHeaderNames.ALLOW.toString(), HttpMethod.DELETE)
           .putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, true);
     } else {
-      ByteBuf content = ByteBufUtils.fromInputStream(getObjectAns.getContent());
+      writeContent(response, getObjectAns.getContent());
       ResponseUtils.addCommonHeaders(response);
       ResponseUtils.addETag(response, getObjectAns.getEtag());
 
@@ -55,8 +56,7 @@ class GetObjectController implements HttpRequestHandler {
         response.status(HttpResponseStatus.OK);
       }
 
-      response.write(content)
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), getObjectAns.getContentType())
+      response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), getObjectAns.getContentType())
           .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), getObjectAns.getSize())
           .putHeader("Accept-Ranges", "bytes");
 
@@ -71,6 +71,17 @@ class GetObjectController implements HttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
+  }
+
+  /**
+   * Stream the object content when the response supports it, so that large objects are not buffered in memory.
+   */
+  private static void writeContent(HttpResponse response, InputStream content) {
+    if (response instanceof StreamingHttpResponse streamingResponse) {
+      streamingResponse.stream(content);
+    } else {
+      response.write(ByteBufUtils.fromInputStream(content));
+    }
   }
 
 }

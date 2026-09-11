@@ -10,7 +10,6 @@ import com.fasterxml.jackson.dataformat.xml.XmlFactory;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.robothy.netty.initializer.HttpServerInitializer;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
@@ -21,6 +20,7 @@ import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
+import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.bootstrap.ServerBootstrap;
@@ -59,6 +59,11 @@ public class LocalS3 implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
+    /**
+     * Default max request body size(256M), the largest body the in-memory request aggregation can hold.
+     */
+    public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = Integer.MAX_VALUE / 8;
+
     private String bindHost = "127.0.0.1";
 
     private int port = 29090;
@@ -87,6 +92,8 @@ public class LocalS3 implements AutoCloseable {
     private String accessKeyId;
 
     private String secretAccessKey;
+
+    private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
 
 
     /* Private fields. */
@@ -125,8 +132,9 @@ public class LocalS3 implements AutoCloseable {
             channelFuture = serverBootstrap.group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new HttpServerInitializer(executorGroup,
-                            LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey)))
+                    .childHandler(new LocalS3ServerInitializer(executorGroup,
+                            LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
+                            serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize))
                     .bind(bindHost, port)
                     .sync();
         } catch (InterruptedException e) {
@@ -281,6 +289,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Get the max request body size in bytes.
+     *
+     * @return max request body size.
+     */
+    public long getMaxRequestBodySize() {
+        return maxRequestBodySize;
+    }
+
+    /**
      * get Local S3 Manager after start()
      *
      * @return local s3 manager
@@ -315,7 +332,7 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set the port that local-s3 service listen to. Default port is 8080.
+         * Set the port that local-s3 service listen to. Default port is 29090.
          * Set the value to {@code -1} if you want to assign a random port.
          *
          * @param port customized port.
@@ -450,6 +467,23 @@ public class LocalS3 implements AutoCloseable {
          */
         public Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
             propHolder.s3ExecutorThreadNum = s3ExecutorThreadNum;
+            return this;
+        }
+
+        /**
+         * Set the max size in bytes of a request body. Request bodies are held in memory while a request
+         * is handled, so this bounds the memory a single request can take. A request exceeding the limit
+         * is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
+         * multipart upload instead. Default value is {@linkplain LocalS3#DEFAULT_MAX_REQUEST_BODY_SIZE}.
+         *
+         * @param maxRequestBodySize max request body size in bytes, between 1 and {@linkplain Integer#MAX_VALUE}.
+         * @return builder.
+         */
+        public Builder maxRequestBodySize(long maxRequestBodySize) {
+            if (maxRequestBodySize <= 0 || maxRequestBodySize > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("maxRequestBodySize must be between 1 and " + Integer.MAX_VALUE + ".");
+            }
+            propHolder.maxRequestBodySize = maxRequestBodySize;
             return this;
         }
 

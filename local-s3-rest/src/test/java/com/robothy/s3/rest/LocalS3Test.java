@@ -3,6 +3,10 @@ package com.robothy.s3.rest;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -42,6 +46,34 @@ class LocalS3Test {
         .build();
     assertEquals("127.0.0.1", loopbackOnly.getBindHost());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().bindHost(" "));
+    assertEquals(LocalS3.DEFAULT_MAX_REQUEST_BODY_SIZE, localS3.getMaxRequestBodySize());
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(0));
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(Integer.MAX_VALUE + 1L));
+  }
+
+  @Test
+  void rejectsRequestBodyLargerThanLimit() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .maxRequestBodySize(1024)
+        .buckets("limit-bucket")
+        .build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      String objectUrl = "http://127.0.0.1:" + localS3.getPort() + "/limit-bucket/";
+
+      HttpResponse<String> accepted = client.send(HttpRequest.newBuilder(URI.create(objectUrl + "small"))
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[1024])).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, accepted.statusCode());
+
+      HttpResponse<String> rejected = client.send(HttpRequest.newBuilder(URI.create(objectUrl + "large"))
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[1025])).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(400, rejected.statusCode());
+      assertTrue(rejected.body().contains("EntityTooLarge"));
+    } finally {
+      localS3.shutdown();
+    }
   }
 
 }
