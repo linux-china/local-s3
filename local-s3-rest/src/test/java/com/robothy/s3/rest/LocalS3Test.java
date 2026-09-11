@@ -1,6 +1,9 @@
 package com.robothy.s3.rest;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URI;
@@ -9,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.Test;
 
 class LocalS3Test {
@@ -76,4 +80,16 @@ class LocalS3Test {
     }
   }
 
+  @Test
+  void shutdownRemovesShutdownHook() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).build();
+    localS3.start();
+    Thread hook = (Thread) FieldUtils.readField(localS3, "shutdownHook", true);
+    assertNotNull(hook);
+
+    localS3.shutdown();
+
+    assertFalse(Runtime.getRuntime().removeShutdownHook(hook), "The shutdown hook should already be removed.");
+    assertDoesNotThrow(localS3::shutdown);
+  }
 }

@@ -105,6 +105,8 @@ public class LocalS3 implements AutoCloseable {
 
     private Channel serverSocketChannel;
 
+    private Thread shutdownHook;
+
     /**
      * Create a {@linkplain Builder}.
      *
@@ -142,7 +144,8 @@ public class LocalS3 implements AutoCloseable {
         }
         log.info("LocalS3 started.");
         this.serverSocketChannel = channelFuture.channel();
-        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
+        this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
+        Runtime.getRuntime().addShutdownHook(this.shutdownHook);
         if (!defaultBuckets.isEmpty()) {
             log.info("Create default buckets:{}", String.join(",", defaultBuckets));
             createBuckets();
@@ -233,6 +236,7 @@ public class LocalS3 implements AutoCloseable {
             throw new IllegalStateException("LocalS3 is not started.");
         }
 
+        removeShutdownHook();
         try {
             if (this.serverSocketChannel.isOpen()) {
                 this.serverSocketChannel.close().sync();
@@ -247,6 +251,23 @@ public class LocalS3 implements AutoCloseable {
     @Override
     public void close() {
         shutdown();
+    }
+
+    /**
+     * Deregister the shutdown hook, so that a stopped instance is no longer referenced by the JVM.
+     */
+    private void removeShutdownHook() {
+        Thread hook = this.shutdownHook;
+        if (hook == null || Thread.currentThread() == hook) {
+            return;
+        }
+
+        this.shutdownHook = null;
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException e) {
+            // The JVM is already shutting down and runs the hook anyway.
+        }
     }
 
     private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
