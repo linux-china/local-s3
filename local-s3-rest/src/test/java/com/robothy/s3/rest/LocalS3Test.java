@@ -13,14 +13,14 @@ class LocalS3Test {
   void start() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
         .bindHost("127.0.0.1")
-        .port(19090)
+        .port(-1)
         .build();
     localS3.start();
     localS3.shutdown();
 
     Path tempDirectory = Files.createTempDirectory("local-s3");
     localS3 = LocalS3.builder()
-        .port(19090)
+        .port(-1)
         .dataPath(tempDirectory.toAbsolutePath().toString())
         .build();
     localS3.start();
