@@ -9,6 +9,7 @@ public enum LocalS3VectorErrorType {
   INDEX_NOT_FOUND("IndexNotFoundException", 404),
   INDEX_ALREADY_EXISTS("IndexAlreadyExistsException", 409),
   INVALID_REQUEST("InvalidRequestException", 400),
+  INTERNAL_SERVER_ERROR("InternalServerException", 500),
   ;
 
   private final String code;

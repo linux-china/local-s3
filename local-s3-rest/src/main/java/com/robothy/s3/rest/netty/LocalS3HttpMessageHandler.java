@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Router;
+import com.robothy.s3.rest.utils.ErrorResponses;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -60,9 +61,7 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
     HttpRequestHandler handler = router.match(request);
     if (handler == null) {
       log.warn("No handler for {} {}", request.getMethod(), request.getUri());
-      response.write("Not found" + request.getPath())
-          .status(HttpResponseStatus.NOT_FOUND)
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML);
+      ErrorResponses.notImplemented(request, response);
     } else {
       try {
         handler.handle(request, response);
@@ -93,13 +92,10 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
     if (!ctx.channel().isActive()) {
       return;
     }
+    // The cause is logged above, and not revealed to the client.
     StreamingHttpResponse response = new StreamingHttpResponse();
-    response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR).write("<h1>Internal Server Error.</h1>");
-    if (cause.getMessage() != null) {
-      response.write(cause.getMessage());
-    }
-    response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML)
-        .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
+    ErrorResponses.internalError(null, response);
+    response.putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
     ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
   }

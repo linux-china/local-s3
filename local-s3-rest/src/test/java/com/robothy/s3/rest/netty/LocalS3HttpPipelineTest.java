@@ -233,9 +233,27 @@ class LocalS3HttpPipelineTest {
 
     FullHttpResponse response = channel.readOutbound();
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status());
-    assertTrue(response.content().toString(StandardCharsets.UTF_8).contains("boom"));
+    assertEquals(HttpHeaderValues.APPLICATION_XML.toString(), response.headers().get(HttpHeaderNames.CONTENT_TYPE));
+    String body = response.content().toString(StandardCharsets.UTF_8);
+    assertTrue(body.contains("<Code>InternalError</Code>"), body);
+    assertFalse(body.contains("boom"), "The exception must not be revealed to the client.");
     response.release();
     assertFalse(channel.isOpen());
+  }
+
+  @Test
+  void respondsWithS3ErrorWhenNoRouteMatches() {
+    EmbeddedChannel channel = channel(router(null));
+
+    channel.writeInbound(request(HttpMethod.PATCH, 0), LastHttpContent.EMPTY_LAST_CONTENT);
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(HttpResponseStatus.NOT_IMPLEMENTED, response.status());
+    assertEquals(HttpHeaderValues.APPLICATION_XML.toString(), response.headers().get(HttpHeaderNames.CONTENT_TYPE));
+    String body = response.content().toString(StandardCharsets.UTF_8);
+    assertTrue(body.contains("<Code>NotImplemented</Code>"), body);
+    response.release();
+    assertFalse(channel.finishAndReleaseAll());
   }
 
 }

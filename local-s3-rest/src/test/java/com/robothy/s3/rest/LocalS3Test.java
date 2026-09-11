@@ -269,6 +269,31 @@ class LocalS3Test {
   }
 
   @Test
+  void respondsWithS3ErrorsToUnsupportedRequests() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      URI uri = URI.create("http://127.0.0.1:" + localS3.getPort() + "/bucket");
+
+      HttpResponse<String> xml = client.send(HttpRequest.newBuilder(uri)
+          .method("PATCH", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(501, xml.statusCode());
+      assertEquals("application/xml", xml.headers().firstValue("content-type").orElse(null));
+      assertTrue(xml.body().contains("<Code>NotImplemented</Code>"), xml.body());
+
+      HttpResponse<String> json = client.send(HttpRequest.newBuilder(uri)
+          .header("Content-Type", "application/json")
+          .method("PATCH", HttpRequest.BodyPublishers.ofString("{}")).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(404, json.statusCode());
+      assertEquals("NotFoundException", json.headers().firstValue("x-amzn-errortype").orElse(null));
+      assertTrue(json.body().startsWith("{\"message\":"), json.body());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
   void bindsRandomPortOnStart() throws Exception {
     LocalS3 first = LocalS3.builder().port(-1).build();
     LocalS3 second = LocalS3.builder().port(0).build();
