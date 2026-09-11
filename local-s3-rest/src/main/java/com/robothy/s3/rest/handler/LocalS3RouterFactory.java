@@ -457,6 +457,19 @@ public class LocalS3RouterFactory {
         .handler(new ListBucketsController(serviceFactory))
         .build();
 
+    HealthCheckController healthCheckController = new HealthCheckController();
+    Route HealthCheck = Route.builder()
+        .method(HttpMethod.GET)
+        .path(LocalS3Router.HEALTH_CHECK_PATH)
+        .handler(healthCheckController)
+        .build();
+
+    Route HeadHealthCheck = Route.builder()
+        .method(HttpMethod.HEAD)
+        .path(LocalS3Router.HEALTH_CHECK_PATH)
+        .handler(healthCheckController)
+        .build();
+
     Route ListMultipartUploads = Route.builder()
         .method(HttpMethod.GET)
         .path(BUCKET_PATH)
@@ -822,6 +835,8 @@ public class LocalS3RouterFactory {
         ? new LocalS3Router()
         : new LocalS3Router(accessKeyId, secretAccessKey);
     return router
+        .route(HealthCheck)
+        .route(HeadHealthCheck)
         .route(AbortMultipartUpload)
         .route(CompleteMultipartUpload)
         .route(CopyObject)

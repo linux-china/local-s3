@@ -25,6 +25,12 @@ class LocalS3Router extends AbstractRouter {
 
   static final String BUCKET_KEY_PATH = "/{bucket}/{key}";
 
+  /**
+   * Path of the health check. It is answered without authentication, so that container and Kubernetes
+   * probes can use it; as an exact path, it takes precedence over a bucket named {@code _health}.
+   */
+  static final String HEALTH_CHECK_PATH = "/_health";
+
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
@@ -49,7 +55,7 @@ class LocalS3Router extends AbstractRouter {
 
   @Override
   public HttpRequestHandler match(HttpRequest request) {
-    if (signatureVerifier != null) {
+    if (signatureVerifier != null && !isHealthCheck(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
         return new AuthenticationFailureHandler(result);
@@ -60,6 +66,12 @@ class LocalS3Router extends AbstractRouter {
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
         .orElse(notFoundHandler());
+  }
+
+  private boolean isHealthCheck(HttpRequest request) {
+    HttpMethod method = request.getMethod();
+    return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
+        && HEALTH_CHECK_PATH.equals(trimPath(request.getPath()));
   }
 
   Optional<Map<String, List<Route>>> matchMethod(HttpMethod method) {

@@ -325,6 +325,33 @@ class LocalS3Test {
   }
 
   @Test
+  void answersHealthChecksWithoutAuthentication() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).credentials("access-key-id", "secret-access-key").build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      String baseUrl = "http://127.0.0.1:" + localS3.getPort();
+
+      HttpResponse<String> get = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/_health")).GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, get.statusCode());
+      assertEquals("application/json", get.headers().firstValue("content-type").orElse(null));
+      assertEquals("{\"status\":\"UP\"}", get.body());
+
+      HttpResponse<String> head = client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/_health/"))
+          .method("HEAD", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, head.statusCode());
+      assertEquals("", head.body());
+
+      // Other requests still need to be signed.
+      assertEquals(403, client.send(HttpRequest.newBuilder(URI.create(baseUrl + "/")).GET().build(),
+          HttpResponse.BodyHandlers.discarding()).statusCode());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
   void bindsRandomPortOnStart() throws Exception {
     LocalS3 first = LocalS3.builder().port(-1).build();
     LocalS3 second = LocalS3.builder().port(0).build();

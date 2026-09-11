@@ -239,6 +239,29 @@ You can run LocalS3 in Docker since it's image is published to [DockerHub](https
 docker run --name s3 -d -v C:\\local-s3:/data -p 29090:29090 luofuxiang/local-s3
 ```
 
+### Health check
+
+LocalS3 answers `GET /_health` (and `HEAD /_health`) with `200 OK` and `{"status":"UP"}` once it serves
+requests. The health check needs no authentication, even if credentials are configured, so probes can use it.
+
+```yaml
+# Kubernetes
+readinessProbe:
+  httpGet:
+    path: /_health
+    port: 29090
+```
+
+```java
+// Testcontainers: wait for the health check instead of the startup log message.
+new LocalS3Container("latest")
+    .withRandomHttpPort()
+    .waitingFor(Wait.forHttp("/_health").forPort(29090));
+```
+
+`LocalS3Container` still waits for the startup log message by default, so that it works with images older than
+the health check.
+
 ### LocalS3 test container
 
 LocalS3 provides a [testcontainers](https://www.testcontainers.org/) implementation. You can run LocalS3 in your tests 
