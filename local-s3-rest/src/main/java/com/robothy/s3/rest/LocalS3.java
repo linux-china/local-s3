@@ -598,6 +598,7 @@ public class LocalS3 implements AutoCloseable {
          */
         public Builder dataPath(@NonNull String dataPath) {
             this.dataPath = Paths.get(dataPath);
+            this.mode = LocalS3Mode.PERSISTENCE;
             return this;
         }
 
