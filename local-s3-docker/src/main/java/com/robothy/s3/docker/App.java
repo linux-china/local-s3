@@ -30,6 +30,7 @@ public class App {
 
         LocalS3.Builder localS3Builder = LocalS3.builder()
                 .port(29090)
+                .bindHost("0.0.0.0")
                 .mode(LocalS3Mode.valueOf(localS3Mode.toUpperCase()))
                 .dataPath("/data");
         if (getProperty(AWS_BUCKETS) != null) {
