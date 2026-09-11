@@ -38,38 +38,44 @@ class InMemoryStorage implements Storage {
 
   @Override
   public Long put(Long id, byte[] data) {
-    ensureNotExceedTotalSize(data.length);
-    byte[] copy = Arrays.copyOf(data, data.length);
-    store.put(id, copy);
-    totalSize.addAndGet(data.length);
-    return id;
+    // Copy the data, since the caller may change the array afterwards.
+    return putData(id, Arrays.copyOf(data, data.length));
   }
 
   @Override
   @SneakyThrows
   public Long put(Long id, InputStream data) {
-    return put(id, data.readAllBytes());
+    // The array returned by readAllBytes() isn't referenced by anyone else.
+    return putData(id, data.readAllBytes());
+  }
+
+  private Long putData(Long id, byte[] data) {
+    ensureNotExceedTotalSize(data.length);
+    byte[] previous = store.put(id, data);
+    totalSize.addAndGet(data.length - (previous == null ? 0 : previous.length));
+    return id;
   }
 
   @Override
   public byte[] getBytes(Long id) {
-    ensureObjectExist(id);
-    byte[] data = store.get(id);
+    byte[] data = getData(id);
+    // Copy the data, since the caller may change the returned array.
     return Arrays.copyOf(data, data.length);
   }
 
   @Override
   public InputStream getInputStream(Long id) {
-    byte[] data = getBytes(id);
-    return new ByteArrayInputStream(data);
+    // A ByteArrayInputStream never changes its array, so the stored data needn't be copied.
+    return new ByteArrayInputStream(getData(id));
   }
 
   @Override
   public Long delete(Long id) {
-    ensureObjectExist(id);
-    int size = store.get(id).length;
-    store.remove(id);
-    totalSize.addAndGet(-size);
+    byte[] removed = store.remove(id);
+    if (removed == null) {
+      throw notExist(id);
+    }
+    totalSize.addAndGet(-removed.length);
     return id;
   }
 
@@ -78,10 +84,16 @@ class InMemoryStorage implements Storage {
     return store.containsKey(id);
   }
 
-  private void ensureObjectExist(Long id) {
-    if (!isExist(id)) {
-      throw new IllegalArgumentException("Object id='" + id + "' not exists.");
+  private byte[] getData(Long id) {
+    byte[] data = store.get(id);
+    if (data == null) {
+      throw notExist(id);
     }
+    return data;
+  }
+
+  private static IllegalArgumentException notExist(Long id) {
+    return new IllegalArgumentException("Object id='" + id + "' not exists.");
   }
 
   private void ensureNotExceedTotalSize(int incrementalSize) {

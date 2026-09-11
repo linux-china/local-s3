@@ -1,5 +1,6 @@
 package com.robothy.s3.rest;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -142,6 +144,33 @@ class LocalS3Test {
     } finally {
       localS3.shutdown();
       FileUtils.deleteDirectory(dataPath.toFile());
+    }
+  }
+
+  @Test
+  void storesBodiesBufferedInTemporaryFiles() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .requestBodyFileThreshold(1024)
+        .buckets("file-bucket")
+        .build();
+    localS3.start();
+    try {
+      byte[] content = new byte[1024 * 1024 + 7];
+      new Random(42).nextBytes(content);
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      URI objectUrl = URI.create("http://127.0.0.1:" + localS3.getPort() + "/file-bucket/large");
+
+      HttpResponse<Void> put = client.send(HttpRequest.newBuilder(objectUrl)
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(content)).build(), HttpResponse.BodyHandlers.discarding());
+      assertEquals(200, put.statusCode());
+
+      HttpResponse<byte[]> get = client.send(HttpRequest.newBuilder(objectUrl).GET().build(),
+          HttpResponse.BodyHandlers.ofByteArray());
+      assertEquals(200, get.statusCode());
+      assertArrayEquals(content, get.body());
+    } finally {
+      localS3.shutdown();
     }
   }
 

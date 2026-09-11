@@ -66,9 +66,14 @@ public class LocalS3 implements AutoCloseable {
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
 
     /**
-     * Default max request body size(256M), the largest body the in-memory request aggregation can hold.
+     * Default max request body size(2G), the largest body the in-memory request aggregation can hold.
      */
-    public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = Integer.MAX_VALUE / 8;
+    public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = Integer.MAX_VALUE;
+
+    /**
+     * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap.
+     */
+    public static final long DEFAULT_REQUEST_BODY_FILE_THRESHOLD = 4 * 1024 * 1024;
 
     private String bindHost = "127.0.0.1";
 
@@ -102,6 +107,8 @@ public class LocalS3 implements AutoCloseable {
     private String secretAccessKey;
 
     private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
+
+    private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
 
 
     /* Private fields. */
@@ -149,7 +156,7 @@ public class LocalS3 implements AutoCloseable {
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new LocalS3ServerInitializer(executorGroup,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
-                            serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize))
+                            serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold))
                     .bind(bindHost, port)
                     .sync();
         } catch (InterruptedException e) {
@@ -343,6 +350,15 @@ public class LocalS3 implements AutoCloseable {
      */
     public long getMaxRequestBodySize() {
         return maxRequestBodySize;
+    }
+
+    /**
+     * Get the size in bytes above which a request body is buffered in a temporary file.
+     *
+     * @return request body file threshold.
+     */
+    public long getRequestBodyFileThreshold() {
+        return requestBodyFileThreshold;
     }
 
     /**
@@ -543,8 +559,9 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set the max size in bytes of a request body. Request bodies are held in memory while a request
-         * is handled, so this bounds the memory a single request can take. A request exceeding the limit
+         * Set the max size in bytes of a request body. Request bodies are held in memory, or memory-mapped
+         * above {@linkplain Builder#requestBodyFileThreshold(long)}, while a request is handled, so this bounds
+         * the memory a single request can take. A request exceeding the limit
          * is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
          * multipart upload instead. Default value is {@linkplain LocalS3#DEFAULT_MAX_REQUEST_BODY_SIZE}.
          *
@@ -556,6 +573,24 @@ public class LocalS3 implements AutoCloseable {
                 throw new IllegalArgumentException("maxRequestBodySize must be between 1 and " + Integer.MAX_VALUE + ".");
             }
             propHolder.maxRequestBodySize = maxRequestBodySize;
+            return this;
+        }
+
+        /**
+         * Set the size in bytes above which a request body is buffered in a temporary file instead of the
+         * Java heap. The file is memory-mapped while the request is handled, so large uploads take neither
+         * heap memory nor a copy of the body. Default value is
+         * {@linkplain LocalS3#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
+         * request bodies on the heap.
+         *
+         * @param requestBodyFileThreshold size in bytes, not negative.
+         * @return builder.
+         */
+        public Builder requestBodyFileThreshold(long requestBodyFileThreshold) {
+            if (requestBodyFileThreshold < 0) {
+                throw new IllegalArgumentException("requestBodyFileThreshold must not be negative.");
+            }
+            propHolder.requestBodyFileThreshold = requestBodyFileThreshold;
             return this;
         }
 

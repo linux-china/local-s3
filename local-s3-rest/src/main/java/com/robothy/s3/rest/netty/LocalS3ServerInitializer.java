@@ -25,20 +25,24 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
 
     private final long maxRequestBodySize;
 
+    private final long requestBodyFileThreshold;
+
     /**
      * Create a channel initializer.
      *
-     * @param executorGroup      executes request aggregation and handling.
-     * @param router             routes requests to handlers.
-     * @param xmlMapper          renders S3 errors.
-     * @param maxRequestBodySize max request body size in bytes.
+     * @param executorGroup            executes request aggregation and handling.
+     * @param router                   routes requests to handlers.
+     * @param xmlMapper                renders S3 errors.
+     * @param maxRequestBodySize       max request body size in bytes.
+     * @param requestBodyFileThreshold size in bytes above which a request body is buffered in a temporary file.
      */
     public LocalS3ServerInitializer(EventExecutorGroup executorGroup, Router router, XmlMapper xmlMapper,
-                                    long maxRequestBodySize) {
+                                    long maxRequestBodySize, long requestBodyFileThreshold) {
         this.executorGroup = executorGroup;
         this.router = router;
         this.xmlMapper = xmlMapper;
         this.maxRequestBodySize = maxRequestBodySize;
+        this.requestBodyFileThreshold = requestBodyFileThreshold;
     }
 
     @Override
@@ -47,7 +51,7 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                 .addLast("http-request-decoder", new HttpRequestDecoder())
                 .addLast("http-response-encoder", new HttpResponseEncoder())
                 .addLast("chunked-writer", new ChunkedWriteHandler())
-                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, xmlMapper))
+                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, requestBodyFileThreshold, xmlMapper))
                 .addLast(executorGroup, "local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast(executorGroup, "local-s3-message-handler", new LocalS3HttpMessageHandler(router));
     }
