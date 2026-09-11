@@ -239,6 +239,23 @@ You can run LocalS3 in Docker since it's image is published to [DockerHub](https
 docker run --name s3 -d -v C:\\local-s3:/data -p 29090:29090 luofuxiang/local-s3
 ```
 
+The container is configured by environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOCAL_S3_PORT` | `29090` | Port that LocalS3 listens on. |
+| `LOCAL_S3_MODE` | `PERSISTENCE` | `PERSISTENCE` or `IN_MEMORY`. `MODE` is still accepted. |
+| `LOCAL_S3_DATA_PATH` | `/data` | Data directory, or initial data in `IN_MEMORY` mode. |
+| `LOCAL_S3_STRICT_BUCKET_NAMES` | `false` | Reject bucket names that Amazon S3 doesn't accept. |
+| `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
+| `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
+
+LocalS3 runs as the unprivileged user `locals3` (UID 10001). In `PERSISTENCE` mode, the container gives the data
+directory to that user on startup, so that bind-mounted directories stay writable. To run as your own user and keep
+the ownership of a bind-mounted directory, start the container with `--user "$(id -u):$(id -g)"`. The images
+declare a Docker `HEALTHCHECK` that requests the health check below.
+
 ### Health check
 
 LocalS3 answers `GET /_health` (and `HEAD /_health`) with `200 OK` and `{"status":"UP"}` once it serves
