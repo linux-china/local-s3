@@ -77,7 +77,7 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
    * @return this.
    */
   public LocalS3Container withMode(Mode mode) {
-    return super.withEnv("MODE", mode.name());
+    return super.withEnv("LOCAL_S3_MODE", mode.name());
   }
 
   /**

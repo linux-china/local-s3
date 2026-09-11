@@ -17,8 +17,8 @@ class LocalS3ContainerTest {
       assertTrue(container.getBinds().stream().anyMatch(bind -> bind.getPath().equals("/data/local-s3")
           && bind.getVolume().getPath().equals("/data")));
       assertTrue(container.getPortBindings().contains("8080:29090/tcp"));
-      assertTrue(container.getEnvMap().containsKey("MODE"));
-      assertEquals(LocalS3Container.Mode.IN_MEMORY.name(), container.getEnvMap().get("MODE"));
+      assertTrue(container.getEnvMap().containsKey("LOCAL_S3_MODE"));
+      assertEquals(LocalS3Container.Mode.IN_MEMORY.name(), container.getEnvMap().get("LOCAL_S3_MODE"));
     }
 
     try (LocalS3Container container = new LocalS3Container("latest")) {
