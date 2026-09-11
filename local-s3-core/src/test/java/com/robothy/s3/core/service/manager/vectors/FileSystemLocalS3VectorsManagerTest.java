@@ -40,6 +40,8 @@ class FileSystemLocalS3VectorsManagerTest {
       // Phase 1: Create first manager instance and create buckets
       FileSystemLocalS3VectorsManager manager1 = new FileSystemLocalS3VectorsManager(tempDirectory);
       S3VectorsService service1 = manager1.s3VectorsService();
+      // Vector data is stored in the data path, not in the working directory.
+      assertTrue(Files.isDirectory(tempDirectory.resolve(".storage")));
 
       // Create multiple buckets with different configurations
       CreateVectorBucketResponse response1 = service1.createVectorBucket(bucket1Name, encryptionConfig);

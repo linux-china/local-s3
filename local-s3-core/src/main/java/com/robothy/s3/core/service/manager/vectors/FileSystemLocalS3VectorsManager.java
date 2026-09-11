@@ -10,7 +10,6 @@ import com.robothy.s3.core.storage.s3vectors.FileSystemVectorBucketMetadataStore
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import java.lang.reflect.Proxy;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
 
@@ -29,7 +28,9 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
     LocalS3VectorsMetadata vectorsMetadata = MetadataLoader.create(LocalS3VectorsMetadata.class)
         .load(s3VectorsDataPath);
 
-    VectorStorage vectorStorage = VectorStorage.createFileSystem(Paths.get(VECTOR_STORAGE_DIRECTORY), MAX_CACHE_SIZE);
+    // Vector data belongs to the data path, not to the working directory, which may not even be writable.
+    VectorStorage vectorStorage = VectorStorage.createFileSystem(
+        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHE_SIZE);
     S3VectorsService s3VectorsService = S3VectorsService.create(vectorsMetadata, vectorStorage);
     MetadataStore<VectorBucketMetadata> metadataStore = FileSystemVectorBucketMetadataStore.create(this.s3VectorsDataPath);
 
