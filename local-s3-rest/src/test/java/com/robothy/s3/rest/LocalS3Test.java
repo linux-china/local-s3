@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -11,6 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import java.net.BindException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,6 +22,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -173,6 +178,94 @@ class LocalS3Test {
     } finally {
       localS3.shutdown();
     }
+  }
+
+  @Test
+  void builtInstancesDontDependOnTheBuilder() {
+    LocalS3.Builder builder = LocalS3.builder().port(-1).buckets("first");
+    LocalS3 first = builder.build();
+    builder.bindHost("0.0.0.0").buckets("second");
+    LocalS3 second = builder.build();
+
+    assertEquals("127.0.0.1", first.getBindHost());
+    assertEquals("0.0.0.0", second.getBindHost());
+    first.start();
+    try {
+      BucketService bucketService = first.getS3Manager().bucketService();
+      assertEquals(1, bucketService.listBuckets().size());
+      assertDoesNotThrow(() -> bucketService.getBucket("first"));
+    } finally {
+      first.shutdown();
+    }
+  }
+
+  @Test
+  void rejectsSecondStartAndRestartsAfterShutdown() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).build();
+    localS3.start();
+    try {
+      assertThrows(IllegalStateException.class, localS3::start);
+      assertEquals(200, listBuckets(localS3.getPort()));
+    } finally {
+      localS3.shutdown();
+    }
+
+    localS3.start();
+    try {
+      assertEquals(200, listBuckets(localS3.getPort()));
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void failedStartReleasesResourcesAndKeepsItsException() throws Exception {
+    try (ServerSocket occupied = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
+      long threads = countLocalS3Threads();
+      LocalS3 localS3 = LocalS3.builder().port(occupied.getLocalPort()).build();
+
+      Throwable thrown = assertThrows(Throwable.class, () -> {
+        try (LocalS3 closed = localS3) {
+          closed.start();
+        }
+      });
+      assertInstanceOf(BindException.class, thrown, "close() must not hide the exception of start().");
+      // Netty's sync() records its call site as a suppressed CompletionException; close() adds nothing.
+      for (Throwable suppressed : thrown.getSuppressed()) {
+        assertInstanceOf(CompletionException.class, suppressed);
+      }
+
+      long deadline = System.currentTimeMillis() + 5_000;
+      while (countLocalS3Threads() > threads && System.currentTimeMillis() < deadline) {
+        Thread.sleep(50);
+      }
+      assertEquals(threads, countLocalS3Threads(), "The event loop threads are released.");
+      assertDoesNotThrow(localS3::shutdown);
+    }
+  }
+
+  @Test
+  void failureBeforeBindingKeepsItsException() {
+    LocalS3 invalid = LocalS3.builder().port(-1).mode(LocalS3Mode.PERSISTENCE).build();
+    NullPointerException thrown = assertThrows(NullPointerException.class, () -> {
+      try (LocalS3 closed = invalid) {
+        closed.start();
+      }
+    });
+    assertEquals(0, thrown.getSuppressed().length);
+  }
+
+  private static int listBuckets(int port) throws Exception {
+    HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+    return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/")).GET().build(),
+        HttpResponse.BodyHandlers.discarding()).statusCode();
+  }
+
+  private static long countLocalS3Threads() {
+    return Thread.getAllStackTraces().keySet().stream()
+        .filter(thread -> thread.isAlive() && thread.getName().startsWith("locals3-")
+            && !thread.getName().equals("locals3-shutdown-hook"))
+        .count();
   }
 
   @Test

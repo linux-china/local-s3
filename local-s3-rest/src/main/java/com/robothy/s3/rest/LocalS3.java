@@ -36,8 +36,6 @@ import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -49,7 +47,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import javax.xml.stream.XMLInputFactory;
 
-import org.apache.commons.lang3.reflect.FieldUtils;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,43 +71,53 @@ public class LocalS3 implements AutoCloseable {
      */
     public static final long DEFAULT_REQUEST_BODY_FILE_THRESHOLD = 4 * 1024 * 1024;
 
-    private String bindHost = "127.0.0.1";
+    /* Configuration, set by the builder. */
+    private final String bindHost;
 
-    private int port = 29090;
+    /**
+     * The port to bind; {@code 0} binds a random free port.
+     */
+    private final int configuredPort;
 
-    private Path dataPath;
+    private final Path dataPath;
 
-    private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
+    private final LocalS3Mode mode;
 
-    @SuppressWarnings("FieldMayBeFinal")
-    private List<String> defaultBuckets = new ArrayList<>();
+    private final List<String> defaultBuckets;
 
-    private BucketEventListener bucketEventListener;
+    private final BucketEventListener bucketEventListener;
 
-    private ObjectEventListener objectEventListener;
+    private final ObjectEventListener objectEventListener;
 
-    private Executor eventListenerExecutor = Runnable::run;
+    private final Executor eventListenerExecutor;
 
-    private LocalS3Manager s3Manager;
+    private final boolean initialDataCacheEnabled;
 
-    private boolean initialDataCacheEnabled = true;
+    private final int nettyParentEventGroupThreadNum;
 
-    private int nettyParentEventGroupThreadNum = 1;
+    private final int nettyChildEventGroupThreadNum;
 
-    private int nettyChildEventGroupThreadNum = 2;
+    private final int s3ExecutorThreadNum;
 
-    private int s3ExecutorThreadNum = 4;
+    private final String accessKeyId;
 
-    private String accessKeyId;
+    private final String secretAccessKey;
 
-    private String secretAccessKey;
+    private final long maxRequestBodySize;
 
-    private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
+    private final long requestBodyFileThreshold;
 
-    private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+    /* Runtime state; start() and shutdown() are synchronized. */
 
+    /**
+     * The bound port once started; the configured port before.
+     */
+    private volatile int port;
 
-    /* Private fields. */
+    private volatile LocalS3Manager s3Manager;
+
+    private boolean running;
+
     private MultiThreadIoEventLoopGroup parentGroup;
 
     private MultiThreadIoEventLoopGroup childGroup;
@@ -120,6 +127,26 @@ public class LocalS3 implements AutoCloseable {
     private Channel serverSocketChannel;
 
     private Thread shutdownHook;
+
+    private LocalS3(Builder builder) {
+        this.bindHost = builder.bindHost;
+        this.configuredPort = builder.port;
+        this.port = builder.port;
+        this.dataPath = builder.dataPath;
+        this.mode = builder.mode;
+        this.defaultBuckets = List.copyOf(builder.defaultBuckets);
+        this.bucketEventListener = builder.bucketEventListener;
+        this.objectEventListener = builder.objectEventListener;
+        this.eventListenerExecutor = builder.eventListenerExecutor;
+        this.initialDataCacheEnabled = builder.initialDataCacheEnabled;
+        this.nettyParentEventGroupThreadNum = builder.nettyParentEventGroupThreadNum;
+        this.nettyChildEventGroupThreadNum = builder.nettyChildEventGroupThreadNum;
+        this.s3ExecutorThreadNum = builder.s3ExecutorThreadNum;
+        this.accessKeyId = builder.accessKeyId;
+        this.secretAccessKey = builder.secretAccessKey;
+        this.maxRequestBodySize = builder.maxRequestBodySize;
+        this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
+    }
 
     /**
      * Create a {@linkplain Builder}.
@@ -132,8 +159,29 @@ public class LocalS3 implements AutoCloseable {
 
     /**
      * Startup the local-s3 service.
+     *
+     * <p>If the service fails to start, the resources created so far are released and the original
+     * exception is thrown. A stopped service can be started again.
+     *
+     * @throws IllegalStateException if the service is already started.
      */
-    public void start() {
+    public synchronized void start() {
+        if (running) {
+            throw new IllegalStateException("LocalS3 is already started.");
+        }
+
+        try {
+            startServer();
+        } catch (Throwable e) {
+            stopServer();
+            throw e;
+        }
+        running = true;
+        this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
+        Runtime.getRuntime().addShutdownHook(this.shutdownHook);
+    }
+
+    private void startServer() {
         ServiceFactory serviceFactory = createServiceFactory();
         // create default buckets first
         if (!defaultBuckets.isEmpty()) {
@@ -156,17 +204,16 @@ public class LocalS3 implements AutoCloseable {
                     .childHandler(new LocalS3ServerInitializer(executorGroup,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
                             serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold))
-                    .bind(bindHost, port)
+                    .bind(bindHost, configuredPort)
                     .sync();
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while starting LocalS3.", e);
         }
         this.serverSocketChannel = channelFuture.channel();
         // The actual port, in case a random one was requested.
         this.port = ((InetSocketAddress) serverSocketChannel.localAddress()).getPort();
         log.info("LocalS3 started on {}:{}.", bindHost, port);
-        this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
-        Runtime.getRuntime().addShutdownHook(this.shutdownHook);
     }
 
     private void createBuckets() {
@@ -245,28 +292,42 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
-     * Shutdown the local-s3 service.
+     * Shutdown the local-s3 service. Does nothing if the service isn't running, e.g. because it
+     * failed to start, so that {@linkplain #close()} doesn't hide the exception of {@linkplain #start()}.
      */
-    public void shutdown() {
-        if (null == this.parentGroup || null == this.childGroup) {
-            throw new IllegalStateException("LocalS3 is not started.");
+    public synchronized void shutdown() {
+        if (!running) {
+            return;
         }
 
+        running = false;
         removeShutdownHook();
-        try {
-            if (this.serverSocketChannel.isOpen()) {
-                this.serverSocketChannel.close().sync();
-            }
-        } catch (InterruptedException e) {
-            log.error("Close server socket channel failed.", e);
-        } finally {
-            shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
-        }
+        stopServer();
     }
 
     @Override
     public void close() {
         shutdown();
+    }
+
+    /**
+     * Close the server socket and stop the event loops, as far as they were created.
+     */
+    private void stopServer() {
+        try {
+            if (this.serverSocketChannel != null && this.serverSocketChannel.isOpen()) {
+                this.serverSocketChannel.close().sync();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Close server socket channel failed.", e);
+        } finally {
+            shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
+            this.serverSocketChannel = null;
+            this.childGroup = null;
+            this.parentGroup = null;
+            this.executorGroup = null;
+        }
     }
 
     /**
@@ -289,7 +350,7 @@ public class LocalS3 implements AutoCloseable {
     private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
         boolean shutdownPerformed = false;
         for (EventExecutorGroup eventExecutors : eventExecutorsList) {
-            if (!eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
+            if (eventExecutors != null && !eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
                 shutdownPerformed = true;
                 // No quiet period: the listening socket is only released once the event loops have terminated.
                 eventExecutors.shutdownGracefully(0, SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -297,7 +358,7 @@ public class LocalS3 implements AutoCloseable {
         }
 
         for (EventExecutorGroup eventExecutors : eventExecutorsList) {
-            if (isInEventLoop(eventExecutors)) {
+            if (eventExecutors == null || isInEventLoop(eventExecutors)) {
                 continue; // Waiting for our own event loop to terminate would deadlock.
             }
             if (!eventExecutors.terminationFuture().awaitUninterruptibly(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
@@ -374,9 +435,43 @@ public class LocalS3 implements AutoCloseable {
         return s3Manager;
     }
 
+    /**
+     * Builds {@linkplain LocalS3} instances. A builder can build several instances; changing it
+     * afterwards doesn't affect the instances already built.
+     */
     public static class Builder {
 
-        private final LocalS3 propHolder = new LocalS3();
+        private String bindHost = "127.0.0.1";
+
+        private int port = 29090;
+
+        private Path dataPath;
+
+        private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
+
+        private final List<String> defaultBuckets = new ArrayList<>();
+
+        private BucketEventListener bucketEventListener;
+
+        private ObjectEventListener objectEventListener;
+
+        private Executor eventListenerExecutor = Runnable::run;
+
+        private boolean initialDataCacheEnabled = true;
+
+        private int nettyParentEventGroupThreadNum = 1;
+
+        private int nettyChildEventGroupThreadNum = 2;
+
+        private int s3ExecutorThreadNum = 4;
+
+        private String accessKeyId;
+
+        private String secretAccessKey;
+
+        private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
+
+        private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
 
         /**
          * Set the host that local-s3 service listens on.
@@ -390,12 +485,12 @@ public class LocalS3 implements AutoCloseable {
             if (bindHost.isBlank()) {
                 throw new IllegalArgumentException("bindHost must not be blank.");
             }
-            propHolder.bindHost = bindHost;
+            this.bindHost = bindHost;
             return this;
         }
 
         public Builder acceptFromAnyHost() {
-            propHolder.bindHost = "0.0.0.0";
+            this.bindHost = "0.0.0.0";
             return this;
         }
 
@@ -412,7 +507,7 @@ public class LocalS3 implements AutoCloseable {
                 throw new IllegalArgumentException("port must not be greater than 65535.");
             }
             // Binding port 0 lets the OS pick a free port, with no window for another process to take it.
-            propHolder.port = Math.max(port, 0);
+            this.port = Math.max(port, 0);
             return this;
         }
 
@@ -437,7 +532,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder dataPath(@NonNull String dataPath) {
-            this.propHolder.dataPath = Paths.get(dataPath);
+            this.dataPath = Paths.get(dataPath);
             return this;
         }
 
@@ -452,7 +547,7 @@ public class LocalS3 implements AutoCloseable {
                 for (String bucket : buckets) {
                     // Tolerate lists like "a, b," as split from the AWS_BUCKETS environment variable.
                     if (bucket != null && !bucket.isBlank()) {
-                        propHolder.defaultBuckets.add(bucket.trim());
+                        this.defaultBuckets.add(bucket.trim());
                     }
                 }
             }
@@ -460,13 +555,13 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set LocalS3 service running mode. Default value is {@code PERSISTENCE}.
+         * Set LocalS3 service running mode. Default value is {@code IN_MEMORY}.
          *
          * @param mode LocalS3 service running mode.
          * @return builder.
          */
         public Builder mode(@NonNull LocalS3Mode mode) {
-            propHolder.mode = mode;
+            this.mode = mode;
             return this;
         }
 
@@ -485,7 +580,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder eventListenerExecutor(@NonNull Executor eventListenerExecutor) {
-            propHolder.eventListenerExecutor = Objects.requireNonNull(eventListenerExecutor);
+            this.eventListenerExecutor = Objects.requireNonNull(eventListenerExecutor);
             return this;
         }
 
@@ -496,7 +591,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder bucketEventListener(@NonNull BucketEventListener bucketEventListener) {
-            propHolder.bucketEventListener = bucketEventListener;
+            this.bucketEventListener = bucketEventListener;
             return this;
         }
 
@@ -507,7 +602,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder objectEventListener(@NonNull ObjectEventListener objectEventListener) {
-            propHolder.objectEventListener = objectEventListener;
+            this.objectEventListener = objectEventListener;
             return this;
         }
 
@@ -523,7 +618,7 @@ public class LocalS3 implements AutoCloseable {
          * @return if the initial data cache enabled.
          */
         public Builder initialDataCacheEnabled(boolean enabled) {
-            this.propHolder.initialDataCacheEnabled = enabled;
+            this.initialDataCacheEnabled = enabled;
             return this;
         }
 
@@ -535,7 +630,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
-            propHolder.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
+            this.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
             return this;
         }
 
@@ -547,7 +642,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
-            propHolder.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
+            this.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
             return this;
         }
 
@@ -559,7 +654,7 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
-            propHolder.s3ExecutorThreadNum = s3ExecutorThreadNum;
+            this.s3ExecutorThreadNum = s3ExecutorThreadNum;
             return this;
         }
 
@@ -577,7 +672,7 @@ public class LocalS3 implements AutoCloseable {
             if (maxRequestBodySize <= 0 || maxRequestBodySize > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException("maxRequestBodySize must be between 1 and " + Integer.MAX_VALUE + ".");
             }
-            propHolder.maxRequestBodySize = maxRequestBodySize;
+            this.maxRequestBodySize = maxRequestBodySize;
             return this;
         }
 
@@ -595,7 +690,7 @@ public class LocalS3 implements AutoCloseable {
             if (requestBodyFileThreshold < 0) {
                 throw new IllegalArgumentException("requestBodyFileThreshold must not be negative.");
             }
-            propHolder.requestBodyFileThreshold = requestBodyFileThreshold;
+            this.requestBodyFileThreshold = requestBodyFileThreshold;
             return this;
         }
 
@@ -613,8 +708,8 @@ public class LocalS3 implements AutoCloseable {
             if (secretAccessKey.isBlank()) {
                 throw new IllegalArgumentException("secretAccessKey must not be blank.");
             }
-            propHolder.accessKeyId = accessKeyId;
-            propHolder.secretAccessKey = secretAccessKey;
+            this.accessKeyId = accessKeyId;
+            this.secretAccessKey = secretAccessKey;
             return this;
         }
 
@@ -624,23 +719,9 @@ public class LocalS3 implements AutoCloseable {
          * @return created {@linkplain LocalS3} instance.
          */
         public LocalS3 build() {
-            LocalS3 localS3 = new LocalS3();
-            for (Field field : FieldUtils.getAllFields(LocalS3.class)) {
-                if (Modifier.isStatic(field.getModifiers()) || Modifier.isFinal(field.getModifiers())) {
-                    continue;
-                }
-
-                try {
-                    field.setAccessible(true);
-                    Object value = FieldUtils.readField(field, propHolder);
-                    FieldUtils.writeField(field, localS3, value);
-                    Object loggedValue = field.getName().toLowerCase().contains("secret") ? "******" : value;
-                    log.debug(field.getName() + ": " + loggedValue);
-                } catch (IllegalAccessException e) {
-                    throw new IllegalStateException(e);
-                }
-            }
-            return localS3;
+            log.debug("Build LocalS3 on {}:{} in {} mode, data path: {}, authentication: {}.",
+                    bindHost, port, mode, dataPath, accessKeyId == null ? "disabled" : "enabled");
+            return new LocalS3(this);
         }
 
     }
