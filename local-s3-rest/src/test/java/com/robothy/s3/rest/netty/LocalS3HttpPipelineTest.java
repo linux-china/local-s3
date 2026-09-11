@@ -35,6 +35,7 @@ import io.netty.handler.stream.ChunkedWriteHandler;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.SocketException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
@@ -212,6 +213,29 @@ class LocalS3HttpPipelineTest {
     assertEquals("boom", response.content().toString(StandardCharsets.UTF_8));
     response.release();
     assertFalse(channel.finishAndReleaseAll());
+  }
+
+  @Test
+  void closesConnectionWithoutResponseWhenClientResets() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")));
+
+    channel.pipeline().fireExceptionCaught(new SocketException("Connection reset"));
+
+    assertNull(channel.readOutbound());
+    assertFalse(channel.isOpen());
+  }
+
+  @Test
+  void respondsWithServerErrorToUnexpectedException() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")));
+
+    channel.pipeline().fireExceptionCaught(new IllegalStateException("boom"));
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.status());
+    assertTrue(response.content().toString(StandardCharsets.UTF_8).contains("boom"));
+    response.release();
+    assertFalse(channel.isOpen());
   }
 
 }
