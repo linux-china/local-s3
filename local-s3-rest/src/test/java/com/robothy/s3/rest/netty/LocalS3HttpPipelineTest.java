@@ -14,6 +14,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
@@ -312,6 +313,69 @@ class LocalS3HttpPipelineTest {
     String body = response.content().toString(StandardCharsets.UTF_8);
     assertTrue(body.contains("<Code>NotImplemented</Code>"), body);
     response.release();
+    assertFalse(channel.finishAndReleaseAll());
+  }
+
+  private static final RequestHeadVerifier REJECT_ALL =
+      head -> new RequestHeadVerifier.Rejection(S3ErrorCode.SignatureDoesNotMatch, "The signature does not match.");
+
+  private static EmbeddedChannel channel(Router router, RequestHeadVerifier headVerifier) {
+    return new EmbeddedChannel(new ChunkedWriteHandler(),
+        new LocalS3HttpRequestDecoder(MAX_REQUEST_BODY_SIZE, Long.MAX_VALUE, new XmlMapper(), headVerifier),
+        new LocalS3HttpResponseEncoder(),
+        new LocalS3HttpMessageHandler(router));
+  }
+
+  @Test
+  void rejectsRequestWhoseHeadFailsVerificationWithoutContinue() {
+    AtomicBoolean handled = new AtomicBoolean();
+    EmbeddedChannel channel = channel(router((request, response) -> handled.set(true)), REJECT_ALL);
+
+    DefaultHttpRequest request = request(HttpMethod.PUT, 4);
+    request.headers().set(HttpHeaderNames.EXPECT, HttpHeaderValues.CONTINUE);
+    channel.writeInbound(request);
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(HttpResponseStatus.valueOf(S3ErrorCode.SignatureDoesNotMatch.httpStatus()), response.status());
+    assertEquals(HttpHeaderValues.CLOSE.toString(), response.headers().get(HttpHeaderNames.CONNECTION));
+    String body = response.content().toString(StandardCharsets.UTF_8);
+    assertTrue(body.contains("<Code>SignatureDoesNotMatch</Code>"), body);
+    response.release();
+    assertNull(channel.readOutbound(), "No 100 Continue is sent.");
+    assertFalse(channel.isOpen());
+    assertFalse(handled.get());
+  }
+
+  @Test
+  void verifiesHeadOfRequestWithBodyBeforeReceivingTheBody() {
+    AtomicReference<com.robothy.netty.http.HttpRequest> verifiedHead = new AtomicReference<>();
+    EmbeddedChannel channel = channel(router((request, response) ->
+        response.write(request.getBody().toString(StandardCharsets.UTF_8))), head -> {
+          verifiedHead.set(head);
+          return null;
+        });
+
+    channel.writeInbound(request(HttpMethod.PUT, 4));
+    assertEquals("/bucket/key", verifiedHead.get().getPath());
+    assertNull(verifiedHead.get().getBody());
+
+    channel.writeInbound(new DefaultLastHttpContent(Unpooled.copiedBuffer("abcd", StandardCharsets.UTF_8)));
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals("abcd", response.content().toString(StandardCharsets.UTF_8));
+    response.release();
+    assertFalse(channel.finishAndReleaseAll());
+  }
+
+  @Test
+  void leavesRequestWithoutBodyToTheRouter() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")), REJECT_ALL);
+
+    channel.writeInbound(request(HttpMethod.GET, 0), LastHttpContent.EMPTY_LAST_CONTENT);
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(HttpResponseStatus.OK, response.status());
+    response.release();
+    assertTrue(channel.isOpen());
     assertFalse(channel.finishAndReleaseAll());
   }
 

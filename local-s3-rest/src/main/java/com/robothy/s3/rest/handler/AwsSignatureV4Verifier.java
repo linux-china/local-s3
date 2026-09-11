@@ -68,11 +68,31 @@ final class AwsSignatureV4Verifier {
     this.clock = Objects.requireNonNull(clock);
   }
 
+  /**
+   * Verify a request, including its body.
+   */
   VerificationResult verify(HttpRequest request) {
+    return verify(request, true);
+  }
+
+  /**
+   * Verify the head of a request before its body is received, so that a request with an invalid signature is
+   * rejected before it uploads its body. Everything but the body is verified: the signature is calculated with the
+   * payload hash of {@code x-amz-content-sha256}, which {@linkplain #verify} checks against the body later, as well
+   * as the chunk signatures. Without {@code x-amz-content-sha256}, the signature covers the hash of the body, so
+   * only the credential, the request time and the signed headers are verified.
+   *
+   * @param head the request; its body is ignored.
+   */
+  VerificationResult verifyHead(HttpRequest head) {
+    return verify(head, false);
+  }
+
+  private VerificationResult verify(HttpRequest request, boolean bodyReceived) {
     try {
       Optional<String> authorization = request.header(HttpHeaderNames.AUTHORIZATION.toString());
       if (authorization.isPresent()) {
-        return verifyAuthorizationHeader(request, authorization.get());
+        return verifyAuthorizationHeader(request, authorization.get(), bodyReceived);
       }
 
       RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
@@ -88,7 +108,8 @@ final class AwsSignatureV4Verifier {
     }
   }
 
-  private VerificationResult verifyAuthorizationHeader(HttpRequest request, String authorization) {
+  private VerificationResult verifyAuthorizationHeader(HttpRequest request, String authorization,
+      boolean bodyReceived) {
     ParsedAuthorization parsed = parseAuthorization(authorization);
     CredentialScope scope = parseCredential(parsed.credential());
     VerificationResult credentialResult = validateCredential(scope);
@@ -119,10 +140,14 @@ final class AwsSignatureV4Verifier {
     ByteBuf body = request.getBody();
     String payloadHash = headers.get(AmzHeaderNames.X_AMZ_CONTENT_SHA256);
     if (payloadHash == null) {
+      if (!bodyReceived) {
+        // Without x-amz-content-sha256, the signature covers the hash of the body, which isn't received yet.
+        return VerificationResult.success();
+      }
       // Without x-amz-content-sha256, the signature covers the hash of the body as received.
       payloadHash = sha256Hex(body);
     } else {
-      VerificationResult payloadResult = validatePayloadHash(payloadHash, body);
+      VerificationResult payloadResult = validatePayloadHash(payloadHash, body, bodyReceived);
       if (!payloadResult.authenticated()) {
         return payloadResult;
       }
@@ -136,6 +161,10 @@ final class AwsSignatureV4Verifier {
         stringToSign(amzDate, scope.value(), canonicalRequest));
     if (!secureEquals(expectedSignature, parsed.signature())) {
       return signatureMismatch();
+    }
+    if (!bodyReceived) {
+      // The chunk signatures are verified once the body is received.
+      return VerificationResult.success();
     }
 
     if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash)
@@ -258,7 +287,7 @@ final class AwsSignatureV4Verifier {
     return VerificationResult.success();
   }
 
-  private VerificationResult validatePayloadHash(String payloadHash, ByteBuf body) {
+  private VerificationResult validatePayloadHash(String payloadHash, ByteBuf body, boolean bodyReceived) {
     if (UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payloadHash)
@@ -268,6 +297,10 @@ final class AwsSignatureV4Verifier {
     }
     if (!payloadHash.matches("[0-9a-fA-F]{64}")) {
       return malformed("x-amz-content-sha256 is invalid.");
+    }
+    if (!bodyReceived) {
+      // The body is checked against the hash once it is received.
+      return VerificationResult.success();
     }
     return secureEquals(payloadHash, sha256Hex(body))
         ? VerificationResult.success()

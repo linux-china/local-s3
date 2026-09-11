@@ -42,20 +42,68 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesThePayloadHashAgainstTheBody() {
+    Map<CharSequence, String> headers = putObjectHeaders();
+
+    assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7, 15);
+
+    byte[] tampered = "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8);
+    assertRejected(headers, PUT_OBJECT_PATH, HttpMethod.PUT, tampered, 7, 15);
+  }
+
+  @Test
+  void verifiesTheSignatureBeforeTheBodyIsReceived() {
+    Map<CharSequence, String> headers = putObjectHeaders();
+    VerificationResult result = verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT);
+    assertTrue(result.authenticated(), () -> result.errorCode() + ": " + result.message());
+
+    headers.put("authorization", authorization(PUT_OBJECT_SIGNED_HEADERS, "0".repeat(64)));
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+
+    headers.put("authorization", putObjectHeaders().get("authorization").replace(ACCESS_KEY_ID, "UNKNOWNKEY"));
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+  }
+
+  @Test
+  void verifiesTheSignatureWithoutPayloadHashOnlyWithTheBody() {
+    Map<CharSequence, String> headers = putObjectHeaders();
+    headers.remove("x-amz-content-sha256");
+    headers.put("authorization", authorization("date;host;x-amz-date;x-amz-storage-class", "0".repeat(64)));
+
+    // The signature covers the hash of the body, so the head only passes the checks of the credential and the time.
+    assertTrue(verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).authenticated());
+    assertRejected(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7);
+
+    headers.put("authorization", headers.get("authorization").replace(ACCESS_KEY_ID, "UNKNOWNKEY"));
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+  }
+
+  private static final String PUT_OBJECT_PATH = "/test%24file.text";
+
+  private static final String PUT_OBJECT_SIGNED_HEADERS = "date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class";
+
+  private static final byte[] PUT_OBJECT_CONTENT = "Welcome to Amazon S3.".getBytes(StandardCharsets.UTF_8);
+
+  private static Map<CharSequence, String> putObjectHeaders() {
     Map<CharSequence, String> headers = new HashMap<>();
     headers.put("date", "Fri, 24 May 2013 00:00:00 GMT");
     headers.put("host", "examplebucket.s3.amazonaws.com");
     headers.put("x-amz-date", AMZ_DATE);
     headers.put("x-amz-storage-class", "REDUCED_REDUNDANCY");
     headers.put("x-amz-content-sha256", "44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072");
-    headers.put("authorization", authorization("date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class",
+    headers.put("authorization", authorization(PUT_OBJECT_SIGNED_HEADERS,
         "98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd"));
+    return headers;
+  }
 
-    byte[] content = "Welcome to Amazon S3.".getBytes(StandardCharsets.UTF_8);
-    assertVerified(headers, "/test%24file.text", HttpMethod.PUT, content, 7, 15);
-
-    byte[] tampered = "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8);
-    assertRejected(headers, "/test%24file.text", HttpMethod.PUT, tampered, 7, 15);
+  private VerificationResult verifyHead(Map<CharSequence, String> headers, String path, HttpMethod method) {
+    return verifier.verifyHead(HttpRequest.builder()
+        .method(method)
+        .uri(path)
+        .httpVersion(HttpVersion.HTTP_1_1)
+        .headers(new HashMap<>(headers))
+        .path(path)
+        .params(new HashMap<>())
+        .build());
   }
 
   /**
@@ -80,6 +128,8 @@ class AwsSignatureV4VerifierTest {
     byte[] encoded = chunkedBody();
     assertEquals(66824, encoded.length);
     String path = "/examplebucket/chunkObject.txt";
+    assertTrue(verifyHead(headers, path, HttpMethod.PUT).authenticated(),
+        "The chunk signatures are verified once the body is received.");
     // Split the body within chunk headers, within chunk data and between a chunk and its CRLF.
     int[] cuts = {10, 40_000, 88 + 65_537, 88 + 65_538 + 30, encoded.length - 40};
     assertVerified(headers, path, HttpMethod.PUT, encoded, cuts);

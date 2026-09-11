@@ -6,6 +6,7 @@ import com.robothy.netty.router.AbstractRouter;
 import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.model.request.BucketRegion;
+import com.robothy.s3.rest.netty.RequestHeadVerifier;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
@@ -20,7 +21,7 @@ import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 
-class LocalS3Router extends AbstractRouter {
+class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   static final String BUCKET_PATH = "/{bucket}";
 
@@ -84,8 +85,7 @@ class LocalS3Router extends AbstractRouter {
 
   @Override
   public HttpRequestHandler match(HttpRequest request) {
-    // Neither health checks nor the CORS preflight requests of browsers are signed.
-    if (signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request)) {
+    if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
         return new AuthenticationFailureHandler(result);
@@ -97,6 +97,24 @@ class LocalS3Router extends AbstractRouter {
         .map(rules -> matchHandler(rules, request))
         .orElse(notFoundHandler());
     return withCorsHeaders(request, handler);
+  }
+
+  /**
+   * Verify the signature of a request before its body is received, so that a request with an invalid signature
+   * doesn't get to upload its body. {@linkplain #match} verifies the request again, including its body.
+   */
+  @Override
+  public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
+    if (!requiresAuthentication(head)) {
+      return null;
+    }
+    AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verifyHead(head);
+    return result.authenticated() ? null : new RequestHeadVerifier.Rejection(result.errorCode(), result.message());
+  }
+
+  private boolean requiresAuthentication(HttpRequest request) {
+    // Neither health checks nor the CORS preflight requests of browsers are signed.
+    return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request);
   }
 
   /**

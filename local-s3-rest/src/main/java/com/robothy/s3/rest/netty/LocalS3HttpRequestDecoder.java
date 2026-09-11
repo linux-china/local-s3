@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,11 @@ import org.slf4j.LoggerFactory;
  * an S3 {@code EntityTooLarge} error and the connection is closed. When the declared
  * {@code Content-Length} is already too large, the request is rejected before {@code 100 Continue}
  * is sent, so clients that expect it never upload the body.
+ *
+ * <p>The head of a request with a body is verified by a {@linkplain RequestHeadVerifier}, e.g. its signature,
+ * before the body is received. A rejected request is answered with the S3 error of the rejection and the connection
+ * is closed, again before {@code 100 Continue} is sent, so that the body of a request that fails anyway is neither
+ * uploaded nor buffered. Requests without a body are left to the router, which keeps the connection alive.
  *
  * <p>A body of up to {@code requestBodyFileThreshold} bytes is buffered on the Java heap. A larger body
  * is written to a temporary file, which is memory-mapped as the body of the request, so that large
@@ -58,6 +64,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private final long requestBodyFileThreshold;
 
   private final XmlMapper xmlMapper;
+
+  private final RequestHeadVerifier headVerifier;
 
   private HttpRequest.HttpRequestBuilder builder;
 
@@ -85,13 +93,26 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   }
 
   /**
-   * Create a decoder.
+   * Create a decoder that accepts the heads of all requests.
    *
    * @param maxRequestBodySize max request body size in bytes.
    * @param requestBodyFileThreshold size in bytes above which a request body is buffered in a temporary file.
    * @param xmlMapper used to render the error of oversized requests.
    */
   public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper) {
+    this(maxRequestBodySize, requestBodyFileThreshold, xmlMapper, RequestHeadVerifier.ACCEPT_ALL);
+  }
+
+  /**
+   * Create a decoder.
+   *
+   * @param maxRequestBodySize max request body size in bytes.
+   * @param requestBodyFileThreshold size in bytes above which a request body is buffered in a temporary file.
+   * @param xmlMapper used to render the error of rejected requests.
+   * @param headVerifier verifies the head of a request with a body before the body is received.
+   */
+  public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper,
+                                   RequestHeadVerifier headVerifier) {
     if (maxRequestBodySize <= 0) {
       throw new IllegalArgumentException("maxRequestBodySize must be positive.");
     }
@@ -101,12 +122,13 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     this.maxRequestBodySize = maxRequestBodySize;
     this.requestBodyFileThreshold = requestBodyFileThreshold;
     this.xmlMapper = xmlMapper;
+    this.headVerifier = Objects.requireNonNull(headVerifier);
   }
 
   @Override
   protected void decode(ChannelHandlerContext ctx, HttpObject msg, List<Object> out) throws Exception {
     if (rejected) {
-      // The connection is closing after an oversized request; drop whatever is still arriving.
+      // The connection is closing after a rejected request; drop whatever is still arriving.
       return;
     }
 
@@ -115,17 +137,19 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         releaseBody();
         long contentLength = HttpUtil.getContentLength(request, -1L);
         if (contentLength > maxRequestBodySize) {
-          reject(ctx);
+          rejectTooLarge(ctx);
           return;
         }
-        startRequest(ctx, request, contentLength);
+        if (!startRequest(ctx, request, contentLength)) {
+          return;
+        }
       }
 
       if (msg instanceof HttpContent content && builder != null) {
         ByteBuf data = content.content();
         receivedBytes += data.readableBytes();
         if (receivedBytes > maxRequestBodySize) {
-          reject(ctx);
+          rejectTooLarge(ctx);
           return;
         }
 
@@ -151,15 +175,17 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     }
   }
 
-  private void startRequest(ChannelHandlerContext ctx, io.netty.handler.codec.http.HttpRequest request,
-                            long contentLength) throws IOException {
+  /**
+   * Start aggregating a request, unless the verifier rejects its head.
+   *
+   * @return {@code false} if the request is rejected.
+   */
+  private boolean startRequest(ChannelHandlerContext ctx, io.netty.handler.codec.http.HttpRequest request,
+                               long contentLength) throws IOException {
     Map<CharSequence, String> headers = new HashMap<>();
     request.headers().forEach(header -> headers.put(header.getKey().toLowerCase(Locale.ROOT), header.getValue()));
     QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
 
-    // No component limit: consolidating the components of a large body would copy it over and over.
-    body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
-    receivedBytes = 0;
     builder = HttpRequest.builder()
         .method(request.method())
         .uri(request.uri())
@@ -168,6 +194,17 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         .path(queryStringDecoder.path())
         .params(new HashMap<>(queryStringDecoder.parameters()));
 
+    if (hasBody(request, contentLength)) {
+      RequestHeadVerifier.Rejection rejection = headVerifier.verifyHead(builder.build());
+      if (rejection != null) {
+        reject(ctx, rejection.errorCode(), rejection.message());
+        return false;
+      }
+    }
+
+    // No component limit: consolidating the components of a large body would copy it over and over.
+    body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
+    receivedBytes = 0;
     if (contentLength > requestBodyFileThreshold) {
       writeBodyToFile();
     }
@@ -175,6 +212,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     if (HttpHeaderValues.CONTINUE.contentEqualsIgnoreCase(request.headers().get(HttpHeaderNames.EXPECT))) {
       ctx.writeAndFlush(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE));
     }
+    return true;
+  }
+
+  private static boolean hasBody(io.netty.handler.codec.http.HttpRequest request, long contentLength) {
+    return contentLength > 0 || HttpUtil.isTransferEncodingChunked(request);
   }
 
   /**
@@ -209,14 +251,21 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     return mapped;
   }
 
-  private void reject(ChannelHandlerContext ctx) {
+  private void rejectTooLarge(ChannelHandlerContext ctx) {
+    reject(ctx, S3ErrorCode.EntityTooLarge,
+        "Your request body exceeds the maximum allowed size of " + maxRequestBodySize + " bytes.");
+  }
+
+  /**
+   * Answer the current request with an S3 error and close the connection.
+   */
+  private void reject(ChannelHandlerContext ctx, S3ErrorCode errorCode, String message) {
     rejected = true;
     releaseBody();
 
-    S3ErrorCode errorCode = S3ErrorCode.EntityTooLarge;
     S3Error error = S3Error.builder()
         .code(errorCode.code())
-        .message("Your request body exceeds the maximum allowed size of " + maxRequestBodySize + " bytes.")
+        .message(message)
         .requestId(IdUtils.defaultGenerator().nextStrId())
         .build();
     byte[] content;

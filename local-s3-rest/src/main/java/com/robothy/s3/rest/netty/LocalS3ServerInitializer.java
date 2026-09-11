@@ -59,8 +59,11 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         if (idleConnectionTimeoutSeconds > 0) {
             ch.pipeline().addLast("idle-connection", new IdleConnectionHandler(idleConnectionTimeoutSeconds));
         }
+        // The router of LocalS3 verifies the signature of a request before its body is received.
+        RequestHeadVerifier headVerifier = router instanceof RequestHeadVerifier verifier ? verifier : RequestHeadVerifier.ACCEPT_ALL;
         ch.pipeline()
-                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, requestBodyFileThreshold, xmlMapper))
+                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
+                        requestBodyFileThreshold, xmlMapper, headVerifier))
                 .addLast(executorGroup, "local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast(executorGroup, "local-s3-message-handler", new LocalS3HttpMessageHandler(router));
     }

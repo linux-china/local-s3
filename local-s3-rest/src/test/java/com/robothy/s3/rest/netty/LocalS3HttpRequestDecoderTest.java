@@ -4,14 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
@@ -102,6 +106,24 @@ class LocalS3HttpRequestDecoderTest {
 
     channel.close();
     assertEquals(bodyFiles, countBodyFiles());
+  }
+
+  @Test
+  void neitherBuffersNorWritesTheBodyOfARejectedRequest() throws IOException {
+    long bodyFiles = countBodyFiles();
+    EmbeddedChannel rejecting = new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD,
+        new XmlMapper(), head -> new RequestHeadVerifier.Rejection(S3ErrorCode.AccessDenied, "Access Denied")));
+    byte[] content = randomBytes(100);
+    DefaultHttpContent firstContent = content(content, 0, 50);
+    rejecting.writeInbound(request(content.length), firstContent);
+
+    assertEquals(bodyFiles, countBodyFiles(), "The body announced to be large isn't written to a file.");
+    assertEquals(0, firstContent.refCnt());
+    assertNull(rejecting.readInbound());
+    FullHttpResponse response = rejecting.readOutbound();
+    assertEquals(HttpResponseStatus.valueOf(S3ErrorCode.AccessDenied.httpStatus()), response.status());
+    response.release();
+    rejecting.finishAndReleaseAll();
   }
 
   private ByteBuf readBody() {

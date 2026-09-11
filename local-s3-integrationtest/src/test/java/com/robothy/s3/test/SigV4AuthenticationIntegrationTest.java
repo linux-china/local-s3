@@ -2,6 +2,7 @@ package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.rest.LocalS3;
 import java.net.URI;
@@ -9,6 +10,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -83,6 +87,38 @@ class SigV4AuthenticationIntegrationTest {
           HttpResponse.BodyHandlers.ofString());
       assertEquals(200, response.statusCode());
       assertEquals("Hello", response.body());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void shouldRejectUploadWithInvalidSignatureBeforeItsBody() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .credentials(ACCESS_KEY_ID, SECRET_ACCESS_KEY)
+        .build();
+    localS3.start();
+
+    try {
+      String amzDate = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+          .format(Instant.now());
+      String authorization = "AWS4-HMAC-SHA256 Credential=" + ACCESS_KEY_ID + "/" + amzDate.substring(0, 8)
+          + "/local/s3/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature="
+          + "0".repeat(64);
+      // The client waits for 100 Continue before it sends the body, which LocalS3 must not send.
+      HttpResponse<String> response = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build().send(
+          HttpRequest.newBuilder(URI.create("http://localhost:" + localS3.getPort() + "/bucket/key"))
+              .expectContinue(true)
+              .header("x-amz-date", amzDate)
+              .header("x-amz-content-sha256", "UNSIGNED-PAYLOAD")
+              .header("Authorization", authorization)
+              .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[1024 * 1024]))
+              .build(),
+          HttpResponse.BodyHandlers.ofString());
+
+      assertEquals(403, response.statusCode());
+      assertTrue(response.body().contains("<Code>SignatureDoesNotMatch</Code>"), response.body());
     } finally {
       localS3.shutdown();
     }
