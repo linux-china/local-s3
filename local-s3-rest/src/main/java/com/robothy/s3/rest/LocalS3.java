@@ -129,6 +129,7 @@ public class LocalS3 implements AutoCloseable {
     private volatile int port;
 
     private volatile LocalS3Manager s3Manager;
+    private volatile LocalS3VectorsManager localS3VectorsManager;
 
     private boolean running;
 
@@ -286,7 +287,10 @@ public class LocalS3 implements AutoCloseable {
         serviceFactory.register(ObjectMapper.class, () -> objectMapper);
 
         // Register S3 Vectors services
-        S3VectorsService s3VectorsService = createLocalS3VectorsManager().s3VectorsService();
+        if(localS3VectorsManager==null) {
+            localS3VectorsManager = createLocalS3VectorsManager();
+        }
+        S3VectorsService s3VectorsService = localS3VectorsManager.s3VectorsService();
         serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
 
         // register event dispatcher
