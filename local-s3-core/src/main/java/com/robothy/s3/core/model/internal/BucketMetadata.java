@@ -1,7 +1,7 @@
 package com.robothy.s3.core.model.internal;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.robothy.s3.core.asserionts.ObjectAssertions;
+import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.datatypes.AccessControlPolicy;

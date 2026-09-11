@@ -1,6 +1,6 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;

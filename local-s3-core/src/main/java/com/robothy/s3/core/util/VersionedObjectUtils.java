@@ -1,6 +1,6 @@
 package com.robothy.s3.core.util;
 
-import com.robothy.s3.core.asserionts.VersionedObjectAssertions;
+import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import java.util.Objects;

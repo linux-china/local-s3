@@ -2,8 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.asserionts.BucketAssertions;
-import com.robothy.s3.core.asserionts.UploadAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;

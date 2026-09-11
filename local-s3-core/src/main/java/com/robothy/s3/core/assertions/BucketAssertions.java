@@ -1,4 +1,4 @@
-package com.robothy.s3.core.asserionts;
+package com.robothy.s3.core.assertions;
 
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.BucketNotEmptyException;

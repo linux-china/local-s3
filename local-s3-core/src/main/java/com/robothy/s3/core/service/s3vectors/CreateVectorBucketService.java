@@ -1,7 +1,7 @@
 package com.robothy.s3.core.service.s3vectors;
 
 import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;

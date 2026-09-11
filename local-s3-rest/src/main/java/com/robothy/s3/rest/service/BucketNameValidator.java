@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.service;
 
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 
 /**
  * Validates the names of buckets to create. In strict mode, a name must follow the naming rules of

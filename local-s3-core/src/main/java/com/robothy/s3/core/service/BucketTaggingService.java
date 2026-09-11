@@ -2,11 +2,10 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Bucket tagging related operations.

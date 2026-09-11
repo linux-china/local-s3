@@ -2,8 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.asserionts.BucketAssertions;
-import com.robothy.s3.core.asserionts.ObjectAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;

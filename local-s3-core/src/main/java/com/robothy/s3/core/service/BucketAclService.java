@@ -3,7 +3,7 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.Owner;

@@ -1,8 +1,7 @@
 package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.*;
-import com.robothy.s3.core.asserionts.UploadAssertions;
-import com.robothy.s3.core.exception.ObjectNotExistException;
+import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;

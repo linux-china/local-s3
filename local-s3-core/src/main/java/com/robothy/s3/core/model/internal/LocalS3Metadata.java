@@ -1,6 +1,6 @@
 package com.robothy.s3.core.model.internal;
 
-import com.robothy.s3.core.asserionts.BucketAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import java.util.ArrayList;

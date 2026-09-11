@@ -1,9 +1,9 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.asserionts.BucketAssertions;
-import com.robothy.s3.core.asserionts.ObjectAssertions;
-import com.robothy.s3.core.asserionts.VersionedObjectAssertions;
+import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.VersionedObjectNotExistException;
