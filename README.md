@@ -356,3 +356,7 @@ public class AppTest {
   
 }
 ```
+
+# References
+
+* S3 compatibility tests: https://github.com/ceph/s3-tests
