@@ -27,22 +27,27 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
 
     private final long requestBodyFileThreshold;
 
+    private final long idleConnectionTimeoutSeconds;
+
     /**
      * Create a channel initializer.
      *
-     * @param executorGroup            executes request aggregation and handling.
-     * @param router                   routes requests to handlers.
-     * @param xmlMapper                renders S3 errors.
-     * @param maxRequestBodySize       max request body size in bytes.
-     * @param requestBodyFileThreshold size in bytes above which a request body is buffered in a temporary file.
+     * @param executorGroup                executes request aggregation and handling.
+     * @param router                       routes requests to handlers.
+     * @param xmlMapper                    renders S3 errors.
+     * @param maxRequestBodySize           max request body size in bytes.
+     * @param requestBodyFileThreshold     size in bytes above which a request body is buffered in a temporary file.
+     * @param idleConnectionTimeoutSeconds seconds after which an idle connection is closed; {@code 0} never closes it.
      */
     public LocalS3ServerInitializer(EventExecutorGroup executorGroup, Router router, XmlMapper xmlMapper,
-                                    long maxRequestBodySize, long requestBodyFileThreshold) {
+                                    long maxRequestBodySize, long requestBodyFileThreshold,
+                                    long idleConnectionTimeoutSeconds) {
         this.executorGroup = executorGroup;
         this.router = router;
         this.xmlMapper = xmlMapper;
         this.maxRequestBodySize = maxRequestBodySize;
         this.requestBodyFileThreshold = requestBodyFileThreshold;
+        this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
     }
 
     @Override
@@ -50,7 +55,11 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         ch.pipeline()
                 .addLast("http-request-decoder", new HttpRequestDecoder())
                 .addLast("http-response-encoder", new HttpResponseEncoder())
-                .addLast("chunked-writer", new ChunkedWriteHandler())
+                .addLast("chunked-writer", new ChunkedWriteHandler());
+        if (idleConnectionTimeoutSeconds > 0) {
+            ch.pipeline().addLast("idle-connection", new IdleConnectionHandler(idleConnectionTimeoutSeconds));
+        }
+        ch.pipeline()
                 .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize, requestBodyFileThreshold, xmlMapper))
                 .addLast(executorGroup, "local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast(executorGroup, "local-s3-message-handler", new LocalS3HttpMessageHandler(router));

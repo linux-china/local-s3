@@ -37,8 +37,7 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
   protected void channelRead0(ChannelHandlerContext ctx, HttpRequest request) {
     try {
       StreamingHttpResponse response = handle(request);
-      boolean keepAlive = request.getHttpVersion().isKeepAliveDefault()
-          || HttpHeaderValues.KEEP_ALIVE.contentEqualsIgnoreCase(request.header(HttpHeaderNames.CONNECTION.toString()).orElse(null));
+      boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
       if (!response.isStreaming()) {
         response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
@@ -55,6 +54,29 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
         body.release();
       }
     }
+  }
+
+  /**
+   * Same semantics as {@linkplain io.netty.handler.codec.http.HttpUtil#isKeepAlive}: {@code Connection: close}
+   * always closes the connection, otherwise HTTP/1.1 keeps it alive by default and HTTP/1.0 only
+   * with {@code Connection: keep-alive}.
+   */
+  static boolean isKeepAlive(HttpRequest request) {
+    boolean keepAlive = request.getHttpVersion().isKeepAliveDefault();
+    String connection = request.header(HttpHeaderNames.CONNECTION.toString()).orElse(null);
+    if (connection != null) {
+      // The Connection header is a comma-separated list of tokens, e.g. "keep-alive, Upgrade".
+      for (String token : connection.split(",")) {
+        String value = token.trim();
+        if (HttpHeaderValues.CLOSE.contentEqualsIgnoreCase(value)) {
+          return false;
+        }
+        if (HttpHeaderValues.KEEP_ALIVE.contentEqualsIgnoreCase(value)) {
+          keepAlive = true;
+        }
+      }
+    }
+    return keepAlive;
   }
 
   private StreamingHttpResponse handle(HttpRequest request) {

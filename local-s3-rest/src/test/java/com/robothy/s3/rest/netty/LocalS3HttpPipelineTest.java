@@ -101,6 +101,65 @@ class LocalS3HttpPipelineTest {
     assertFalse(channel.finishAndReleaseAll());
   }
 
+  private static FullHttpResponse exchange(EmbeddedChannel channel, HttpVersion version, String connection) {
+    DefaultHttpRequest request = new DefaultHttpRequest(version, HttpMethod.GET, "/bucket/key");
+    if (connection != null) {
+      request.headers().set(HttpHeaderNames.CONNECTION, connection);
+    }
+    channel.writeInbound(request, LastHttpContent.EMPTY_LAST_CONTENT);
+    return channel.readOutbound();
+  }
+
+  @Test
+  void keepsHttp11ConnectionAliveByDefault() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")));
+
+    FullHttpResponse response = exchange(channel, HttpVersion.HTTP_1_1, null);
+
+    assertEquals(HttpHeaderValues.KEEP_ALIVE.toString(), response.headers().get(HttpHeaderNames.CONNECTION));
+    response.release();
+    assertTrue(channel.isOpen());
+    assertFalse(channel.finishAndReleaseAll());
+  }
+
+  @Test
+  void closesHttp11ConnectionWhenClientAsksToClose() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")));
+
+    FullHttpResponse response = exchange(channel, HttpVersion.HTTP_1_1, "Close");
+
+    assertEquals(HttpHeaderValues.CLOSE.toString(), response.headers().get(HttpHeaderNames.CONNECTION));
+    response.release();
+    assertFalse(channel.isOpen());
+  }
+
+  @Test
+  void closesConnectionWhenCloseIsOneOfTheConnectionTokens() {
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")));
+
+    FullHttpResponse response = exchange(channel, HttpVersion.HTTP_1_1, "keep-alive, close");
+
+    assertEquals(HttpHeaderValues.CLOSE.toString(), response.headers().get(HttpHeaderNames.CONNECTION));
+    response.release();
+    assertFalse(channel.isOpen());
+  }
+
+  @Test
+  void keepsHttp10ConnectionAliveOnlyWhenAsked() {
+    EmbeddedChannel keepAlive = channel(router((request, response) -> response.write("ok")));
+    FullHttpResponse keepAliveResponse = exchange(keepAlive, HttpVersion.HTTP_1_0, "Keep-Alive");
+    assertEquals(HttpHeaderValues.KEEP_ALIVE.toString(), keepAliveResponse.headers().get(HttpHeaderNames.CONNECTION));
+    keepAliveResponse.release();
+    assertTrue(keepAlive.isOpen());
+    assertFalse(keepAlive.finishAndReleaseAll());
+
+    EmbeddedChannel close = channel(router((request, response) -> response.write("ok")));
+    FullHttpResponse closeResponse = exchange(close, HttpVersion.HTTP_1_0, null);
+    assertEquals(HttpHeaderValues.CLOSE.toString(), closeResponse.headers().get(HttpHeaderNames.CONNECTION));
+    closeResponse.release();
+    assertFalse(close.isOpen());
+  }
+
   @Test
   void streamsResponseBodyInChunks() throws IOException {
     byte[] data = new byte[200_000];

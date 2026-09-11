@@ -73,6 +73,12 @@ public class LocalS3 implements AutoCloseable {
      */
     public static final long DEFAULT_REQUEST_BODY_FILE_THRESHOLD = 4 * 1024 * 1024;
 
+    /**
+     * Default seconds(120) after which an idle keep-alive connection is closed. It is longer than the max
+     * idle time of common S3 clients' connection pools, so clients usually close idle connections first.
+     */
+    public static final long DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS = 120;
+
     /* Configuration, set by the builder. */
     private final String bindHost;
 
@@ -108,6 +114,8 @@ public class LocalS3 implements AutoCloseable {
     private final long maxRequestBodySize;
 
     private final long requestBodyFileThreshold;
+
+    private final long idleConnectionTimeoutSeconds;
 
     private final boolean strictBucketNames;
 
@@ -152,6 +160,7 @@ public class LocalS3 implements AutoCloseable {
         this.secretAccessKey = builder.secretAccessKey;
         this.maxRequestBodySize = builder.maxRequestBodySize;
         this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
+        this.idleConnectionTimeoutSeconds = builder.idleConnectionTimeoutSeconds;
         this.strictBucketNames = builder.strictBucketNames;
         this.virtualHostDomains = List.copyOf(builder.virtualHostDomains);
     }
@@ -211,7 +220,8 @@ public class LocalS3 implements AutoCloseable {
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new LocalS3ServerInitializer(executorGroup,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
-                            serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold))
+                            serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold,
+                            idleConnectionTimeoutSeconds))
                     .bind(bindHost, configuredPort)
                     .sync();
         } catch (InterruptedException e) {
@@ -445,6 +455,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Get the seconds after which an idle connection is closed; {@code 0} means never.
+     *
+     * @return idle connection timeout in seconds.
+     */
+    public long getIdleConnectionTimeoutSeconds() {
+        return idleConnectionTimeoutSeconds;
+    }
+
+    /**
      * Whether the names of new buckets must follow the naming rules of Amazon S3.
      *
      * @return if strict bucket name validation is enabled.
@@ -508,6 +527,8 @@ public class LocalS3 implements AutoCloseable {
         private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
 
         private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+
+        private long idleConnectionTimeoutSeconds = DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
 
         private boolean strictBucketNames;
 
@@ -731,6 +752,22 @@ public class LocalS3 implements AutoCloseable {
                 throw new IllegalArgumentException("requestBodyFileThreshold must not be negative.");
             }
             this.requestBodyFileThreshold = requestBodyFileThreshold;
+            return this;
+        }
+
+        /**
+         * Set the seconds after which a connection without reads or writes is closed. A connection with a
+         * request in flight is never closed. Default value is
+         * {@linkplain LocalS3#DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS}; {@code 0} never closes idle connections.
+         *
+         * @param idleConnectionTimeoutSeconds idle connection timeout in seconds, not negative.
+         * @return builder.
+         */
+        public Builder idleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
+            if (idleConnectionTimeoutSeconds < 0) {
+                throw new IllegalArgumentException("idleConnectionTimeoutSeconds must not be negative.");
+            }
+            this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
             return this;
         }
 
