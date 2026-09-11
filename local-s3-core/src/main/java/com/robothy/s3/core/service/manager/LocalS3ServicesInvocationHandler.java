@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.manager;
 import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.annotations.BucketWriteLock;
+import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.MetadataStore;
@@ -66,7 +67,11 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
   }
 
   @Override
-  public Object invoke(Object __, Method method, Object[] args) throws Throwable {
+  public Object invoke(Object proxyInstance, Method method, Object[] args) throws Throwable {
+    if (Objects.nonNull(method.getDeclaredAnnotation(CallsThroughProxy.class))) {
+      return InvocationHandler.invokeDefault(proxyInstance, method, args);
+    }
+
     BucketChanged bucketChanged = method.getDeclaredAnnotation(BucketChanged.class);
     boolean isReadBucket = Objects.nonNull(method.getDeclaredAnnotation(BucketReadLock.class));
     boolean isWriteBucket = Objects.nonNull(method.getDeclaredAnnotation(BucketWriteLock.class));

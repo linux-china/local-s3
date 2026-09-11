@@ -3,11 +3,18 @@ package com.robothy.s3.core.service.manager;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.UploadNotExistException;
+import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.model.request.UploadPartOptions;
+import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -59,6 +66,64 @@ class FileSystemLocalS3ManagerTest {
     putObject(objectService, "v3");
     assertEquals(1, storedObjects().size(), "v1 is deleted once v3 is persisted.");
     assertEquals("v3", getObject(LocalS3Manager.createFileSystemS3Manager(dataPath).objectService()));
+  }
+
+  @Test
+  void discardsStoredContentWhenBucketIsDeletedWhileStoring() throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    BucketService bucketService = manager.bucketService();
+    bucketService.createBucket(BUCKET);
+
+    // The bucket isn't locked while the content is stored, so it can be deleted meanwhile.
+    InputStream content = onFirstRead("v1", () -> bucketService.deleteBucket(BUCKET));
+    assertThrows(BucketNotExistException.class, () -> manager.objectService().putObject(BUCKET, KEY,
+        PutObjectOptions.builder().content(content).contentType("text/plain").size(2L).build()));
+
+    assertEquals(Set.of(), storedObjects());
+  }
+
+  @Test
+  void discardsStoredPartWhenUploadIsAbortedWhileStoring() throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    ObjectService objectService = manager.objectService();
+    manager.bucketService().createBucket(BUCKET);
+    String uploadId = objectService.createMultipartUpload(BUCKET, KEY,
+        CreateMultipartUploadOptions.builder().contentType("text/plain").build());
+
+    InputStream data = onFirstRead("part", () -> objectService.abortMultipartUpload(BUCKET, KEY, uploadId));
+    assertThrows(UploadNotExistException.class, () -> objectService.uploadPart(BUCKET, KEY, uploadId, 1,
+        UploadPartOptions.builder().contentLength(4).data(data).build()));
+
+    assertEquals(Set.of(), storedObjects());
+  }
+
+  /**
+   * A stream that runs {@code action} when it is first read.
+   */
+  private static InputStream onFirstRead(String content, Runnable action) {
+    return new FilterInputStream(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8))) {
+
+      private boolean started;
+
+      @Override
+      public int read() throws IOException {
+        start();
+        return super.read();
+      }
+
+      @Override
+      public int read(byte[] b, int off, int len) throws IOException {
+        start();
+        return super.read(b, off, len);
+      }
+
+      private void start() {
+        if (!started) {
+          started = true;
+          action.run();
+        }
+      }
+    };
   }
 
   private static void putObject(ObjectService objectService, String content) {

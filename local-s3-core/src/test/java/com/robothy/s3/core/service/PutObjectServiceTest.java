@@ -4,17 +4,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +31,46 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class PutObjectServiceTest extends LocalS3ServiceTestBase {
 
+  @MethodSource("localS3Managers")
+  @ParameterizedTest
+  void doesNotLockBucketWhileStoringContent(LocalS3Manager manager) throws Exception {
+    ObjectService objectService = manager.objectService();
+    String bucketName = "my-bucket";
+    manager.bucketService().createBucket(bucketName);
+    putText(objectService, bucketName, "existing", "Hello");
+
+    BlockingInputStream content = new BlockingInputStream("World".getBytes(StandardCharsets.UTF_8));
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<PutObjectAns> uploading = executor.submit(() -> objectService.putObject(bucketName, "uploading",
+          PutObjectOptions.builder().content(content).contentType("plain/text").size(5).build()));
+      content.awaitReading();
+
+      // Reads and writes of the bucket don't wait for the content of the upload.
+      assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+        try (InputStream existing = objectService.getObject(bucketName, "existing",
+            GetObjectOptions.builder().build()).getContent()) {
+          assertEquals("Hello", new String(existing.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        putText(objectService, bucketName, "another", "!");
+      });
+
+      content.release();
+      assertEquals(DigestUtils.md5Hex("World"), uploading.get(5, TimeUnit.SECONDS).getEtag());
+    } finally {
+      content.release();
+      executor.shutdownNow();
+    }
+  }
+
+  private static void putText(ObjectService objectService, String bucketName, String key, String text) {
+    byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    objectService.putObject(bucketName, key, PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(bytes))
+        .contentType("plain/text")
+        .size(bytes.length)
+        .build());
+  }
 
   @MethodSource("localS3Managers")
   @ParameterizedTest
