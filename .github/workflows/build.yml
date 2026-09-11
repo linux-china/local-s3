@@ -51,8 +51,9 @@ jobs:
           pwd
           ls -l
 
+      # Tests the JVM based Docker image, but doesn't build the GraalVM native image.
       - name: Build
-        run: ./gradlew mergeReports
+        run: ./gradlew mergeReports :local-s3-docker:dockerImageTest
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

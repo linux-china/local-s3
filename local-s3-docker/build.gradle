@@ -121,10 +121,40 @@ tasks.register('buildDockerImages') {
     description = "Builds the docker images"
 }
 
-tasks.test.dependsOn(buildDockerImages)
+// The tests of this module run LocalS3 Docker images. They are tagged "docker-image" and run by the image
+// test tasks below, which build the image first. The regular `test` task skips them, so that
+// `./gradlew build` needs neither Docker nor the slow GraalVM native build.
+tasks.named('test', Test) {
+    useJUnitPlatform {
+        excludeTags 'docker-image'
+    }
+    failOnNoDiscoveredTests = false
+}
+
+def registerImageTest(String taskName, String imageTag, String buildImageTask, String imageArtifact, String imageKind) {
+    tasks.register(taskName, Test) {
+        group = 'docker-image'
+        description = "Builds and tests the ${imageKind} Docker image."
+        dependsOn(buildImageTask)
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform {
+            includeTags 'docker-image'
+        }
+        systemProperty('local-s3.image.tag', imageTag)
+        // The image is built from this artifact, so the tests run again when it changes.
+        inputs.file(layout.buildDirectory.file(imageArtifact))
+                .withPropertyName('image-artifact')
+                .withPathSensitivity(PathSensitivity.RELATIVE)
+    }
+}
+
+registerImageTest('dockerImageTest', 'latest', 'buildJava21BasedDockerImage', 'libs/s3.jar', 'JVM based')
+registerImageTest('nativeImageTest', "native-${project.version}", 'buildGraalVMNativeBasedDockerImage', 'bin/s3',
+        'GraalVM native image based')
 
 tasks.register('pushJava21BasedDockerImage', Exec) {
-    dependsOn 'test'
+    dependsOn 'dockerImageTest'
     group("docker-image")
     doFirst {
         var cmd = new ArrayList(executor)
@@ -134,7 +164,8 @@ tasks.register('pushJava21BasedDockerImage', Exec) {
 }
 
 tasks.register('pushGraalVMNativeBasedDockerImage', Exec) {
-    dependsOn 'test'
+    // Like before, pushing requires the image tests of the JVM based image; run nativeImageTest to test this one.
+    dependsOn 'buildGraalVMNativeBasedDockerImage', 'dockerImageTest'
     group("docker-image")
     doFirst {
         var cmd = new ArrayList(executor)
@@ -144,7 +175,7 @@ tasks.register('pushGraalVMNativeBasedDockerImage', Exec) {
 }
 
 tasks.register('pushLatestImage', Exec) {
-    dependsOn 'test'
+    dependsOn 'dockerImageTest'
     group("docker-image")
     doFirst {
         var cmd = new ArrayList(executor)
@@ -155,7 +186,8 @@ tasks.register('pushLatestImage', Exec) {
 
 tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
     group("docker-image")
-    dependsOn('jar')
+    // The release used to test the image in `check`; test it before pushing now that `test` doesn't.
+    dependsOn('jar', 'dockerImageTest')
     description = "Builds and pushes a multi-platform (linux/amd64 + linux/arm64) Docker image using buildx."
 
     doFirst {

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.testcontainers.LocalS3Container;
 import java.net.URI;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -12,11 +13,12 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
+@Tag(ImageUnderTest.JUNIT_TAG)
 @Testcontainers
 public class InMemoryModeTest {
 
   @Container
-  public LocalS3Container container = new LocalS3Container("latest")
+  public LocalS3Container container = new LocalS3Container(ImageUnderTest.TAG)
       .withMode(LocalS3Container.Mode.IN_MEMORY)
       .withRandomHttpPort();
 

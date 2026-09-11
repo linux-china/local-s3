@@ -217,7 +217,9 @@ public class LocalS3 implements AutoCloseable {
         this.serverSocketChannel = channelFuture.channel();
         // The actual port, in case a random one was requested.
         this.port = ((InetSocketAddress) serverSocketChannel.localAddress()).getPort();
-        log.info("LocalS3 started on {}:{}.", bindHost, port);
+        log.info("LocalS3 listens on {}:{}.", bindHost, port);
+        // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
+        log.info("LocalS3 started.");
     }
 
     private void createBuckets() {

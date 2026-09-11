@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.junit.jupiter.Container;
@@ -24,6 +25,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import java.net.URI;
 
+@Tag(ImageUnderTest.JUNIT_TAG)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Testcontainers
 @DisplayName("Run LocalS3 container with initial data.")
@@ -57,7 +59,7 @@ public class InMemoryModeWithInitialDataTest {
   }
 
   @Container
-  public LocalS3Container localS3Container = new LocalS3Container("latest")
+  public LocalS3Container localS3Container = new LocalS3Container(ImageUnderTest.TAG)
       .withRandomHttpPort()
       .withDataPath(tmpDir.getAbsolutePath())
       .withMode(LocalS3Container.Mode.IN_MEMORY);

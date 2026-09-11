@@ -9,6 +9,7 @@ import java.io.IOException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.junit.jupiter.Container;
@@ -20,6 +21,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import java.net.URI;
 
+@Tag(ImageUnderTest.JUNIT_TAG)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @Testcontainers
 public class PersistenceModeTest {
@@ -27,7 +29,7 @@ public class PersistenceModeTest {
   private static final File tmpDir = Files.createTempDir();
 
   @Container
-  private final LocalS3Container container = new LocalS3Container("latest")
+  private final LocalS3Container container = new LocalS3Container(ImageUnderTest.TAG)
       .withRandomHttpPort()
       .withDataPath(tmpDir.getAbsolutePath());
 
