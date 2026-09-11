@@ -35,17 +35,6 @@ public class InMemoryBucketService implements BucketService {
   }
 
   @Override
-  public Bucket createBucket(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketAssertions.assertBucketNotExists(s3Metadata, bucketName);
-    BucketMetadata bucketMetadata = new BucketMetadata();
-    bucketMetadata.setBucketName(bucketName);
-    bucketMetadata.setCreationDate(System.currentTimeMillis());
-    s3Metadata.addBucketMetadata(bucketMetadata);
-    return Bucket.fromBucketMetadata(bucketMetadata);
-  }
-
-  @Override
   public Bucket deleteBucket(String bucketName) {
     BucketAssertions.assertBucketNameIsValid(bucketName);
     BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);

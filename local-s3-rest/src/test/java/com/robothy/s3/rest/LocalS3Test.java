@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.Test;
 
@@ -114,6 +118,30 @@ class LocalS3Test {
           "Request handled on " + handlerThread.get() + " instead of the executor group.");
     } finally {
       localS3.shutdown();
+    }
+  }
+
+  @Test
+  void createsTrimmedDefaultBucketsAndPersistsThem() throws Exception {
+    Path dataPath = Files.createTempDirectory("local-s3");
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .mode(LocalS3Mode.PERSISTENCE)
+        .dataPath(dataPath.toString())
+        .buckets("a-bucket", " b-bucket ", " ", "")
+        .build();
+    localS3.start();
+    try {
+      BucketService bucketService = localS3.getS3Manager().bucketService();
+      assertEquals(2, bucketService.listBuckets().size());
+      assertDoesNotThrow(() -> bucketService.getBucket("a-bucket"));
+      assertDoesNotThrow(() -> bucketService.getBucket("b-bucket"));
+      assertThrows(BucketNotExistException.class, () -> bucketService.getBucket(" b-bucket "));
+      assertTrue(Files.isRegularFile(dataPath.resolve("a-bucket.bucket.meta")));
+      assertTrue(Files.isRegularFile(dataPath.resolve("b-bucket.bucket.meta")));
+    } finally {
+      localS3.shutdown();
+      FileUtils.deleteDirectory(dataPath.toFile());
     }
   }
 

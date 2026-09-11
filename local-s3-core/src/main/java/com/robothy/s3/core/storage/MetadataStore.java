@@ -27,6 +27,14 @@ public interface MetadataStore<T> {
   String store(String name, T metadataObject);
 
   /**
+   * Check whether a metadata instance exists in the store.
+   *
+   * @param name the metadata instance name.
+   * @return {@code true} if the metadata exists; otherwise {@code false}.
+   */
+  boolean exists(String name);
+
+  /**
    * Delete a metadata from store by name.
    *
    * @param name metadata instance name.

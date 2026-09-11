@@ -6,13 +6,10 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import java.io.File;
-import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 import lombok.SneakyThrows;
@@ -63,7 +60,7 @@ public class JsonUtils {
       try (OutputStream out = Files.newOutputStream(temp, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
         jsonWriter.writeValue(out, object);
       }
-      moveAtomically(temp, target);
+      PathUtils.moveAtomically(temp, target);
     } catch (Exception e) {
       Files.deleteIfExists(temp);
       throw e;
@@ -82,13 +79,4 @@ public class JsonUtils {
       }
     }
   }
-
-  private static void moveAtomically(Path source, Path target) throws IOException {
-    try {
-      Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-    } catch (AtomicMoveNotSupportedException e) {
-      Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-    }
-  }
-
 }

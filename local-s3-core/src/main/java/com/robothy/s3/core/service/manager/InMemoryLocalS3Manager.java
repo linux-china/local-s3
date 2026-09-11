@@ -13,10 +13,11 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * In memory implementation of {@linkplain LocalS3Manager}. Mange in memory
@@ -43,20 +44,13 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
       String absPath = initialDataPath.toAbsolutePath().toString();
       Path storagePath = Paths.get(initialDataPath.toAbsolutePath().toString(), STORAGE_DIRECTORY);
       if (enableInitialDataCache) {
-        if(cache.get(absPath).isEmpty()) {
-          synchronized(cache) {
-            if (cache.get(absPath).isEmpty()) {
-              LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
-              Storage persistent = Storage.createPersistent(storagePath);
-              // Create a CopyOnAccessStorage for the persistent one to reduce disk I/O.
-              Storage copyOnAccess = Storage.createCopyOnAccess(persistent);
-              InitialDataCache.CacheValue cacheValue = new InitialDataCache.CacheValue(metadata, copyOnAccess);
-              cache.put(absPath, cacheValue);
-            }
-          }
-        }
-
-        InitialDataCache.CacheValue cacheValue = cache.get(absPath).get();
+        InitialDataCache.CacheValue cacheValue = cache.computeIfAbsent(absPath, key -> {
+          LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
+          Storage persistent = Storage.createPersistent(storagePath);
+          // Create a CopyOnAccessStorage for the persistent one to reduce disk I/O.
+          Storage copyOnAccess = Storage.createCopyOnAccess(persistent);
+          return new InitialDataCache.CacheValue(metadata, copyOnAccess);
+        });
         this.storage = cacheValue.storage();
         this.s3Metadata = cacheValue.metadata();
 
@@ -109,14 +103,18 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
 
   static class InitialDataCache {
 
-    private final Map<String, CacheValue> cache = new HashMap<>();
+    private final Map<String, CacheValue> cache = new ConcurrentHashMap<>();
 
-    public Optional<CacheValue> get(String key) {
-      return Optional.ofNullable(cache.get(key));
-    }
-
-    public void put(String key, CacheValue value) {
-      this.cache.put(key, value);
+    /**
+     * Get the cached value of {@code key}, loading it if absent. Concurrent callers with the same key
+     * load the value only once and share it.
+     *
+     * @param key the cache key.
+     * @param loader loads the value of an absent key.
+     * @return the cached value.
+     */
+    public CacheValue computeIfAbsent(String key, Function<String, CacheValue> loader) {
+      return cache.computeIfAbsent(key, loader);
     }
 
     static class CacheValue {

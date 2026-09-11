@@ -44,6 +44,11 @@ public class FileSystemBucketMetadataStore implements MetadataStore<BucketMetada
   }
 
   @Override
+  public boolean exists(String bucketName) {
+    return new File(dataPath.toFile(), bucketName + BUCKET_METADATA_FILE_SUFFIX).isFile();
+  }
+
+  @Override
   public String store(String bucketName, BucketMetadata bucketMetadata) {
     if (StringUtils.isBlank(bucketMetadata.getBucketName())) {
       throw new IllegalArgumentException("Invalid bucket name '" + bucketMetadata.getBucketName() + "'.");

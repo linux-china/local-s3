@@ -60,6 +60,11 @@ public class FileSystemVectorBucketMetadataStore implements MetadataStore<Vector
   }
 
   @Override
+  public boolean exists(String vectorBucketName) {
+    return new File(dataPath.toFile(), vectorBucketName + VECTOR_BUCKET_METADATA_FILE_SUFFIX).isFile();
+  }
+
+  @Override
   public String store(String vectorBucketName, VectorBucketMetadata vectorBucketMetadata) {
     if (StringUtils.isBlank(vectorBucketMetadata.getVectorBucketName())) {
       throw new IllegalArgumentException("Invalid vector bucket name '" + vectorBucketMetadata.getVectorBucketName() + "'.");

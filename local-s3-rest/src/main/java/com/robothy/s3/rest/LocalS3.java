@@ -43,7 +43,6 @@ import java.net.ServerSocket;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -130,7 +129,12 @@ public class LocalS3 implements AutoCloseable {
      */
     public void start() {
         ServiceFactory serviceFactory = createServiceFactory();
-
+        // create default buckets first
+        if (!defaultBuckets.isEmpty()) {
+            log.info("Create default buckets:{}", String.join(",", defaultBuckets));
+            createBuckets();
+        }
+        // start server
         this.parentGroup = new MultiThreadIoEventLoopGroup(nettyParentEventGroupThreadNum,
                 new NamingThreadFactory("locals3-parent-event-group"), NioIoHandler.newFactory());
         this.childGroup = new MultiThreadIoEventLoopGroup(nettyChildEventGroupThreadNum,
@@ -155,17 +159,13 @@ public class LocalS3 implements AutoCloseable {
         this.serverSocketChannel = channelFuture.channel();
         this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
         Runtime.getRuntime().addShutdownHook(this.shutdownHook);
-        if (!defaultBuckets.isEmpty()) {
-            log.info("Create default buckets:{}", String.join(",", defaultBuckets));
-            createBuckets();
-        }
     }
 
     private void createBuckets() {
         BucketService bucketService = this.getS3Manager().bucketService();
         for (String bucketName : defaultBuckets) {
             try {
-                bucketService.getBucket(bucketName.trim());
+                bucketService.getBucket(bucketName);
             } catch (BucketNotExistException e) {
                 bucketService.createBucket(bucketName);
             }
@@ -427,8 +427,13 @@ public class LocalS3 implements AutoCloseable {
          * @return builder.
          */
         public Builder buckets(String... buckets) {
-            if (buckets != null && buckets.length > 0) {
-                Collections.addAll(propHolder.defaultBuckets, buckets);
+            if (buckets != null) {
+                for (String bucket : buckets) {
+                    // Tolerate lists like "a, b," as split from the AWS_BUCKETS environment variable.
+                    if (bucket != null && !bucket.isBlank()) {
+                        propHolder.defaultBuckets.add(bucket.trim());
+                    }
+                }
             }
             return this;
         }
