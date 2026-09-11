@@ -11,6 +11,7 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.handler.s3vectors.LocalS3VectorExceptionHandler;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
+import com.robothy.s3.core.service.BucketService;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Objects;
 import java.util.Set;
@@ -92,7 +93,7 @@ public class LocalS3RouterFactory {
         .method(HttpMethod.DELETE)
         .path(BUCKET_PATH)
         .paramMatcher(params -> params.containsKey("cors"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketCors"))
+        .handler(new DeleteBucketCorsController(serviceFactory))
         .build();
 
 
@@ -219,7 +220,7 @@ public class LocalS3RouterFactory {
         .method(HttpMethod.GET)
         .path(BUCKET_PATH)
         .paramMatcher(params -> params.containsKey("cors"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketCors"))
+        .handler(new GetBucketCorsController(serviceFactory))
         .build();
 
     Route GetBucketEncryption = Route.builder()
@@ -472,6 +473,19 @@ public class LocalS3RouterFactory {
         .handler(healthCheckController)
         .build();
 
+    CorsPreflightController corsPreflightController = new CorsPreflightController(serviceFactory);
+    Route BucketCorsPreflight = Route.builder()
+        .method(HttpMethod.OPTIONS)
+        .path(BUCKET_PATH)
+        .handler(corsPreflightController)
+        .build();
+
+    Route ObjectCorsPreflight = Route.builder()
+        .method(HttpMethod.OPTIONS)
+        .path(BUCKET_KEY_PATH)
+        .handler(corsPreflightController)
+        .build();
+
     Route ListMultipartUploads = Route.builder()
         .method(HttpMethod.GET)
         .path(BUCKET_PATH)
@@ -531,7 +545,7 @@ public class LocalS3RouterFactory {
         .method(HttpMethod.PUT)
         .path(BUCKET_PATH)
         .paramMatcher(params -> params.containsKey("cors"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketCors"))
+        .handler(new PutBucketCorsController(serviceFactory))
         .build();
 
     Route PutBucketEncryption = Route.builder().method(HttpMethod.PUT)
@@ -837,11 +851,17 @@ public class LocalS3RouterFactory {
     VirtualHostParser virtualHostParser = serviceFactory.containsInstance(VirtualHostParser.class)
         ? serviceFactory.getInstance(VirtualHostParser.class)
         : new VirtualHostParser(Set.of());
+    CorsResponseHeaders corsResponseHeaders = serviceFactory.containsInstance(BucketService.class)
+        ? new CorsResponseHeaders(serviceFactory.getInstance(BucketService.class))
+        : null;
     LocalS3Router router = new LocalS3Router(
-        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), virtualHostParser);
+        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), virtualHostParser,
+        corsResponseHeaders);
     return router
         .route(HealthCheck)
         .route(HeadHealthCheck)
+        .route(BucketCorsPreflight)
+        .route(ObjectCorsPreflight)
         .route(AbortMultipartUpload)
         .route(CompleteMultipartUpload)
         .route(CopyObject)

@@ -6,11 +6,13 @@ package com.robothy.s3.core.exception;
 public enum S3ErrorCode {
 
   AccessDenied("AccessDenied", 403, "Access Denied"),
+  AccessForbidden("AccessForbidden", 403, "CORSResponse: This CORS request is not allowed."),
   //AccountProblem("AccountProblem", 403, "There is a problem with your AWS account that prevents the action from completing successfully. Contact AWS Support for further assistance."),
   //AllAccessDisabled("AllAccessDisabled", 403, "All access to this Amazon S3 resource has been disabled. Contact AWS Support for further assistance."),
   //AmbiguousGrantByEmailAddress("AmbiguousGrantByEmailAddress", 400, "The email address you provided is associated with more than one account."),
   AuthorizationHeaderMalformed("AuthorizationHeaderMalformed", 400, "The authorization header you provided is invalid."),
   BadDigest("BadDigest", 400, "The Content-MD5 you specified did not match what we received."),
+  BadRequest("BadRequest", 400, "The request is invalid."),
   BucketAlreadyExists("BucketAlreadyExists", 409, "The requested bucket name is not available. The bucket namespace is shared by all users of the system. Please select a different name and try again."),
   //BucketAlreadyOwnedByYou("BucketAlreadyOwnedByYou", 409,"The bucket you tried to create already exists, and you own it. Amazon S3 returns this error in all AWS Regions except in the North Virginia Region. For legacy compatibility, if you re-create an existing bucket that you already own in the North Virginia Region, Amazon S3 returns 200 OK and resets the bucket access control lists (ACLs)."),
   BucketNotEmpty("BucketNotEmpty", 409, "The bucket you tried to delete is not empty."),
@@ -57,6 +59,7 @@ public enum S3ErrorCode {
   MissingRequestBodyError("MissingRequestBodyError", 400, "This happens when the user sends an empty XML document as a request. The error message is, \"Request body is empty.\""),
   NoLoggingStatusForKey("NoLoggingStatusForKey", 400, "There is no such thing as a logging status subresource for a key."),  NoSuchBucket("NoSuchBucket", 404, "The specified bucket does not exist."),
   NoSuchBucketPolicy("NoSuchBucketPolicy", 404, "The specified bucket does not have a bucket policy."),
+  NoSuchCORSConfiguration("NoSuchCORSConfiguration", 404, "The CORS configuration does not exist."),
   NoSuchPublicAccessBlockConfiguration("NoSuchPublicAccessBlockConfiguration", 404, "The public access block configuration does not exist."),
   NoSuchTagSet("NoSuchTagSet", 404, "The TagSet does not exist."),
   NoSuchKey("NoSuchKey", 404, "The specified key does not exist."),

@@ -13,6 +13,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,8 +68,10 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
         handler.handle(request, response);
       } catch (Exception e) {
         log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
-        response.discard();
+        StreamingHttpResponse failed = response;
+        failed.discard();
         response = new StreamingHttpResponse();
+        copyCorsHeaders(failed, response);
         router.findExceptionHandler(e.getClass()).handle(e, request, response);
       }
     }
@@ -77,6 +80,18 @@ public class LocalS3HttpMessageHandler extends SimpleChannelInboundHandler<HttpR
       response.status(HttpResponseStatus.OK);
     }
     return response;
+  }
+
+  /**
+   * Keep the CORS headers of a failed response in the error response, so that browsers let the page read the error.
+   */
+  private static void copyCorsHeaders(StreamingHttpResponse from, StreamingHttpResponse to) {
+    from.getHeaders().forEach((name, value) -> {
+      String lowerCaseName = name.toLowerCase(Locale.ROOT);
+      if (lowerCaseName.startsWith("access-control-") || "vary".equals(lowerCaseName)) {
+        to.putHeader(name, value);
+      }
+    });
   }
 
   @Override

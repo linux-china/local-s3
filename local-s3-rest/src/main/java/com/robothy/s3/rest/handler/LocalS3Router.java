@@ -38,6 +38,8 @@ class LocalS3Router extends AbstractRouter {
 
   private final VirtualHostParser virtualHostParser;
 
+  private final CorsResponseHeaders corsResponseHeaders;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -53,8 +55,21 @@ class LocalS3Router extends AbstractRouter {
    * @param virtualHostParser parses the bucket of virtual-hosted-style requests.
    */
   LocalS3Router(AwsSignatureV4Verifier signatureVerifier, VirtualHostParser virtualHostParser) {
+    this(signatureVerifier, virtualHostParser, null);
+  }
+
+  /**
+   * Create a router.
+   *
+   * @param signatureVerifier verifies request signatures; {@code null} to accept all requests.
+   * @param virtualHostParser parses the bucket of virtual-hosted-style requests.
+   * @param corsResponseHeaders adds CORS headers to the responses of cross-origin requests; {@code null} to add none.
+   */
+  LocalS3Router(AwsSignatureV4Verifier signatureVerifier, VirtualHostParser virtualHostParser,
+                CorsResponseHeaders corsResponseHeaders) {
     this.signatureVerifier = signatureVerifier;
     this.virtualHostParser = Objects.requireNonNull(virtualHostParser);
+    this.corsResponseHeaders = corsResponseHeaders;
   }
 
   @Override
@@ -69,17 +84,39 @@ class LocalS3Router extends AbstractRouter {
 
   @Override
   public HttpRequestHandler match(HttpRequest request) {
-    if (signatureVerifier != null && !isHealthCheck(request)) {
+    // Neither health checks nor the CORS preflight requests of browsers are signed.
+    if (signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
         return new AuthenticationFailureHandler(result);
       }
     }
 
-    return matchMethod(request.getMethod())
+    HttpRequestHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
         .orElse(notFoundHandler());
+    return withCorsHeaders(request, handler);
+  }
+
+  /**
+   * Add the CORS headers of the bucket to the response of an actual cross-origin request, before the handler runs;
+   * {@linkplain com.robothy.s3.rest.netty.LocalS3HttpMessageHandler} keeps them if the handler fails. Preflight
+   * requests are answered by their own handler.
+   */
+  private HttpRequestHandler withCorsHeaders(HttpRequest request, HttpRequestHandler handler) {
+    if (corsResponseHeaders == null || handler == null || isPreflight(request)
+        || request.header(HttpHeaderNames.ORIGIN.toString()).isEmpty()) {
+      return handler;
+    }
+    return (req, resp) -> {
+      corsResponseHeaders.apply(req, resp);
+      handler.handle(req, resp);
+    };
+  }
+
+  private static boolean isPreflight(HttpRequest request) {
+    return HttpMethod.OPTIONS.equals(request.getMethod());
   }
 
   private boolean isHealthCheck(HttpRequest request) {

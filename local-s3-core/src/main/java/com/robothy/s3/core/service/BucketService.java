@@ -9,7 +9,7 @@ import java.util.stream.Collectors;
 
 public interface BucketService extends CreateBucketService, BucketVersioningService, BucketTaggingService,
     BucketAclService, BucketPolicyService, BucketReplicationService,
-    BucketEncryptionService, BucketPublicAccessBlockService, BucketPolicyStatusService {
+    BucketEncryptionService, BucketPublicAccessBlockService, BucketPolicyStatusService, BucketCorsService {
 
   /**
    * Delete a bucket.

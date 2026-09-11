@@ -204,6 +204,16 @@ public class ReachabilityMetadataGenerator {
       s3.getBucketPolicy(GetBucketPolicyRequest.builder().bucket(bucketName).build());
       s3.deleteBucketPolicy(DeleteBucketPolicyRequest.builder().bucket(bucketName).build());
 
+      s3.putBucketCors(b -> b.bucket(bucketName).corsConfiguration(c -> c.corsRules(rule -> rule
+          .id("uploads")
+          .allowedOrigins("http://localhost:3000")
+          .allowedMethods("GET", "PUT")
+          .allowedHeaders("*")
+          .exposeHeaders("ETag")
+          .maxAgeSeconds(3000))));
+      s3.getBucketCors(b -> b.bucket(bucketName));
+      s3.deleteBucketCors(b -> b.bucket(bucketName));
+
       s3.putBucketReplication(PutBucketReplicationRequest.builder()
           .bucket(bucketName)
           .replicationConfiguration(ReplicationConfiguration.builder()

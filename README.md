@@ -18,6 +18,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + CreateMultipartUpload
 + CompleteMultipartUpload
 + DeleteBucket
++ DeleteBucketCors
 + DeleteBucketEncryption
 + DeleteBucketPolicy
 + DeleteBucketReplication
@@ -31,6 +32,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + PutObjectAcl
 + GetObjectAttributes
 + GetBucketAcl
++ GetBucketCors
 + GetBucketEncryption
 + GetBucketPolicy
 + GetBucketReplication
@@ -46,6 +48,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + ListMultipartUploads
 + ListParts
 + PutBucketAcl
++ PutBucketCors
 + PutBucketEncryption
 + PutBucketPolicy
 + PutBucketReplication
@@ -57,6 +60,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + PutPublicAccessBlock
 + GetPublicAccessBlock
 + DeletePublicAccessBlock
++ OPTIONS object (CORS preflight requests, answered without authentication)
 </details>
 
 <details>

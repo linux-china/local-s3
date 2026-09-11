@@ -5,6 +5,7 @@ import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.datatypes.AccessControlPolicy;
+import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
 import java.util.Collection;
 import java.util.Map;
@@ -59,6 +60,8 @@ public class BucketMetadata {
   private String encryption;
   
   private PublicAccessBlockConfiguration publicAccessBlock;
+
+  private CORSConfiguration cors;
 
   /**
    * Get metadata of the specified object.
@@ -184,6 +187,24 @@ public class BucketMetadata {
    */
   public void setPublicAccessBlock(PublicAccessBlockConfiguration publicAccessBlock) {
     this.publicAccessBlock = publicAccessBlock;
+  }
+
+  /**
+   * Get the CORS configuration.
+   *
+   * @return the CORS configuration of current bucket.
+   */
+  public Optional<CORSConfiguration> getCors() {
+    return Optional.ofNullable(cors);
+  }
+
+  /**
+   * Set the CORS configuration.
+   *
+   * @param cors CORS configuration; {@code null} to delete it.
+   */
+  public void setCors(CORSConfiguration cors) {
+    this.cors = cors;
   }
 
 }

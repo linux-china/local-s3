@@ -198,5 +198,17 @@
   {
     "name":"com.robothy.s3.datatypes.response.VersionItem",
     "queryAllDeclaredMethods":true
+  },
+  {
+    "name":"com.robothy.s3.datatypes.CORSConfiguration",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.datatypes.CORSRule",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
   }
 ]
