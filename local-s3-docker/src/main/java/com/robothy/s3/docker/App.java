@@ -23,6 +23,7 @@ public class App {
     static final String LEGACY_MODE = "LOCAL_S3_MODE";
     static final String LOCAL_S3_DATA_PATH = "LOCAL_S3_DATA_PATH";
     static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
+    static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
     static final String AWS_BUCKETS = "AWS_BUCKETS";
     static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
     static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
@@ -53,6 +54,10 @@ public class App {
                 .dataPath(dataPath)
                 // LOCAL_S3_STRICT_BUCKET_NAMES=true rejects bucket names that Amazon S3 doesn't accept.
                 .strictBucketNames(Boolean.parseBoolean(getProperty(LOCAL_S3_STRICT_BUCKET_NAMES)));
+        // e.g. LOCAL_S3_VIRTUAL_HOST_DOMAINS=s3,s3.local for virtual-hosted-style requests to my-bucket.s3.
+        if (getProperty(LOCAL_S3_VIRTUAL_HOST_DOMAINS) != null) {
+            localS3Builder.virtualHostDomains(getProperty(LOCAL_S3_VIRTUAL_HOST_DOMAINS).split(","));
+        }
         if (getProperty(AWS_BUCKETS) != null) {
             localS3Builder.buckets(getProperty(AWS_BUCKETS).split(","));
         }

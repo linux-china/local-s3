@@ -25,6 +25,7 @@ import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -110,6 +111,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final boolean strictBucketNames;
 
+    private final List<String> virtualHostDomains;
+
     /* Runtime state; start() and shutdown() are synchronized. */
 
     /**
@@ -150,6 +153,7 @@ public class LocalS3 implements AutoCloseable {
         this.maxRequestBodySize = builder.maxRequestBodySize;
         this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
         this.strictBucketNames = builder.strictBucketNames;
+        this.virtualHostDomains = List.copyOf(builder.virtualHostDomains);
     }
 
     /**
@@ -247,6 +251,8 @@ public class LocalS3 implements AutoCloseable {
         serviceFactory.register(ObjectService.class, () -> objectService);
         BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
         serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
+        VirtualHostParser virtualHostParser = new VirtualHostParser(virtualHostDomains);
+        serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
 
         XMLInputFactory input = new WstxInputFactory();
         input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
@@ -447,6 +453,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Get the configured base domains of virtual-hosted-style requests, besides the default ones.
+     *
+     * @return the configured virtual-host domains.
+     */
+    public List<String> getVirtualHostDomains() {
+        return virtualHostDomains;
+    }
+
+    /**
      * get Local S3 Manager after start()
      *
      * @return local s3 manager
@@ -494,6 +509,8 @@ public class LocalS3 implements AutoCloseable {
         private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
 
         private boolean strictBucketNames;
+
+        private final List<String> virtualHostDomains = new ArrayList<>();
 
         /**
          * Set the host that local-s3 service listens on.
@@ -730,6 +747,30 @@ public class LocalS3 implements AutoCloseable {
          */
         public Builder strictBucketNames(boolean strictBucketNames) {
             this.strictBucketNames = strictBucketNames;
+            return this;
+        }
+
+        /**
+         * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
+         * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
+         * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
+         * service name in docker-compose. {@code localhost}, {@code 127.0.0.1} and {@code 0.0.0.0} are always
+         * base domains; hosts of Amazon S3 ({@code amazonaws.com}), of Alibaba Cloud OSS ({@code aliyuncs.com},
+         * e.g. {@code my-bucket.oss-cn-hangzhou.aliyuncs.com}) and of Cloudflare R2 ({@code r2.cloudflarestorage.com},
+         * e.g. {@code my-bucket.<account-id>.r2.cloudflarestorage.com}) and of Tigris ({@code my-bucket.t3.storage.dev},
+         * {@code my-bucket.fly.storage.tigris.dev}) are supported as well.
+         *
+         * @param domains base domains, e.g. {@code s3} or {@code s3.local}.
+         * @return builder.
+         */
+        public Builder virtualHostDomains(String... domains) {
+            if (domains != null) {
+                for (String domain : domains) {
+                    if (domain != null && !domain.isBlank()) {
+                        this.virtualHostDomains.add(domain.trim());
+                    }
+                }
+            }
             return this;
         }
 

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class AppTest {
 
   private static final List<String> VARIABLES = List.of(App.LOCAL_S3_PORT, App.LOCAL_S3_MODE, App.LEGACY_MODE,
-      App.LOCAL_S3_DATA_PATH, App.LOCAL_S3_STRICT_BUCKET_NAMES);
+      App.LOCAL_S3_DATA_PATH, App.LOCAL_S3_STRICT_BUCKET_NAMES, App.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
 
   @AfterEach
   void clearVariables() {
@@ -41,12 +41,14 @@ class AppTest {
     System.setProperty(App.LOCAL_S3_MODE, "in_memory");
     System.setProperty(App.LOCAL_S3_DATA_PATH, "/var/lib/local-s3");
     System.setProperty(App.LOCAL_S3_STRICT_BUCKET_NAMES, "true");
+    System.setProperty(App.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local");
 
     LocalS3 localS3 = App.configure().build();
 
     assertEquals(29500, localS3.getPort());
     assertEquals(Path.of("/var/lib/local-s3"), localS3.getDataPath());
     assertTrue(localS3.isStrictBucketNames());
+    assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
     assertEquals(LocalS3Mode.IN_MEMORY, App.mode());
   }
 

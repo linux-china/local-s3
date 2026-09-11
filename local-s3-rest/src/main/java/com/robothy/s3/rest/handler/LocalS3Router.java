@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -35,12 +36,25 @@ class LocalS3Router extends AbstractRouter {
 
   private final AwsSignatureV4Verifier signatureVerifier;
 
+  private final VirtualHostParser virtualHostParser;
+
   LocalS3Router() {
-    this.signatureVerifier = null;
+    this(null, new VirtualHostParser(Set.of()));
   }
 
   LocalS3Router(String accessKeyId, String secretAccessKey) {
-    this.signatureVerifier = new AwsSignatureV4Verifier(accessKeyId, secretAccessKey);
+    this(new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), new VirtualHostParser(Set.of()));
+  }
+
+  /**
+   * Create a router.
+   *
+   * @param signatureVerifier verifies request signatures; {@code null} to accept all requests.
+   * @param virtualHostParser parses the bucket of virtual-hosted-style requests.
+   */
+  LocalS3Router(AwsSignatureV4Verifier signatureVerifier, VirtualHostParser virtualHostParser) {
+    this.signatureVerifier = signatureVerifier;
+    this.virtualHostParser = Objects.requireNonNull(virtualHostParser);
   }
 
   @Override
@@ -87,7 +101,7 @@ class LocalS3Router extends AbstractRouter {
 
     Map<CharSequence, List<String>> params = request.getParams();
 
-    Optional<BucketRegion> bucketRegion = VirtualHostParser.getBucketRegionFromHost(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
+    Optional<BucketRegion> bucketRegion = virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
     boolean bucketNameInPath = !bucketRegion.isPresent() || !bucketRegion.get().getBucketName().isPresent();
     String bucketName;
     String objectKey = null;

@@ -119,4 +119,12 @@ public @interface LocalS3 {
    * @return if strict bucket name validation is enabled.
    */
   boolean strictBucketNames() default false;
+
+  /**
+   * Set base domains of virtual-hosted-style requests besides {@code localhost}, e.g. {@code s3.local}, so that
+   * a request to the host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}.
+   *
+   * @return additional virtual-host domains.
+   */
+  String[] virtualHostDomains() default {};
 }

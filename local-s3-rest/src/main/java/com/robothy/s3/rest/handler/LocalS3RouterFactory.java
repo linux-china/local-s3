@@ -10,8 +10,10 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.handler.s3vectors.LocalS3VectorExceptionHandler;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Objects;
+import java.util.Set;
 
 public class LocalS3RouterFactory {
 
@@ -831,9 +833,12 @@ public class LocalS3RouterFactory {
 //        .handler(new GetBucketController(serviceFactory))
 //        .build();
 
-    LocalS3Router router = accessKeyId == null
-        ? new LocalS3Router()
-        : new LocalS3Router(accessKeyId, secretAccessKey);
+    // Without a registered parser, only the default virtual-host domains are recognized.
+    VirtualHostParser virtualHostParser = serviceFactory.containsInstance(VirtualHostParser.class)
+        ? serviceFactory.getInstance(VirtualHostParser.class)
+        : new VirtualHostParser(Set.of());
+    LocalS3Router router = new LocalS3Router(
+        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), virtualHostParser);
     return router
         .route(HealthCheck)
         .route(HeadHealthCheck)
