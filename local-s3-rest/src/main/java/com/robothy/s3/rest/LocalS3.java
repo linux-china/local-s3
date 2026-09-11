@@ -241,9 +241,10 @@ public class LocalS3 implements AutoCloseable {
     }
 
     private ServiceFactory createServiceFactory() {
-
-        s3Manager = createLocalS3Manager();
-
+        // keep s3Manager even after restart
+        if(s3Manager == null) {
+            s3Manager = createLocalS3Manager();
+        }
         ServiceFactory serviceFactory = new DefaultServiceFactory();
         BucketService bucketService = s3Manager.bucketService();
         ObjectService objectService = s3Manager.objectService();
