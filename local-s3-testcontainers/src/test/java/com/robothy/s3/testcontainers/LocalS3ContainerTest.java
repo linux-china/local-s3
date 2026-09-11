@@ -26,7 +26,7 @@ class LocalS3ContainerTest {
       container.withRandomHttpPort();
       assertNotEquals(0, container.getPort());
       assertEquals(1, container.getPortBindings().size());
-      assertTrue(container.getPortBindings().contains(container.getPort() + ":80/tcp"));
+      assertTrue(container.getPortBindings().contains(container.getPort() + ":29090/tcp"));
     }
 
   }
