@@ -17,10 +17,6 @@ public class App {
 
     static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
     static final String LOCAL_S3_MODE = "LOCAL_S3_MODE";
-    /**
-     * The mode variable of released versions of LocalS3Container; {@link #LOCAL_S3_MODE} takes precedence.
-     */
-    static final String LEGACY_MODE = "LOCAL_S3_MODE";
     static final String LOCAL_S3_DATA_PATH = "LOCAL_S3_DATA_PATH";
     static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
     static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
@@ -74,9 +70,6 @@ public class App {
 
     static LocalS3Mode mode() {
         String mode = getProperty(LOCAL_S3_MODE);
-        if (mode == null) {
-            mode = getProperty(LEGACY_MODE);
-        }
         if (mode == null) {
             log.info("\"{}\" is not specified; use the default value \"{}\".", LOCAL_S3_MODE, LocalS3Mode.PERSISTENCE);
             return LocalS3Mode.PERSISTENCE;

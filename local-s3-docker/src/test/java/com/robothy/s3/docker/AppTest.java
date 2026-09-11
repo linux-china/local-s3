@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
  */
 class AppTest {
 
-  private static final List<String> VARIABLES = List.of(App.LOCAL_S3_PORT, App.LOCAL_S3_MODE, App.LEGACY_MODE,
+  private static final List<String> VARIABLES = List.of(App.LOCAL_S3_PORT, App.LOCAL_S3_MODE,
       App.LOCAL_S3_DATA_PATH, App.LOCAL_S3_STRICT_BUCKET_NAMES, App.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
 
   @AfterEach
@@ -54,9 +54,6 @@ class AppTest {
 
   @Test
   void fallsBackToTheLegacyModeVariable() {
-    System.setProperty(App.LEGACY_MODE, "IN_MEMORY");
-    assertEquals(LocalS3Mode.IN_MEMORY, App.mode());
-
     System.setProperty(App.LOCAL_S3_MODE, "PERSISTENCE");
     assertEquals(LocalS3Mode.PERSISTENCE, App.mode(), "LOCAL_S3_MODE takes precedence.");
   }
