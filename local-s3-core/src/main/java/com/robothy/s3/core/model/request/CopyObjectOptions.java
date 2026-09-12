@@ -27,6 +27,21 @@ public class CopyObjectOptions {
     REPLACE
   }
 
+  /**
+   * Tagging directive for copy operation.
+   */
+  public enum TaggingDirective {
+    /**
+     * Copy the tagging of the source object (default).
+     */
+    COPY,
+
+    /**
+     * Replace with the tagging provided in the request.
+     */
+    REPLACE
+  }
+
   private String sourceBucket;
 
   private String sourceKey;
@@ -36,6 +51,10 @@ public class CopyObjectOptions {
   private MetadataDirective metadataDirective;
 
   private Map<String, String> userMetadata;
+
+  private TaggingDirective taggingDirective;
+
+  private String[][] tagging;
 
   public Optional<String> getSourceVersion() {
     return Optional.ofNullable(sourceVersion);
@@ -47,5 +66,18 @@ public class CopyObjectOptions {
 
   public Map<String, String> getUserMetadata() {
     return userMetadata != null ? userMetadata : Collections.emptyMap();
+  }
+
+  public TaggingDirective getTaggingDirective() {
+    return taggingDirective != null ? taggingDirective : TaggingDirective.COPY;
+  }
+
+  /**
+   * Get the tagging to apply when {@linkplain #getTaggingDirective()} is {@linkplain TaggingDirective#REPLACE}.
+   *
+   * @return the requested tagging; empty to leave the copy untagged.
+   */
+  public Optional<String[][]> getTagging() {
+    return Optional.ofNullable(tagging);
   }
 }

@@ -33,6 +33,11 @@ public class GetObjectAns {
   private int taggingCount;
 
   /**
+   * Tagging of the object; {@code null} when it isn't tagged.
+   */
+  private String[][] tagging;
+
+  /**
    * Value of the {@code Content-Range} response header, e.g. {@code "bytes 0-9/443"}.
    * {@code null} when the response is not a ranged result.
    */

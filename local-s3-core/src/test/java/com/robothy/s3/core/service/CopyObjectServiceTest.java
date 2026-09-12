@@ -19,6 +19,42 @@ class CopyObjectServiceTest extends LocalS3ServiceTestBase {
 
   @ParameterizedTest
   @MethodSource("localS3Services")
+  void copiesTaggingUnlessTheDirectiveReplacesIt(BucketService bucketService, ObjectService objectService) {
+    String bucket = "my-bucket";
+    bucketService.createBucket(bucket);
+    String text = "Robothy";
+    objectService.putObject(bucket, "source", PutObjectOptions.builder()
+        .size(text.length())
+        .contentType("plain/text")
+        .content(new ByteArrayInputStream(text.getBytes()))
+        .tagging(new String[][] {{"key1", "value1"}})
+        .build());
+
+    // The tagging of the source object is copied by default.
+    objectService.copyObject(bucket, "copied", CopyObjectOptions.builder()
+        .sourceBucket(bucket).sourceKey("source").build());
+    assertArrayEquals(new String[][] {{"key1", "value1"}},
+        objectService.getObjectTagging(bucket, "copied", null).getTagging());
+
+    // The REPLACE directive applies the tagging of the request.
+    objectService.copyObject(bucket, "replaced", CopyObjectOptions.builder()
+        .sourceBucket(bucket).sourceKey("source")
+        .taggingDirective(CopyObjectOptions.TaggingDirective.REPLACE)
+        .tagging(new String[][] {{"key2", "value2"}})
+        .build());
+    assertArrayEquals(new String[][] {{"key2", "value2"}},
+        objectService.getObjectTagging(bucket, "replaced", null).getTagging());
+
+    // The REPLACE directive without tagging leaves the copy untagged.
+    objectService.copyObject(bucket, "cleared", CopyObjectOptions.builder()
+        .sourceBucket(bucket).sourceKey("source")
+        .taggingDirective(CopyObjectOptions.TaggingDirective.REPLACE)
+        .build());
+    assertEquals(0, objectService.getObjectTagging(bucket, "cleared", null).getTagging().length);
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
   void copyObject(BucketService bucketService, ObjectService objectService) {
     String bucket1 = "my-bucket";
     String key1 = "key1";

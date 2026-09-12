@@ -10,6 +10,7 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.S3ObjectUtils;
 
@@ -84,7 +85,24 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   @BucketWriteLock
   default PutObjectAns commitPutObject(String bucketName, String key, VersionedObjectMetadata versionedObjectMetadata) {
     BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+    return addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+  }
 
+  /**
+   * Add a new version of an object whose content is already stored to the metadata of a bucket. The caller
+   * holds the write lock of the bucket, e.g. {@linkplain #commitPutObject}, or
+   * {@linkplain CompleteMultipartUploadService#commitCompleteMultipartUpload}, which adds the version and
+   * removes the completed upload under the same lock.
+   *
+   * @param bucketMetadata the metadata of the bucket that the object belongs to.
+   * @param storage the storage that holds the content of the version.
+   * @param key the object key.
+   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
+   * @return result of the put object operation.
+   */
+  // Using static to make the target compatible with Java8
+  static PutObjectAns addVersion(BucketMetadata bucketMetadata, Storage storage, String key,
+                                 VersionedObjectMetadata versionedObjectMetadata) {
     String versionId = IdUtils.defaultGenerator().nextStrId();
     ObjectMetadata objectMetadata;
     if (bucketMetadata.getObjectMetadata(key).isPresent()) {
@@ -104,7 +122,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         String lastVirtualVersion = virtualVersionOpt.get();
         VersionedObjectMetadata previousVersion = objectMetadata.getVersionedObjectMap().remove(lastVirtualVersion);
         if (Objects.nonNull(previousVersion.getFileId())) { // Not a delete marker.
-          storage().delete(previousVersion.getFileId());
+          storage.delete(previousVersion.getFileId());
         }
 
         objectMetadata.setVirtualVersion(versionId);

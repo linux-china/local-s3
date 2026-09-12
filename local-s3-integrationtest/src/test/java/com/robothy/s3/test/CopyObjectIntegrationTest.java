@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
 import java.io.IOException;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -22,6 +23,9 @@ import software.amazon.awssdk.services.s3.model.ListObjectVersionsResponse;
 import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.Tag;
+import software.amazon.awssdk.services.s3.model.Tagging;
+import software.amazon.awssdk.services.s3.model.TaggingDirective;
 import software.amazon.awssdk.core.ResponseInputStream;
 
 
@@ -106,6 +110,41 @@ public class CopyObjectIntegrationTest {
     s3Client.putObject(b -> b.bucket(bucketName).key(objectKeyWithPlusSign), RequestBody.fromString("Hello, World!"));
     s3Client.copyObject(b -> b.sourceBucket(bucketName).sourceKey(objectKeyWithPlusSign)
         .destinationBucket(bucketName).destinationKey("destination"));
+  }
+
+  @LocalS3
+  @Test
+  void testCopyObjectWithTaggingDirective(S3Client s3) {
+    String bucketName = "tagging-directive-bucket";
+    s3.createBucket(b -> b.bucket(bucketName));
+    s3.putObject(PutObjectRequest.builder()
+            .bucket(bucketName)
+            .key("source")
+            .tagging(Tagging.builder().tagSet(Tag.builder().key("key1").value("value1").build()).build())
+            .build(),
+        RequestBody.fromString("test content"));
+
+    // The tagging of the source object is copied by default.
+    s3.copyObject(b -> b.sourceBucket(bucketName).sourceKey("source")
+        .destinationBucket(bucketName).destinationKey("copied"));
+    List<Tag> copiedTags = s3.getObjectTagging(b -> b.bucket(bucketName).key("copied")).tagSet();
+    assertEquals(1, copiedTags.size());
+    assertEquals("key1", copiedTags.get(0).key());
+    assertEquals("value1", copiedTags.get(0).value());
+
+    // x-amz-tagging-directive: REPLACE applies the tagging of the request.
+    s3.copyObject(CopyObjectRequest.builder()
+        .sourceBucket(bucketName)
+        .sourceKey("source")
+        .destinationBucket(bucketName)
+        .destinationKey("replaced")
+        .taggingDirective(TaggingDirective.REPLACE)
+        .tagging(Tagging.builder().tagSet(Tag.builder().key("key2").value("value2").build()).build())
+        .build());
+    List<Tag> replacedTags = s3.getObjectTagging(b -> b.bucket(bucketName).key("replaced")).tagSet();
+    assertEquals(1, replacedTags.size());
+    assertEquals("key2", replacedTags.get(0).key());
+    assertEquals("value2", replacedTags.get(0).value());
   }
 
   @LocalS3

@@ -12,24 +12,24 @@ import java.util.concurrent.TimeUnit;
 /**
  * A stream whose reads block until it is released, so that a test can act while a service reads it.
  */
-class BlockingInputStream extends FilterInputStream {
+public class BlockingInputStream extends FilterInputStream {
 
   private final CountDownLatch reading = new CountDownLatch(1);
 
   private final CountDownLatch released = new CountDownLatch(1);
 
-  BlockingInputStream(byte[] data) {
+  public BlockingInputStream(byte[] data) {
     super(new ByteArrayInputStream(data));
   }
 
   /**
    * Wait until a service reads the stream.
    */
-  void awaitReading() throws InterruptedException {
+  public void awaitReading() throws InterruptedException {
     assertTrue(reading.await(5, TimeUnit.SECONDS), "The stream isn't read.");
   }
 
-  void release() {
+  public void release() {
     released.countDown();
   }
 

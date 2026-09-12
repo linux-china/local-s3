@@ -1,8 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
@@ -15,6 +13,7 @@ import com.robothy.s3.rest.listener.ObjectEvent;
 import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.model.response.CopyObjectResult;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -25,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -80,13 +78,41 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     CopyObjectOptions.MetadataDirective metadataDirective = parseMetadataDirective(request);
     Map<String, String> userMetadata = extractUserMetadata(request, metadataDirective);
 
+    // Parse tagging directive and the tagging that replaces the one of the source object.
+    CopyObjectOptions.TaggingDirective taggingDirective = parseTaggingDirective(request);
+    String[][] tagging = taggingDirective == CopyObjectOptions.TaggingDirective.REPLACE
+        ? RequestUtils.extractTagging(request).orElse(null)
+        : null;
+
     return CopyObjectOptions.builder()
         .sourceBucket(urlDecode(sourceInfo.bucket))
         .sourceKey(urlDecode(sourceInfo.key))
         .sourceVersion(urlDecode(sourceInfo.versionId))
         .metadataDirective(metadataDirective)
         .userMetadata(userMetadata)
+        .taggingDirective(taggingDirective)
+        .tagging(tagging)
         .build();
+  }
+
+  /**
+   * Parse the x-amz-tagging-directive header.
+   *
+   * @param request The HTTP request
+   * @return TaggingDirective enum value (defaults to COPY)
+   */
+  private CopyObjectOptions.TaggingDirective parseTaggingDirective(HttpRequest request) {
+    String taggingDirectiveHeader = request.header(AmzHeaderNames.X_AMZ_TAGGING_DIRECTIVE).orElse(null);
+    if (taggingDirectiveHeader == null) {
+      return CopyObjectOptions.TaggingDirective.COPY;
+    }
+
+    try {
+      return CopyObjectOptions.TaggingDirective.valueOf(taggingDirectiveHeader);
+    } catch (IllegalArgumentException e) {
+      throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_TAGGING_DIRECTIVE,
+          taggingDirectiveHeader, "Invalid tagging directive.");
+    }
   }
 
   /**
