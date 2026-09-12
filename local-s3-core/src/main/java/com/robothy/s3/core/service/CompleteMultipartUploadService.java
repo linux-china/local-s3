@@ -19,6 +19,7 @@ import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
+import java.security.DigestInputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -66,18 +67,46 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts,
                                                              long minimumPartSize) {
+    return completeMultipartUpload(bucket, key, uploadId, completeParts, minimumPartSize, true);
+  }
+
+  /**
+   * Complete a multipart upload, giving the object the entity tag that Amazon S3 gives an object uploaded in
+   * parts, or the MD5 digest of its whole content.
+   *
+   * @param bucket the bucket name.
+   * @param key the object key.
+   * @param uploadId multipart upload ID.
+   * @param completeParts multipart upload parts to complete.
+   * @param minimumPartSize the smallest size of a part that isn't the last one; {@code 0} to check nothing.
+   * @param compositeEtag {@code true} to give the object the
+   *     {@linkplain S3ObjectUtils#compositeEtag(List) entity tag of Amazon S3}, which is what a client reads
+   *     the part layout of an object off; {@code false} to give it the MD5 digest of the concatenated parts,
+   *     which is what LocalS3 gave it before 2.5.
+   * @return result of the complete multipart operation.
+   */
+  @CallsThroughProxy
+  default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
+                                                             List<CompleteMultipartUploadPartOption> completeParts,
+                                                             long minimumPartSize, boolean compositeEtag) {
     // Invoked on the proxy, which read locks the bucket while the upload is validated.
     UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
     UploadAssertions.assertPartsAreLargeEnough(uploadMetadata, completeParts, minimumPartSize);
     Map<Integer, UploadPartMetadata> uploadedParts = uploadMetadata.getParts();
 
-    List<InputStream> inputStreams = completeParts.stream().map(completePart -> uploadedParts.get(completePart.getPartNumber()))
-        .map(uploadPartMetadata -> storage().getInputStream(uploadPartMetadata.getFileId()))
+    // The MD5 digest of every part is computed while the parts are concatenated, rather than read off the
+    // metadata of the parts: the entity tag that the metadata holds is the one that the upload of the part
+    // reported, which a request may have supplied instead of the digest of the data it sent, and the parts of
+    // an upload that a LocalS3 version before 2.5 stored hold no digest at all. Digesting the data that is
+    // concatenated costs no extra read, and makes the entity tag describe the bytes that were actually stored.
+    List<DigestInputStream> partStreams = completeParts.stream()
+        .map(completePart -> uploadedParts.get(completePart.getPartNumber()))
+        .map(uploadPartMetadata -> S3ObjectUtils.digestingStream(storage().getInputStream(uploadPartMetadata.getFileId())))
         .collect(Collectors.toList());
 
     Long fileId;
     MeasuredInputStream content =
-        S3ObjectUtils.measuringStream(new SequenceInputStream(Collections.enumeration(inputStreams)));
+        S3ObjectUtils.measuringStream(new SequenceInputStream(Collections.enumeration(partStreams)));
     try (InputStream in = content) {
       fileId = storage().put(in);
     } catch (IOException e) {
@@ -91,7 +120,9 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       // The length of the concatenated parts, which the lengths declared when they were uploaded may not match.
       versionedObjectMetadata.setSize(content.getSize());
       versionedObjectMetadata.setFileId(fileId);
-      versionedObjectMetadata.setEtag(content.etag());
+      // The parts were read to their end above, so their digests are complete.
+      versionedObjectMetadata.setEtag(compositeEtag ? S3ObjectUtils.compositeEtag(partDigests(partStreams))
+          : content.etag());
       uploadMetadata.getTagging().ifPresent(versionedObjectMetadata::setTagging);
       if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
         versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
@@ -102,6 +133,18 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       discardStoredContent(fileId, e);
       throw e;
     }
+  }
+
+  /**
+   * The MD5 digests of the parts that were concatenated, in the order they were concatenated in.
+   *
+   * @param partStreams the streams that the parts were read through, read to their end.
+   * @return the digest of every part.
+   */
+  private static List<byte[]> partDigests(List<DigestInputStream> partStreams) {
+    return partStreams.stream()
+        .map(partStream -> partStream.getMessageDigest().digest())
+        .collect(Collectors.toList());
   }
 
   /**

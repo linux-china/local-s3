@@ -15,6 +15,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -56,6 +60,128 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
     GetObjectAns object = objectService.getObject(bucket, key, GetObjectOptions.builder().build());
     assertEquals("plain/text", object.getContentType());
     assertEquals("HelloWorld", new String(object.getContent().readAllBytes()));
+  }
+
+  /**
+   * The object of a completed upload gets the entity tag that Amazon S3 gives an object uploaded in parts,
+   * which the reads of the object report as well, so that a client that asks for the object afterwards sees
+   * the same part layout as the one that uploaded it.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadAnswersTheCompositeEtag(BucketService bucketService, ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello", "World");
+
+    CompleteMultipartUploadAns completeAns = complete(objectService, bucket, key, uploadId, 2);
+
+    // md5(md5("Hello") + md5("World")) + "-2", computed outside of LocalS3.
+    assertEquals("64d1e57a34042883053ec1c5d8d60167-2", completeAns.getEtag());
+    assertEquals("64d1e57a34042883053ec1c5d8d60167-2",
+        objectService.getObject(bucket, key, GetObjectOptions.builder().build()).getEtag());
+    assertEquals("64d1e57a34042883053ec1c5d8d60167-2",
+        objectService.headObject(bucket, key, GetObjectOptions.builder().build()).getEtag());
+  }
+
+  /**
+   * An upload of a single part gets a composite entity tag too, with the suffix {@code -1}, which is what
+   * distinguishes it from an object that {@code PutObject} stored.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadOfASinglePartAnswersTheCompositeEtag(BucketService bucketService,
+                                                                   ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello");
+
+    CompleteMultipartUploadAns completeAns = complete(objectService, bucket, key, uploadId, 1);
+
+    assertEquals("49c24cf3c5af9ba03cec39ee4aac4f77-1", completeAns.getEtag());
+    // The entity tag of the same content stored at once, which the composite entity tag must not be.
+    assertNotEquals(DigestUtils.md5Hex("Hello"), completeAns.getEtag());
+  }
+
+  /**
+   * The entity tag is computed from the parts as they were stored, so an upload whose parts reported an
+   * entity tag that isn't their digest, which LocalS3 lets a request supply, still gets the entity tag that
+   * describes its content.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadIgnoresTheReportedPartEtags(BucketService bucketService,
+                                                           ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = objectService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
+        .contentType("plain/text")
+        .build());
+    objectService.uploadPart(bucket, key, uploadId, 1, UploadPartOptions.builder()
+        .data(new ByteArrayInputStream("Hello".getBytes()))
+        .contentLength(5)
+        .etag("not-a-digest")
+        .build());
+    objectService.uploadPart(bucket, key, uploadId, 2, UploadPartOptions.builder()
+        .data(new ByteArrayInputStream("World".getBytes()))
+        .contentLength(5)
+        .etag("not-a-digest-either")
+        .build());
+
+    assertEquals("64d1e57a34042883053ec1c5d8d60167-2",
+        complete(objectService, bucket, key, uploadId, 2).getEtag());
+  }
+
+  /**
+   * A service configured to answer the entity tags that LocalS3 answered before 2.5 gives the object the
+   * digest of its whole content, so that a test that asserts that entity tag keeps working.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadAnswersTheContentDigestWhenCompositeEtagsAreOff(BucketService bucketService,
+                                                                              ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello", "World");
+
+    CompleteMultipartUploadAns completeAns = objectService.completeMultipartUpload(bucket, key, uploadId,
+        completeParts(2), 0, false);
+
+    assertEquals(DigestUtils.md5Hex("HelloWorld"), completeAns.getEtag());
+  }
+
+  /**
+   * Start an upload of the given parts, in the order they are given.
+   *
+   * @return the upload ID.
+   */
+  private static String upload(ObjectService objectService, String bucket, String key, String... parts) {
+    String uploadId = objectService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
+        .contentType("plain/text")
+        .build());
+    for (int i = 0; i < parts.length; i++) {
+      byte[] content = parts[i].getBytes();
+      objectService.uploadPart(bucket, key, uploadId, i + 1, UploadPartOptions.builder()
+          .data(new ByteArrayInputStream(content))
+          .contentLength(content.length)
+          .build());
+    }
+    return uploadId;
+  }
+
+  private static CompleteMultipartUploadAns complete(ObjectService objectService, String bucket, String key,
+                                                     String uploadId, int parts) {
+    return objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(parts));
+  }
+
+  private static List<CompleteMultipartUploadPartOption> completeParts(int parts) {
+    return IntStream.rangeClosed(1, parts)
+        .mapToObj(partNumber -> CompleteMultipartUploadPartOption.builder().partNumber(partNumber).build())
+        .collect(Collectors.toList());
   }
 
 }

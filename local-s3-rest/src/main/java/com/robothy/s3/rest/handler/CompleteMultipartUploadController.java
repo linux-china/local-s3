@@ -54,7 +54,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
                   .build())
               .collect(Collectors.toList());
       completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
-          multipartUploadPolicy.minimumPartSize());
+          multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags());
     }
 
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()

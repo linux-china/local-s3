@@ -130,6 +130,18 @@ public @interface LocalS3 {
   boolean strictPartSizes() default false;
 
   /**
+   * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an object
+   * uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by {@code -} and
+   * the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The {@code -<parts>} suffix is what
+   * a client reads the part layout of an object off, so code that tells an object uploaded in parts from one
+   * uploaded at once takes the same branch as against Amazon S3. The default is {@code true}; {@code false}
+   * gives the object the MD5 digest of its whole content, which is what LocalS3 gave it before 2.5.
+   *
+   * @return if composite multipart entity tags are enabled.
+   */
+  boolean compositeMultipartEtags() default true;
+
+  /**
    * Set base domains of virtual-hosted-style requests besides {@code localhost}, e.g. {@code s3.local}, so that
    * a request to the host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}.
    *

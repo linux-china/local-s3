@@ -123,6 +123,8 @@ public class LocalS3 implements AutoCloseable {
 
     public static final String LOCAL_S3_STRICT_PART_SIZES = "LOCAL_S3_STRICT_PART_SIZES";
 
+    public static final String LOCAL_S3_COMPOSITE_MULTIPART_ETAGS = "LOCAL_S3_COMPOSITE_MULTIPART_ETAGS";
+
     public static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
 
     public static final String AWS_BUCKETS = "AWS_BUCKETS";
@@ -175,6 +177,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final boolean strictPartSizes;
 
+    private final boolean compositeMultipartEtags;
+
     private final List<String> virtualHostDomains;
 
     /* Runtime state; start() and shutdown() are synchronized. */
@@ -221,6 +225,7 @@ public class LocalS3 implements AutoCloseable {
         this.idleConnectionTimeoutSeconds = builder.idleConnectionTimeoutSeconds;
         this.strictBucketNames = builder.strictBucketNames;
         this.strictPartSizes = builder.strictPartSizes;
+        this.compositeMultipartEtags = builder.compositeMultipartEtags;
         this.virtualHostDomains = List.copyOf(builder.virtualHostDomains);
     }
 
@@ -331,7 +336,8 @@ public class LocalS3 implements AutoCloseable {
         serviceFactory.register(ObjectService.class, () -> objectService);
         BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
         serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
-        MultipartUploadPolicy multipartUploadPolicy = MultipartUploadPolicy.of(strictPartSizes);
+        MultipartUploadPolicy multipartUploadPolicy =
+                MultipartUploadPolicy.of(strictPartSizes, compositeMultipartEtags);
         serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
         VirtualHostParser virtualHostParser = new VirtualHostParser(virtualHostDomains);
         serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
@@ -565,6 +571,16 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an object
+     * uploaded in parts.
+     *
+     * @return if composite multipart entity tags are enabled.
+     */
+    public boolean isCompositeMultipartEtags() {
+        return compositeMultipartEtags;
+    }
+
+    /**
      * Whether the threads that serve the requests are daemon threads, which don't keep the JVM alive.
      *
      * @return if the service runs on daemon threads.
@@ -663,6 +679,8 @@ public class LocalS3 implements AutoCloseable {
         private boolean strictBucketNames;
 
         private boolean strictPartSizes;
+
+        private boolean compositeMultipartEtags = true;
 
         private final List<String> virtualHostDomains = new ArrayList<>();
 
@@ -967,6 +985,27 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
+         * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an
+         * object uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by
+         * {@code -} and the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The
+         * {@code -<parts>} suffix is what a client reads the part layout of an object off, so code that tells
+         * an object uploaded in parts from one uploaded at once, e.g. to decide whether the entity tag may be
+         * compared with the MD5 of a local file, takes the same branch as against Amazon S3.
+         *
+         * <p>The default value is {@code true}. Pass {@code false} to give the object the MD5 digest of its
+         * whole content instead, which is what LocalS3 gave it before 2.5, e.g. for a test that asserts that
+         * entity tag.
+         *
+         * @param compositeMultipartEtags whether to give the objects of completed uploads the entity tag of
+         *     Amazon S3.
+         * @return builder.
+         */
+        public Builder compositeMultipartEtags(boolean compositeMultipartEtags) {
+            this.compositeMultipartEtags = compositeMultipartEtags;
+            return this;
+        }
+
+        /**
          * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
          * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
          * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
@@ -1019,6 +1058,7 @@ public class LocalS3 implements AutoCloseable {
          * {@linkplain LocalS3#LOCAL_S3_PORT}, {@linkplain LocalS3#LOCAL_S3_MODE},
          * {@linkplain LocalS3#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3#LOCAL_S3_STRICT_BUCKET_NAMES},
          * {@linkplain LocalS3#LOCAL_S3_STRICT_PART_SIZES},
+         * {@linkplain LocalS3#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
          * {@linkplain LocalS3#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3#AWS_BUCKETS},
          * {@linkplain LocalS3#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3#AWS_SECRET_ACCESS_KEY}.
          *
@@ -1055,6 +1095,8 @@ public class LocalS3 implements AutoCloseable {
                     .ifPresent(strict -> strictBucketNames(Boolean.parseBoolean(strict)));
             variable(variables, LOCAL_S3_STRICT_PART_SIZES)
                     .ifPresent(strict -> strictPartSizes(Boolean.parseBoolean(strict)));
+            variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
+                    .ifPresent(composite -> compositeMultipartEtags(Boolean.parseBoolean(composite)));
             variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
                     .ifPresent(domains -> virtualHostDomains(domains.split(",")));
             variable(variables, AWS_BUCKETS).ifPresent(names -> buckets(names.split(",")));

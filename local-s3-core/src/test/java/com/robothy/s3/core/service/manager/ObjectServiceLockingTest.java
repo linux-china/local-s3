@@ -15,6 +15,7 @@ import com.robothy.s3.core.service.BlockingInputStream;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -89,7 +90,9 @@ class ObjectServiceLockingTest {
       assertTimeoutPreemptively(Duration.ofSeconds(5), () -> putText(objectService, bucket, "another", "!"));
 
       blocked.release();
-      assertEquals(DigestUtils.md5Hex("Robothy"), completing.get(5, TimeUnit.SECONDS).getEtag());
+      // The entity tag of an object uploaded in parts, i.e. the digest of the digests of "Robo" and "thy".
+      assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Robo"), DigestUtils.md5("thy"))),
+          completing.get(5, TimeUnit.SECONDS).getEtag());
     } finally {
       storage.releaseBlockedRead();
       executor.shutdownNow();
