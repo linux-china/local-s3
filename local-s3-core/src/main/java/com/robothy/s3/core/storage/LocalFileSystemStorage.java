@@ -63,6 +63,11 @@ class LocalFileSystemStorage implements Storage {
     return Files.readAllBytes(objectPath(id));
   }
 
+  /**
+   * Open the content of an object. The caller reads it after the bucket lock that the read was made under
+   * is released, so the object it holds open can be overwritten or deleted meanwhile; on Windows, which
+   * refuses to replace or delete an open file, those operations are repeated while this stream is open.
+   */
   @Override
   @SneakyThrows
   public InputStream getInputStream(Long id) {
@@ -74,7 +79,7 @@ class LocalFileSystemStorage implements Storage {
   @SneakyThrows
   public Long delete(Long id) {
     ensureExists(id);
-    Files.delete(objectPath(id));
+    PathUtils.delete(objectPath(id));
     return id;
   }
 

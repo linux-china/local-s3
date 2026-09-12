@@ -15,6 +15,8 @@ import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class LocalFileSystemStorageTest {
 
@@ -74,6 +76,33 @@ class LocalFileSystemStorageTest {
 
     assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
     assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+  }
+
+  /**
+   * GetObject returns the stream of an object, which the response is written from after the bucket lock is
+   * released, so an object can be overwritten and deleted while it is read. POSIX keeps the content that a
+   * reader opened; Windows refuses to replace or delete an open file, which {@linkplain
+   * com.robothy.s3.core.util.PathUtils} works around by repeating the operation, so this test states the
+   * POSIX semantics only.
+   */
+  @Test
+  @EnabledOnOs({OS.LINUX, OS.MAC})
+  void objectIsOverwrittenAndDeletedWhileItIsRead() throws IOException {
+    Storage storage = Storage.createPersistent(directory);
+    Long id = storage.put("Hello".getBytes());
+
+    try (InputStream reading = storage.getInputStream(id)) {
+      storage.put(id, new ByteArrayInputStream("Replaced".getBytes()));
+      assertArrayEquals("Replaced".getBytes(), storage.getBytes(id));
+
+      storage.delete(id);
+      assertFalse(storage.isExist(id));
+
+      // The reader keeps the content that it opened.
+      assertArrayEquals("Hello".getBytes(), reading.readAllBytes());
+    }
+
+    assertEquals(List.of(), listFiles());
   }
 
   private List<Path> listFiles() throws IOException {
