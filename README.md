@@ -256,6 +256,18 @@ The container is configured by environment variables:
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
+The same variables configure an embedded service, through `LocalS3.Builder.fromEnvironment()`, which reads them
+from the environment or from the system properties of the same names. Only the variables that are set are
+applied, so the defaults of the embedded service are kept for the rest; the defaults in the table above are
+those of the image, which binds every interface and persists to `/data`.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .port(29090)
+    .fromEnvironment()
+    .build();
+```
+
 LocalS3 runs as the unprivileged user `locals3` (UID 10001). In `PERSISTENCE` mode, the container gives the data
 directory to that user on startup, so that bind-mounted directories stay writable. To run as your own user and keep
 the ownership of a bind-mounted directory, start the container with `--user "$(id -u):$(id -g)"`. The images

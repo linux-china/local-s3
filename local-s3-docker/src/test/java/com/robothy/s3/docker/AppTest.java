@@ -32,7 +32,7 @@ class AppTest {
     assertEquals(Path.of(App.DEFAULT_DATA_PATH), localS3.getDataPath());
     assertEquals("0.0.0.0", localS3.getBindHost());
     assertFalse(localS3.isStrictBucketNames());
-    assertEquals(LocalS3Mode.PERSISTENCE, App.mode());
+    assertEquals(LocalS3Mode.PERSISTENCE, localS3.getMode());
     // main() returns once the service is started, so daemon threads would let the container exit at once.
     assertFalse(localS3.isDaemonThreads(), "The threads of the service keep the container running.");
   }
@@ -51,23 +51,19 @@ class AppTest {
     assertEquals(Path.of("/var/lib/local-s3"), localS3.getDataPath());
     assertTrue(localS3.isStrictBucketNames());
     assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
-    assertEquals(LocalS3Mode.IN_MEMORY, App.mode());
-  }
-
-  @Test
-  void fallsBackToTheLegacyModeVariable() {
-    System.setProperty(App.LOCAL_S3_MODE, "PERSISTENCE");
-    assertEquals(LocalS3Mode.PERSISTENCE, App.mode(), "LOCAL_S3_MODE takes precedence.");
+    // A data path is the initial data of an IN_MEMORY service, so it must not switch the mode back.
+    assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
   }
 
   @Test
   void rejectsInvalidValues() {
     System.setProperty(App.LOCAL_S3_MODE, "CLOUD");
-    assertThrows(IllegalArgumentException.class, App::mode);
+    assertThrows(IllegalArgumentException.class, App::configure);
+    System.clearProperty(App.LOCAL_S3_MODE);
 
     for (String port : List.of("0", "65536", "http")) {
       System.setProperty(App.LOCAL_S3_PORT, port);
-      assertThrows(IllegalArgumentException.class, App::port, port);
+      assertThrows(IllegalArgumentException.class, App::configure, port);
     }
   }
 

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketNotExistException;
@@ -29,6 +30,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
@@ -259,6 +261,65 @@ class LocalS3Test {
       assertEquals(threads, countLocalS3Threads(), "The event loop threads are released.");
       assertDoesNotThrow(localS3::shutdown);
     }
+  }
+
+  /**
+   * The variables of the Docker image configure an embedded service too, without imposing the defaults of the
+   * image on it: what the environment doesn't set keeps the default of the builder.
+   */
+  @Test
+  void fromEnvironmentAppliesOnlyTheVariablesThatAreSet() {
+    Map<String, String> variables = Map.of(LocalS3.LOCAL_S3_PORT, "29500");
+    LocalS3 localS3 = LocalS3.builder().fromEnvironment(variables::get).build();
+
+    assertEquals(29500, localS3.getPort());
+    assertEquals("127.0.0.1", localS3.getBindHost(), "An embedded service stays local by default.");
+    assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
+    assertNull(localS3.getDataPath());
+    assertFalse(localS3.isStrictBucketNames());
+    assertTrue(localS3.isDaemonThreads());
+  }
+
+  /**
+   * A data path is the initial data of an IN_MEMORY service, so setting it must not switch the mode, although
+   * {@code dataPath} on its own does.
+   */
+  @Test
+  void fromEnvironmentLetsTheModeWinOverTheDataPath() {
+    Map<String, String> variables = Map.of(
+        LocalS3.LOCAL_S3_DATA_PATH, "/var/lib/local-s3",
+        LocalS3.LOCAL_S3_MODE, "in_memory");
+    LocalS3 localS3 = LocalS3.builder().fromEnvironment(variables::get).build();
+
+    assertEquals(Path.of("/var/lib/local-s3"), localS3.getDataPath());
+    assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
+  }
+
+  @Test
+  void fromEnvironmentReadsTheBucketsAndTheVirtualHostDomains() {
+    Map<String, String> variables = Map.of(
+        LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES, "true",
+        LocalS3.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
+        LocalS3.AWS_BUCKETS, "a, b,",
+        LocalS3.AWS_ACCESS_KEY_ID, "access-key-id",
+        LocalS3.AWS_SECRET_ACCESS_KEY, "secret-access-key");
+    LocalS3 localS3 = LocalS3.builder().port(-1).fromEnvironment(variables::get).build();
+
+    assertTrue(localS3.isStrictBucketNames());
+    assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
+  }
+
+  @Test
+  void fromEnvironmentRejectsInvalidValues() {
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_PORT, "65536")::get));
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_PORT, "http")::get));
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_MODE, "CLOUD")::get));
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.AWS_ACCESS_KEY_ID, "access-key-id")::get),
+        "The access key ID and the secret access key are configured together.");
   }
 
   @Test

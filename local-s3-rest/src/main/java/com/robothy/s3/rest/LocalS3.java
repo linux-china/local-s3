@@ -42,12 +42,16 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.UnaryOperator;
 import javax.xml.stream.XMLInputFactory;
 
 import org.jspecify.annotations.NonNull;
@@ -79,6 +83,28 @@ public class LocalS3 implements AutoCloseable {
      * idle time of common S3 clients' connection pools, so clients usually close idle connections first.
      */
     public static final long DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS = 120;
+
+    /*
+     * The names of the variables that Builder.fromEnvironment() reads, which the Docker image is configured
+     * with. They are shared, so that a service embedded in an application or a test is configured like the
+     * image, with the same names and the same values.
+     */
+
+    public static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
+
+    public static final String LOCAL_S3_MODE = "LOCAL_S3_MODE";
+
+    public static final String LOCAL_S3_DATA_PATH = "LOCAL_S3_DATA_PATH";
+
+    public static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
+
+    public static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
+
+    public static final String AWS_BUCKETS = "AWS_BUCKETS";
+
+    public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
+
+    public static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
 
     /* Configuration, set by the builder. */
     private final String bindHost;
@@ -452,6 +478,15 @@ public class LocalS3 implements AutoCloseable {
      */
     public Path getDataPath() {
         return dataPath;
+    }
+
+    /**
+     * Get the mode that was set in {@linkplain Builder#mode(LocalS3Mode)}.
+     *
+     * @return the mode of the service.
+     */
+    public LocalS3Mode getMode() {
+        return mode;
     }
 
     /**
@@ -875,6 +910,84 @@ public class LocalS3 implements AutoCloseable {
             this.accessKeyId = accessKeyId;
             this.secretAccessKey = secretAccessKey;
             return this;
+        }
+
+        /**
+         * Configure the builder from the environment variables that the Docker image is configured with, read
+         * from the environment or, if a variable isn't set there, from the system property of the same name.
+         *
+         * <p>Only the variables that are set are applied, so the caller keeps its own defaults for everything
+         * else: a container applies its defaults, e.g. binding every interface, before calling this, while an
+         * embedded service or a test keeps the defaults of the builder. The variables are
+         * {@linkplain LocalS3#LOCAL_S3_PORT}, {@linkplain LocalS3#LOCAL_S3_MODE},
+         * {@linkplain LocalS3#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3#LOCAL_S3_STRICT_BUCKET_NAMES},
+         * {@linkplain LocalS3#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3#AWS_BUCKETS},
+         * {@linkplain LocalS3#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3#AWS_SECRET_ACCESS_KEY}.
+         *
+         * @return builder.
+         * @throws IllegalArgumentException if a variable has an invalid value.
+         */
+        public Builder fromEnvironment() {
+            return fromEnvironment(name -> Optional.ofNullable(System.getenv(name))
+                    .orElseGet(() -> System.getProperty(name)));
+        }
+
+        /**
+         * Configure the builder from the variables that {@code variables} resolves by name, e.g. the entries of
+         * a configuration file or of a map in a test. A variable that resolves to {@code null} or to a blank
+         * value is not applied.
+         *
+         * @param variables resolves the value of a variable by name.
+         * @return builder.
+         * @throws IllegalArgumentException if a variable has an invalid value.
+         */
+        public Builder fromEnvironment(@NonNull UnaryOperator<String> variables) {
+            // The data path is applied before the mode, because dataPath() switches to PERSISTENCE. An explicit
+            // mode must win over that, so that IN_MEMORY with a path of initial data stays IN_MEMORY.
+            variable(variables, LOCAL_S3_DATA_PATH).ifPresent(this::dataPath);
+            variable(variables, LOCAL_S3_MODE).ifPresent(modeName -> {
+                if (!LocalS3Mode.isLegalName(modeName)) {
+                    throw new IllegalArgumentException("\"" + modeName + "\" is not a valid " + LOCAL_S3_MODE
+                            + ". Valid values are " + Arrays.toString(LocalS3Mode.values()) + ".");
+                }
+                mode(LocalS3Mode.valueOf(modeName.toUpperCase(Locale.ROOT)));
+            });
+            variable(variables, LOCAL_S3_PORT).ifPresent(port -> port(parsePort(port)));
+            variable(variables, LOCAL_S3_STRICT_BUCKET_NAMES)
+                    .ifPresent(strict -> strictBucketNames(Boolean.parseBoolean(strict)));
+            variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
+                    .ifPresent(domains -> virtualHostDomains(domains.split(",")));
+            variable(variables, AWS_BUCKETS).ifPresent(names -> buckets(names.split(",")));
+
+            String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
+            String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);
+            if ((accessKeyId == null) != (secretAccessKey == null)) {
+                throw new IllegalArgumentException(AWS_ACCESS_KEY_ID + " and " + AWS_SECRET_ACCESS_KEY
+                        + " must be configured together.");
+            }
+            if (accessKeyId != null) {
+                credentials(accessKeyId, secretAccessKey);
+            }
+            return this;
+        }
+
+        private static Optional<String> variable(UnaryOperator<String> variables, String name) {
+            return Optional.ofNullable(variables.apply(name))
+                    .map(String::trim)
+                    .filter(value -> !value.isEmpty());
+        }
+
+        private static int parsePort(String port) {
+            try {
+                int value = Integer.parseInt(port);
+                if (value >= 1 && value <= 65535) {
+                    return value;
+                }
+            } catch (NumberFormatException e) {
+                // Rejected below.
+            }
+            throw new IllegalArgumentException("\"" + port + "\" is not a valid " + LOCAL_S3_PORT
+                    + "; use 1 to 65535.");
         }
 
         /**
