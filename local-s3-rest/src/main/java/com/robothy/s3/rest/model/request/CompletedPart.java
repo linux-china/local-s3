@@ -15,7 +15,7 @@ public class CompletedPart {
   @JacksonXmlProperty(localName = "ChecksumSHA1")
   private String checksumSHA1;
 
-  @JacksonXmlProperty(localName = "ChecksumSH1256")
+  @JacksonXmlProperty(localName = "ChecksumSHA256")
   private String checksumSHA256;
 
   @JacksonXmlProperty(localName = "ETag")
