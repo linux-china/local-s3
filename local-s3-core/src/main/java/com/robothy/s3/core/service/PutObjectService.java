@@ -13,8 +13,8 @@ import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 
-import java.security.DigestInputStream;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
@@ -51,18 +51,19 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
 
-    DigestInputStream content = S3ObjectUtils.md5DigestingStream(options.getContent());
+    MeasuredInputStream content = S3ObjectUtils.measuringStream(options.getContent());
     Long fileId = storage().put(content);
     try {
       VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
       versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
       versionedObjectMetadata.setContentType(options.getContentType());
-      versionedObjectMetadata.setSize(options.getSize());
+      // The length of the content that was stored, which the length declared by the request may not match.
+      versionedObjectMetadata.setSize(content.getSize());
       if (Objects.nonNull(options.getUserMetadata())) {
         versionedObjectMetadata.setUserMetadata(options.getUserMetadata());
       }
       versionedObjectMetadata.setFileId(fileId);
-      versionedObjectMetadata.setEtag(S3ObjectUtils.etag(content.getMessageDigest()));
+      versionedObjectMetadata.setEtag(content.etag());
       checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
       options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 

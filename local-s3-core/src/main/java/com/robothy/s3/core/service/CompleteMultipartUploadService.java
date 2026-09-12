@@ -15,10 +15,10 @@ import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
-import java.security.DigestInputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -55,12 +55,9 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
         .map(uploadPartMetadata -> storage().getInputStream(uploadPartMetadata.getFileId()))
         .collect(Collectors.toList());
 
-    long size = completeParts.stream().map(CompleteMultipartUploadPartOption::getPartNumber)
-        .map(uploadedParts::get).map(UploadPartMetadata::getSize).reduce(0L, Long::sum);
-
     Long fileId;
-    DigestInputStream content =
-        S3ObjectUtils.md5DigestingStream(new SequenceInputStream(Collections.enumeration(inputStreams)));
+    MeasuredInputStream content =
+        S3ObjectUtils.measuringStream(new SequenceInputStream(Collections.enumeration(inputStreams)));
     try (InputStream in = content) {
       fileId = storage().put(in);
     } catch (IOException e) {
@@ -71,9 +68,10 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
       versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
       versionedObjectMetadata.setContentType(uploadMetadata.getContentType());
-      versionedObjectMetadata.setSize(size);
+      // The length of the concatenated parts, which the lengths declared when they were uploaded may not match.
+      versionedObjectMetadata.setSize(content.getSize());
       versionedObjectMetadata.setFileId(fileId);
-      versionedObjectMetadata.setEtag(S3ObjectUtils.etag(content.getMessageDigest()));
+      versionedObjectMetadata.setEtag(content.etag());
       uploadMetadata.getTagging().ifPresent(versionedObjectMetadata::setTagging);
       if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
         versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());

@@ -3,17 +3,21 @@ package com.robothy.s3.core.service;
 import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.UploadNotExistException;
+import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
+import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
+import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -72,6 +76,38 @@ class UploadPartServiceTest extends LocalS3ServiceTestBase {
     try (InputStream stored = objectService.storage().getInputStream(fileId)) {
       assertEquals("second", new String(stored.readAllBytes(), StandardCharsets.UTF_8));
     }
+  }
+
+  /**
+   * The declared length of a part is not trusted either: it is summed into the length of the completed object.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void storesTheLengthOfThePartInsteadOfTheDeclaredOne(BucketService bucketService, ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = objectService.createMultipartUpload(bucket, key,
+        CreateMultipartUploadOptions.builder().contentType("plain/text").build());
+
+    objectService.uploadPart(bucket, key, uploadId, 1, UploadPartOptions.builder()
+        .contentLength(700) // Doesn't match the data.
+        .data(new ByteArrayInputStream("Robo".getBytes(StandardCharsets.UTF_8)))
+        .build());
+    objectService.uploadPart(bucket, key, uploadId, 2, UploadPartOptions.builder()
+        .contentLength(1) // Doesn't match the data.
+        .data(new ByteArrayInputStream("thy".getBytes(StandardCharsets.UTF_8)))
+        .build());
+
+    UploadMetadata uploadMetadata = uploadMetadata(objectService, bucket, key, uploadId);
+    assertEquals(4, uploadMetadata.getParts().get(1).getSize());
+    assertEquals(3, uploadMetadata.getParts().get(2).getSize());
+
+    CompleteMultipartUploadAns completed = objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
+        CompleteMultipartUploadPartOption.builder().partNumber(1).build(),
+        CompleteMultipartUploadPartOption.builder().partNumber(2).build()));
+    assertEquals(7, completed.getSize());
+    assertEquals(7, objectService.getObject(bucket, key, GetObjectOptions.builder().build()).getSize());
   }
 
   private static UploadPartOptions part(String text) {

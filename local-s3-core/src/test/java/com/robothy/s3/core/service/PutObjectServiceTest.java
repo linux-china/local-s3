@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -61,6 +62,49 @@ class PutObjectServiceTest extends LocalS3ServiceTestBase {
       content.release();
       executor.shutdownNow();
     }
+  }
+
+  /**
+   * A client whose declared length doesn't match its body, e.g. a wrong {@code x-amz-decoded-content-length},
+   * must not leave a size in the metadata that the responses and range requests are then computed from.
+   */
+  @MethodSource("localS3Managers")
+  @ParameterizedTest
+  void storesTheLengthOfTheContentInsteadOfTheDeclaredOne(LocalS3Manager manager) throws Exception {
+    ObjectService objectService = manager.objectService();
+    String bucketName = "my-bucket";
+    manager.bucketService().createBucket(bucketName);
+    String text = "Robothy";
+
+    PutObjectAns tooLarge = objectService.putObject(bucketName, "declares-too-much", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)))
+        .contentType("plain/text")
+        .size(700)
+        .build());
+    assertEquals(text.length(), tooLarge.getSize());
+
+    GetObjectAns object = objectService.getObject(bucketName, "declares-too-much", GetObjectOptions.builder().build());
+    assertEquals(text.length(), object.getSize());
+    try (InputStream content = object.getContent()) {
+      assertEquals(text, new String(content.readAllBytes(), StandardCharsets.UTF_8));
+    }
+
+    PutObjectAns tooSmall = objectService.putObject(bucketName, "declares-too-little", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)))
+        .contentType("plain/text")
+        .size(2)
+        .build());
+    assertEquals(text.length(), tooSmall.getSize());
+    assertEquals(text.length(), objectService.getObject(bucketName, "declares-too-little",
+        GetObjectOptions.builder().build()).getSize());
+
+    // A request that declares no length at all is measured too.
+    objectService.putObject(bucketName, "declares-nothing", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)))
+        .contentType("plain/text")
+        .build());
+    assertEquals(text.length(), objectService.getObject(bucketName, "declares-nothing",
+        GetObjectOptions.builder().build()).getSize());
   }
 
   private static void putText(ObjectService objectService, String bucketName, String key, String text) {

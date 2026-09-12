@@ -11,7 +11,7 @@ import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.util.S3ObjectUtils;
-import java.security.DigestInputStream;
+import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.util.Objects;
 
 /**
@@ -36,14 +36,15 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     // Reject a missing upload before storing the data; commitUploadPart checks it again under the lock.
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
-    DigestInputStream data = S3ObjectUtils.md5DigestingStream(options.getData());
+    MeasuredInputStream data = S3ObjectUtils.measuringStream(options.getData());
     Long fileId = storage().put(data);
     try {
       UploadPartMetadata uploadPartMetadata = UploadPartMetadata.builder()
           .fileId(fileId)
           .lastModified(System.currentTimeMillis())
-          .size(options.getContentLength())
-          .etag(options.getETag().orElseGet(() -> S3ObjectUtils.etag(data.getMessageDigest())))
+          // The length of the data that was stored, which the length declared by the request may not match.
+          .size(data.getSize())
+          .etag(options.getETag().orElseGet(data::etag))
           .build();
       return commitUploadPart(bucket, key, uploadId, partNumber, uploadPartMetadata);
     } catch (Throwable e) {

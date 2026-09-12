@@ -45,7 +45,7 @@ class GetObjectServiceTest extends LocalS3ServiceTestBase {
     // Put first version of key1
     objectService.putObject(bucketName, key1, PutObjectOptions.builder()
         .contentType("plain/text")
-        .size(6)
+        .size(5)
         .content(new ByteArrayInputStream("Hello".getBytes()))
         .build());
     LocalS3Metadata localS3Metadata = bucketService.localS3Metadata();
@@ -100,7 +100,7 @@ class GetObjectServiceTest extends LocalS3ServiceTestBase {
     PutObjectAns putObjectAns = objectService.putObject(bucketName, key1, PutObjectOptions.builder()
         .contentType("application/json")
         .content(new ByteArrayInputStream("Hello".getBytes()))
-        .size(6)
+        .size(5)
         .build());
 
     // Get third version of key1 with version ID.
@@ -122,15 +122,15 @@ class GetObjectServiceTest extends LocalS3ServiceTestBase {
         .versionId(putObjectAns.getVersionId())
         .range(Range.of(1, 99))
         .build());
-    assertEquals(5, rangeGetAns.getSize());
-    assertEquals("bytes 1-5/6", rangeGetAns.getContentRange());
+    assertEquals(4, rangeGetAns.getSize());
+    assertEquals("bytes 1-4/5", rangeGetAns.getContentRange());
 
     GetObjectAns rangeHeadAns = objectService.headObject(bucketName, key1, GetObjectOptions.builder()
         .versionId(putObjectAns.getVersionId())
         .range(Range.last(2))
         .build());
     assertEquals(2, rangeHeadAns.getSize());
-    assertEquals("bytes 4-5/6", rangeHeadAns.getContentRange());
+    assertEquals("bytes 3-4/5", rangeHeadAns.getContentRange());
     assertNull(rangeHeadAns.getContent());
 
     /*-- Disable bucket versioning --*/
