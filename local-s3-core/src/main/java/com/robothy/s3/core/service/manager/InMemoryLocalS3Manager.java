@@ -14,10 +14,10 @@ import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -107,20 +107,79 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
     return FileSystemS3MetadataLoader.create().load(initialDataDirectory);
   }
 
+  /**
+   * Drop the initial data cached for every data path, releasing the heap it holds.
+   */
+  static void clearInitialDataCache() {
+    cache.clear();
+  }
+
+  /**
+   * The number of data paths whose initial data is cached. For tests.
+   */
+  static int initialDataCacheSize() {
+    return cache.size();
+  }
+
   static class InitialDataCache {
 
-    private final Map<String, CacheValue> cache = new ConcurrentHashMap<>();
+    /**
+     * The number of data paths whose initial data is kept. The cache holds the loaded metadata of a path and
+     * a copy of every object read from it, which would otherwise grow for the whole life of the JVM, e.g.
+     * over a large test suite. What a dropped path holds is loaded again when it is used next.
+     */
+    static final int DEFAULT_MAX_ENTRIES = 1024;
+
+    private final Map<String, CacheValue> cache;
+
+    InitialDataCache() {
+      this(DEFAULT_MAX_ENTRIES);
+    }
+
+    InitialDataCache(int maxEntries) {
+      if (maxEntries <= 0) {
+        throw new IllegalArgumentException("maxEntries must be positive.");
+      }
+
+      // Ordered by access, so that the least recently used data path is dropped first.
+      this.cache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, CacheValue> eldest) {
+          return size() > maxEntries;
+        }
+      };
+    }
 
     /**
      * Get the cached value of {@code key}, loading it if absent. Concurrent callers with the same key
-     * load the value only once and share it.
+     * load the value only once and share it; a value is loaded while the cache is locked, so that two
+     * callers never load the same data path at once.
      *
      * @param key the cache key.
      * @param loader loads the value of an absent key.
      * @return the cached value.
      */
-    public CacheValue computeIfAbsent(String key, Function<String, CacheValue> loader) {
-      return cache.computeIfAbsent(key, loader);
+    public synchronized CacheValue computeIfAbsent(String key, Function<String, CacheValue> loader) {
+      CacheValue value = cache.get(key);
+      if (value == null) {
+        value = loader.apply(key);
+        cache.put(key, value);
+      }
+      return value;
+    }
+
+    /**
+     * Drop the cached data of every path, releasing the heap it holds.
+     */
+    public synchronized void clear() {
+      cache.clear();
+    }
+
+    /**
+     * The number of data paths currently cached.
+     */
+    synchronized int size() {
+      return cache.size();
     }
 
     static class CacheValue {

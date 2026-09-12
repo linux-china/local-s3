@@ -176,6 +176,16 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Drop the initial data that the {@code IN_MEMORY} services cached, releasing the heap it holds. The
+     * cache keeps the data of a bounded number of data paths; call this to release them earlier, e.g. when
+     * a test class that used a data path has finished. The data of a dropped path is loaded again when a
+     * service starts with it, so this only costs the loading.
+     */
+    public static void clearInitialDataCache() {
+        LocalS3Manager.clearInitialDataCache();
+    }
+
+    /**
      * Startup the local-s3 service.
      *
      * <p>If the service fails to start, the resources created so far are released and the original

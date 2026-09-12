@@ -70,6 +70,10 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
 
     String key = context.getRequiredTestClass() + AMAZON_S3_REGION_STORE_SUFFIX;
     context.getStore(ExtensionContext.Namespace.GLOBAL).remove(key);
+
+    // Release the initial data that the tests of this class cached, so that a large suite doesn't keep the
+    // data of every data path it ran with on the heap.
+    com.robothy.s3.rest.LocalS3.clearInitialDataCache();
   }
 
   @SneakyThrows

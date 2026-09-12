@@ -28,6 +28,16 @@ public interface LocalS3Manager {
   }
 
   /**
+   * Drop the initial data that the {@linkplain #createInMemoryS3Manager(Path, boolean) in-memory managers}
+   * cached, releasing the heap it holds. The cache keeps the data of a bounded number of data paths; call
+   * this to release them earlier, e.g. when a test class that used a data path has finished. The data of a
+   * dropped path is loaded again when a manager is created for it, so this only costs the loading.
+   */
+  static void clearInitialDataCache() {
+    InMemoryLocalS3Manager.clearInitialDataCache();
+  }
+
+  /**
    * Create a file system implementation of {@linkplain LocalS3Manager}.
    *
    * @return an instance of file system implementation.
