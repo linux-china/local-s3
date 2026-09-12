@@ -182,8 +182,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    */
   private boolean startRequest(ChannelHandlerContext ctx, io.netty.handler.codec.http.HttpRequest request,
                                long contentLength) throws IOException {
+    // A request may repeat a header. AWS Signature Version 4 signs such a header with its values joined by
+    // commas, in the order they were received, so keeping only the last one makes the signature of a request
+    // with a repeated signed header mismatch. Each value is trimmed, like the canonical headers of SigV4.
     Map<CharSequence, String> headers = new HashMap<>();
-    request.headers().forEach(header -> headers.put(header.getKey().toLowerCase(Locale.ROOT), header.getValue()));
+    request.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
+        header.getValue().trim(), (values, value) -> values + "," + value));
     QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
 
     builder = HttpRequest.builder()
