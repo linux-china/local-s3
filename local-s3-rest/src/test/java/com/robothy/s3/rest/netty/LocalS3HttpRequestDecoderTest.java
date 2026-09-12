@@ -126,6 +126,29 @@ class LocalS3HttpRequestDecoderTest {
     rejecting.finishAndReleaseAll();
   }
 
+  /**
+   * AWS Signature Version 4 signs a repeated header with its values joined by commas, in the order they were
+   * received, so keeping only the last value makes the signature of such a request mismatch.
+   */
+  @Test
+  void joinsTheValuesOfARepeatedHeader() {
+    DefaultHttpRequest request = request(0);
+    // Netty rejects a header value with leading or trailing whitespace, so the values are given as they arrive.
+    request.headers().add("X-Amz-Meta-Tag", "first");
+    request.headers().add("x-amz-meta-tag", "second");
+    request.headers().add("content-type", "text/plain");
+    channel.writeInbound(request, last(new byte[0], 0, 0));
+
+    HttpRequest decoded = channel.readInbound();
+    try {
+      assertEquals("first,second", decoded.getHeaders().get("x-amz-meta-tag"),
+          "The values of a repeated header are joined, whatever case its name is written in.");
+      assertEquals("text/plain", decoded.getHeaders().get("content-type"));
+    } finally {
+      decoded.getBody().release();
+    }
+  }
+
   private ByteBuf readBody() {
     HttpRequest request = channel.readInbound();
     return request.getBody();

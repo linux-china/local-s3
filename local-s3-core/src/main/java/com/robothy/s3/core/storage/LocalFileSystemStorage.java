@@ -2,13 +2,14 @@ package com.robothy.s3.core.storage;
 
 import com.robothy.s3.core.util.PathUtils;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.UUID;
-import lombok.SneakyThrows;
 
 /**
  * An implementation of {@linkplain Storage} based on a local directory.
@@ -43,24 +44,29 @@ class LocalFileSystemStorage implements Storage {
   }
 
   @Override
-  @SneakyThrows
   public Long put(Long id, InputStream data) {
     Path temp = directory.resolve("." + id + "." + UUID.randomUUID() + TEMP_FILE_SUFFIX);
     try (InputStream in = data) {
       Files.copy(in, temp);
       PathUtils.moveAtomically(temp, objectPath(id));
-    } catch (Exception e) {
-      Files.deleteIfExists(temp);
+    } catch (IOException e) {
+      deleteQuietly(temp, e);
+      throw new UncheckedIOException("Failed to store object " + id + ".", e);
+    } catch (RuntimeException e) {
+      deleteQuietly(temp, e);
       throw e;
     }
     return id;
   }
 
   @Override
-  @SneakyThrows
   public byte[] getBytes(Long id) {
     ensureExists(id);
-    return Files.readAllBytes(objectPath(id));
+    try {
+      return Files.readAllBytes(objectPath(id));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read object " + id + ".", e);
+    }
   }
 
   /**
@@ -69,17 +75,23 @@ class LocalFileSystemStorage implements Storage {
    * refuses to replace or delete an open file, those operations are repeated while this stream is open.
    */
   @Override
-  @SneakyThrows
   public InputStream getInputStream(Long id) {
     ensureExists(id);
-    return Files.newInputStream(objectPath(id));
+    try {
+      return Files.newInputStream(objectPath(id));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to open object " + id + ".", e);
+    }
   }
 
   @Override
-  @SneakyThrows
   public Long delete(Long id) {
     ensureExists(id);
-    PathUtils.delete(objectPath(id));
+    try {
+      PathUtils.delete(objectPath(id));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to delete object " + id + ".", e);
+    }
     return id;
   }
 
@@ -101,12 +113,25 @@ class LocalFileSystemStorage implements Storage {
   /**
    * Delete the temporary files left behind by a process that died while writing objects.
    */
-  @SneakyThrows
   private void deleteTempFiles() {
     try (DirectoryStream<Path> tempFiles = Files.newDirectoryStream(directory, ".*" + TEMP_FILE_SUFFIX)) {
       for (Path tempFile : tempFiles) {
         Files.deleteIfExists(tempFile);
       }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to delete the temporary files in " + directory + ".", e);
+    }
+  }
+
+  /**
+   * Delete the temporary file that a failed write left behind. A failure to delete it is reported with the
+   * failure of the write, rather than in place of it.
+   */
+  private static void deleteQuietly(Path file, Throwable cause) {
+    try {
+      Files.deleteIfExists(file);
+    } catch (IOException e) {
+      cause.addSuppressed(e);
     }
   }
 

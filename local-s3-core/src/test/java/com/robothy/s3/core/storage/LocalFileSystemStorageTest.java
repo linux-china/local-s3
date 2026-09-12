@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -72,7 +73,9 @@ class LocalFileSystemStorageTest {
         return 'x';
       }
     };
-    assertThrows(IOException.class, () -> storage.put(id, broken));
+    // The failure reaches the caller as an UncheckedIOException that carries the IOException of the write.
+    UncheckedIOException thrown = assertThrows(UncheckedIOException.class, () -> storage.put(id, broken));
+    assertEquals("Connection reset.", thrown.getCause().getMessage());
 
     assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
     assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());

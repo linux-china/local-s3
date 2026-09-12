@@ -2,12 +2,13 @@ package com.robothy.s3.core.storage;
 
 import com.robothy.s3.core.exception.TotalSizeExceedException;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.SneakyThrows;
 
 /**
  * {@linkplain Storage} implementation based on Java Heap.
@@ -43,10 +44,13 @@ class InMemoryStorage implements Storage {
   }
 
   @Override
-  @SneakyThrows
   public Long put(Long id, InputStream data) {
-    // The array returned by readAllBytes() isn't referenced by anyone else.
-    return putData(id, data.readAllBytes());
+    try {
+      // The array returned by readAllBytes() isn't referenced by anyone else.
+      return putData(id, data.readAllBytes());
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to store object " + id + ".", e);
+    }
   }
 
   private Long putData(Long id, byte[] data) {

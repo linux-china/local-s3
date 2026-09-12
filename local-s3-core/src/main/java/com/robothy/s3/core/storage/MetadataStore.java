@@ -5,6 +5,9 @@ import java.util.List;
 /**
  * Metadata store abstraction.
  *
+ * <p>A failure to read or write metadata is reported with an {@linkplain java.io.UncheckedIOException},
+ * whose cause is the {@linkplain java.io.IOException} of the file system.
+ *
  * @param <T> the metadata type.
  */
 public interface MetadataStore<T> {

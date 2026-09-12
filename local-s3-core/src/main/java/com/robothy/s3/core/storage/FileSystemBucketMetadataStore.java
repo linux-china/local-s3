@@ -5,13 +5,14 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.util.JsonUtils;
 import com.robothy.s3.core.util.PathUtils;
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -54,7 +55,6 @@ public class FileSystemBucketMetadataStore implements MetadataStore<BucketMetada
     }
   }
 
-  @SneakyThrows
   @Override
   public BucketMetadata fetch(String bucketName) {
     log.debug("Fetching metadata of bucket {}.", bucketName);
@@ -84,7 +84,6 @@ public class FileSystemBucketMetadataStore implements MetadataStore<BucketMetada
   }
 
   @Override
-  @SneakyThrows
   public List<BucketMetadata> fetchAll() {
     try (Stream<Path> pathStream = Files.walk(dataPath, 1)) {
       return pathStream
@@ -93,6 +92,8 @@ public class FileSystemBucketMetadataStore implements MetadataStore<BucketMetada
           .map(fileName -> fileName.substring(0, fileName.lastIndexOf(BUCKET_METADATA_FILE_SUFFIX)))
           .map(this::fetch)
           .collect(Collectors.toList());
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read the bucket metadata in " + dataPath + ".", e);
     }
   }
 }

@@ -1,10 +1,13 @@
 package com.robothy.s3.core.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -38,6 +41,22 @@ class JsonUtilsTest {
 
     assertEquals(Map.of("k", "v1"), JsonUtils.fromJson(file, Map.class));
     assertEquals(List.of("a.json"), fileNames());
+  }
+
+  /**
+   * A failure to read is reported as an {@linkplain UncheckedIOException} instead of being thrown as a
+   * checked exception that the signature doesn't declare.
+   */
+  @Test
+  void reportsAFailureToReadAsAnUncheckedIoException() {
+    File missing = directory.resolve("missing.json").toFile();
+    UncheckedIOException thrown =
+        assertThrows(UncheckedIOException.class, () -> JsonUtils.fromJson(missing, Map.class));
+    assertInstanceOf(FileNotFoundException.class, thrown.getCause());
+
+    assertThrows(UncheckedIOException.class, () -> JsonUtils.fromJson("{not json", Map.class));
+    assertThrows(UncheckedIOException.class,
+        () -> JsonUtils.deleteTempFiles(directory.resolve("missing-directory")));
   }
 
   @Test

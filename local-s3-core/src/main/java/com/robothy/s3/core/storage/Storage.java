@@ -6,6 +6,11 @@ import java.nio.file.Path;
 
 /**
  * Key-Value based storage abstraction.
+ *
+ * <p>An object that doesn't exist is reported with an {@linkplain IllegalArgumentException}. Every other
+ * failure to read or write an object is reported with an {@linkplain java.io.UncheckedIOException}, whose
+ * cause is the {@linkplain java.io.IOException} of the file system, so that a caller can tell a failing
+ * storage from a request that asks for something that isn't there.
  */
 public interface Storage {
 
