@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.storage.FileSystemBucketMetadataStore;
@@ -75,6 +76,23 @@ class FileSystemBucketMetadataStoreTest {
     bucketStore.store(bucketMetadata.getBucketName(), bucketMetadata);
 
     assertEquals(2, bucketStore.fetchAll().size());
+    FileUtils.deleteDirectory(tempDirectory.toFile());
+  }
+
+  @Test
+  @SneakyThrows
+  void rejectsBucketNamesThatEscapeTheDataPath() {
+    Path tempDirectory = Files.createTempDirectory("bucket-meta");
+    MetadataStore<BucketMetadata> store = FileSystemBucketMetadataStore.create(tempDirectory.resolve("data"));
+    BucketMetadata escaping = new BucketMetadata();
+    escaping.setBucketName("../escaped");
+
+    assertThrows(InvalidBucketNameException.class, () -> store.store(escaping.getBucketName(), escaping));
+    assertThrows(InvalidBucketNameException.class, () -> store.fetch("../escaped"));
+    assertThrows(InvalidBucketNameException.class, () -> store.exists("../escaped"));
+    assertThrows(InvalidBucketNameException.class, () -> store.delete("../escaped"));
+    assertFalse(Files.exists(tempDirectory.resolve("escaped.bucket.meta")));
+
     FileUtils.deleteDirectory(tempDirectory.toFile());
   }
 

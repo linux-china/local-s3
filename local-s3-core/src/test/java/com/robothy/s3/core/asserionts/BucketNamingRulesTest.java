@@ -46,6 +46,24 @@ class BucketNamingRulesTest {
     assertTrue(e.getMessage().contains(bucketName), e.getMessage());
   }
 
+  /**
+   * A bucket name becomes a file name in the data path, so it must not reach out of it, whether or not
+   * strict validation is enabled.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"../escaped", "../../tmp/x", "..\\escaped", "a/b", "/etc/passwd", ".", ".."})
+  void rejectsNamesThatEscapeTheDataDirectory(String bucketName) {
+    assertThrows(InvalidBucketNameException.class, () -> BucketAssertions.assertBucketNameIsValid(bucketName));
+    assertThrows(InvalidBucketNameException.class, () -> BucketAssertions.assertBucketNameFollowsNamingRules(bucketName));
+  }
+
+  @Test
+  void rejectsNamesWithControlCharacters() {
+    assertThrows(InvalidBucketNameException.class, () -> BucketAssertions.assertBucketNameIsValid("bucket" + '\0'));
+    assertThrows(InvalidBucketNameException.class, () -> BucketAssertions.assertBucketNameIsValid("buc\nket"));
+    assertThrows(InvalidBucketNameException.class, () -> BucketAssertions.assertBucketNameIsValid("bucket" + ''));
+  }
+
   @Test
   void rejectsTooLongAndBlankNames() {
     String tooLong = "a".repeat(64);

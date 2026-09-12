@@ -25,6 +25,26 @@ public class PathUtils {
     }
   }
 
+  /**
+   * Resolve the file named {@code fileName} in {@code directory}, ensuring that it is a direct child of
+   * {@code directory}. Stores that build file names from client supplied names, e.g. bucket names, resolve
+   * them with this method, so that a name holding a path separator or a traversal segment cannot reach a
+   * file outside {@code directory}.
+   *
+   * @param directory the directory that holds the file.
+   * @param fileName the name of the file in {@code directory}.
+   * @return the resolved file.
+   * @throws IllegalArgumentException if {@code fileName} doesn't resolve to a file of {@code directory}.
+   */
+  public static Path resolveChild(Path directory, String fileName) {
+    Path parent = directory.toAbsolutePath().normalize();
+    Path resolved = parent.resolve(fileName).normalize();
+    if (!parent.equals(resolved.getParent())) {
+      throw new IllegalArgumentException("'" + fileName + "' is not a file of the directory " + parent + ".");
+    }
+    return resolved;
+  }
+
   public static void createDirectoryIfNotExit(Path path) {
     File directory = path.toFile();
     if (!directory.exists() || !directory.isDirectory()) {

@@ -22,16 +22,36 @@ import org.apache.commons.lang3.StringUtils;
 public class BucketAssertions {
 
   /**
-   * A valid bucket name shouldn't be blank.
+   * A valid bucket name shouldn't be blank, and must name a file in a single directory: the file system
+   * stores of the PERSISTENCE mode build metadata file names from the bucket name, so a name holding a
+   * path separator or a traversal segment would read, write or delete files outside the data directory.
+   * Names that break these rules are rejected in both strict and lenient mode.
    *
    * @param bucketName bucket name to validate.
    * @return valid bucket name.
    */
   public static String assertBucketNameIsValid(String bucketName) {
-    if (StringUtils.isBlank(bucketName)) {
+    if (StringUtils.isBlank(bucketName) || escapesDataDirectory(bucketName)) {
       throw new InvalidBucketNameException(bucketName);
     }
     return bucketName;
+  }
+
+  /**
+   * Whether a file named after the bucket could land outside the directory it is resolved against.
+   * Control characters are rejected as well; a NUL truncates the path that native code sees.
+   */
+  private static boolean escapesDataDirectory(String bucketName) {
+    if (".".equals(bucketName) || "..".equals(bucketName)) {
+      return true;
+    }
+    for (int i = 0; i < bucketName.length(); i++) {
+      char c = bucketName.charAt(i);
+      if (c == '/' || c == '\\' || c < ' ' || c == '') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final Pattern BUCKET_NAME_CHARACTERS = Pattern.compile("[a-z0-9][a-z0-9.-]*[a-z0-9]");

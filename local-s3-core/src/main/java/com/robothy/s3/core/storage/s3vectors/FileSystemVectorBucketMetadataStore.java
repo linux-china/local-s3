@@ -1,8 +1,10 @@
 package com.robothy.s3.core.storage.s3vectors;
 
+import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.util.JsonUtils;
+import com.robothy.s3.core.util.PathUtils;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,19 +51,32 @@ public class FileSystemVectorBucketMetadataStore implements MetadataStore<Vector
     this.dataPath = path;
   }
 
+  /**
+   * Resolve the metadata file of a vector bucket, which is always a file of {@linkplain #dataPath}.
+   *
+   * @param vectorBucketName the vector bucket name.
+   * @return the metadata file of the vector bucket.
+   * @throws InvalidBucketNameException if the name resolves to a file outside {@linkplain #dataPath}.
+   */
+  private File metadataFile(String vectorBucketName) {
+    try {
+      return PathUtils.resolveChild(dataPath, vectorBucketName + VECTOR_BUCKET_METADATA_FILE_SUFFIX).toFile();
+    } catch (IllegalArgumentException e) {
+      // A vector bucket name that traverses out of the data path is invalid, like a blank one.
+      throw new InvalidBucketNameException(vectorBucketName);
+    }
+  }
+
   @SneakyThrows
   @Override
   public VectorBucketMetadata fetch(String vectorBucketName) {
     log.debug("Fetching metadata of vector bucket {}.", vectorBucketName);
-    return JsonUtils.fromJson(
-        new File(dataPath.toFile(), vectorBucketName + VECTOR_BUCKET_METADATA_FILE_SUFFIX), 
-        VectorBucketMetadata.class
-    );
+    return JsonUtils.fromJson(metadataFile(vectorBucketName), VectorBucketMetadata.class);
   }
 
   @Override
   public boolean exists(String vectorBucketName) {
-    return new File(dataPath.toFile(), vectorBucketName + VECTOR_BUCKET_METADATA_FILE_SUFFIX).isFile();
+    return metadataFile(vectorBucketName).isFile();
   }
 
   @Override
@@ -70,17 +85,13 @@ public class FileSystemVectorBucketMetadataStore implements MetadataStore<Vector
       throw new IllegalArgumentException("Invalid vector bucket name '" + vectorBucketMetadata.getVectorBucketName() + "'.");
     }
 
-    JsonUtils.toJson(
-        new File(dataPath.toFile(), vectorBucketMetadata.getVectorBucketName() + VECTOR_BUCKET_METADATA_FILE_SUFFIX), 
-        vectorBucketMetadata
-    );
+    JsonUtils.toJson(metadataFile(vectorBucketMetadata.getVectorBucketName()), vectorBucketMetadata);
     return vectorBucketMetadata.getVectorBucketName();
   }
 
   @Override
   public void delete(String vectorBucketName) {
-    File metadataFile = new File(dataPath.toFile(), vectorBucketName + VECTOR_BUCKET_METADATA_FILE_SUFFIX);
-    if (!metadataFile.delete()) {
+    if (!metadataFile(vectorBucketName).delete()) {
       throw new IllegalStateException("Failed to delete metadata of vector bucket " + vectorBucketName);
     }
   }

@@ -13,13 +13,17 @@ import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import java.io.ByteArrayOutputStream;
 import java.net.BindException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
@@ -325,6 +329,50 @@ class LocalS3Test {
     HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
     return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/" + bucketName))
         .PUT(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  @Test
+  void rejectsBucketNamesFromTheHostHeaderThatEscapeTheDataPath() throws Exception {
+    Path directory = Files.createTempDirectory("local-s3");
+    Path dataPath = directory.resolve("data");
+    LocalS3 localS3 = LocalS3.builder().port(-1).dataPath(dataPath.toString()).build();
+    localS3.start();
+    try {
+      // A virtual-hosted-style CreateBucket whose bucket name traverses out of the data path.
+      String response = sendRawRequest(localS3.getPort(), "PUT / HTTP/1.1\r\n"
+          + "Host: ../escaped.localhost:" + localS3.getPort() + "\r\n"
+          + "Content-Length: 0\r\n"
+          + "Connection: close\r\n\r\n");
+      assertTrue(response.contains("400"), response);
+      assertTrue(response.contains("<Code>InvalidBucketName</Code>"), response);
+      assertFalse(Files.exists(directory.resolve("escaped.bucket.meta")));
+    } finally {
+      localS3.shutdown();
+      FileUtils.deleteDirectory(directory.toFile());
+    }
+  }
+
+  /**
+   * Send a raw request, which can carry a {@code Host} header that {@linkplain HttpClient} refuses to set.
+   */
+  private static String sendRawRequest(int port, String request) throws Exception {
+    try (Socket socket = new Socket("127.0.0.1", port)) {
+      socket.setSoTimeout(10_000);
+      socket.getOutputStream().write(request.getBytes(StandardCharsets.UTF_8));
+      socket.getOutputStream().flush();
+
+      ByteArrayOutputStream received = new ByteArrayOutputStream();
+      byte[] buffer = new byte[1024];
+      try {
+        int read;
+        while ((read = socket.getInputStream().read(buffer)) != -1) {
+          received.write(buffer, 0, read);
+        }
+      } catch (SocketTimeoutException e) {
+        // The server kept the connection open; what arrived so far is the response.
+      }
+      return received.toString(StandardCharsets.UTF_8);
+    }
   }
 
   @Test
