@@ -96,7 +96,31 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 
 + Support S3 object versioning.
 + Support S3 Vectors for vector storage and similarity search.
++ Support conditional requests and conditional writes (see below).
 + In memory and persistence mode.
+
+### Conditional requests
+
+`GetObject` and `HeadObject` evaluate the `If-Match`, `If-None-Match`, `If-Modified-Since` and
+`If-Unmodified-Since` headers, in the order that
+[RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.2.2) defines: a read of an object that the
+client already holds answers `304 Not Modified`, and one whose `If-Match` or `If-Unmodified-Since` doesn't
+hold answers `412 Precondition Failed`.
+
+`PutObject` evaluates the two entity tag headers as a
+[conditional write](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-requests.html), the
+way Amazon S3 does:
+
++ `If-None-Match: *` stores the object only if the key holds none, otherwise `412 Precondition Failed`;
++ `If-Match: "<etag>"` stores it only if the key holds the object with that entity tag, otherwise
+  `412 Precondition Failed`, or `404 NoSuchKey` if the key holds no object at all.
+
+The condition is evaluated under the write lock of the bucket that the object is stored under, so a put is
+atomic: of the requests that race for a key, exactly one wins. Code that builds a lock or an optimistic
+update on that, e.g. the S3 commit protocols of Delta Lake and Iceberg, is exercised rather than silently
+losing its protection.
+
+`CopyObject`, `CompleteMultipartUpload` and `DeleteObject` don't evaluate conditions yet.
 
 ## Usages
 
