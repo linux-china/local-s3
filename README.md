@@ -172,6 +172,7 @@ Developers could integrate LocalS3 into their own Java applications or testing f
 <dependency>
     <groupId>io.github.robothy</groupId>
     <artifactId>local-s3-rest</artifactId>
+    <version>last_version</version>
 </dependency>
 ```
 #### Run LocalS3 in In-Memory mode
