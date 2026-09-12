@@ -85,6 +85,28 @@ public class LocalS3 implements AutoCloseable {
      */
     public static final long DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS = 120;
 
+    /**
+     * Default number of threads that accept connections. One thread accepts as fast as a single listening
+     * socket delivers, so this doesn't scale with the machine.
+     */
+    public static final int DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM = 1;
+
+    /**
+     * Default number of threads that read and write the connections: half the processors, and at least 2.
+     * A connection is bound to one of them, and the body of a response is read from the storage on it, so a
+     * machine with more processors serves more connections at once.
+     */
+    public static final int DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM =
+            Math.max(2, Runtime.getRuntime().availableProcessors() / 2);
+
+    /**
+     * Default number of threads that handle the requests: as many as the machine has processors, and at
+     * least 4. A connection is bound to one of them, so this is the number of connections whose requests are
+     * handled at the same time.
+     */
+    public static final int DEFAULT_S3_EXECUTOR_THREAD_NUM =
+            Math.max(4, Runtime.getRuntime().availableProcessors());
+
     /*
      * The names of the variables that Builder.fromEnvironment() reads, which the Docker image is configured
      * with. They are shared, so that a service embedded in an application or a test is configured like the
@@ -552,6 +574,33 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Get the number of threads that accept connections.
+     *
+     * @return netty parent event group thread number.
+     */
+    public int getNettyParentEventGroupThreadNum() {
+        return nettyParentEventGroupThreadNum;
+    }
+
+    /**
+     * Get the number of threads that read and write the connections.
+     *
+     * @return netty child event group thread number.
+     */
+    public int getNettyChildEventGroupThreadNum() {
+        return nettyChildEventGroupThreadNum;
+    }
+
+    /**
+     * Get the number of threads that handle the requests; a connection is bound to one of them.
+     *
+     * @return local-s3 executor thread number.
+     */
+    public int getS3ExecutorThreadNum() {
+        return s3ExecutorThreadNum;
+    }
+
+    /**
      * Get the configured base domains of virtual-hosted-style requests, besides the default ones.
      *
      * @return the configured virtual-host domains.
@@ -595,11 +644,11 @@ public class LocalS3 implements AutoCloseable {
 
         private boolean daemonThreads = true;
 
-        private int nettyParentEventGroupThreadNum = 1;
+        private int nettyParentEventGroupThreadNum = DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM;
 
-        private int nettyChildEventGroupThreadNum = 2;
+        private int nettyChildEventGroupThreadNum = DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM;
 
-        private int s3ExecutorThreadNum = 4;
+        private int s3ExecutorThreadNum = DEFAULT_S3_EXECUTOR_THREAD_NUM;
 
         private String accessKeyId;
 
@@ -784,8 +833,8 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set netty parent event group thread number.
-         * Default values is 1.
+         * Set the number of threads that accept connections. Default value is
+         * {@linkplain LocalS3#DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM}.
          *
          * @param nettyParentEventGroupThreadNum netty parent event group thread number.
          * @return builder.
@@ -796,8 +845,12 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set netty child event group thread number.
-         * Default value is 2.
+         * Set the number of threads that read and write the connections. Netty binds a connection to one
+         * thread of this group for its whole life, and the HTTP parsing of every connection bound to a thread
+         * waits while that thread works. The body of a {@code GetObject} response is read from the storage on
+         * this thread as it is written to the connection, so serving a large object holds it for a while;
+         * raise this value to serve more connections at once. Default value is
+         * {@linkplain LocalS3#DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM}.
          *
          * @param nettyChildEventGroupThreadNum netty child event group thread number.
          * @return builder.
@@ -808,8 +861,15 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
-         * Set local-s3 executor thread number.
-         * Default value is 4.
+         * Set the number of threads that handle the requests, where the S3 operations and their storage I/O
+         * run.
+         *
+         * <p>Netty binds a connection to one thread of this group for its whole life, rather than handing
+         * each request to a free thread, so this is the number of connections whose requests are handled at
+         * the same time. A request on a connection bound to a busy thread waits for the requests before it,
+         * even while other threads of the group are idle; a client that keeps more connections open than
+         * there are threads, e.g. a load test or a transfer manager, therefore wants this raised. Default
+         * value is {@linkplain LocalS3#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
          *
          * @param s3ExecutorThreadNum local-s3 executor thread number.
          * @return builder.
