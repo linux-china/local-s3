@@ -46,7 +46,8 @@ public class CopyObjectIntegrationTest {
 
     /*-- Copy from a versioning disabled bucket to another versioning disabled bucket. --*/
     CopyObjectResponse copyObjectResult1 = s3.copyObject(b -> b.sourceBucket(bucket1).sourceKey(key1).destinationBucket(bucket2).destinationKey(key2));
-    assertEquals("null", copyObjectResult1.versionId());
+    // Neither bucket was ever versioned, so the copy has no version and no x-amz-version-id is sent.
+    assertNull(copyObjectResult1.versionId());
     assertFalse(copyObjectResult1.copyObjectResult().lastModified().isAfter(new Date().toInstant()));
     try (ResponseInputStream<GetObjectResponse> response1 = s3.getObject(b -> b.bucket(bucket2).key(key2))) {
       GetObjectResponse object1 = response1.response();
@@ -75,7 +76,8 @@ public class CopyObjectIntegrationTest {
     String text2 = "LocalS3";
     PutObjectResponse putObjectResult1 = s3.putObject(b -> b.bucket(bucket2).key(key2), RequestBody.fromString(text2));
     CopyObjectResponse copyObjectResult3 = s3.copyObject(b -> b.sourceBucket(bucket2).sourceKey(key2).destinationBucket(bucket1).destinationKey(key1));
-    assertEquals("null", copyObjectResult3.versionId());
+    // The destination bucket was never versioned, so the copy has no version.
+    assertNull(copyObjectResult3.versionId());
     assertTrue(copyObjectResult3.copyObjectResult().lastModified().compareTo(new Date().toInstant()) <= 0);
     try (ResponseInputStream<GetObjectResponse> response3 = s3.getObject(b -> b.bucket(bucket1).key(key1))) {
       GetObjectResponse object3 = response3.response();
@@ -91,7 +93,7 @@ public class CopyObjectIntegrationTest {
         .destinationBucket(bucket1)
         .destinationKey(key1)
         .build());
-    assertEquals("null", copyObjectResult4.versionId());
+    assertNull(copyObjectResult4.versionId());
     try (ResponseInputStream<GetObjectResponse> response4 = s3.getObject(b -> b.bucket(bucket1).key(key1))) {
       GetObjectResponse object4 = response4.response();
       assertEquals(text2.length(), object4.contentLength());

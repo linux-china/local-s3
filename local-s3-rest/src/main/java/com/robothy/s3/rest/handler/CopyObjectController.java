@@ -48,9 +48,10 @@ class CopyObjectController extends ObjectHttpRequestHandler {
 
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result))
-        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, copyObjectAns.getVersionId())
-        .putHeader(AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID, copyObjectAns.getSourceVersionId());
+        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, copyObjectAns.getVersionId());
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
+        copyObjectAns.getSourceVersionId());
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);

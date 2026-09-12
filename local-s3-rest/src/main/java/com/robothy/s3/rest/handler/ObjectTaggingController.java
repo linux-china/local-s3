@@ -35,8 +35,8 @@ class ObjectTaggingController {
     String returnedVersionId = objectTaggingService.putObjectTagging(bucketName, key, versionId, tagging.toArrays());
 
     ResponseUtils.addCommonHeaders(response)
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, returnedVersionId)
         .status(HttpResponseStatus.OK);
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, returnedVersionId);
   }
 
   void get(HttpRequest request, HttpResponse response) throws Exception {
@@ -48,8 +48,8 @@ class ObjectTaggingController {
 
     ResponseUtils.addCommonHeaders(response)
         .status(HttpResponseStatus.OK)
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, tags.getVersionId())
         .write(body);
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, tags.getVersionId());
   }
 
   void delete(HttpRequest request, HttpResponse response) throws Exception {

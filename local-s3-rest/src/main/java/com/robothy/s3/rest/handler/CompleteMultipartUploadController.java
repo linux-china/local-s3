@@ -56,8 +56,9 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
         .location(completeMultipartUploadAns.getLocation())
         .build();
     response.status(HttpResponseStatus.OK)
-        .write(xmlMapper.writeValueAsString(result))
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, completeMultipartUploadAns.getVersionId());
+        .write(xmlMapper.writeValueAsString(result));
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID,
+        completeMultipartUploadAns.getVersionId());
 
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);

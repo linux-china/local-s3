@@ -27,8 +27,8 @@ class GetObjectAclController extends ObjectHttpRequestHandler {
 
     ResponseUtils.addCommonHeaders(response)
         .status(HttpResponseStatus.OK)
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, result.getVersionId())
         .write(xmlMapper.writeValueAsString(result.getAcl()));
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, result.getVersionId());
   }
 
 }

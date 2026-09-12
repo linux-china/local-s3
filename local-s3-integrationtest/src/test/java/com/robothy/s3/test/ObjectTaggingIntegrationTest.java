@@ -38,7 +38,8 @@ public class ObjectTaggingIntegrationTest {
     PutObjectTaggingResponse setObjectTaggingResult = s3.putObjectTagging(
       PutObjectTaggingRequest.builder().bucket(bucketName).key(key)
         .tagging(Tagging.builder().tagSet(List.of(Tag.builder().key("K1").value("V1").build(), Tag.builder().key("K2").value("V2").build())).build()).build());
-    assertEquals("null", setObjectTaggingResult.versionId());
+    // The bucket was never versioned, so the tagging applies to an object without a version.
+    assertNull(setObjectTaggingResult.versionId());
 
     GetObjectTaggingResponse objectTagging1 = s3.getObjectTagging(GetObjectTaggingRequest.builder().bucket(bucketName).key(key).build());
     assertEquals(2, objectTagging1.tagSet().size());

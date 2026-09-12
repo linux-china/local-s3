@@ -34,8 +34,8 @@ class PutObjectAclController extends ObjectHttpRequestHandler {
     }
 
     ResponseUtils.addCommonHeaders(response)
-        .status(HttpResponseStatus.OK)
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, returnedVersionId);
+        .status(HttpResponseStatus.OK);
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, returnedVersionId);
   }
 
 }

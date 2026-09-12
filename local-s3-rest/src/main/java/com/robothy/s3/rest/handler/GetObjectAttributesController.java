@@ -50,8 +50,8 @@ class GetObjectAttributesController implements HttpRequestHandler {
     GetObjectAns object = objectService.headObject(bucket, key, options);
 
     response.putHeader(HttpHeaderNames.LAST_MODIFIED.toString(),
-            ResponseUtils.toRfc1123DateTime(object.getLastModified()))
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
+        ResponseUtils.toRfc1123DateTime(object.getLastModified()));
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
 
     if (object.isDeleteMarker()) {
       response.status(HttpResponseStatus.METHOD_NOT_ALLOWED)

@@ -41,7 +41,7 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
     }
 
     versionedObjectMetadata.setAcl(acl);
-    return VersionedObjectUtils.resolveReturnedVersion(objectMetadata, versionId);
+    return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
   }
 
   /**
@@ -74,7 +74,7 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
 
     return GetObjectAclAns.builder()
         .acl(acl)
-        .versionId(VersionedObjectUtils.resolveReturnedVersion(objectMetadata, versionId))
+        .versionId(VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId))
         .build();
   }
 

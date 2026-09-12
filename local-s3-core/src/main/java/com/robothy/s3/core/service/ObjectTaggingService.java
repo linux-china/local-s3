@@ -36,7 +36,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
       throw new MethodNotAllowedException("Cannot put object tagging to a delete marker.");
     }
     versionedObjectMetadata.setTagging(tagging);
-    return VersionedObjectUtils.resolveReturnedVersion(objectMetadata, versionId);
+    return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
   }
 
   /**
@@ -58,7 +58,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
     String[][] tagging = versionedObjectMetadata.getTagging().orElse(new String[0][0]);
     return GetObjectTaggingAns.builder()
         .tagging(tagging)
-        .versionId(VersionedObjectUtils.resolveReturnedVersion(objectMetadata, versionId))
+        .versionId(VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId))
         .build();
   }
 
@@ -80,7 +80,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
       throw new MethodNotAllowedException("Cannot delete object tagging from a delete marker.");
     }
     versionedObjectMetadata.setTagging(null);
-    return VersionedObjectUtils.resolveReturnedVersion(objectMetadata, versionId);
+    return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
   }
 
 }

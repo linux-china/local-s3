@@ -58,8 +58,9 @@ class UploadPartCopyController implements HttpRequestHandler {
     // The Content-Length is set from the bytes of the body by LocalS3HttpMessageHandler.
     response.status(HttpResponseStatus.OK)
         .write(XmlUtils.toXml(result))
-        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-        .putHeader(AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID, ans.getSourceVersionId());
+        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
+        ans.getSourceVersionId());
     ResponseUtils.addCommonHeaders(response);
   }
 

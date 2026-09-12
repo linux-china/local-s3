@@ -39,8 +39,8 @@ class HeadObjectController implements HttpRequestHandler {
     GetObjectAns object = objectService.headObject(bucket, key, options);
 
     response.putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, object.isDeleteMarker())
-        .putHeader(HttpHeaderNames.LAST_MODIFIED.toString(), ResponseUtils.toRfc1123DateTime(object.getLastModified()))
-        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
+        .putHeader(HttpHeaderNames.LAST_MODIFIED.toString(), ResponseUtils.toRfc1123DateTime(object.getLastModified()));
+    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
 
     if (!object.isDeleteMarker()) {
       if (object.getContentRange() != null) {

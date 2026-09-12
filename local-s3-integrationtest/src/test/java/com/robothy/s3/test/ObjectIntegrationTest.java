@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,7 +45,8 @@ public class ObjectIntegrationTest {
     ResponseBytes<GetObjectResponse> objectBytes = s3.getObject(
         GetObjectRequest.builder().bucket(bucket).key(key).build(),
         ResponseTransformer.toBytes());
-    assertEquals("null", objectBytes.response().versionId());
+    // The bucket was never versioned, so the object has no version and no x-amz-version-id is sent.
+    assertNull(objectBytes.response().versionId());
     assertEquals("Text1", objectBytes.asUtf8String());
     assertEquals(DigestUtils.md5Hex("Text1"), objectBytes.response().eTag());
 
@@ -52,7 +54,7 @@ public class ObjectIntegrationTest {
     ResponseBytes<GetObjectResponse> objectBytes1 = s3.getObject(
         GetObjectRequest.builder().bucket(bucket).key(key).build(),
         ResponseTransformer.toBytes());
-    assertEquals("null", objectBytes1.response().versionId());
+    assertNull(objectBytes1.response().versionId());
     assertEquals("Text2", objectBytes1.asUtf8String());
 
     s3.putBucketVersioning(PutBucketVersioningRequest.builder()
@@ -152,7 +154,8 @@ public class ObjectIntegrationTest {
     assertEquals(DigestUtils.md5Hex(content), attributes.eTag());
     assertEquals(content.length(), attributes.objectSize());
     assertEquals(StorageClass.STANDARD, attributes.storageClass());
-    assertEquals("null", attributes.versionId());
+    // The bucket was never versioned, so the object has no version.
+    assertNull(attributes.versionId());
     assertNotNull(attributes.lastModified());
 
     GetObjectAttributesResponse etagOnly = s3.getObjectAttributes(GetObjectAttributesRequest.builder()
