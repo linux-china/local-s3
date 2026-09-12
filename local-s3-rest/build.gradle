@@ -6,7 +6,18 @@ plugins {
 dependencies {
     implementation project(":local-s3-core")
     implementation project(":local-s3-datatypes")
-    implementation(libs.nettyAll)
+    // Keep every netty module on one version, including the ones that another library on the classpath
+    // brings, e.g. the netty 4.1 modules of the AWS SDK's netty-nio-client. Mixing them fails at runtime:
+    // netty 4.2 moved io.netty.handler.codec.DefaultHeaders to netty-codec-base, so a netty 4.1 netty-codec
+    // supplies a copy without the methods that the 4.2 HTTP codec calls. netty-all used to align the
+    // versions as a side effect of depending on every module.
+    implementation(platform(libs.nettyBom))
+
+    // Only the netty modules that LocalS3 uses: the HTTP codec, the handlers that write chunked responses,
+    // close idle connections and log, and the NIO transport.
+    implementation(libs.nettyCodecHttp)
+    implementation(libs.nettyHandler)
+    implementation(libs.nettyTransport)
     implementation(libs.jacksonDataformatXml)
     implementation(libs.jacksonDatabind)
     implementation(libs.jacksonDatatypeJdk8)
@@ -17,6 +28,8 @@ dependencies {
     implementation(libs.jspecify)
     implementation(libs.nettyHttpRouter) {
         exclude(group: "org.springframework", module: "spring-web")
+        // It depends on netty-all, which would bring every netty module back.
+        exclude(group: "io.netty", module: "netty-all")
     }
     testImplementation(libs.mockitoCore)
 }
