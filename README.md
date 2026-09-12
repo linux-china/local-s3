@@ -160,6 +160,72 @@ LocalS3 localS3 = LocalS3.builder()
 localS3.start();
 ```
 
+#### Require signed requests
+
+By default LocalS3 serves every request, signed or not. `credentials(...)` enables AWS Signature Version 4
+verification with a static access key pair: requests that are unsigned, signed with another key, or whose
+signature doesn't match are rejected. Configure your S3 client with the same pair.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .port(29090)
+    .credentials("access-key-id", "secret-access-key")
+    .build();
+
+localS3.start();
+```
+
+The [health check](#health-check) needs no authentication, so probes keep working.
+
+#### Listen to bucket and object events
+
+`bucketEventListener` and `objectEventListener` are functional interfaces that receive an event whenever a
+bucket or an object changes, e.g. to trigger an indexer or to assert in a test that an upload happened.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .port(29090)
+    .bucketEventListener(event ->
+        System.out.println(event.getEventType() + " " + event.getBucketName()))
+    .objectEventListener(event ->
+        System.out.println(event.getEventType() + " " + event.getObjectUrl() + " " + event.getSize()))
+    .build();
+
+localS3.start();
+```
+
+Every event carries `getEventId()`, `getEventType()`, `getTimestamp()` and `getSource()`, the S3 operation that
+triggered it, e.g. `PutObject`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, `DeleteObjects` or
+`CreateBucket`.
+
+| Event type | Delivered to | Details |
+|---|---|---|
+| `BUCKET_CREATED`, `BUCKET_DELETED` | `bucketEventListener` | `getBucketName()`, `getBucketRegion()` |
+| `OBJECT_CREATED` | `objectEventListener` | `getObjectKey()`, `getObjectUrl()` (`s3://bucket/key`), `getSize()`, `getEtag()`, `getVersionId()` |
+| `OBJECT_DELETED` | `objectEventListener` | `getObjectKey()`, `getObjectUrl()`, `getVersionId()`, `isDeleteMarker()`; `getSize()` and `getEtag()` are `null` |
+
+`getVersionId()` is `null` if the bucket has never been versioned.
+
+By default, the listeners run **synchronously on the thread handling the request**, so an event is delivered
+before the S3 response is sent. Pass an executor to deliver events asynchronously, so that slow listeners don't
+hold up request handling; a single-threaded executor keeps the events in order.
+
+```java
+ExecutorService executor = Executors.newSingleThreadExecutor();
+
+LocalS3 localS3 = LocalS3.builder()
+    .port(29090)
+    .eventListenerExecutor(executor)
+    .objectEventListener(event -> index(event.getObjectUrl()))
+    .build();
+
+localS3.start();
+```
+
+LocalS3 does not shut the executor down; that stays with the code that created it. Either way, an exception
+thrown by a listener is logged and never fails the S3 request, and an event that the executor rejects is
+dropped with a log entry.
+
 ### LocalS3 for Junit5
 
 LocalS3 for Junit5 provides a Java annotation `@LocalS3` helps you easily launch S3 services for your tests.
