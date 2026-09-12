@@ -20,11 +20,43 @@ public class ObjectMetadata {
   public static final String NULL_VERSION = "null";
 
   /**
+   * Orders version IDs with the most recent one, which is the greatest ID, first. The IDs are compared
+   * as numbers rather than as text, so that IDs of different lengths, and the negative IDs that an
+   * overflowed generator produced, are still ordered by age. A non numeric ID, which no generator
+   * produces, is ordered after the generated ones.
+   */
+  public static final Comparator<String> VERSION_ID_COMPARATOR = (left, right) -> {
+    Long leftId = toVersionNumber(left);
+    Long rightId = toVersionNumber(right);
+    if (leftId == null || rightId == null) {
+      if (leftId != null) {
+        return -1;
+      }
+      if (rightId != null) {
+        return 1;
+      }
+      return right.compareTo(left);
+    }
+
+    int comparison = Long.compare(rightId, leftId);
+    // Distinct IDs holding the same number, e.g. one with a leading zero, are still distinct versions.
+    return comparison == 0 ? right.compareTo(left) : comparison;
+  };
+
+  private static Long toVersionNumber(String versionId) {
+    try {
+      return Long.parseLong(versionId);
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
+  /**
    * The most recent instance on the top.
    */
   @JsonDeserialize(converter = VersionedObjectMetadataMapConverter.class)
   private ConcurrentSkipListMap<String, VersionedObjectMetadata> versionedObjectMap =
-      new ConcurrentSkipListMap<>(Comparator.reverseOrder());
+      new ConcurrentSkipListMap<>(VERSION_ID_COMPARATOR);
 
   /**
    * Represents a virtual version when bucket versioning is not enabled.

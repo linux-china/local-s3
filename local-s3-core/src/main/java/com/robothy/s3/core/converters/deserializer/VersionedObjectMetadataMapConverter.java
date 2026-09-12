@@ -3,7 +3,6 @@ package com.robothy.s3.core.converters.deserializer;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
@@ -14,7 +13,8 @@ public class VersionedObjectMetadataMapConverter extends StdConverter<Map<String
 
   @Override
   public ConcurrentSkipListMap<String, VersionedObjectMetadata> convert(Map<String, VersionedObjectMetadata> value) {
-    ConcurrentSkipListMap<String, VersionedObjectMetadata> result = new ConcurrentSkipListMap<>(Comparator.reverseOrder());
+    ConcurrentSkipListMap<String, VersionedObjectMetadata> result =
+        new ConcurrentSkipListMap<>(ObjectMetadata.VERSION_ID_COMPARATOR);
     result.putAll(value);
     return result;
   }

@@ -22,6 +22,43 @@ class ObjectMetadataTest {
     assertEquals(latestVersionId, objectMetadata.getLatestVersion());
   }
 
+  /**
+   * Version IDs are compared as numbers; as text, the shorter "999..." would sort above "1000...".
+   */
+  @Test
+  void ordersVersionsWithDifferentLengthsByAge() {
+    VersionedObjectMetadata older = new VersionedObjectMetadata();
+    ObjectMetadata objectMetadata = new ObjectMetadata("999999999999999999", older);
+    VersionedObjectMetadata newer = new VersionedObjectMetadata();
+    objectMetadata.putVersionedObjectMetadata("1000000000000000000", newer);
+
+    assertSame(newer, objectMetadata.getLatest());
+    assertEquals("1000000000000000000", objectMetadata.getLatestVersion());
+  }
+
+  /**
+   * IDs that an overflowed generator produced are negative, and older than every positive one.
+   */
+  @Test
+  void ordersNegativeVersionsAsTheOldest() {
+    VersionedObjectMetadata overflowed = new VersionedObjectMetadata();
+    ObjectMetadata objectMetadata = new ObjectMetadata("-9223372036854775807", overflowed);
+    VersionedObjectMetadata newer = new VersionedObjectMetadata();
+    objectMetadata.putVersionedObjectMetadata("1000000000000000000", newer);
+
+    assertSame(newer, objectMetadata.getLatest());
+    assertEquals("-9223372036854775807", objectMetadata.getVersionedObjectMap().lastKey());
+  }
+
+  @Test
+  void keepsTheVersionOrderAfterDeserialization() {
+    ObjectMetadata objectMetadata = new ObjectMetadata("999999999999999999", new VersionedObjectMetadata());
+    objectMetadata.putVersionedObjectMetadata("1000000000000000000", new VersionedObjectMetadata());
+
+    ObjectMetadata deserialized = JsonUtils.fromJson(JsonUtils.toJson(objectMetadata), ObjectMetadata.class);
+    assertEquals("1000000000000000000", deserialized.getLatestVersion());
+  }
+
   @Test
   void serialize() {
     String versionId = IdUtils.defaultGenerator().nextStrId();
