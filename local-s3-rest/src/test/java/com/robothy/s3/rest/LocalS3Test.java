@@ -26,8 +26,17 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
@@ -270,10 +279,102 @@ class LocalS3Test {
   }
 
   private static long countLocalS3Threads() {
+    return localS3Threads().size();
+  }
+
+  private static List<Thread> localS3Threads() {
     return Thread.getAllStackTraces().keySet().stream()
         .filter(thread -> thread.isAlive() && thread.getName().startsWith("locals3-")
             && !thread.getName().equals("locals3-shutdown-hook"))
-        .count();
+        .toList();
+  }
+
+  /**
+   * Wait until the threads of the services that the other tests started are gone, so that a test that looks
+   * at the threads of its own service doesn't find theirs.
+   */
+  private static void awaitNoLocalS3Threads() throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 5_000;
+    while (!localS3Threads().isEmpty() && System.currentTimeMillis() < deadline) {
+      Thread.sleep(50);
+    }
+    assertEquals(List.of(), localS3Threads().stream().map(Thread::getName).toList(),
+        "Threads of a service that another test started are still running.");
+  }
+
+  /**
+   * A service that isn't shut down, e.g. by a test that forgets to, must not keep the JVM alive; the shutdown
+   * hook stops it while the JVM exits.
+   */
+  @Test
+  void servesRequestsOnDaemonThreadsByDefault() throws Exception {
+    awaitNoLocalS3Threads();
+    LocalS3 localS3 = LocalS3.builder().port(-1).build();
+    localS3.start();
+    try {
+      List<Thread> threads = localS3Threads();
+      assertFalse(threads.isEmpty(), "No thread of the service was started.");
+      for (Thread thread : threads) {
+        assertTrue(thread.isDaemon(), thread.getName() + " is not a daemon thread.");
+      }
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * A standalone server, whose {@code main} starts the service and returns, is kept running by its threads.
+   */
+  @Test
+  void servesRequestsOnNonDaemonThreadsWhenConfigured() throws Exception {
+    awaitNoLocalS3Threads();
+    LocalS3 localS3 = LocalS3.builder().port(-1).daemonThreads(false).build();
+    localS3.start();
+    try {
+      List<Thread> threads = localS3Threads();
+      assertFalse(threads.isEmpty(), "No thread of the service was started.");
+      for (Thread thread : threads) {
+        assertFalse(thread.isDaemon(), thread.getName() + " is a daemon thread.");
+      }
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * Netty creates the threads of a group as it needs them, so several threads can name one at the same time.
+   */
+  @Test
+  void namesThreadsUniquelyWhenTheyAreCreatedConcurrently() throws Exception {
+    LocalS3.NamingThreadFactory factory = new LocalS3.NamingThreadFactory("locals3-naming-test", true);
+    int creators = 8;
+    int threadsPerCreator = 200;
+    ExecutorService executor = Executors.newFixedThreadPool(creators);
+    try {
+      CountDownLatch start = new CountDownLatch(1);
+      List<Future<List<String>>> created = new ArrayList<>();
+      for (int i = 0; i < creators; i++) {
+        created.add(executor.submit(() -> {
+          assertTrue(start.await(5, TimeUnit.SECONDS));
+          List<String> names = new ArrayList<>();
+          for (int j = 0; j < threadsPerCreator; j++) {
+            Thread thread = factory.newThread(() -> { });
+            assertTrue(thread.isDaemon());
+            names.add(thread.getName());
+          }
+          return names;
+        }));
+      }
+      start.countDown();
+
+      Set<String> names = new HashSet<>();
+      for (Future<List<String>> names_ : created) {
+        names.addAll(names_.get(10, TimeUnit.SECONDS));
+      }
+      assertEquals(creators * threadsPerCreator, names.size(), "The factory gave two threads the same name.");
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test

@@ -49,7 +49,11 @@ public class App {
                 .mode(mode)
                 .dataPath(dataPath)
                 // LOCAL_S3_STRICT_BUCKET_NAMES=true rejects bucket names that Amazon S3 doesn't accept.
-                .strictBucketNames(Boolean.parseBoolean(getProperty(LOCAL_S3_STRICT_BUCKET_NAMES)));
+                .strictBucketNames(Boolean.parseBoolean(getProperty(LOCAL_S3_STRICT_BUCKET_NAMES)))
+                // main() returns once the service is started, so only non-daemon threads keep the container
+                // running. Embedded services use daemon threads, which don't outlive the tests that forget
+                // to shut them down.
+                .daemonThreads(false);
         // e.g. LOCAL_S3_VIRTUAL_HOST_DOMAINS=s3,s3.local for virtual-hosted-style requests to my-bucket.s3.
         if (getProperty(LOCAL_S3_VIRTUAL_HOST_DOMAINS) != null) {
             localS3Builder.virtualHostDomains(getProperty(LOCAL_S3_VIRTUAL_HOST_DOMAINS).split(","));

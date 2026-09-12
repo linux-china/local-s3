@@ -47,6 +47,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.xml.stream.XMLInputFactory;
 
 import org.jspecify.annotations.NonNull;
@@ -101,6 +102,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final boolean initialDataCacheEnabled;
 
+    private final boolean daemonThreads;
+
     private final int nettyParentEventGroupThreadNum;
 
     private final int nettyChildEventGroupThreadNum;
@@ -154,6 +157,7 @@ public class LocalS3 implements AutoCloseable {
         this.objectEventListener = builder.objectEventListener;
         this.eventListenerExecutor = builder.eventListenerExecutor;
         this.initialDataCacheEnabled = builder.initialDataCacheEnabled;
+        this.daemonThreads = builder.daemonThreads;
         this.nettyParentEventGroupThreadNum = builder.nettyParentEventGroupThreadNum;
         this.nettyChildEventGroupThreadNum = builder.nettyChildEventGroupThreadNum;
         this.s3ExecutorThreadNum = builder.s3ExecutorThreadNum;
@@ -218,11 +222,11 @@ public class LocalS3 implements AutoCloseable {
         }
         // start server
         this.parentGroup = new MultiThreadIoEventLoopGroup(nettyParentEventGroupThreadNum,
-                new NamingThreadFactory("locals3-parent-event-group"), NioIoHandler.newFactory());
+                new NamingThreadFactory("locals3-parent-event-group", daemonThreads), NioIoHandler.newFactory());
         this.childGroup = new MultiThreadIoEventLoopGroup(nettyChildEventGroupThreadNum,
-                new NamingThreadFactory("locals3-child-event-group"), NioIoHandler.newFactory());
+                new NamingThreadFactory("locals3-child-event-group", daemonThreads), NioIoHandler.newFactory());
         this.executorGroup = new MultiThreadIoEventLoopGroup(s3ExecutorThreadNum,
-                new NamingThreadFactory("locals3-executor-group"), LocalIoHandler.newFactory());
+                new NamingThreadFactory("locals3-executor-group", daemonThreads), LocalIoHandler.newFactory());
         ServerBootstrap serverBootstrap = new ServerBootstrap();
         ChannelFuture channelFuture;
         try {
@@ -487,6 +491,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Whether the threads that serve the requests are daemon threads, which don't keep the JVM alive.
+     *
+     * @return if the service runs on daemon threads.
+     */
+    public boolean isDaemonThreads() {
+        return daemonThreads;
+    }
+
+    /**
      * Get the configured base domains of virtual-hosted-style requests, besides the default ones.
      *
      * @return the configured virtual-host domains.
@@ -527,6 +540,8 @@ public class LocalS3 implements AutoCloseable {
         private Executor eventListenerExecutor = Runnable::run;
 
         private boolean initialDataCacheEnabled = true;
+
+        private boolean daemonThreads = true;
 
         private int nettyParentEventGroupThreadNum = 1;
 
@@ -699,6 +714,22 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
+         * Set whether the threads that serve the requests are daemon threads.
+         *
+         * <p>The default value is {@code true}, so that a service that isn't {@linkplain #shutdown() shut
+         * down}, e.g. by a test that forgets to, doesn't keep the JVM alive; the shutdown hook stops the
+         * service while the JVM exits. Set it to {@code false} to run LocalS3 as a standalone server, whose
+         * {@code main} starts the service and returns: only non-daemon threads keep such a JVM running.
+         *
+         * @param daemonThreads whether the threads that serve the requests are daemon threads.
+         * @return builder.
+         */
+        public Builder daemonThreads(boolean daemonThreads) {
+            this.daemonThreads = daemonThreads;
+            return this;
+        }
+
+        /**
          * Set netty parent event group thread number.
          * Default values is 1.
          *
@@ -859,19 +890,30 @@ public class LocalS3 implements AutoCloseable {
 
     }
 
-    private static final class NamingThreadFactory implements ThreadFactory {
+    /**
+     * Names the threads of an event loop group. Netty creates the threads of a group as it needs them, and a
+     * request handled on one group can start work on another, so the threads are counted atomically to give
+     * each of them its own name.
+     */
+    // Package private so that the tests can exercise it directly.
+    static final class NamingThreadFactory implements ThreadFactory {
 
         private final String name;
 
-        private int counter = 0;
+        private final boolean daemon;
 
-        public NamingThreadFactory(String name) {
+        private final AtomicInteger counter = new AtomicInteger();
+
+        public NamingThreadFactory(String name, boolean daemon) {
             this.name = name;
+            this.daemon = daemon;
         }
 
         @Override
         public Thread newThread(@NonNull Runnable r) {
-            return new Thread(r, name + "-" + counter++);
+            Thread thread = new Thread(r, name + "-" + counter.getAndIncrement());
+            thread.setDaemon(daemon);
+            return thread;
         }
     }
 

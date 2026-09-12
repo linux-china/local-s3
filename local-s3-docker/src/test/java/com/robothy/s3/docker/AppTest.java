@@ -33,6 +33,8 @@ class AppTest {
     assertEquals("0.0.0.0", localS3.getBindHost());
     assertFalse(localS3.isStrictBucketNames());
     assertEquals(LocalS3Mode.PERSISTENCE, App.mode());
+    // main() returns once the service is started, so daemon threads would let the container exit at once.
+    assertFalse(localS3.isDaemonThreads(), "The threads of the service keep the container running.");
   }
 
   @Test
