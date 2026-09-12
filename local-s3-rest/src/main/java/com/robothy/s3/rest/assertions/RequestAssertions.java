@@ -63,6 +63,44 @@ public class RequestAssertions {
   }
 
   /**
+   * The number of keys that a listing returns when {@code max-keys} isn't given, and the most it ever returns.
+   */
+  public static final int DEFAULT_MAX_KEYS = 1000;
+
+  /**
+   * Assert that {@code max-keys} is a number and not negative, and cap it at
+   * {@linkplain #DEFAULT_MAX_KEYS}, the most keys that a listing of Amazon S3 returns. A larger value is
+   * accepted and capped rather than rejected, like Amazon S3 does: a listing "might contain fewer keys, but
+   * will never contain more".
+   *
+   * @param request HTTP request.
+   * @return the number of keys to return at most; {@linkplain #DEFAULT_MAX_KEYS} if the request doesn't ask.
+   * @throws LocalS3InvalidArgumentException if {@code max-keys} isn't a number, or is negative.
+   */
+  public static int assertMaxKeysIsValid(HttpRequest request) {
+    String maxKeys = request.parameter("max-keys").orElse(null);
+    if (maxKeys == null) {
+      return DEFAULT_MAX_KEYS;
+    }
+
+    int value;
+    try {
+      value = Integer.parseInt(maxKeys.trim());
+    } catch (NumberFormatException e) {
+      throw invalidMaxKeys(maxKeys);
+    }
+    if (value < 0) {
+      throw invalidMaxKeys(maxKeys);
+    }
+    return Math.min(DEFAULT_MAX_KEYS, value);
+  }
+
+  private static LocalS3InvalidArgumentException invalidMaxKeys(String maxKeys) {
+    return new LocalS3InvalidArgumentException("max-keys", maxKeys,
+        "Argument max-keys must be an integer between 0 and " + Integer.MAX_VALUE);
+  }
+
+  /**
    * Assert the provided part number is valid. Between 1~10000.
    *
    * @param request HTTP request.

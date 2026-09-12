@@ -37,7 +37,7 @@ class ListObjectsController implements HttpRequestHandler {
     String delimiter = RequestAssertions.assertDelimiterIsValid(request).orElse(null);
     String encodingType = RequestAssertions.assertEncodingTypeIsValid(request).orElse(null);
     String marker = request.parameter("marker").orElse(null);
-    int maxKeys = Math.min(1000, request.parameter("max-keys").map(Integer::valueOf).orElse(1000));
+    int maxKeys = RequestAssertions.assertMaxKeysIsValid(request);
     String prefix = request.parameter("prefix").orElse(null);
 
     ListObjectsAns listObjectsAns = listObjectsService.listObjects(bucket, delimiter, encodingType, marker, maxKeys, prefix);

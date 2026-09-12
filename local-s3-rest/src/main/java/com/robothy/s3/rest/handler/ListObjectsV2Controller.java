@@ -36,7 +36,7 @@ public class ListObjectsV2Controller implements HttpRequestHandler {
         String bucket = RequestAssertions.assertBucketNameProvided(request);
         String delimiter = RequestAssertions.assertDelimiterIsValid(request).orElse(null);
         String encodingType = RequestAssertions.assertEncodingTypeIsValid(request).orElse(null);
-        int maxKeys = Math.min(1000, request.parameter("max-keys").map(Integer::valueOf).orElse(1000));
+        int maxKeys = RequestAssertions.assertMaxKeysIsValid(request);
         String prefix = request.parameter("prefix").orElse(null);
         String continuationToken = request.parameter("continuation-token").orElse(null);
         String startAfter = request.parameter("start-after").orElse(null);

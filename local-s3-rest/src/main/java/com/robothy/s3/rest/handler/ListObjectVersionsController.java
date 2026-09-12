@@ -41,7 +41,7 @@ class ListObjectVersionsController implements HttpRequestHandler {
     String delimiter = RequestAssertions.assertDelimiterIsValid(request).orElse(null);
     String encodingType = RequestAssertions.assertEncodingTypeIsValid(request).orElse(null);
     String keyMarker = request.parameter("key-marker").orElse(null);
-    int maxKeys = Math.min(1000, request.parameter("max-keys").map(Integer::parseInt).orElse(1000));
+    int maxKeys = RequestAssertions.assertMaxKeysIsValid(request);
     String prefix = request.parameter("prefix").orElse(null);
     String versionIdMarker = request.parameter("version-id-marker").orElse(null);
 
