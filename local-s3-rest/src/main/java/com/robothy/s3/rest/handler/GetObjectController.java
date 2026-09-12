@@ -67,7 +67,10 @@ class GetObjectController implements HttpRequestHandler {
       getObjectAns.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
     }
 
-    response.putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, getObjectAns.getVersionId());
+    // Sent for a delete marker as well, like HeadObjectController does.
+    response.putHeader(HttpHeaderNames.LAST_MODIFIED.toString(),
+            ResponseUtils.toRfc1123DateTime(getObjectAns.getLastModified()))
+        .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, getObjectAns.getVersionId());
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);

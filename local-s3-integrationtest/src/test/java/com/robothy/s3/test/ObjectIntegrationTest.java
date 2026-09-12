@@ -20,6 +20,8 @@ import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.ArrayList;
@@ -87,6 +89,49 @@ public class ObjectIntegrationTest {
     s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
     assertThrows(NoSuchKeyException.class, () -> s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build(), ResponseTransformer.toBytes()));
     assertThrows(NoSuchKeyException.class, () -> s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()));
+  }
+
+  /**
+   * GetObject reports the Last-Modified of the object, like HeadObject does; code that caches objects or
+   * syncs them incrementally reads it from every response.
+   */
+  @Test
+  @LocalS3
+  void testGetObjectReturnsLastModified(S3Client s3) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+    s3.putBucketVersioning(PutBucketVersioningRequest.builder()
+        .bucket(bucket)
+        .versioningConfiguration(VersioningConfiguration.builder().status(BucketVersioningStatus.ENABLED).build())
+        .build());
+    Instant beforePut = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    PutObjectResponse firstVersion =
+        s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromString("Text1"));
+    s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromString("Text2"));
+
+    GetObjectResponse latest = s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build(),
+        ResponseTransformer.toBytes()).response();
+    assertNotNull(latest.lastModified(), "GetObject must report the Last-Modified of the object.");
+    // The header carries seconds, so the instant of the put is rounded down; it is never in the future.
+    assertFalse(latest.lastModified().isBefore(beforePut));
+    assertFalse(latest.lastModified().isAfter(Instant.now()));
+
+    // The same object, so both operations report the same instant.
+    HeadObjectResponse head = s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build());
+    assertEquals(head.lastModified(), latest.lastModified());
+
+    // A range request answers with 206 through the same path.
+    GetObjectResponse ranged = s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).range("bytes=0-1").build(),
+        ResponseTransformer.toBytes()).response();
+    assertEquals(latest.lastModified(), ranged.lastModified());
+
+    // An older version reports when that version was written, not when the latest one was.
+    GetObjectResponse older = s3.getObject(
+        GetObjectRequest.builder().bucket(bucket).key(key).versionId(firstVersion.versionId()).build(),
+        ResponseTransformer.toBytes()).response();
+    assertNotNull(older.lastModified());
+    assertFalse(older.lastModified().isAfter(latest.lastModified()));
   }
 
   @Test
