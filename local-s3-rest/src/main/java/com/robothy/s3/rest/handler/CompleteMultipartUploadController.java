@@ -12,6 +12,7 @@ import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.CompleteMultipartUpload;
 import com.robothy.s3.rest.model.response.CompleteMultipartUploadResult;
+import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBufInputStream;
@@ -27,9 +28,15 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
 
   private final CompleteMultipartUploadService uploadService;
 
+  private final MultipartUploadPolicy multipartUploadPolicy;
+
   CompleteMultipartUploadController(ServiceFactory serviceFactory) {
     super(serviceFactory);
     this.uploadService = serviceFactory.getInstance(ObjectService.class);
+    // A router built from a bare service factory, e.g. in a test, applies the default policy.
+    this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
+        ? serviceFactory.getInstance(MultipartUploadPolicy.class)
+        : MultipartUploadPolicy.of(false);
   }
 
   @Override
@@ -46,7 +53,8 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
                   .partNumber(part.getPartNumber())
                   .build())
               .collect(Collectors.toList());
-      completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts);
+      completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
+          multipartUploadPolicy.minimumPartSize());
     }
 
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()

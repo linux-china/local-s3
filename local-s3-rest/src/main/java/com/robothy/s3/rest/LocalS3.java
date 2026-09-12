@@ -24,6 +24,7 @@ import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
+import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.bootstrap.ServerBootstrap;
@@ -98,6 +99,8 @@ public class LocalS3 implements AutoCloseable {
 
     public static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
 
+    public static final String LOCAL_S3_STRICT_PART_SIZES = "LOCAL_S3_STRICT_PART_SIZES";
+
     public static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
 
     public static final String AWS_BUCKETS = "AWS_BUCKETS";
@@ -148,6 +151,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final boolean strictBucketNames;
 
+    private final boolean strictPartSizes;
+
     private final List<String> virtualHostDomains;
 
     /* Runtime state; start() and shutdown() are synchronized. */
@@ -193,6 +198,7 @@ public class LocalS3 implements AutoCloseable {
         this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
         this.idleConnectionTimeoutSeconds = builder.idleConnectionTimeoutSeconds;
         this.strictBucketNames = builder.strictBucketNames;
+        this.strictPartSizes = builder.strictPartSizes;
         this.virtualHostDomains = List.copyOf(builder.virtualHostDomains);
     }
 
@@ -303,6 +309,8 @@ public class LocalS3 implements AutoCloseable {
         serviceFactory.register(ObjectService.class, () -> objectService);
         BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
         serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
+        MultipartUploadPolicy multipartUploadPolicy = MultipartUploadPolicy.of(strictPartSizes);
+        serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
         VirtualHostParser virtualHostParser = new VirtualHostParser(virtualHostDomains);
         serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
 
@@ -526,6 +534,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Whether every part of a multipart upload but the last one must have the size that Amazon S3 requires.
+     *
+     * @return if strict part size validation is enabled.
+     */
+    public boolean isStrictPartSizes() {
+        return strictPartSizes;
+    }
+
+    /**
      * Whether the threads that serve the requests are daemon threads, which don't keep the JVM alive.
      *
      * @return if the service runs on daemon threads.
@@ -595,6 +612,8 @@ public class LocalS3 implements AutoCloseable {
         private long idleConnectionTimeoutSeconds = DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
 
         private boolean strictBucketNames;
+
+        private boolean strictPartSizes;
 
         private final List<String> virtualHostDomains = new ArrayList<>();
 
@@ -870,6 +889,24 @@ public class LocalS3 implements AutoCloseable {
         }
 
         /**
+         * Set whether every part of a multipart upload but the last one must be at least 5 MiB, the
+         * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html">minimum part size</a> of
+         * Amazon S3. Completing an upload with a smaller part then fails with {@code EntityTooSmall}, so that
+         * tests don't pass with a part layout that Amazon S3 rejects. The last part may be any size, and so may
+         * the single part of an upload that has only one.
+         *
+         * <p>The default value is {@code false}, which accepts parts of any size, so that tests that upload
+         * small parts keep working.
+         *
+         * @param strictPartSizes whether to validate part sizes strictly.
+         * @return builder.
+         */
+        public Builder strictPartSizes(boolean strictPartSizes) {
+            this.strictPartSizes = strictPartSizes;
+            return this;
+        }
+
+        /**
          * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
          * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
          * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
@@ -921,6 +958,7 @@ public class LocalS3 implements AutoCloseable {
          * embedded service or a test keeps the defaults of the builder. The variables are
          * {@linkplain LocalS3#LOCAL_S3_PORT}, {@linkplain LocalS3#LOCAL_S3_MODE},
          * {@linkplain LocalS3#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3#LOCAL_S3_STRICT_BUCKET_NAMES},
+         * {@linkplain LocalS3#LOCAL_S3_STRICT_PART_SIZES},
          * {@linkplain LocalS3#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3#AWS_BUCKETS},
          * {@linkplain LocalS3#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3#AWS_SECRET_ACCESS_KEY}.
          *
@@ -955,6 +993,8 @@ public class LocalS3 implements AutoCloseable {
             variable(variables, LOCAL_S3_PORT).ifPresent(port -> port(parsePort(port)));
             variable(variables, LOCAL_S3_STRICT_BUCKET_NAMES)
                     .ifPresent(strict -> strictBucketNames(Boolean.parseBoolean(strict)));
+            variable(variables, LOCAL_S3_STRICT_PART_SIZES)
+                    .ifPresent(strict -> strictPartSizes(Boolean.parseBoolean(strict)));
             variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
                     .ifPresent(domains -> virtualHostDomains(domains.split(",")));
             variable(variables, AWS_BUCKETS).ifPresent(names -> buckets(names.split(",")));

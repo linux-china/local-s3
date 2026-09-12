@@ -35,8 +35,9 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
   @CallsThroughProxy
   default UploadPartCopyAns uploadPartCopy(String bucket, String key, String uploadId, Integer partNumber,
                                            UploadPartCopyOptions options) {
-    // Reject a missing upload before the source is opened, so that a request naming an upload that doesn't
-    // exist doesn't read the source at all; uploadPart checks it again once the data is stored.
+    // Reject an invalid part number or a missing upload before the source is opened, so that a request that
+    // fails anyway doesn't read the source at all; uploadPart checks both again once the data is stored.
+    UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
     // Invoked on the proxy, which read locks the source bucket while the source object is resolved.

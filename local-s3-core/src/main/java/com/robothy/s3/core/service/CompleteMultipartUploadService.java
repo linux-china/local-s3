@@ -47,8 +47,28 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
   @CallsThroughProxy
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts) {
+    return completeMultipartUpload(bucket, key, uploadId, completeParts, 0);
+  }
+
+  /**
+   * Complete a multipart upload, requiring every part but the last one to be at least {@code minimumPartSize}
+   * bytes. Amazon S3 always requires {@linkplain UploadAssertions#MIN_PART_SIZE}; LocalS3 only does when it is
+   * configured to, so that tests that upload small parts keep working.
+   *
+   * @param bucket the bucket name.
+   * @param key the object key.
+   * @param uploadId multipart upload ID.
+   * @param completeParts multipart upload parts to complete.
+   * @param minimumPartSize the smallest size of a part that isn't the last one; {@code 0} to check nothing.
+   * @return result of the complete multipart operation.
+   */
+  @CallsThroughProxy
+  default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
+                                                             List<CompleteMultipartUploadPartOption> completeParts,
+                                                             long minimumPartSize) {
     // Invoked on the proxy, which read locks the bucket while the upload is validated.
     UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
+    UploadAssertions.assertPartsAreLargeEnough(uploadMetadata, completeParts, minimumPartSize);
     Map<Integer, UploadPartMetadata> uploadedParts = uploadMetadata.getParts();
 
     List<InputStream> inputStreams = completeParts.stream().map(completePart -> uploadedParts.get(completePart.getPartNumber()))

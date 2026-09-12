@@ -2,6 +2,7 @@ package com.robothy.s3.rest.assertions;
 
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.util.List;
@@ -109,11 +110,16 @@ public class RequestAssertions {
   public static int assertPartNumberIsValid(HttpRequest request) {
     String partNumber = request.parameter("partNumber").orElseThrow(
         () -> new IllegalArgumentException("'partNumber' is required."));
-    int number = Integer.parseInt(partNumber);
-    if (number < 1 || number > 10000) {
-      throw new IllegalArgumentException("The 'partNumber' must be a positive integer between 1 and 10000");
+    int number;
+    try {
+      number = Integer.parseInt(partNumber.trim());
+    } catch (NumberFormatException e) {
+      throw new LocalS3InvalidArgumentException("partNumber", partNumber,
+          "Part number must be an integer between " + UploadAssertions.MIN_PART_NUMBER + " and "
+              + UploadAssertions.MAX_PART_NUMBER + ", inclusive.");
     }
-    return number;
+    // The range is defined by the core services, which check it as well.
+    return UploadAssertions.assertPartNumberIsValid(number);
   }
 
   /**

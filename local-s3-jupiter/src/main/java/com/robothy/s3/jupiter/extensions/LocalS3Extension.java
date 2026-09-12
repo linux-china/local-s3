@@ -94,6 +94,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         .mode(s3Config.mode())
         .initialDataCacheEnabled(s3Config.initialDataCacheEnabled())
         .strictBucketNames(s3Config.strictBucketNames())
+        .strictPartSizes(s3Config.strictPartSizes())
         .virtualHostDomains(s3Config.virtualHostDomains());
     // The data path supplier may return null.
     if (dataPath != null && !dataPath.isBlank()) {

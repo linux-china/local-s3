@@ -33,7 +33,9 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
    */
   @CallsThroughProxy
   default UploadPartAns uploadPart(String bucket, String key, String uploadId, Integer partNumber, UploadPartOptions options) {
-    // Reject a missing upload before storing the data; commitUploadPart checks it again under the lock.
+    // Reject an invalid part number or a missing upload before storing the data; commitUploadPart checks the
+    // upload again under the lock.
+    UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
     MeasuredInputStream data = S3ObjectUtils.measuringStream(options.getData());

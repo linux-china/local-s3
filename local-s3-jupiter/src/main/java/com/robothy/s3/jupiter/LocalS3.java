@@ -121,6 +121,15 @@ public @interface LocalS3 {
   boolean strictBucketNames() default false;
 
   /**
+   * Set whether every part of a multipart upload but the last one must be at least 5 MiB, the minimum part
+   * size of Amazon S3, so that tests don't pass with a part layout that Amazon S3 rejects. The default is
+   * {@code false}, which accepts parts of any size.
+   *
+   * @return if strict part size validation is enabled.
+   */
+  boolean strictPartSizes() default false;
+
+  /**
    * Set base domains of virtual-hosted-style requests besides {@code localhost}, e.g. {@code s3.local}, so that
    * a request to the host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}.
    *
