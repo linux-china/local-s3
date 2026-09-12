@@ -35,6 +35,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + GetBucketCors
 + GetBucketEncryption
 + GetBucketPolicy
++ GetBucketPolicyStatus
 + GetBucketReplication
 + GetBucketVersioning
 + GetBucketTagging
@@ -57,6 +58,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + PutObject
 + PutObjectTagging
 + UploadPart
++ UploadPartCopy
 + PutPublicAccessBlock
 + GetPublicAccessBlock
 + DeletePublicAccessBlock
@@ -89,6 +91,42 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + PutVectorBucketPolicy
 + GetVectorBucketPolicy
 + DeleteVectorBucketPolicy
+</details>
+
+<details>
+<summary><b>Known unimplemented Amazon S3 APIs</b></summary>
+
+LocalS3 is a mock for testing, so it implements the operations that application code exercises and leaves
+the ones that configure a real bucket's lifecycle, billing and reporting alone. The operations below are
+routed and answer `501 NotImplemented` with an `<Error>` document naming the operation, so a client fails
+with a clear error instead of appearing to succeed. If your tests need one of them, please
+[open an issue](https://github.com/Robothy/local-s3/issues/new).
+
+**Lifecycle**
++ DeleteBucketLifecycle
++ GetBucketLifecycle
++ GetBucketLifecycleConfiguration
++ PutBucketLifecycle
++ PutBucketLifecycleConfiguration
+
+**Event notifications**
++ GetBucketNotification
++ GetBucketNotificationConfiguration
++ PutBucketNotification
++ PutBucketNotificationConfiguration
+
+(LocalS3 has its own listener API instead; see [Listen to bucket and object events](#listen-to-bucket-and-object-events).)
+
+**Not routed at all**
+
+`POST Object`, the browser form upload (`multipart/form-data` to the bucket, with its base64 policy
+document and signature), has no route, so it answers `501 NotImplemented` from the fallback handler:
+`LocalS3 does not implement POST /<bucket>.` Testing a browser upload flow against LocalS3 therefore needs
+presigned `PUT` instead.
+
+Every other operation of the S3 API that isn't listed in this section or in the supported ones above is
+also unrouted and answers the same way.
+
 </details>
 
 

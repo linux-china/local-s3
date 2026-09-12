@@ -28,6 +28,13 @@ class RequestIdTest {
 
   private static final Pattern BODY_REQUEST_ID = Pattern.compile("<RequestId>(.*?)</RequestId>");
 
+  /**
+   * An error that reports no ID at all writes the element as an empty one, which
+   * {@linkplain #BODY_REQUEST_ID} doesn't match, so {@linkplain #check} looks for it too rather than
+   * treating such a body as one that carries no RequestId element.
+   */
+  private static final String EMPTY_BODY_REQUEST_ID = "<RequestId/>";
+
   @Test
   void everyResponseCarriesARequestIdThatAnErrorRepeatsInItsBody() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
@@ -53,8 +60,11 @@ class RequestIdTest {
           URI.create(base + "/request-id-bucket?list-type=2&continuation-token=bad")).GET())));
       seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket/large"))
           .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[128])))));
+      // An operation that is routed but not implemented, which NotImplementedOperationController answers.
+      seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket?lifecycle"))
+          .GET())));
 
-      assertEquals(5, seen.size(), "Every request gets its own ID: " + seen);
+      assertEquals(6, seen.size(), "Every request gets its own ID: " + seen);
     } finally {
       localS3.shutdown();
     }
@@ -71,6 +81,9 @@ class RequestIdTest {
     String requestId = response.headers().firstValue("x-amz-request-id").orElse(null);
     assertTrue(requestId != null && REQUEST_ID.matcher(requestId).matches(),
         "The x-amz-request-id of a " + response.statusCode() + " must have the shape of Amazon S3: " + requestId);
+
+    assertFalse(response.body().contains(EMPTY_BODY_REQUEST_ID),
+        "An error body must report the request ID, not an empty element: " + response.body());
 
     Matcher body = BODY_REQUEST_ID.matcher(response.body());
     if (body.find()) {
