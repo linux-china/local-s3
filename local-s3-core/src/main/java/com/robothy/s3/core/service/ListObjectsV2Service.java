@@ -5,6 +5,7 @@ import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
 import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.util.ContinuationTokenUtils;
 import java.util.Objects;
 import org.apache.commons.lang3.StringUtils;
 
@@ -31,10 +32,13 @@ public interface ListObjectsV2Service extends ListObjectsService {
 
         BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
 
-        String marker = StringUtils.isNotBlank(continuationToken) ? continuationToken : startAfter;
+        // The continuation token is opaque to the client; it carries the key that the listing continues at.
+        String marker = StringUtils.isNotBlank(continuationToken)
+            ? ContinuationTokenUtils.decode(continuationToken) : startAfter;
         ListObjectsAns listObjectsAns = listObjects(bucket, delimiter, encodingType, marker, maxKeys, prefix);
 
-        String nextContinuationToken = calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata);
+        String nextContinuationToken = ContinuationTokenUtils.encode(
+            calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata));
         ListObjectsV2Ans listObjectsV2Ans = ListObjectsV2Ans.builder()
             .continuationToken(continuationToken)
             .delimiter(listObjectsAns.getDelimiter())

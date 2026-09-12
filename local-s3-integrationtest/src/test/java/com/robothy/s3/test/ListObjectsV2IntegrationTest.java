@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.model.ObjectStorageClass;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -555,6 +556,47 @@ public class ListObjectsV2IntegrationTest {
     assertEquals("dir2@key1", objectsV2Result2.contents().get(0).key());
 
     System.out.println("objectsV2Result = %s%n");
+  }
+
+  /**
+   * The continuation token is opaque: Amazon S3 answers with an encoded string rather than with the key that
+   * the listing continues at, so code that reads a key out of a token doesn't work against it either.
+   */
+  @Test
+  @LocalS3
+  void testContinuationTokenIsOpaque(S3Client s3) {
+    String bucketName = prepareKeys(s3, "dir1/key1", "dir1/key2", "dir2@key1");
+    ListObjectsV2Response page = s3.listObjectsV2(ListObjectsV2Request.builder()
+      .bucket(bucketName).maxKeys(2).build());
+
+    String token = page.nextContinuationToken();
+    assertNotNull(token);
+    // The token doesn't carry any of the keys of the bucket, neither of the returned page nor of the next one.
+    assertFalse(token.contains("dir1"), token);
+    assertFalse(token.contains("dir2"), token);
+    assertFalse(token.contains("key"), token);
+
+    // It still continues the listing exactly where the page ended.
+    ListObjectsV2Response next = s3.listObjectsV2(ListObjectsV2Request.builder()
+      .bucket(bucketName).continuationToken(token).build());
+    assertEquals(List.of("dir2@key1"), next.contents().stream().map(S3Object::key).toList());
+  }
+
+  /**
+   * A token that the service didn't answer with, such as a plain object key, is rejected; continuing from it
+   * would list from a place that the client didn't ask for.
+   */
+  @Test
+  @LocalS3
+  void testMalformedContinuationTokenIsRejected(S3Client s3) {
+    String bucketName = prepareKeys(s3, "dir1/key1", "dir1/key2");
+
+    for (String token : List.of("dir1/key1", "not a token", "abcd")) {
+      S3Exception thrown = assertThrows(S3Exception.class, () -> s3.listObjectsV2(ListObjectsV2Request.builder()
+        .bucket(bucketName).continuationToken(token).build()));
+      assertEquals(400, thrown.statusCode());
+      assertEquals("InvalidArgument", thrown.awsErrorDetails().errorCode());
+    }
   }
 
   String prepareKeys(S3Client s3, String... keys) {
