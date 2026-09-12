@@ -18,15 +18,10 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Stream;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html">CopyObject</a>
@@ -71,8 +66,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
    */
   CopyObjectOptions parseCopyOptions(HttpRequest request) {
     // Parse copy source information (bucket, key, version)
-    String copySource = extractCopySourceHeader(request);
-    SourceObjectInfo sourceInfo = parseCopySourcePath(copySource);
+    CopySource copySource = CopySource.of(request);
 
     // Parse metadata directive and user metadata
     CopyObjectOptions.MetadataDirective metadataDirective = parseMetadataDirective(request);
@@ -85,9 +79,9 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         : null;
 
     return CopyObjectOptions.builder()
-        .sourceBucket(urlDecode(sourceInfo.bucket))
-        .sourceKey(urlDecode(sourceInfo.key))
-        .sourceVersion(urlDecode(sourceInfo.versionId))
+        .sourceBucket(copySource.bucket())
+        .sourceKey(copySource.key())
+        .sourceVersion(copySource.versionId())
         .metadataDirective(metadataDirective)
         .userMetadata(userMetadata)
         .taggingDirective(taggingDirective)
@@ -115,62 +109,6 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     }
   }
 
-  /**
-   * Extract the x-amz-copy-source header from the request.
-   *
-   * @param request The HTTP request
-   * @return Copy source string
-   */
-  private String extractCopySourceHeader(HttpRequest request) {
-    return request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE).orElseThrow(() ->
-        new IllegalArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE + " header is required."));
-  }
-
-  /**
-   * Parse the copy source path to extract bucket, key and version.
-   *
-   * @param copySource The copy source string
-   * @return SourceObjectInfo containing bucket, key and version
-   */
-  private SourceObjectInfo parseCopySourcePath(String copySource) {
-    String[] slices = copySource.split("\\?");
-    String path = slices[0];
-
-    int delimiterIndex;
-    if (-1 == (delimiterIndex = path.indexOf('/', 1)) || delimiterIndex == path.length() - 1) {
-      throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource, "Invalid copy source.");
-    }
-
-    String srcBucket = path.charAt(0) == '/' ? path.substring(1, delimiterIndex)
-        : path.substring(0, delimiterIndex);
-    String srcKey = path.charAt(path.length() - 1) == '/' ? path.substring(delimiterIndex + 1, path.length() - 1)
-        : path.substring(delimiterIndex + 1);
-
-    String srcVersionId = extractVersionId(slices);
-    
-    return new SourceObjectInfo(srcBucket, srcKey, srcVersionId);
-  }
-
-  /**
-   * Extract version ID from query parameters if present.
-   *
-   * @param pathSlices Array containing path and optional query string
-   * @return Version ID or null if not present
-   */
-  private String extractVersionId(String[] pathSlices) {
-    if (pathSlices.length <= 1) {
-      return null;
-    }
-    
-    String queryParams = pathSlices[1];
-    String[] pairs = queryParams.split("\\&");
-    return Stream.of(pairs)
-        .filter(pair -> pair.startsWith("versionId") && pair.contains("="))
-        .map(pair -> pair.split("=")[1])
-        .findAny()
-        .orElse(null);
-  }
-  
   /**
    * Parse the x-amz-metadata-directive header.
    *
@@ -216,32 +154,5 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     }
     
     return userMetadata;
-  }
-
-  private String urlDecode(String value) {
-    try {
-      if (Objects.isNull(value)) {
-        return null;
-      }
-
-      return URLDecoder.decode(value, StandardCharsets.UTF_8.displayName());
-    } catch (UnsupportedEncodingException e) {
-      throw new IllegalStateException(e);
-    }
-  }
-  
-  /**
-   * Immutable class to hold source object information.
-   */
-  private static class SourceObjectInfo {
-    private final String bucket;
-    private final String key;
-    private final String versionId;
-    
-    public SourceObjectInfo(String bucket, String key, String versionId) {
-      this.bucket = bucket;
-      this.key = key;
-      this.versionId = versionId;
-    }
   }
 }

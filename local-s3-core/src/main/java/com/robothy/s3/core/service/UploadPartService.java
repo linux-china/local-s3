@@ -76,6 +76,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     }
     return UploadPartAns.builder()
         .etag(uploadPartMetadata.getEtag())
+        .lastModified(uploadPartMetadata.getLastModified())
         .build();
   }
 

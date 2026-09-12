@@ -9,4 +9,9 @@ public class UploadPartAns {
 
   private String etag;
 
+  /**
+   * When the part was added to the upload.
+   */
+  private long lastModified;
+
 }

@@ -31,6 +31,11 @@ public class AmzHeaderNames {
   public static final String X_AMZ_COPY_SOURCE = "x-amz-copy-source";
 
   /**
+   * The range of bytes of the source object that UploadPartCopy copies into the part, e.g. {@code bytes=0-9}.
+   */
+  public static final String X_AMZ_COPY_SOURCE_RANGE = "x-amz-copy-source-range";
+
+  /**
    * Version of the copied object in the destination bucket.
    */
   public static final String X_AMZ_COPY_SOURCE_VERSION_ID = "x-amz-copy-source-version-id";

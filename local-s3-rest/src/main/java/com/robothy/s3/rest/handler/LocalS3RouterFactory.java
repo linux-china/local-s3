@@ -732,7 +732,7 @@ public class LocalS3RouterFactory {
         .path(BUCKET_KEY_PATH)
         .paramMatcher(params -> params.containsKey("uploadId") && params.containsKey("partNumber"))
         .headerMatcher(headers -> headers.containsKey(AmzHeaderNames.X_AMZ_COPY_SOURCE))
-        .handler(new NotImplementedOperationController(serviceFactory, "UploadPartCopy"))
+        .handler(new UploadPartCopyController(serviceFactory))
         .build();
 
     Route WriteGetObjectResponse = Route.builder()
