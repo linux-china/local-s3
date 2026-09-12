@@ -59,9 +59,11 @@ public class ListObjectsV2Controller implements HttpRequestHandler {
             .build();
 
         String xml = xmlMapper.writeValueAsString(listBucketV2Result);
+        // The Content-Length is set by LocalS3HttpMessageHandler from the bytes of the body. The length of the
+        // XML would be the number of its characters, which a key that isn't ASCII makes differ from the number
+        // of bytes it is encoded to.
         response.status(HttpResponseStatus.OK)
             .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-            .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), xml.length())
             .write(xml);
         ResponseUtils.addCommonHeaders(response);
     }
