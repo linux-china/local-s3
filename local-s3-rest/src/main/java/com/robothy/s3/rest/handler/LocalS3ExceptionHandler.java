@@ -8,9 +8,9 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.S3ErrorCode;
-import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
@@ -31,10 +31,12 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
   @Override
   public void handle(LocalS3Exception e, HttpRequest request, HttpResponse response) {
     S3ErrorCode s3ErrorCode = e.getS3ErrorCode();
+    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    String requestId = ResponseUtils.nextRequestId();
     S3Error error = S3Error.builder()
         .code(s3ErrorCode.code())
         .message(Optional.ofNullable(e.getMessage()).orElse(s3ErrorCode.description()))
-        .requestId(IdUtils.defaultGenerator().nextStrId())
+        .requestId(requestId)
         .bucketName(e.getBucketName())
         .build();
 
@@ -42,6 +44,7 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
       response.status(HttpResponseStatus.valueOf(s3ErrorCode.httpStatus()))
           .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
           .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
+      ResponseUtils.addAmzRequestId(response, requestId);
 
       if (!HttpMethod.HEAD.equals(request.getMethod())) {
         response.write(xmlMapper.writeValueAsString(error));

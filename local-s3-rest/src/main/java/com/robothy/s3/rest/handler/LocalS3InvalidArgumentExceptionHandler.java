@@ -4,7 +4,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
-import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -33,8 +33,10 @@ public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<
 
   @Override
   public void handle(LocalS3InvalidArgumentException e, HttpRequest request, HttpResponse response) {
+    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    String requestId = ResponseUtils.nextRequestId();
     S3Error error = S3Error.builder()
-        .requestId(IdUtils.defaultGenerator().nextStrId())
+        .requestId(requestId)
         .code(e.getS3ErrorCode().code())
         .message(e.getMessage() == null ? e.getS3ErrorCode().description() : e.getMessage())
         .argumentName(e.getArgumentName())
@@ -45,6 +47,7 @@ public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<
     response.status(HttpResponseStatus.valueOf(e.getS3ErrorCode().httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .write(xml);
+    ResponseUtils.addAmzRequestId(response, requestId);
   }
 
 }

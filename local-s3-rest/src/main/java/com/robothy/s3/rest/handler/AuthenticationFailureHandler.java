@@ -3,7 +3,7 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
-import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -24,15 +24,18 @@ final class AuthenticationFailureHandler implements HttpRequestHandler {
 
   @Override
   public void handle(HttpRequest request, HttpResponse response) {
+    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    String requestId = ResponseUtils.nextRequestId();
     S3Error error = S3Error.builder()
         .code(result.errorCode().code())
         .message(result.message())
-        .requestId(IdUtils.nextUuid())
+        .requestId(requestId)
         .build();
 
     response.status(HttpResponseStatus.valueOf(result.errorCode().httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
+    ResponseUtils.addAmzRequestId(response, requestId);
     if (!HttpMethod.HEAD.equals(request.getMethod())) {
       response.write(XmlUtils.toXml(error));
     }

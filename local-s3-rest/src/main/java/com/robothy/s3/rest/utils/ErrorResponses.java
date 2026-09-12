@@ -59,7 +59,7 @@ public final class ErrorResponses {
 
   private static void writeS3Error(HttpRequest request, HttpResponse response, S3ErrorCode errorCode,
                                    String message) {
-    String requestId = IdUtils.defaultGenerator().nextStrId();
+    String requestId = ResponseUtils.nextRequestId();
     response.status(HttpResponseStatus.valueOf(errorCode.httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);

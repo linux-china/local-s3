@@ -4,7 +4,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.S3ErrorCode;
-import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -19,14 +19,17 @@ public class IllegalArgumentExceptionHandler implements ExceptionHandler<Illegal
 
   @Override
   public void handle(IllegalArgumentException e, HttpRequest httpRequest, HttpResponse response) {
+    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    String requestId = ResponseUtils.nextRequestId();
     S3Error error = S3Error.builder()
         .code(S3ErrorCode.InvalidArgument.code())
         .message(e.getMessage())
-        .requestId(IdUtils.nextUuid())
+        .requestId(requestId)
         .build();
 
     response.status(HttpResponseStatus.valueOf(S3ErrorCode.InvalidArgument.httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
+    ResponseUtils.addAmzRequestId(response, requestId);
 
     if (!HttpMethod.HEAD.equals(httpRequest.getMethod())) {
       response.write(XmlUtils.toXml(error));

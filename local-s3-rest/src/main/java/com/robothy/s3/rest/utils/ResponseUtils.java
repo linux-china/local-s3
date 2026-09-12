@@ -12,6 +12,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * LocalS3 response utils.
@@ -36,12 +37,47 @@ public class ResponseUtils {
   }
 
   /**
-   * Add 'x-amz-request-id' header.
+   * The characters of a request ID, like the ones of Amazon S3, e.g. {@code VGEKQFPHD810M604}.
+   */
+  private static final char[] REQUEST_ID_CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+
+  private static final int REQUEST_ID_LENGTH = 16;
+
+  /**
+   * Generate the ID of a request, which the {@code x-amz-request-id} header of its response carries, and
+   * the {@code RequestId} of the body of an error response repeats. Every response uses this, so that the
+   * IDs of a service all look the same; they have the shape of the ones of Amazon S3, so that code that
+   * logs or parses them sees what it would there.
+   *
+   * @return a new request ID.
+   */
+  public static String nextRequestId() {
+    ThreadLocalRandom random = ThreadLocalRandom.current();
+    StringBuilder requestId = new StringBuilder(REQUEST_ID_LENGTH);
+    for (int i = 0; i < REQUEST_ID_LENGTH; i++) {
+      requestId.append(REQUEST_ID_CHARACTERS[random.nextInt(REQUEST_ID_CHARACTERS.length)]);
+    }
+    return requestId.toString();
+  }
+
+  /**
+   * Add 'x-amz-request-id' header with a new request ID.
    *
    * @param response the response to add 'x-amz-request-id' header.
    */
   public static void addAmzRequestId(HttpResponse response) {
-    response.putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, IdUtils.nextUuid());
+    addAmzRequestId(response, nextRequestId());
+  }
+
+  /**
+   * Add 'x-amz-request-id' header with the given request ID, which an error response also carries in its
+   * body, so that the two report the same ID.
+   *
+   * @param response the response to add 'x-amz-request-id' header.
+   * @param requestId the ID of the request.
+   */
+  public static void addAmzRequestId(HttpResponse response, String requestId) {
+    response.putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
   }
 
   /**

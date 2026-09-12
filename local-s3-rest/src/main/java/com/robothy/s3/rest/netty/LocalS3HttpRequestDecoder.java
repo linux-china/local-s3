@@ -4,7 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
-import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
@@ -267,10 +268,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     rejected = true;
     releaseBody();
 
+    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    String requestId = ResponseUtils.nextRequestId();
     S3Error error = S3Error.builder()
         .code(errorCode.code())
         .message(message)
-        .requestId(IdUtils.defaultGenerator().nextStrId())
+        .requestId(requestId)
         .build();
     byte[] content;
     try {
@@ -284,7 +287,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     response.headers()
         .set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_XML)
         .set(HttpHeaderNames.CONTENT_LENGTH, content.length)
-        .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE)
+        .set(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
     ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
   }
 
