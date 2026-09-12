@@ -50,8 +50,11 @@ jobs:
           ls -l
 
       # Tests the JVM based Docker image, but doesn't build the GraalVM native image.
+      # --continue runs the tests of the other modules after one of them fails, so that a pull request
+      # shows every failure at once instead of only the first. The build still fails, and the report step
+      # below publishes the results of every module that ran.
       - name: Build
-        run: ./gradlew mergeReports :local-s3-docker:dockerImageTest
+        run: ./gradlew mergeReports :local-s3-docker:dockerImageTest --continue
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v5
