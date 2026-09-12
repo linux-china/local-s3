@@ -26,12 +26,30 @@ jar {
 def os = DefaultNativePlatform.getCurrentOperatingSystem()
 def executor = os.isWindows() ? Arrays.asList("cmd", "/c") : Arrays.asList("sh", "-c")
 
+// Everything the commands below are built from is read while the build is configured, and the commands
+// themselves are set there too. A task action may not reach for `project` at execution time, which the
+// configuration cache forbids; setting `commandLine` up front also makes the command part of the inputs
+// that the up-to-date check of a task fingerprints, so a changed image tag re-runs it.
+def dockerProjectDir = project.projectDir
+def dockerBuildDir = project.layout.buildDirectory.get().asFile
+def imageVersion = project.version
+
+/**
+ * The command line of a task that runs a shell command, i.e. the shell of the platform followed by the
+ * command as a single argument.
+ */
+static List<String> shellCommand(List<String> executor, String command) {
+    var commandLine = new ArrayList<String>(executor)
+    commandLine.add(command)
+    return commandLine
+}
+
 // GraalVM Community for JDK 21. The tracing agent that collects reachability metadata and the
 // native-image builder must be the same version, so both tasks below use this image.
 def graalvmNativeImage = 'ghcr.io/graalvm/native-image-community:21.0.2-ol9'
 
 tasks.register('collectReachabilityMetadata', JavaExec) {
-    group('native-image')
+    group = 'native-image'
     dependsOn('jar')
 
     outputs.cacheIf { true }
@@ -50,13 +68,14 @@ tasks.register('collectReachabilityMetadata', JavaExec) {
 
     doFirst {
         // Start from scratch, so that no metadata collected by another GraalVM version is left behind.
-        project.delete(project.layout.buildDirectory.dir("reachability-metadata"))
-        project.layout.buildDirectory.dir("reachability-metadata/META-INF/native-image").get().asFile.mkdirs()
+        var metadataDir = new File(dockerBuildDir, "reachability-metadata")
+        metadataDir.deleteDir()
+        new File(metadataDir, "META-INF/native-image").mkdirs()
     }
 }
 
 tasks.register('buildGraalVMNativeImage', Exec) {
-    group('native-image')
+    group = 'native-image'
     dependsOn('collectReachabilityMetadata')
 
     outputs.cacheIf { true }
@@ -69,25 +88,21 @@ tasks.register('buildGraalVMNativeImage', Exec) {
     inputs.property("graalvm-native-image", graalvmNativeImage)
     outputs.file(project.layout.buildDirectory.file("bin/s3"))
             .withPropertyName("s3-native-image")
-
-    doFirst {
-        var cmd = new ArrayList(executor)
-        var buildCmd = """docker run --rm \
--v ${project.projectDir}:/project \
--v ${project.layout.buildDirectory.get().asFile}/bin:/app \
+    // language=bash
+    def runLocalS3 = """docker run --rm \
+-v ${dockerProjectDir}:/project \
+-v ${dockerBuildDir}/bin:/app \
 ${graalvmNativeImage} \
 -jar /project/build/libs/s3.jar \
 --initialize-at-build-time=ch.qos.logback,org.slf4j \
 --install-exit-handlers \
 --class-path /project/build/reachability-metadata
 """
-        cmd.add(buildCmd)
-        commandLine(cmd)
-    }
+    commandLine shellCommand(executor, runLocalS3)
 }
 
 tasks.register('buildGraalVMNativeBasedDockerImage', Exec) {
-    group("docker-image")
+    group = "docker-image"
     dependsOn('buildGraalVMNativeImage')
 
     outputs.cacheIf { true }
@@ -96,27 +111,21 @@ tasks.register('buildGraalVMNativeBasedDockerImage', Exec) {
             .withPropertyName("s3-native-image")
             .withPathSensitivity(PathSensitivity.RELATIVE)
 
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker build -t luofuxiang/local-s3:native-${project.version} -f GraalVMNativeImage.dockerfile .")
-        commandLine(cmd)
-    }
+    commandLine shellCommand(executor,
+            "docker build -t luofuxiang/local-s3:native-${imageVersion} -f GraalVMNativeImage.dockerfile .")
 }
 
 tasks.register('buildJava21BasedDockerImage', Exec) {
-    group("docker-image")
+    group = "docker-image"
     dependsOn('jar')
 
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker build -t luofuxiang/local-s3:latest -t luofuxiang/local-s3:${project.version} .")
-        commandLine(cmd)
-    }
+    commandLine shellCommand(executor,
+            "docker build -t luofuxiang/local-s3:latest -t luofuxiang/local-s3:${imageVersion} .")
 }
 
 
 tasks.register('buildDockerImages') {
-    group("docker-image")
+    group = "docker-image"
     dependsOn ('buildGraalVMNativeBasedDockerImage', 'buildJava21BasedDockerImage')
     description = "Builds the docker images"
 }
@@ -150,54 +159,38 @@ def registerImageTest(String taskName, String imageTag, String buildImageTask, S
 }
 
 registerImageTest('dockerImageTest', 'latest', 'buildJava21BasedDockerImage', 'libs/s3.jar', 'JVM based')
-registerImageTest('nativeImageTest', "native-${project.version}", 'buildGraalVMNativeBasedDockerImage', 'bin/s3',
+registerImageTest('nativeImageTest', "native-${imageVersion}", 'buildGraalVMNativeBasedDockerImage', 'bin/s3',
         'GraalVM native image based')
 
 tasks.register('pushJava21BasedDockerImage', Exec) {
     dependsOn 'dockerImageTest'
-    group("docker-image")
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker push luofuxiang/local-s3:${project.version}")
-        commandLine(cmd)
-    }
+    group = "docker-image"
+    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:${imageVersion}")
 }
 
 tasks.register('pushGraalVMNativeBasedDockerImage', Exec) {
     // Like before, pushing requires the image tests of the JVM based image; run nativeImageTest to test this one.
     dependsOn 'buildGraalVMNativeBasedDockerImage', 'dockerImageTest'
-    group("docker-image")
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker push luofuxiang/local-s3:native-${project.version}")
-        commandLine(cmd)
-    }
+    group = "docker-image"
+    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:native-${imageVersion}")
 }
 
 tasks.register('pushLatestImage', Exec) {
     dependsOn 'dockerImageTest'
-    group("docker-image")
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker push luofuxiang/local-s3:latest")
-        commandLine(cmd)
-    }
+    group = "docker-image"
+    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:latest")
 }
 
 tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
-    group("docker-image")
+    group = "docker-image"
     // The release used to test the image in `check`; test it before pushing now that `test` doesn't.
     dependsOn('jar', 'dockerImageTest')
     description = "Builds and pushes a multi-platform (linux/amd64 + linux/arm64) Docker image using buildx."
 
-    doFirst {
-        var cmd = new ArrayList(executor)
-        cmd.add("docker buildx build --platform linux/amd64,linux/arm64 --push" +
-                " -t luofuxiang/local-s3:latest" +
-                " -t luofuxiang/local-s3:${project.version}" +
-                " .")
-        commandLine(cmd)
-    }
+    commandLine shellCommand(executor, "docker buildx build --platform linux/amd64,linux/arm64 --push" +
+            " -t luofuxiang/local-s3:latest" +
+            " -t luofuxiang/local-s3:${imageVersion}" +
+            " .")
 }
 
 

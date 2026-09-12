@@ -43,7 +43,7 @@ jacocoTestReport {
 }
 
 jar {
-    duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.compileJava {
@@ -55,9 +55,9 @@ tasks.compileTestJava {
 }
 
 java {
-//    toolchain {
-//        languageVersion = JavaLanguageVersion.of(17)
-//    }
-    sourceCompatibility(21)
-    targetCompatibility(21)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    sourceCompatibility = 21
+    targetCompatibility = 21
 }

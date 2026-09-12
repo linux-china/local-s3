@@ -19,10 +19,22 @@ allprojects {
     }
 }
 
+// The code of the container entry point is left out of the coverage report: the tests of that module
+// run the built images rather than the classes of the module.
+def modulesWithoutCoverage = ['local-s3-docker']
+
+/**
+ * Aggregates the coverage that the `test` task of every module recorded.
+ *
+ * The inputs are contributed below, from those tasks and their source sets, rather than globbed from the
+ * project tree. A file tree rooted at the whole repository contains the output of every other task as
+ * well, so Gradle rejects the build with an undeclared dependency as soon as one of them runs in the same
+ * invocation, e.g. `./gradlew mergeReports :local-s3-docker:dockerImageTest`, which is what CI runs. That
+ * only surfaced once the build was configured to run in parallel: a serial build without the
+ * configuration cache happened to order the two tasks the other way round, so the report was merged after
+ * the other task had written its output rather than while it was writing it.
+ */
 tasks.register('mergeReports', JacocoReport) {
-    executionData.from(project.fileTree(dir: '.', include: '**/build/jacoco/test.exec'))
-    sourceDirectories.from(project.fileTree(dir: '.', include: '**/src/main/java/**', exclude: 'local-s3-docker/src/main/java/**'))
-    classDirectories.from(project.fileTree(dir: '.', include: '**/build/classes/java/main/**', exclude: 'local-s3-docker/build/classes/java/main/**'))
     reports {
         xml.required.set(true)
         html.required.set(true)
@@ -30,13 +42,23 @@ tasks.register('mergeReports', JacocoReport) {
     }
 }
 
-project.subprojects.each {
-    it.afterEvaluate {
-        mergeReports.dependsOn(it.tasks['test'])
-        if (it.plugins.hasPlugin('local-s3.publish')) {
-            rootProject.tasks.release.dependsOn(it.tasks['publishAllPublicationsToProjectLocalRepository'])
-            rootProject.tasks.release.dependsOn(it.tasks['zipMavenCentralPortalPublication'])
-            rootProject.tasks.release.dependsOn(it.tasks['uploadMavenCentralPortal'])
+project.subprojects.each { module ->
+    module.afterEvaluate {
+        def testTask = module.tasks.named('test', Test)
+        tasks.named('mergeReports', JacocoReport) {
+            dependsOn(testTask)
+            // The provider carries the dependency on the task that writes the file.
+            executionData.from(testTask.map { it.extensions.getByType(JacocoTaskExtension).destinationFile })
+            if (!modulesWithoutCoverage.contains(module.name)) {
+                sourceDirectories.from(module.sourceSets.main.java.srcDirs)
+                classDirectories.from(module.sourceSets.main.output.classesDirs)
+            }
+        }
+
+        if (module.plugins.hasPlugin('local-s3.publish')) {
+            rootProject.tasks.release.dependsOn(module.tasks['publishAllPublicationsToProjectLocalRepository'])
+            rootProject.tasks.release.dependsOn(module.tasks['zipMavenCentralPortalPublication'])
+            rootProject.tasks.release.dependsOn(module.tasks['uploadMavenCentralPortal'])
         }
     }
 }

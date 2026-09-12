@@ -74,26 +74,29 @@ jobs:
           pwd
           ls -l
 
+      # The release plugin isn't compatible with the configuration cache, which gradle.properties turns
+      # on: one of its tasks holds a ByteArrayOutputStream, which can't be stored. Only the release
+      # tasks need this opt-out; the build and PR workflows run with the cache.
       - name: Update release version
         run: |
-          ./gradlew releaseVersion
+          ./gradlew releaseVersion --no-configuration-cache
 
       - name: Release(Info)
         if: ${{inputs.gradleLogLevel == 'Info'}}
         run: |
-          ./gradlew check release --info
+          ./gradlew check release --info --no-configuration-cache
 
       - name: Release(Warn)
         if: ${{inputs.gradleLogLevel == 'Warn'}}
         run: |
-          ./gradlew check release --warn
+          ./gradlew check release --warn --no-configuration-cache
 
       - name: Release(Debug)
         if: ${{inputs.gradleLogLevel == 'Debug'}}
         run: |
-          ./gradlew check release --debug
+          ./gradlew check release --debug --no-configuration-cache
 
       - name: Release(Stacktrace)
         if: ${{inputs.gradleLogLevel == 'Stacktrace'}}
         run: |
-          ./gradlew check release --stacktrace
+          ./gradlew check release --stacktrace --no-configuration-cache
