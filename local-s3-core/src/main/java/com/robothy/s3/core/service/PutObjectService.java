@@ -4,11 +4,13 @@ import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.IdUtils;
@@ -67,7 +69,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
       options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 
-      return commitPutObject(bucketName, key, versionedObjectMetadata);
+      return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions());
     } catch (Throwable e) {
       discardStoredContent(fileId, e);
       throw e;
@@ -75,7 +77,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   /**
-   * Add a new version of an object whose content is already stored. Called by {@linkplain #putObject}.
+   * Add a new version of an object whose content is already stored, unconditionally.
    *
    * @param bucketName the bucket name.
    * @param key the object key.
@@ -85,7 +87,34 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   @BucketChanged
   @BucketWriteLock
   default PutObjectAns commitPutObject(String bucketName, String key, VersionedObjectMetadata versionedObjectMetadata) {
+    return commitPutObject(bucketName, key, versionedObjectMetadata, ObjectPreconditions.none());
+  }
+
+  /**
+   * Add a new version of an object whose content is already stored, if the object that the key holds
+   * satisfies the preconditions of the request. Called by {@linkplain #putObject}.
+   *
+   * <p>The preconditions are evaluated here rather than before the content is stored, i.e. under the write
+   * lock of the bucket that the version is added under. That is what makes an {@code If-Match} put a
+   * compare-and-swap and an {@code If-None-Match: *} put a create: no other request can store the object
+   * between the evaluation of the condition and the addition of the version. A conditional put that is
+   * rejected has stored its content already, which {@linkplain #putObject} then discards.
+   *
+   * @param bucketName the bucket name.
+   * @param key the object key.
+   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
+   * @param preconditions the conditions that the object the key holds must satisfy;
+   *     {@linkplain ObjectPreconditions#none()} to add the version unconditionally.
+   * @return result of the put object operation.
+   */
+  @BucketChanged
+  @BucketWriteLock
+  default PutObjectAns commitPutObject(String bucketName, String key,
+                                       VersionedObjectMetadata versionedObjectMetadata,
+                                       ObjectPreconditions preconditions) {
     BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+    PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
+        bucketMetadata.getObjectMetadata(key).orElse(null));
     return addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
   }
 

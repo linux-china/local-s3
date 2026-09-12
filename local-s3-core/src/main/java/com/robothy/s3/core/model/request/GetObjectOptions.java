@@ -18,12 +18,27 @@ public class GetObjectOptions {
 
   private Range range;
 
+  /**
+   * The conditions that the object must satisfy for the read to answer with it; {@code null} if the
+   * request is unconditional.
+   */
+  private ObjectPreconditions preconditions;
+
   public Optional<String> getVersionId() {
     return Optional.ofNullable(versionId);
   }
 
   public Optional<Range> getRange() {
     return Optional.ofNullable(range);
+  }
+
+  /**
+   * Get the conditions that the object must satisfy.
+   *
+   * @return the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it carries none.
+   */
+  public ObjectPreconditions getPreconditions() {
+    return Optional.ofNullable(preconditions).orElseGet(ObjectPreconditions::none);
   }
 
 }

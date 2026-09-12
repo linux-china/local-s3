@@ -11,6 +11,7 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.utils.ByteBufUtils;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -37,10 +38,16 @@ class GetObjectController implements HttpRequestHandler {
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
+        .preconditions(RequestUtils.extractPreconditions(request))
         .build();
     GetObjectAns getObjectAns = objectService.getObject(bucket, key, options);
 
-    if (getObjectAns.isDeleteMarker()) {
+    if (getObjectAns.isNotModified()) {
+      // The client already holds this version. A 304 carries no content, and none of the headers that
+      // describe one; the ETag and the Last-Modified below identify the version that it holds.
+      response.status(HttpResponseStatus.NOT_MODIFIED);
+      ResponseUtils.addETag(response, getObjectAns.getEtag());
+    } else if (getObjectAns.isDeleteMarker()) {
       response.status(HttpResponseStatus.METHOD_NOT_ALLOWED);
       response.putHeader(HttpHeaderNames.ALLOW.toString(), HttpMethod.DELETE)
           .putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, true);

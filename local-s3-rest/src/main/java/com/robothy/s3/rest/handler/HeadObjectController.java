@@ -11,6 +11,7 @@ import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -35,6 +36,7 @@ class HeadObjectController implements HttpRequestHandler {
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
+        .preconditions(RequestUtils.extractPreconditions(request))
         .build();
     GetObjectAns object = objectService.headObject(bucket, key, options);
 
@@ -42,7 +44,12 @@ class HeadObjectController implements HttpRequestHandler {
         .putHeader(HttpHeaderNames.LAST_MODIFIED.toString(), ResponseUtils.toRfc1123DateTime(object.getLastModified()));
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
 
-    if (!object.isDeleteMarker()) {
+    if (object.isNotModified()) {
+      // The client already holds this version. A 304 carries none of the headers that describe content;
+      // the ETag and the Last-Modified above identify the version that it holds.
+      response.status(HttpResponseStatus.NOT_MODIFIED);
+      ResponseUtils.addETag(response, object.getEtag());
+    } else if (!object.isDeleteMarker()) {
       if (object.getContentRange() != null) {
         response.status(HttpResponseStatus.PARTIAL_CONTENT)
             .putHeader(HttpHeaderNames.CONTENT_RANGE.toString(), object.getContentRange());

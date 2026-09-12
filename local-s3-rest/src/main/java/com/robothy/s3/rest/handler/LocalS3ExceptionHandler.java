@@ -7,6 +7,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -38,6 +39,8 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
         .message(Optional.ofNullable(e.getMessage()).orElse(s3ErrorCode.description()))
         .requestId(requestId)
         .bucketName(e.getBucketName())
+        // Amazon S3 names the condition that didn't hold in the error of a conditional request.
+        .condition(e instanceof PreconditionFailedException failed ? failed.getCondition() : null)
         .build();
 
     try {

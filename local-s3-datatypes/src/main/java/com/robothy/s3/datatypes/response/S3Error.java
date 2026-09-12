@@ -1,5 +1,6 @@
 package com.robothy.s3.datatypes.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 import lombok.AllArgsConstructor;
@@ -32,6 +33,15 @@ public class S3Error {
 
   @JacksonXmlProperty(localName = "ArgumentValue")
   private String argumentValue;
+
+  /**
+   * The name of the header whose condition didn't hold, which a {@code PreconditionFailed} error reports,
+   * e.g. {@code If-None-Match}. Left out of an error that isn't about a condition; the other fields are
+   * written even when they are empty, which the clients of LocalS3 have always seen.
+   */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  @JacksonXmlProperty(localName = "Condition")
+  private String condition;
 
   @JacksonXmlProperty(localName = "BucketName")
   private String bucketName;

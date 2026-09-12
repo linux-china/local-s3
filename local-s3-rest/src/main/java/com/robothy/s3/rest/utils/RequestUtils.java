@@ -2,12 +2,15 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import io.netty.buffer.ByteBufInputStream;
+import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -85,6 +88,42 @@ public class RequestUtils {
     return Optional.of(tagSet);
   }
 
+
+  /**
+   * Extract the preconditions of a
+   * <a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-13">conditional request</a> from its
+   * {@code If-Match}, {@code If-None-Match}, {@code If-Modified-Since} and {@code If-Unmodified-Since}
+   * headers. The entity tag headers are passed on as they are; a date that isn't an HTTP date is left out,
+   * i.e. is not a precondition at all, like RFC 9110 requires.
+   *
+   * @param request HTTP request.
+   * @return the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it carries none.
+   */
+  public static ObjectPreconditions extractPreconditions(HttpRequest request) {
+    return ObjectPreconditions.builder()
+        .ifMatch(request.header(HttpHeaderNames.IF_MATCH).orElse(null))
+        .ifNoneMatch(request.header(HttpHeaderNames.IF_NONE_MATCH).orElse(null))
+        .ifModifiedSince(httpDate(request, HttpHeaderNames.IF_MODIFIED_SINCE))
+        .ifUnmodifiedSince(httpDate(request, HttpHeaderNames.IF_UNMODIFIED_SINCE))
+        .build();
+  }
+
+  /**
+   * Parse a header that carries an HTTP date into epoch milliseconds. {@linkplain DateFormatter} accepts
+   * all three formats that RFC 9110 requires a recipient to, i.e. the preferred {@code IMF-fixdate} and the
+   * two obsolete ones.
+   *
+   * @param request HTTP request.
+   * @param headerName the name of the header.
+   * @return the date in epoch milliseconds; {@code null} if the request doesn't carry the header, or its
+   *     value isn't an HTTP date.
+   */
+  private static Long httpDate(HttpRequest request, CharSequence headerName) {
+    return request.header(headerName)
+        .map(DateFormatter::parseHttpDate)
+        .map(Date::getTime)
+        .orElse(null);
+  }
 
   /**
    * Extract user metadata from headers. User metadata in headers that start with {@linkplain AmzHeaderNames#X_AMZ_META_PREFIX}.

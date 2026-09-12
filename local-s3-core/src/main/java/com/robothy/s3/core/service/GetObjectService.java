@@ -3,6 +3,7 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
@@ -40,6 +41,11 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
     }
 
     VersionedObjectMetadata latestObject = objectMetadata.getLatest();
+    if (PreconditionAssertions.assertReadPreconditionsHold(options.getPreconditions(),
+        latestObject.getEtag(), latestObject.getCreationDate())) {
+      return notModified(bucketName, key, null, latestObject);
+    }
+
     long fullSize = latestObject.getSize();
     long contentLength = fullSize;
     String contentRange = null;
@@ -120,6 +126,11 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .lastModified(versionedObjectMetadata.getCreationDate())
           .build();
     } else {
+      if (PreconditionAssertions.assertReadPreconditionsHold(options.getPreconditions(),
+          versionedObjectMetadata.getEtag(), versionedObjectMetadata.getCreationDate())) {
+        return notModified(bucketName, key, returnedVersionId, versionedObjectMetadata);
+      }
+
       long fullSize = versionedObjectMetadata.getSize();
       long contentLength = fullSize;
       String contentRange = null;
@@ -152,6 +163,28 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .userMetadata(versionedObjectMetadata.getUserMetadata())
           .build();
     }
+  }
+
+  /**
+   * The answer of a read that the client already holds the object of: no content, but the metadata that
+   * identifies the version it holds, which the {@code ETag} and {@code Last-Modified} headers of a
+   * {@code 304 Not Modified} response carry, like RFC 9110 requires of a response that omits the content.
+   *
+   * <p>The preconditions of a read are evaluated before the content is opened, so that an object that the
+   * client already holds is never read from the storage.
+   */
+  private static GetObjectAns notModified(String bucketName, String key, String versionId,
+                                          VersionedObjectMetadata versionedObjectMetadata) {
+    return GetObjectAns.builder()
+        .bucketName(bucketName)
+        .key(key)
+        .versionId(versionId)
+        .notModified(true)
+        .contentType(versionedObjectMetadata.getContentType())
+        .lastModified(versionedObjectMetadata.getCreationDate())
+        .size(versionedObjectMetadata.getSize())
+        .etag(versionedObjectMetadata.getEtag())
+        .build();
   }
 
   /**

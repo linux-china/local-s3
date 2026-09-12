@@ -41,6 +41,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .contentMd5(request.header("Content-MD5").orElse(null))
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
+        .preconditions(RequestUtils.extractPreconditions(request))
         .build();
 
     PutObjectAns ans = objectService.putObject(bucketName, key, options);

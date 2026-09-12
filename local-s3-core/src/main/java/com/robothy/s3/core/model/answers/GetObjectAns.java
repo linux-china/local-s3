@@ -18,6 +18,14 @@ public class GetObjectAns {
 
   private boolean deleteMarker;
 
+  /**
+   * Whether the client already holds this version of the object, i.e. an {@code If-None-Match} or an
+   * {@code If-Modified-Since} precondition of the read didn't hold. The answer then carries the metadata
+   * that identifies the version, but no {@linkplain #content}, and the response is
+   * {@code 304 Not Modified}.
+   */
+  private boolean notModified;
+
   private String contentType;
 
   private long size;
