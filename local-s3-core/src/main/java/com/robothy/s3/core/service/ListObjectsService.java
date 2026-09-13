@@ -14,14 +14,11 @@ import com.robothy.s3.datatypes.response.S3Object;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  * Algorithm implementation of list objects.
  */
 public interface ListObjectsService extends LocalS3MetadataApplicable {
-
-  ConcurrentSkipListMap<String, ObjectMetadata> EMPTY_OBJECT_MAP = new ConcurrentSkipListMap<>();
 
   /**
    * List objects with options.
