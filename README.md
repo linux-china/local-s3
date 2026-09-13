@@ -104,18 +104,17 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 
 **Lifecycle**
 + DeleteBucketLifecycle
-+ GetBucketLifecycle
 + GetBucketLifecycleConfiguration
-+ PutBucketLifecycle
 + PutBucketLifecycleConfiguration
 
+(The deprecated `GetBucketLifecycle` and `PutBucketLifecycle` send the same requests, and get the same answer.)
+
 **Event notifications**
-+ GetBucketNotification
 + GetBucketNotificationConfiguration
-+ PutBucketNotification
 + PutBucketNotificationConfiguration
 
-(LocalS3 has its own listener API instead; see [Listen to bucket and object events](#listen-to-bucket-and-object-events).)
+(The deprecated `GetBucketNotification` and `PutBucketNotification` send the same requests, and get the same
+answer. LocalS3 has its own listener API instead; see [Listen to bucket and object events](#listen-to-bucket-and-object-events).)
 
 **Object Lock and retention**
 + GetObjectLegalHold
