@@ -117,6 +117,62 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 
 (LocalS3 has its own listener API instead; see [Listen to bucket and object events](#listen-to-bucket-and-object-events).)
 
+**Object Lock and retention**
++ GetObjectLegalHold
++ GetObjectLockConfiguration
++ GetObjectRetention
++ PutObjectLegalHold
++ PutObjectLockConfiguration
++ PutObjectRetention
+
+**Object retrieval and transformation**
++ GetObjectTorrent
++ RestoreObject
++ SelectObjectContent
++ WriteGetObjectResponse
+
+**Static website hosting**
++ DeleteBucketWebsite
++ GetBucketWebsite
++ PutBucketWebsite
+
+**Access logging**
++ GetBucketLogging
++ PutBucketLogging
+
+**Requester pays**
++ GetBucketRequestPayment
++ PutBucketRequestPayment
+
+**Transfer acceleration**
++ GetBucketAccelerateConfiguration
++ PutBucketAccelerateConfiguration
+
+**Ownership controls**
++ DeleteBucketOwnershipControls
++ GetBucketOwnershipControls
++ PutBucketOwnershipControls
+
+**Analytics, inventory and metrics**
++ DeleteBucketAnalyticsConfiguration
++ DeleteBucketInventoryConfiguration
++ DeleteBucketMetricsConfiguration
++ GetBucketAnalyticsConfiguration
++ GetBucketInventoryConfiguration
++ GetBucketMetricsConfiguration
++ ListBucketAnalyticsConfigurations
++ ListBucketInventoryConfigurations
++ ListBucketMetricsConfigurations
++ PutBucketAnalyticsConfiguration
++ PutBucketInventoryConfiguration
++ PutBucketMetricsConfiguration
+
+**Intelligent tiering**
++ DeleteBucketIntelligentTieringConfiguration
++ GetBucketIntelligentTieringConfiguration
++ ListBucketIntelligentTieringConfigurations
++ PutBucketIntelligentTieringConfiguration
+
 **Not routed at all**
 
 `POST Object`, the browser form upload (`multipart/form-data` to the bucket, with its base64 policy
