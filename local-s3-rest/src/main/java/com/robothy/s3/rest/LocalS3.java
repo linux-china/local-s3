@@ -1,21 +1,10 @@
 package com.robothy.s3.rest;
 
-import com.ctc.wstx.stax.WstxInputFactory;
-import com.ctc.wstx.stax.WstxOutputFactory;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.dataformat.xml.XmlFactory;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.BucketService;
-import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
-import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
@@ -23,10 +12,7 @@ import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.BucketNameValidator;
-import com.robothy.s3.rest.service.DefaultServiceFactory;
-import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
-import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -43,9 +29,7 @@ import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -53,7 +37,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
-import javax.xml.stream.XMLInputFactory;
 
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -325,57 +308,17 @@ public class LocalS3 implements AutoCloseable {
     }
 
     private ServiceFactory createServiceFactory() {
-        // keep s3Manager even after restart
-        if(s3Manager == null) {
+        // Keep the managers across a restart, so that a service that is started again serves the data it held.
+        if (s3Manager == null) {
             s3Manager = createLocalS3Manager();
         }
-        ServiceFactory serviceFactory = new DefaultServiceFactory();
-        BucketService bucketService = s3Manager.bucketService();
-        ObjectService objectService = s3Manager.objectService();
-        serviceFactory.register(BucketService.class, () -> bucketService);
-        serviceFactory.register(ObjectService.class, () -> objectService);
-        BucketNameValidator bucketNameValidator = new BucketNameValidator(strictBucketNames);
-        serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
-        MultipartUploadPolicy multipartUploadPolicy =
-                MultipartUploadPolicy.of(strictPartSizes, compositeMultipartEtags);
-        serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
-        VirtualHostParser virtualHostParser = new VirtualHostParser(virtualHostDomains);
-        serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
-
-        XMLInputFactory input = new WstxInputFactory();
-        input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
-        input.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE); // Disable DTDs
-        input.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE); // Disable external entities
-
-        XmlMapper xmlMapper = new XmlMapper(new XmlFactory(input, new WstxOutputFactory()));
-        xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        xmlMapper.registerModule(new Jdk8Module());
-        xmlMapper.registerModule(new JavaTimeModule());
-        serviceFactory.register(XmlMapper.class, () -> xmlMapper);
-
-        // Register ObjectMapper for JSON handling (used by S3 Vectors API)
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        objectMapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
-        objectMapper.registerModule(new Jdk8Module());
-        objectMapper.registerModule(new JavaTimeModule());
-        serviceFactory.register(ObjectMapper.class, () -> objectMapper);
-
-        // Register S3 Vectors services
-        if(localS3VectorsManager==null) {
+        if (localS3VectorsManager == null) {
             localS3VectorsManager = createLocalS3VectorsManager();
         }
-        S3VectorsService s3VectorsService = localS3VectorsManager.s3VectorsService();
-        serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
 
-        // register event dispatcher
-        if (bucketEventListener != null || objectEventListener != null) {
-            S3EventDispatcher eventDispatcher =
-                    new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor);
-            serviceFactory.register(S3EventDispatcher.class, () -> eventDispatcher);
-        }
-        return serviceFactory;
+        S3EventDispatcher eventDispatcher = bucketEventListener == null && objectEventListener == null ? null
+                : new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor);
+        return LocalS3Services.create(this, s3Manager, localS3VectorsManager, eventDispatcher);
     }
 
     LocalS3Manager createLocalS3Manager() {
@@ -1080,56 +1023,8 @@ public class LocalS3 implements AutoCloseable {
          * @throws IllegalArgumentException if a variable has an invalid value.
          */
         public Builder fromEnvironment(@NonNull UnaryOperator<String> variables) {
-            // The data path is applied before the mode, because dataPath() switches to PERSISTENCE. An explicit
-            // mode must win over that, so that IN_MEMORY with a path of initial data stays IN_MEMORY.
-            variable(variables, LOCAL_S3_DATA_PATH).ifPresent(this::dataPath);
-            variable(variables, LOCAL_S3_MODE).ifPresent(modeName -> {
-                if (!LocalS3Mode.isLegalName(modeName)) {
-                    throw new IllegalArgumentException("\"" + modeName + "\" is not a valid " + LOCAL_S3_MODE
-                            + ". Valid values are " + Arrays.toString(LocalS3Mode.values()) + ".");
-                }
-                mode(LocalS3Mode.valueOf(modeName.toUpperCase(Locale.ROOT)));
-            });
-            variable(variables, LOCAL_S3_PORT).ifPresent(port -> port(parsePort(port)));
-            variable(variables, LOCAL_S3_STRICT_BUCKET_NAMES)
-                    .ifPresent(strict -> strictBucketNames(Boolean.parseBoolean(strict)));
-            variable(variables, LOCAL_S3_STRICT_PART_SIZES)
-                    .ifPresent(strict -> strictPartSizes(Boolean.parseBoolean(strict)));
-            variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
-                    .ifPresent(composite -> compositeMultipartEtags(Boolean.parseBoolean(composite)));
-            variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
-                    .ifPresent(domains -> virtualHostDomains(domains.split(",")));
-            variable(variables, AWS_BUCKETS).ifPresent(names -> buckets(names.split(",")));
-
-            String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
-            String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);
-            if ((accessKeyId == null) != (secretAccessKey == null)) {
-                throw new IllegalArgumentException(AWS_ACCESS_KEY_ID + " and " + AWS_SECRET_ACCESS_KEY
-                        + " must be configured together.");
-            }
-            if (accessKeyId != null) {
-                credentials(accessKeyId, secretAccessKey);
-            }
+            LocalS3Environment.applyTo(this, variables);
             return this;
-        }
-
-        private static Optional<String> variable(UnaryOperator<String> variables, String name) {
-            return Optional.ofNullable(variables.apply(name))
-                    .map(String::trim)
-                    .filter(value -> !value.isEmpty());
-        }
-
-        private static int parsePort(String port) {
-            try {
-                int value = Integer.parseInt(port);
-                if (value >= 1 && value <= 65535) {
-                    return value;
-                }
-            } catch (NumberFormatException e) {
-                // Rejected below.
-            }
-            throw new IllegalArgumentException("\"" + port + "\" is not a valid " + LOCAL_S3_PORT
-                    + "; use 1 to 65535.");
         }
 
         /**
