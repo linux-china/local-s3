@@ -784,6 +784,9 @@ public class LocalS3 implements AutoCloseable {
      * @return local s3 manager
      */
     public LocalS3Manager getS3Manager() {
+        if (s3Manager == null) {
+            throw new IllegalStateException("S3Manager has not been initialized");
+        }
         return s3Manager;
     }
 
