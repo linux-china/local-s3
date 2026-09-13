@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
  * deleted object, even if the process dies in between; at worst, an unreferenced object is left behind.
  */
 @Slf4j
-public final class TransactionalStorage implements Storage {
+public final class TransactionalStorage implements Storage, StorageTransactions {
 
   private final Storage delegate;
 
@@ -41,6 +41,7 @@ public final class TransactionalStorage implements Storage {
    * @return {@code true} if a transaction was started; {@code false} if the current thread already has
    *     one, which its owner commits or rolls back.
    */
+  @Override
   public boolean begin() {
     if (transaction.get() != null) {
       return false;
@@ -52,6 +53,7 @@ public final class TransactionalStorage implements Storage {
   /**
    * End the transaction of the current thread and delete the objects deleted within it.
    */
+  @Override
   public void commit() {
     end().deleted.forEach(this::deleteQuietly);
   }
@@ -60,6 +62,7 @@ public final class TransactionalStorage implements Storage {
    * End the transaction of the current thread, keep the objects deleted within it, and delete the
    * objects written within it.
    */
+  @Override
   public void rollback() {
     end().written.forEach(this::deleteQuietly);
   }

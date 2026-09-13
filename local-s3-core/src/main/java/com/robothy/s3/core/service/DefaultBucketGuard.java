@@ -3,7 +3,7 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.MetadataStore;
-import com.robothy.s3.core.storage.TransactionalStorage;
+import com.robothy.s3.core.storage.StorageTransactions;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -27,7 +27,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   private final MetadataStore<M> bucketMetaStore;
 
-  private final TransactionalStorage storage;
+  private final StorageTransactions storage;
 
   private final Consumer<String> bucketMetadataReloader;
 
@@ -43,12 +43,13 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
    * @param bucketLock the bucket locks, shared by all services of the same LocalS3 service.
    * @param bucketMetadataLoader loads the in-memory metadata of a bucket; {@code null} if nothing is persisted.
    * @param bucketMetaStore persists bucket metadata; {@code null} to not persist.
-   * @param storage the storage of the service; {@code null} if objects are deleted immediately.
+   * @param storage the storage of the service, whose deletions wait for the bucket to be persisted; {@code null} if
+   *     data is deleted immediately.
    * @param bucketMetadataReloader replaces the in-memory metadata of a bucket with the persisted one;
    *     {@code null} to keep the in-memory metadata when an operation fails.
    */
   public DefaultBucketGuard(BucketLock bucketLock, Function<String, M> bucketMetadataLoader,
-                            MetadataStore<M> bucketMetaStore, TransactionalStorage storage,
+                            MetadataStore<M> bucketMetaStore, StorageTransactions storage,
                             Consumer<String> bucketMetadataReloader) {
     this.bucketLock = Objects.requireNonNull(bucketLock);
     if (bucketMetaStore != null && bucketMetadataLoader == null) {

@@ -59,7 +59,18 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
     Long storageId = storeVectorData(vectorData);
     VectorObjectMetadata vectorMetadata = createVectorMetadata(inputVector, vectorData, storageId);
 
-    indexMetadata.addVectorObject(vectorMetadata);
+    VectorObjectMetadata replaced = indexMetadata.addVectorObject(vectorMetadata);
+    deleteReplacedVectorData(replaced, storageId);
+  }
+
+  /**
+   * Delete the data of the vector that a put replaced. Within a persisted change, the storage deletes it once the
+   * vector bucket is persisted, so that the persisted metadata never references deleted data.
+   */
+  private void deleteReplacedVectorData(VectorObjectMetadata replaced, Long storageId) {
+    if (replaced != null && replaced.getStorageId() != null && !replaced.getStorageId().equals(storageId)) {
+      vectorStorage().deleteVectorData(replaced.getStorageId());
+    }
   }
 
   private void validateVectorInput(PutInputVector inputVector) {

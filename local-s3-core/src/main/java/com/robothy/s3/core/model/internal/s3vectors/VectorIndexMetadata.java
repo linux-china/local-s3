@@ -119,14 +119,15 @@ public class VectorIndexMetadata {
   }
 
   /**
-   * Add a vector object to this index.
+   * Add a vector object to this index, replacing the vector object of the same ID.
    *
    * @param vectorObject the vector object metadata to add
+   * @return the replaced vector object, whose vector data is no longer referenced; {@code null} if there was none.
    */
-  public void addVectorObject(VectorObjectMetadata vectorObject) {
+  public VectorObjectMetadata addVectorObject(VectorObjectMetadata vectorObject) {
     // Validate dimension compatibility
     vectorObject.validateDimension(this.dimension);
-    vectorObjects.put(vectorObject.getVectorId(), vectorObject);
+    return vectorObjects.put(vectorObject.getVectorId(), vectorObject);
   }
 
   /**

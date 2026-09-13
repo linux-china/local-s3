@@ -9,6 +9,7 @@ import com.robothy.s3.core.service.DefaultBucketGuard;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.s3vectors.FileSystemVectorBucketMetadataStore;
+import com.robothy.s3.core.storage.s3vectors.TransactionalVectorStorage;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import java.nio.file.Path;
 
@@ -32,11 +33,12 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
     VectorStorageIds.seedGenerator(vectorsMetadata);
 
     // Vector data belongs to the data path, not to the working directory, which may not even be writable.
-    VectorStorage vectorStorage = VectorStorage.createFileSystem(
-        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT);
+    // The vectors that a change deletes are deleted once the vector bucket is persisted.
+    TransactionalVectorStorage vectorStorage = new TransactionalVectorStorage(VectorStorage.createFileSystem(
+        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT));
     MetadataStore<VectorBucketMetadata> metadataStore = FileSystemVectorBucketMetadataStore.create(this.s3VectorsDataPath);
     BucketGuard bucketGuard = new DefaultBucketGuard<>(bucketLock,
-        bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore, null, null);
+        bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore, vectorStorage, null);
     return S3VectorsService.create(vectorsMetadata, vectorStorage, bucketGuard);
   }
 
