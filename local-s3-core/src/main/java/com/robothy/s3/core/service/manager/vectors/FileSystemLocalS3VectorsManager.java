@@ -14,10 +14,6 @@ import java.nio.file.Path;
 
 final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
 
-  private static final String VECTOR_STORAGE_DIRECTORY = ".storage";
-
-  private static final int MAX_CACHE_SIZE = 2000;
-
   private final Path s3VectorsDataPath;
 
   /**
@@ -33,10 +29,11 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
   public S3VectorsService s3VectorsService() {
     LocalS3VectorsMetadata vectorsMetadata = MetadataLoader.create(LocalS3VectorsMetadata.class)
         .load(s3VectorsDataPath);
+    VectorStorageIds.seedGenerator(vectorsMetadata);
 
     // Vector data belongs to the data path, not to the working directory, which may not even be writable.
     VectorStorage vectorStorage = VectorStorage.createFileSystem(
-        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHE_SIZE);
+        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT);
     S3VectorsService s3VectorsService = S3VectorsService.create(vectorsMetadata, vectorStorage);
     MetadataStore<VectorBucketMetadata> metadataStore = FileSystemVectorBucketMetadataStore.create(this.s3VectorsDataPath);
 

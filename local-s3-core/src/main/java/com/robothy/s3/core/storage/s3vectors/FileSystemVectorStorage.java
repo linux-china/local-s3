@@ -1,11 +1,17 @@
 package com.robothy.s3.core.storage.s3vectors;
 
 import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.core.util.PathUtils;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -16,12 +22,25 @@ import lombok.extern.slf4j.Slf4j;
  * File system implementation of {@linkplain VectorStorage} with LRU memory caching.
  * Stores vector data as individual files in the specified directory.
  * Uses least recently used (LRU) eviction strategy for memory cache.
+ *
+ * <p>A vector is written to a temporary file first, which is then moved to the vector file, so that a process that
+ * dies while writing leaves either the whole vector or no vector file at all, never a partial one. The temporary files
+ * left behind by such a process are deleted when the storage is created.
+ *
+ * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
+ * anything in its directory, which may not even exist, and rejects writes.
  */
 @Slf4j
 class FileSystemVectorStorage implements VectorStorage {
 
+  /**
+   * Suffix of the temporary files that vectors are written to.
+   */
+  private static final String TEMP_FILE_SUFFIX = ".tmp";
+
   private final Path storageDirectory;
   private final int maxCachedVectorCount;
+  private final boolean readOnly;
   private final ReadWriteLock cacheLock = new ReentrantReadWriteLock();
 
   // LRU cache using LinkedHashMap with access order
@@ -34,8 +53,21 @@ class FileSystemVectorStorage implements VectorStorage {
    * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
    */
   FileSystemVectorStorage(Path storageDirectory, int maxCachedVectorCount) {
+    this(storageDirectory, maxCachedVectorCount, false);
+  }
+
+  /**
+   * Create a {@linkplain FileSystemVectorStorage} with specified directory and cache size.
+   *
+   * @param storageDirectory     the directory to store vector files
+   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
+   * @param readOnly             whether the storage only reads the vectors of the directory, which is then neither
+   *                             created nor cleaned
+   */
+  FileSystemVectorStorage(Path storageDirectory, int maxCachedVectorCount, boolean readOnly) {
     this.storageDirectory = storageDirectory;
     this.maxCachedVectorCount = Math.max(0, maxCachedVectorCount);
+    this.readOnly = readOnly;
 
     // Create LRU cache with access order
     this.memoryCache = new LinkedHashMap<>(16, 0.75f, true) {
@@ -45,9 +77,15 @@ class FileSystemVectorStorage implements VectorStorage {
       }
     };
 
+    if (readOnly) {
+      log.info("Read-only FileSystemVectorStorage initialized with directory: {}, max cache size: {}",
+          storageDirectory, maxCachedVectorCount);
+      return;
+    }
     try {
       // Create storage directory if it doesn't exist
       Files.createDirectories(storageDirectory);
+      deleteTempFiles();
 
       log.info("FileSystemVectorStorage initialized with directory: {}, max cache size: {}",
           storageDirectory, maxCachedVectorCount);
@@ -58,6 +96,7 @@ class FileSystemVectorStorage implements VectorStorage {
 
   @Override
   public Long putVectorData(float[] vectorData) {
+    ensureWritable();
     if (vectorData == null || vectorData.length == 0) {
       throw new IllegalArgumentException("Vector data cannot be null or empty");
     }
@@ -140,6 +179,7 @@ class FileSystemVectorStorage implements VectorStorage {
 
   @Override
   public boolean deleteVectorData(Long storageId) {
+    ensureWritable();
     if (storageId == null) {
       return false;
     }
@@ -194,6 +234,9 @@ class FileSystemVectorStorage implements VectorStorage {
 
   @Override
   public long getStoredVectorCount() {
+    if (!Files.isDirectory(storageDirectory)) {
+      return 0;
+    }
     try (var files = Files.list(storageDirectory)) {
       return files.filter(Files::isRegularFile)
           .filter(file -> {
@@ -274,22 +317,53 @@ class FileSystemVectorStorage implements VectorStorage {
     }
   }
 
+  /**
+   * Write a vector to a temporary file of the storage directory, and move it to its file once it is complete.
+   */
   private void writeVectorToFile(Path file, float[] vectorData) throws IOException {
-    try (DataOutputStream dos = new DataOutputStream(Files.newOutputStream(file))) {
-      // Write dimensions first
-      dos.writeInt(vectorData.length);
+    Path temp = storageDirectory.resolve("." + file.getFileName() + "." + UUID.randomUUID() + TEMP_FILE_SUFFIX);
+    try {
+      try (DataOutputStream dos = new DataOutputStream(
+          new BufferedOutputStream(Files.newOutputStream(temp, StandardOpenOption.CREATE_NEW)))) {
+        // Write dimensions first
+        dos.writeInt(vectorData.length);
 
-      // Write vector data
-      for (float value : vectorData) {
-        dos.writeFloat(value);
+        // Write vector data
+        for (float value : vectorData) {
+          dos.writeFloat(value);
+        }
       }
+      PathUtils.moveAtomically(temp, file);
+    } catch (IOException | RuntimeException e) {
+      try {
+        Files.deleteIfExists(temp);
+      } catch (IOException suppressed) {
+        e.addSuppressed(suppressed);
+      }
+      throw e;
+    }
+  }
 
-      dos.flush();
+  /**
+   * Delete the temporary files left behind by a process that died while writing vectors.
+   */
+  private void deleteTempFiles() throws IOException {
+    try (DirectoryStream<Path> tempFiles = Files.newDirectoryStream(storageDirectory, ".*" + TEMP_FILE_SUFFIX)) {
+      for (Path tempFile : tempFiles) {
+        Files.deleteIfExists(tempFile);
+      }
+    }
+  }
+
+  private void ensureWritable() {
+    if (readOnly) {
+      throw new UnsupportedOperationException("The vector storage of " + storageDirectory + " is read-only.");
     }
   }
 
   private float[] readVectorFromFile(Path file) throws IOException {
-    try (DataInputStream dis = new DataInputStream(Files.newInputStream(file))) {
+    // Buffered, so that a float doesn't take a read of the file of its own.
+    try (DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
       // Read dimensions
       int dimensions = dis.readInt();
 

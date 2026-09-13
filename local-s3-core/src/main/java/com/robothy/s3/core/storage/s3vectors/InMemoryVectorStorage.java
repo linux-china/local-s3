@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage.s3vectors;
 
 import com.robothy.s3.core.exception.TotalSizeExceedException;
+import com.robothy.s3.core.util.IdUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -18,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 class InMemoryVectorStorage implements VectorStorage {
 
   private final Map<Long, float[]> vectorStore = new ConcurrentHashMap<>();
-  private final AtomicLong nextStorageId = new AtomicLong(1);
   private final AtomicLong totalSize = new AtomicLong(0);
   private final long maxStorageSize;
 
@@ -61,7 +61,9 @@ class InMemoryVectorStorage implements VectorStorage {
     }
 
     // Generate storage ID and store vector data (defensive copy)
-    Long storageId = nextStorageId.getAndIncrement();
+    // IDs of the shared generator, like the file system storage, so that the IDs of an in-memory storage layered over
+    // a file system one never collide with the IDs of the vectors it reads from there.
+    Long storageId = IdUtils.defaultGenerator().nextId();
     float[] vectorCopy = Arrays.copyOf(vectorData, vectorData.length);
     vectorStore.put(storageId, vectorCopy);
     totalSize.addAndGet(vectorSize);

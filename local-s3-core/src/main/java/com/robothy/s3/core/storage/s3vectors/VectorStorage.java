@@ -38,6 +38,30 @@ public interface VectorStorage {
   }
 
   /**
+   * Create a file system {@linkplain VectorStorage} that only reads the vectors of a directory, which it neither creates
+   * nor changes, and which may not exist. Storing or deleting a vector fails.
+   *
+   * @param storageDirectory the directory of the vector files
+   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
+   * @return a new read-only file system vector storage instance
+   */
+  static VectorStorage createReadOnlyFileSystem(java.nio.file.Path storageDirectory, int maxCachedVectorCount) {
+    return new FileSystemVectorStorage(storageDirectory, maxCachedVectorCount, true);
+  }
+
+  /**
+   * Create a {@linkplain VectorStorage} that stores and deletes vectors in a frontend storage, and reads the vectors that
+   * the frontend doesn't have from a backend storage, which it never changes.
+   *
+   * @param front the storage that new vectors are stored in
+   * @param back the storage that is only read
+   * @return a new layered vector storage instance
+   */
+  static VectorStorage createLayered(VectorStorage front, VectorStorage back) {
+    return new LayeredVectorStorage(front, back);
+  }
+
+  /**
    * Store vector data and return a storage ID.
    * Similar to {@link com.robothy.s3.core.storage.Storage#put(byte[])}.
    * 

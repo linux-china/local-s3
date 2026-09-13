@@ -72,6 +72,11 @@ public class LocalS3 implements AutoCloseable {
     static final String REQUEST_BODY_DIRECTORY = ".request-bodies";
 
     /**
+     * The directory in the data path that the vector buckets and their vectors are stored in.
+     */
+    static final String VECTORS_DIRECTORY = "vectors";
+
+    /**
      * Default max request body size(2G), the largest body the in-memory request aggregation can hold.
      */
     public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = Integer.MAX_VALUE;
@@ -443,9 +448,10 @@ public class LocalS3 implements AutoCloseable {
     LocalS3VectorsManager createLocalS3VectorsManager() {
         if (mode == LocalS3Mode.IN_MEMORY) {
             log.info("Created in-memory LocalS3 Vectors manager.");
-            return LocalS3VectorsManager.createInMemory();
+            // Starts from the vectors of the data path, if any, which it never changes, like the objects of the path.
+            return LocalS3VectorsManager.createInMemory(dataPath == null ? null : dataPath.resolve(VECTORS_DIRECTORY));
         } else {
-            Path vectorsDataPath = dataPath.resolve("vectors");
+            Path vectorsDataPath = dataPath.resolve(VECTORS_DIRECTORY);
             log.info("Created file system LocalS3 Vectors manager.");
             return LocalS3VectorsManager.createFileSystem(vectorsDataPath);
         }

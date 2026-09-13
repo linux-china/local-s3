@@ -46,6 +46,21 @@ public class FileSystemVectorBucketMetadataStore implements MetadataStore<Vector
     return new FileSystemVectorBucketMetadataStore(dataPath);
   }
 
+  /**
+   * Read the metadata of all vector buckets in a directory without changing it: unlike {@linkplain #create(Path)}, the
+   * directory is neither created nor cleaned of temporary files, which a service writing to it may still be using.
+   *
+   * @param dataPath the directory of the metadata files, which may not exist.
+   * @return the metadata of the vector buckets; empty if the directory doesn't exist.
+   */
+  public static List<VectorBucketMetadata> readAll(Path dataPath) {
+    Objects.requireNonNull(dataPath);
+    if (!Files.isDirectory(dataPath)) {
+      return List.of();
+    }
+    return new FileSystemVectorBucketMetadataStore(dataPath).fetchAll();
+  }
+
   private final Path dataPath;
 
   private FileSystemVectorBucketMetadataStore(Path path) {

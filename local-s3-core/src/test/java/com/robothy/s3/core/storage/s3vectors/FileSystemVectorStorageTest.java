@@ -287,4 +287,53 @@ class FileSystemVectorStorageTest {
     assertArrayEquals(largeVector, retrievedVector);
     assertEquals(40000L, vectorStorage.getVectorDataSize(storageId)); // 10,000 * 4 bytes
   }
+
+  @Test
+  void writesVectorsWithoutLeavingTemporaryFiles() throws IOException {
+    for (int i = 0; i < 10; i++) {
+      vectorStorage.putVectorData(new float[] {i, i});
+    }
+    try (var files = Files.list(tempDir)) {
+      assertTrue(files.allMatch(file -> file.getFileName().toString().matches("[0-9]+")),
+          "Only complete vector files are left in the directory.");
+    }
+    assertEquals(10, vectorStorage.getStoredVectorCount());
+  }
+
+  /**
+   * A process that died while writing a vector left a partial temporary file, which a new storage deletes; the
+   * complete vectors are kept.
+   */
+  @Test
+  void deletesTheTemporaryFilesThatAProcessLeftBehind() throws IOException {
+    Long complete = vectorStorage.putVectorData(new float[] {1.0f, 2.0f});
+    Path partial = Files.write(tempDir.resolve(".42.0000.tmp"), new byte[] {0, 0});
+
+    VectorStorage reopened = VectorStorage.createFileSystem(tempDir, 3);
+
+    assertFalse(Files.exists(partial));
+    assertArrayEquals(new float[] {1.0f, 2.0f}, reopened.getVectorData(complete));
+    assertEquals(1, reopened.getStoredVectorCount());
+  }
+
+  @Test
+  void aReadOnlyStorageNeitherCreatesNorChangesItsDirectory() throws IOException {
+    Path missing = tempDir.resolve("missing");
+    VectorStorage readOnly = VectorStorage.createReadOnlyFileSystem(missing, 3);
+    assertFalse(Files.exists(missing));
+    assertNull(readOnly.getVectorData(1L));
+    assertFalse(readOnly.vectorDataExists(1L));
+    assertEquals(0, readOnly.getStoredVectorCount());
+
+    Long id = vectorStorage.putVectorData(new float[] {1.0f, 2.0f});
+    Path leftover = Files.write(tempDir.resolve(".42.0000.tmp"), new byte[] {0});
+    VectorStorage existing = VectorStorage.createReadOnlyFileSystem(tempDir, 3);
+
+    assertTrue(Files.exists(leftover), "The temporary file may belong to a service that is writing.");
+    assertArrayEquals(new float[] {1.0f, 2.0f}, existing.getVectorData(id));
+    assertEquals(8, existing.getVectorDataSize(id));
+    assertThrows(UnsupportedOperationException.class, () -> existing.putVectorData(new float[] {1.0f}));
+    assertThrows(UnsupportedOperationException.class, () -> existing.deleteVectorData(id));
+    assertTrue(Files.exists(tempDir.resolve(String.valueOf(id))));
+  }
 }
