@@ -26,6 +26,10 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
 
   private final TransactionalStorage storage;
 
+  private final BucketService bucketService;
+
+  private final ObjectService objectService;
+
   /**
    * Locks of the buckets of this service, shared by its bucket and object services.
    */
@@ -37,20 +41,32 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
     this.s3Metadata = FileSystemS3MetadataLoader.create().load(dataDirectory);
     this.storage = new TransactionalStorage(
         Storage.createPersistent(Paths.get(dataDirectory.toAbsolutePath().toString(), STORAGE_DIRECTORY)));
+    this.bucketService = createBucketService();
+    this.objectService = createObjectService();
   }
 
   @Override
   public BucketService bucketService() {
-    BucketService delegated = InMemoryBucketService.create(s3Metadata);
-    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler = createInvocationHandler(delegated);
-    return (BucketService) Proxy.newProxyInstance(BucketService.class.getClassLoader(), new Class[] {BucketService.class}, invocationHandler);
+    return bucketService;
   }
 
   @Override
   public ObjectService objectService() {
+    return objectService;
+  }
+
+  private BucketService createBucketService() {
+    BucketService delegated = InMemoryBucketService.create(s3Metadata);
+    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler = createInvocationHandler(delegated);
+    return (BucketService) Proxy.newProxyInstance(BucketService.class.getClassLoader(),
+        new Class[] {BucketService.class}, invocationHandler);
+  }
+
+  private ObjectService createObjectService() {
     ObjectService delegated = InMemoryObjectService.create(s3Metadata, storage);
     LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler = createInvocationHandler(delegated);
-    return (ObjectService) Proxy.newProxyInstance(ObjectService.class.getClassLoader(), new Class[] {ObjectService.class}, invocationHandler);
+    return (ObjectService) Proxy.newProxyInstance(ObjectService.class.getClassLoader(),
+        new Class[] {ObjectService.class}, invocationHandler);
   }
 
   private LocalS3ServicesInvocationHandler<BucketMetadata> createInvocationHandler(Object service) {

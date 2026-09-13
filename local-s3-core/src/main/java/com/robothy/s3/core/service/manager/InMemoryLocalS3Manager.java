@@ -30,6 +30,10 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
 
   private final Storage storage;
 
+  private final BucketService bucketService;
+
+  private final ObjectService objectService;
+
   /**
    * Locks of the buckets of this service, shared by its bucket and object services.
    */
@@ -66,6 +70,8 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
       }
 
     }
+    this.bucketService = createBucketService();
+    this.objectService = createObjectService();
   }
 
   /**
@@ -77,22 +83,34 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   InMemoryLocalS3Manager(LocalS3Metadata initialMetadata, Storage initialStorage) {
     this.s3Metadata = Optional.ofNullable(initialMetadata).orElseGet(LocalS3Metadata::new);
     this.storage = Optional.ofNullable(initialStorage).orElseGet(Storage::createInMemory);
+    this.bucketService = createBucketService();
+    this.objectService = createObjectService();
   }
 
   @Override
   public BucketService bucketService() {
-    BucketService bucketService = InMemoryBucketService.create(s3Metadata);
-    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(bucketService, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
-    return (BucketService) Proxy.newProxyInstance(BucketService.class.getClassLoader(), new Class[] {BucketService.class}, invocationHandler);
+    return bucketService;
   }
 
   @Override
   public ObjectService objectService() {
-    ObjectService objectService = InMemoryObjectService.create(s3Metadata, storage);
-    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(objectService, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
-    return (ObjectService) Proxy.newProxyInstance(ObjectService.class.getClassLoader(), new Class[] {ObjectService.class}, invocationHandler);
+    return objectService;
+  }
+
+  private BucketService createBucketService() {
+    BucketService delegated = InMemoryBucketService.create(s3Metadata);
+    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler = new LocalS3ServicesInvocationHandler<>(
+        delegated, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
+    return (BucketService) Proxy.newProxyInstance(BucketService.class.getClassLoader(),
+        new Class[] {BucketService.class}, invocationHandler);
+  }
+
+  private ObjectService createObjectService() {
+    ObjectService delegated = InMemoryObjectService.create(s3Metadata, storage);
+    LocalS3ServicesInvocationHandler<BucketMetadata> invocationHandler = new LocalS3ServicesInvocationHandler<>(
+        delegated, bucketLock, bucketName -> s3Metadata.getBucketMetadata(bucketName).get(), null);
+    return (ObjectService) Proxy.newProxyInstance(ObjectService.class.getClassLoader(),
+        new Class[] {ObjectService.class}, invocationHandler);
   }
 
   private LocalS3Metadata loadS3Metadata(Path initialDataDirectory) {

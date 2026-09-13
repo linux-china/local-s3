@@ -40,6 +40,14 @@ class InMemoryLocalS3ManagerTest {
   }
 
   @Test
+  void cachesServices() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
+
+    assertSame(manager.bucketService(), manager.bucketService());
+    assertSame(manager.objectService(), manager.objectService());
+  }
+
+  @Test
   void cacheDropsTheLeastRecentlyUsedDataPath() {
     InMemoryLocalS3Manager.InitialDataCache cache = new InMemoryLocalS3Manager.InitialDataCache(2);
 

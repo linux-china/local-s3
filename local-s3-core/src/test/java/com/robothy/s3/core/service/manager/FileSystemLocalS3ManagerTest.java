@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service.manager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import com.robothy.s3.core.exception.BucketNotExistException;
@@ -43,6 +44,14 @@ class FileSystemLocalS3ManagerTest {
   void tearDown() throws IOException {
     dataPath.toFile().setWritable(true);
     FileUtils.deleteDirectory(dataPath.toFile());
+  }
+
+  @Test
+  void cachesServices() {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+
+    assertSame(manager.bucketService(), manager.bucketService());
+    assertSame(manager.objectService(), manager.objectService());
   }
 
   @Test
