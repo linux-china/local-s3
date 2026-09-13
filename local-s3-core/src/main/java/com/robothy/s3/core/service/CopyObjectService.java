@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
@@ -25,10 +24,9 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
    * @param options copy options.
    * @return copy result.
    */
-  @CallsThroughProxy
   default CopyObjectAns copyObject(String bucket, String key, CopyObjectOptions options) {
     String srcVersion = options.getSourceVersion().orElse(null);
-    // Invoked on the proxy, which read locks the source bucket while the source object is resolved.
+    // getObject read locks the source bucket while the source object is resolved; the content is read without it.
     GetObjectAns srcObjectAns = getObject(options.getSourceBucket(), options.getSourceKey(),
         GetObjectOptions.builder().versionId(srcVersion).build());
 
@@ -50,7 +48,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         ? options.getTagging().orElse(null)
         : srcObjectAns.getTagging();
 
-    // Invoked on the proxy, which stores the content before it write locks the destination bucket.
+    // putObject stores the content before commitPutObject write locks the destination bucket.
     PutObjectAns putObjectAns = putObject(bucket, key, PutObjectOptions.builder()
         .content(srcObjectAns.getContent())
         .contentType(contentTypeToUse)

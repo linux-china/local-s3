@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.exception.MethodNotAllowedException;
@@ -26,17 +23,17 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
    * @param tagging new tagging of the versioned object.
    * @return version ID where the new tagging applies to.
    */
-  @BucketChanged
-  @BucketWriteLock
   default String putObjectTagging(String bucketName, String key, String versionId, String[][] tagging) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-    VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
-    if (versionedObjectMetadata.isDeleted()) {
-      throw new MethodNotAllowedException("Cannot put object tagging to a delete marker.");
-    }
-    versionedObjectMetadata.setTagging(tagging);
-    return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+    return changeBucket(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      if (versionedObjectMetadata.isDeleted()) {
+        throw new MethodNotAllowedException("Cannot put object tagging to a delete marker.");
+      }
+      versionedObjectMetadata.setTagging(tagging);
+      return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+    });
   }
 
   /**
@@ -47,19 +44,20 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
    * @param versionId version ID.
    * @return versioned object tagging.
    */
-  @BucketReadLock
   default GetObjectTaggingAns getObjectTagging(String bucketName, String key, String versionId) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-    VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
-    if (versionedObjectMetadata.isDeleted()) {
-      throw new MethodNotAllowedException("Cannot get object tagging from a delete marker.");
-    }
-    String[][] tagging = versionedObjectMetadata.getTagging().orElse(new String[0][0]);
-    return GetObjectTaggingAns.builder()
-        .tagging(tagging)
-        .versionId(VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId))
-        .build();
+    return withBucketReadLock(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      if (versionedObjectMetadata.isDeleted()) {
+        throw new MethodNotAllowedException("Cannot get object tagging from a delete marker.");
+      }
+      String[][] tagging = versionedObjectMetadata.getTagging().orElse(new String[0][0]);
+      return GetObjectTaggingAns.builder()
+          .tagging(tagging)
+          .versionId(VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId))
+          .build();
+    });
   }
 
   /**
@@ -70,17 +68,17 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
    * @param versionId version ID.
    * @return version ID of the object where the tagging is deleted from.
    */
-  @BucketChanged
-  @BucketWriteLock
   default String deleteObjectTagging(String bucketName, String key, String versionId) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-    VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
-    if (versionedObjectMetadata.isDeleted()) {
-      throw new MethodNotAllowedException("Cannot delete object tagging from a delete marker.");
-    }
-    versionedObjectMetadata.setTagging(null);
-    return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+    return changeBucket(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      if (versionedObjectMetadata.isDeleted()) {
+        throw new MethodNotAllowedException("Cannot delete object tagging from a delete marker.");
+      }
+      versionedObjectMetadata.setTagging(null);
+      return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+    });
   }
 
 }

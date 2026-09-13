@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.datatypes.AccessControlPolicy;
@@ -22,12 +19,12 @@ public interface BucketAclService extends LocalS3MetadataApplicable {
    * @param bucketName bucket that associate with the ACL.
    * @param acl new ACL.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void putBucketAcl(String bucketName, AccessControlPolicy acl) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setAcl(acl);
+    changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setAcl(acl);
+    });
   }
 
   /**
@@ -37,30 +34,31 @@ public interface BucketAclService extends LocalS3MetadataApplicable {
    * @return the ACL of the bucket. If the ACL or owner is null,
    * then set the default owner 'LocalS3' to the ACL and return.
    */
-  @BucketReadLock
   default AccessControlPolicy getBucketAcl(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+    return withBucketReadLock(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
 
-    Owner defaultOwner = new Owner("LocalS3", "001");
-    Optional<AccessControlPolicy> aclOpt = bucketMetadata.getAcl();
-    if (aclOpt.isEmpty()) {
-      return AccessControlPolicy.builder()
-          .owner(defaultOwner)
-          .grants(Collections.emptyList())
-          .build();
-    } else {
-      AccessControlPolicy acl = aclOpt.get();
-      if (Objects.isNull(acl.getOwner())) {
-        acl.setOwner(defaultOwner);
+      Owner defaultOwner = new Owner("LocalS3", "001");
+      Optional<AccessControlPolicy> aclOpt = bucketMetadata.getAcl();
+      if (aclOpt.isEmpty()) {
+        return AccessControlPolicy.builder()
+            .owner(defaultOwner)
+            .grants(Collections.emptyList())
+            .build();
+      } else {
+        AccessControlPolicy acl = aclOpt.get();
+        if (Objects.isNull(acl.getOwner())) {
+          acl.setOwner(defaultOwner);
+        }
+
+        if (Objects.isNull(acl.getGrants())) {
+          acl.setGrants(Collections.emptyList());
+        }
+
+        return acl;
       }
-
-      if (Objects.isNull(acl.getGrants())) {
-        acl.setGrants(Collections.emptyList());
-      }
-
-      return acl;
-    }
+    });
   }
 
 }

@@ -51,6 +51,15 @@ class BucketPolicyStatusServiceTest {
     assertFalse(status.getIsPublic());
   }
   private static class BucketServiceMock implements BucketService {
+
+    private final com.robothy.s3.core.service.BucketGuard bucketGuard =
+        com.robothy.s3.core.service.BucketGuard.inMemory();
+
+    @Override
+    public com.robothy.s3.core.service.BucketGuard bucketGuard() {
+      return bucketGuard;
+    }
+
     private final LocalS3Metadata localS3Metadata;
     
     public BucketServiceMock(LocalS3Metadata localS3Metadata) {

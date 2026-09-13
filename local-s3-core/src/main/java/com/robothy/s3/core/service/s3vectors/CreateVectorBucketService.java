@@ -1,6 +1,6 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.robothy.s3.core.annotations.BucketChanged;
+import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
@@ -13,13 +13,14 @@ import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
 
 public interface CreateVectorBucketService extends S3VectorsMetadataAware {
 
-  @BucketChanged(type = BucketChanged.Type.CREATE)
   default CreateVectorBucketResponse createVectorBucket(String bucketName, EncryptionConfiguration encryptionConfiguration) {
-    validateBucketName(bucketName);
-    assertBucketDoesNotExist(bucketName);
-    VectorBucketMetadata bucketMetadata = createBucketMetadata(bucketName, encryptionConfiguration);
-    storeBucketMetadata(bucketMetadata);
-    return buildResponse(bucketMetadata);
+    return changeBucket(bucketName, BucketGuard.Change.CREATE, () -> {
+      validateBucketName(bucketName);
+      assertBucketDoesNotExist(bucketName);
+      VectorBucketMetadata bucketMetadata = createBucketMetadata(bucketName, encryptionConfiguration);
+      storeBucketMetadata(bucketMetadata);
+      return buildResponse(bucketMetadata);
+    });
   }
 
   private static void validateBucketName(String bucketName) {

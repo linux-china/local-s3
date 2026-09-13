@@ -1,7 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -22,29 +20,29 @@ public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, 
    * @param objectKey object key.
    * @param uploadId upload ID.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void abortMultipartUpload(String bucketName, String objectKey, String uploadId) {
-    LocalS3Metadata s3Metadata = localS3Metadata();
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
-    ObjectAssertions.assertObjectKeyIsValid(objectKey);
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
-    if (!uploads.containsKey(objectKey) || !uploads.get(objectKey).containsKey(uploadId)) {
-      // do nothing if the uploadId is not found.
-      return;
-    }
+    changeBucket(bucketName, () -> {
+      LocalS3Metadata s3Metadata = localS3Metadata();
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
+      ObjectAssertions.assertObjectKeyIsValid(objectKey);
+      NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
+      if (!uploads.containsKey(objectKey) || !uploads.get(objectKey).containsKey(uploadId)) {
+        // do nothing if the uploadId is not found.
+        return;
+      }
 
-    UploadMetadata uploadMetadata = uploads.get(objectKey).remove(uploadId);
-    uploadMetadata.getParts().forEach((uploadNumber, part) -> {
-      storage().delete(part.getFileId());
+      UploadMetadata uploadMetadata = uploads.get(objectKey).remove(uploadId);
+      uploadMetadata.getParts().forEach((uploadNumber, part) -> {
+        storage().delete(part.getFileId());
+      });
+
+      if (uploads.get(objectKey).isEmpty()) {
+        uploads.remove(objectKey);
+      }
+
+      // help GC.
+      uploadMetadata.getParts().clear();
     });
-
-    if (uploads.get(objectKey).isEmpty()) {
-      uploads.remove(objectKey);
-    }
-
-    // help GC.
-    uploadMetadata.getParts().clear();
   }
 
 }

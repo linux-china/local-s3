@@ -4,12 +4,12 @@ import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.service.loader.MetadataLoader;
 import com.robothy.s3.core.service.locks.BucketLock;
-import com.robothy.s3.core.service.manager.LocalS3ServicesInvocationHandler;
+import com.robothy.s3.core.service.BucketGuard;
+import com.robothy.s3.core.service.DefaultBucketGuard;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.s3vectors.FileSystemVectorBucketMetadataStore;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
-import java.lang.reflect.Proxy;
 import java.nio.file.Path;
 
 final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
@@ -34,14 +34,10 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
     // Vector data belongs to the data path, not to the working directory, which may not even be writable.
     VectorStorage vectorStorage = VectorStorage.createFileSystem(
         s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT);
-    S3VectorsService s3VectorsService = S3VectorsService.create(vectorsMetadata, vectorStorage);
     MetadataStore<VectorBucketMetadata> metadataStore = FileSystemVectorBucketMetadataStore.create(this.s3VectorsDataPath);
-
-    LocalS3ServicesInvocationHandler<VectorBucketMetadata> invocationHandler =
-        new LocalS3ServicesInvocationHandler<>(s3VectorsService, bucketLock,
-            bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore);
-    return (S3VectorsService) Proxy.newProxyInstance(S3VectorsService.class.getClassLoader(),
-        new Class[] {S3VectorsService.class}, invocationHandler);
+    BucketGuard bucketGuard = new DefaultBucketGuard<>(bucketLock,
+        bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore, null, null);
+    return S3VectorsService.create(vectorsMetadata, vectorStorage, bucketGuard);
   }
 
 }

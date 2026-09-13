@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.ObjectNotExistException;
@@ -20,48 +19,44 @@ import java.util.SortedMap;
  **/
 public interface ListPartsService extends LocalS3MetadataApplicable {
 
-  @BucketReadLock
   default ListPartsAns listParts(String bucket, String key, String uploadId, Integer maxParts, Integer partNumberMarker) {
-    LocalS3Metadata s3Metadata = localS3Metadata();
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucket);
-    UploadMetadata uploadMetadata;
-    try{
-      uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
-    } catch (ObjectNotExistException e) {
-      throw new UploadNotExistException(key, uploadId);
-    }
+    return withBucketReadLock(bucket, () -> {
+      LocalS3Metadata s3Metadata = localS3Metadata();
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucket);
+      UploadMetadata uploadMetadata;
+      try{
+        uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+      } catch (ObjectNotExistException e) {
+        throw new UploadNotExistException(key, uploadId);
+      }
 
-    if (Objects.isNull(partNumberMarker)) {
-      partNumberMarker = 0;
-    }
+      int marker = Objects.isNull(partNumberMarker) ? 0 : partNumberMarker;
+      int max = Objects.isNull(maxParts) || maxParts > 1000 ? 1000 : maxParts;
 
-    if (Objects.isNull(maxParts) || maxParts > 1000) {
-      maxParts = 1000;
-    }
+      int fromKeyInclusive = marker + 1;
+      int toKeyExclusive = fromKeyInclusive + max;
 
-    int fromKeyInclusive = partNumberMarker + 1;
-    int toKeyExclusive = fromKeyInclusive + maxParts;
+      SortedMap<Integer, UploadPartMetadata> fetchedUploadPartMap = uploadMetadata.getParts().subMap(fromKeyInclusive, toKeyExclusive);
+      List<ListPartsAns.Part> parts = new ArrayList<>(fetchedUploadPartMap.size());
+      fetchedUploadPartMap.forEach((partNumber, partMeta) -> parts.add(ListPartsAns.Part.builder()
+          .partNumber(partNumber)
+          .eTag(partMeta.getEtag())
+          .lastModified(partMeta.getLastModified())
+          .size(partMeta.getSize())
+          .build()));
 
-    SortedMap<Integer, UploadPartMetadata> fetchedUploadPartMap = uploadMetadata.getParts().subMap(fromKeyInclusive, toKeyExclusive);
-    List<ListPartsAns.Part> parts = new ArrayList<>(fetchedUploadPartMap.size());
-    fetchedUploadPartMap.forEach((partNumber, partMeta) -> parts.add(ListPartsAns.Part.builder()
-        .partNumber(partNumber)
-        .eTag(partMeta.getEtag())
-        .lastModified(partMeta.getLastModified())
-        .size(partMeta.getSize())
-        .build()));
-
-    return ListPartsAns.builder()
-        .bucket(bucket)
-        .key(key)
-        .uploadId(uploadId)
-        .partNumberMarker(partNumberMarker)
-        .nextPartNumberMarker(fetchedUploadPartMap.isEmpty() ? 0 : fetchedUploadPartMap.lastKey())
-        .maxParts(maxParts)
-        .isTruncated(!fetchedUploadPartMap.isEmpty() &&
-            fetchedUploadPartMap.lastKey() < uploadMetadata.getParts().lastKey())
-        .parts(parts)
-        .build();
+      return ListPartsAns.builder()
+          .bucket(bucket)
+          .key(key)
+          .uploadId(uploadId)
+          .partNumberMarker(marker)
+          .nextPartNumberMarker(fetchedUploadPartMap.isEmpty() ? 0 : fetchedUploadPartMap.lastKey())
+          .maxParts(max)
+          .isTruncated(!fetchedUploadPartMap.isEmpty() &&
+              fetchedUploadPartMap.lastKey() < uploadMetadata.getParts().lastKey())
+          .parts(parts)
+          .build();
+    });
   }
 
 

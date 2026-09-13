@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.UploadPartAns;
@@ -29,7 +26,6 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
    * @param options options of upload the upload part operation.
    * @return result of the upload part.
    */
-  @CallsThroughProxy
   default UploadPartAns uploadPart(String bucket, String key, String uploadId, Integer partNumber, UploadPartOptions options) {
     // Reject an invalid part number or a missing upload before storing the data; commitUploadPart checks the
     // upload again under the lock.
@@ -65,20 +61,20 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
    * @param uploadPartMetadata the metadata of the part, referencing the stored data.
    * @return result of the upload part.
    */
-  @BucketChanged
-  @BucketWriteLock
   default UploadPartAns commitUploadPart(String bucket, String key, String uploadId, Integer partNumber,
                                          UploadPartMetadata uploadPartMetadata) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-    UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
-    UploadPartMetadata replaced = uploadMetadata.getParts().put(partNumber, uploadPartMetadata);
-    if (Objects.nonNull(replaced)) {
-      storage().delete(replaced.getFileId());
-    }
-    return UploadPartAns.builder()
-        .etag(uploadPartMetadata.getEtag())
-        .lastModified(uploadPartMetadata.getLastModified())
-        .build();
+    return changeBucket(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+      UploadPartMetadata replaced = uploadMetadata.getParts().put(partNumber, uploadPartMetadata);
+      if (Objects.nonNull(replaced)) {
+        storage().delete(replaced.getFileId());
+      }
+      return UploadPartAns.builder()
+          .etag(uploadPartMetadata.getEtag())
+          .lastModified(uploadPartMetadata.getLastModified())
+          .build();
+    });
   }
 
 }

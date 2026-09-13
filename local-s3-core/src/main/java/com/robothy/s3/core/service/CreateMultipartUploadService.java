@@ -1,7 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -21,22 +19,22 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
    * @param options options of the multipart upload.
    * @return the upload ID.
    */
-  @BucketChanged
-  @BucketWriteLock
   default String createMultipartUpload(String bucket, String key, CreateMultipartUploadOptions options) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-    ObjectAssertions.assertObjectKeyIsValid(key);
-    String uploadId = IdUtils.defaultGenerator().nextStrId();
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
-    uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
-    uploads.get(key).put(uploadId, UploadMetadata.builder()
-        .contentType(options.getContentType())
-        .systemMetadata(options.getSystemMetadata())
-        .createDate(System.currentTimeMillis())
-        .tagging(options.getTagging().orElse(null))
-        .userMetadata(options.getUserMetadata())
-        .build());
-    return uploadId;
+    return changeBucket(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      ObjectAssertions.assertObjectKeyIsValid(key);
+      String uploadId = IdUtils.defaultGenerator().nextStrId();
+      NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
+      uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
+      uploads.get(key).put(uploadId, UploadMetadata.builder()
+          .contentType(options.getContentType())
+          .systemMetadata(options.getSystemMetadata())
+          .createDate(System.currentTimeMillis())
+          .tagging(options.getTagging().orElse(null))
+          .userMetadata(options.getUserMetadata())
+          .build());
+      return uploadId;
+    });
   }
 
 

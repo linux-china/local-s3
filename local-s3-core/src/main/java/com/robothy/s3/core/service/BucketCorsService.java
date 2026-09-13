@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.InvalidCORSConfigurationException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -38,13 +35,13 @@ public interface BucketCorsService extends LocalS3MetadataApplicable {
    * @param configuration the CORS configuration.
    * @throws InvalidCORSConfigurationException if the configuration is invalid.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void putBucketCors(String bucketName, CORSConfiguration configuration) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    validateCorsConfiguration(configuration);
-    bucketMetadata.setCors(configuration);
+    changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      validateCorsConfiguration(configuration);
+      bucketMetadata.setCors(configuration);
+    });
   }
 
   /**
@@ -53,11 +50,12 @@ public interface BucketCorsService extends LocalS3MetadataApplicable {
    * @param bucketName the bucket name.
    * @return the CORS configuration; empty if the bucket has none.
    */
-  @BucketReadLock
   default Optional<CORSConfiguration> getBucketCors(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    return bucketMetadata.getCors();
+    return withBucketReadLock(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      return bucketMetadata.getCors();
+    });
   }
 
   /**
@@ -65,12 +63,12 @@ public interface BucketCorsService extends LocalS3MetadataApplicable {
    *
    * @param bucketName the bucket name.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void deleteBucketCors(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setCors(null);
+    changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setCors(null);
+    });
   }
 
   private static void validateCorsConfiguration(CORSConfiguration configuration) {

@@ -1,5 +1,8 @@
 package com.robothy.s3.core.service.manager;
 
+import com.robothy.s3.core.exception.BucketTaggingNotExistException;
+import java.util.List;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -52,6 +55,25 @@ class FileSystemLocalS3ManagerTest {
 
     assertSame(manager.bucketService(), manager.bucketService());
     assertSame(manager.objectService(), manager.objectService());
+  }
+
+  /**
+   * The tagging of a bucket is part of the metadata of the bucket, which a restarted service loads.
+   */
+  @Test
+  void persistsTheTaggingOfABucket() {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    manager.bucketService().createBucket("tagged");
+    manager.bucketService().createBucket("untagged");
+    manager.bucketService().putTagging("tagged", List.of(Map.of("team", "s3")));
+    manager.bucketService().putTagging("untagged", List.of(Map.of("team", "s3")));
+    manager.bucketService().deleteTagging("untagged");
+
+    LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    assertEquals(List.of(Map.of("team", "s3")),
+        List.copyOf(restarted.bucketService().getTagging("tagged")));
+    assertThrows(BucketTaggingNotExistException.class,
+        () -> restarted.bucketService().getTagging("untagged"));
   }
 
   @Test

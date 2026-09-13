@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
@@ -47,7 +44,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
    * @param options the object content and metadata.
    * @return result of the put object operation.
    */
-  @CallsThroughProxy
   default PutObjectAns putObject(String bucketName, String key, PutObjectOptions options) {
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
@@ -84,10 +80,10 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
    * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
    * @return result of the put object operation.
    */
-  @BucketChanged
-  @BucketWriteLock
   default PutObjectAns commitPutObject(String bucketName, String key, VersionedObjectMetadata versionedObjectMetadata) {
-    return commitPutObject(bucketName, key, versionedObjectMetadata, ObjectPreconditions.none());
+    return changeBucket(bucketName, () -> {
+      return commitPutObject(bucketName, key, versionedObjectMetadata, ObjectPreconditions.none());
+    });
   }
 
   /**
@@ -107,15 +103,15 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
    *     {@linkplain ObjectPreconditions#none()} to add the version unconditionally.
    * @return result of the put object operation.
    */
-  @BucketChanged
-  @BucketWriteLock
   default PutObjectAns commitPutObject(String bucketName, String key,
                                        VersionedObjectMetadata versionedObjectMetadata,
                                        ObjectPreconditions preconditions) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
-        bucketMetadata.getObjectMetadata(key).orElse(null));
-    return addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+    return changeBucket(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
+          bucketMetadata.getObjectMetadata(key).orElse(null));
+      return addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+    });
   }
 
   /**

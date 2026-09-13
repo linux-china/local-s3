@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.assertions.vectors.VectorBucketAssertions;
 import com.robothy.s3.core.assertions.vectors.VectorIndexAssertions;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
@@ -17,19 +16,20 @@ import java.util.List;
 
 public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStorageAware {
 
-  @BucketChanged
   default PutVectorsResponse putVectors(String vectorBucketName, String indexName,
       List<PutInputVector> vectors) {
-    VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
-    VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
-    validateVectors(vectors);
+    return changeBucket(vectorBucketName, () -> {
+      VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
+      VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
+      validateVectors(vectors);
 
-    List<String> errorVectorKeys = new ArrayList<>();
-    List<String> successfulVectorKeys = new ArrayList<>();
+      List<String> errorVectorKeys = new ArrayList<>();
+      List<String> successfulVectorKeys = new ArrayList<>();
 
-    processVectors(vectors, indexMetadata, errorVectorKeys, successfulVectorKeys);
+      processVectors(vectors, indexMetadata, errorVectorKeys, successfulVectorKeys);
 
-    return buildResponse(errorVectorKeys);
+      return buildResponse(errorVectorKeys);
+    });
   }
 
   private void validateVectors(List<PutInputVector> vectors) {

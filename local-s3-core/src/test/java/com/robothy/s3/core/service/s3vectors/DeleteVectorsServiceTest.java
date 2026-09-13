@@ -453,6 +453,15 @@ class DeleteVectorsServiceTest {
 
   // Test implementation class
   private static class TestDeleteVectorsService implements DeleteVectorsService {
+
+    private final com.robothy.s3.core.service.BucketGuard bucketGuard =
+        com.robothy.s3.core.service.BucketGuard.inMemory();
+
+    @Override
+    public com.robothy.s3.core.service.BucketGuard bucketGuard() {
+      return bucketGuard;
+    }
+
     private final LocalS3VectorsMetadata mockMetadata = mock(LocalS3VectorsMetadata.class);
     final VectorStorage mockVectorStorage = mock(VectorStorage.class);
     final Map<String, VectorBucketMetadata> bucketMap = new HashMap<>();

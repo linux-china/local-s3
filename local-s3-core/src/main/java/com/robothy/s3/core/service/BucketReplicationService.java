@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 
@@ -17,11 +14,11 @@ public interface BucketReplicationService extends LocalS3MetadataApplicable {
    * @param bucketName bucket that the replication configuration applies to.
    * @param replicationConfig replication configuration. LocalS3 only stores it, won't parse it.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void putBucketReplication(String bucketName, String replicationConfig) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setReplication(replicationConfig);
+    changeBucket(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setReplication(replicationConfig);
+    });
   }
 
   /**
@@ -30,9 +27,10 @@ public interface BucketReplicationService extends LocalS3MetadataApplicable {
    * @param bucketName the bucket where the replication configuration is fetched.
    * @return bucket configuration.
    */
-  @BucketReadLock
   default String getBucketReplication(String bucketName) {
-    return BucketAssertions.assertBucketReplicationExist(localS3Metadata(), bucketName);
+    return withBucketReadLock(bucketName, () -> {
+      return BucketAssertions.assertBucketReplicationExist(localS3Metadata(), bucketName);
+    });
   }
 
   /**
@@ -40,11 +38,11 @@ public interface BucketReplicationService extends LocalS3MetadataApplicable {
    *
    * @param bucketName the bucket name.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void deleteBucketReplication(String bucketName) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setReplication(null);
+    changeBucket(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setReplication(null);
+    });
   }
 
 }

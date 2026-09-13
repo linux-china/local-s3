@@ -2,10 +2,6 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
-import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.InvalidPartException;
@@ -51,7 +47,6 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    * @param completeParts multipart upload parts to complete.
    * @return result of the complete multipart operation.
    */
-  @CallsThroughProxy
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts) {
     return completeMultipartUpload(bucket, key, uploadId, completeParts, 0);
@@ -69,7 +64,6 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    * @param minimumPartSize the smallest size of a part that isn't the last one; {@code 0} to check nothing.
    * @return result of the complete multipart operation.
    */
-  @CallsThroughProxy
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts,
                                                              long minimumPartSize) {
@@ -91,11 +85,10 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    *     which is what LocalS3 gave it before 2.5, and which reads the content of all parts.
    * @return result of the complete multipart operation.
    */
-  @CallsThroughProxy
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts,
                                                              long minimumPartSize, boolean compositeEtag) {
-    // Invoked on the proxy, which read locks the bucket while the upload is validated. The parts of the returned
+    // prepareCompleteMultipartUpload read locks the bucket while the upload is validated. The parts of the returned
     // upload are a snapshot of the ones that complete it, so a part uploaded again from here on isn't mixed in.
     UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
     UploadAssertions.assertPartsAreLargeEnough(uploadMetadata, completeParts, minimumPartSize);
@@ -223,34 +216,35 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    * @throws InvalidPartOrderException if the part numbers aren't in ascending order.
    * @throws InvalidPartException if a part wasn't uploaded, or was uploaded with another entity tag.
    */
-  @BucketReadLock
   default UploadMetadata prepareCompleteMultipartUpload(String bucket, String key, String uploadId,
                                                         List<CompleteMultipartUploadPartOption> completeParts) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-    UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+    return withBucketReadLock(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
 
-    if (completeParts.isEmpty()) {
-      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-    }
-
-    int pre = -1;
-    NavigableMap<Integer, UploadPartMetadata> partsToComplete = new TreeMap<>();
-    for (CompleteMultipartUploadPartOption partOption : completeParts) {
-      if (partOption.getPartNumber() <= pre) {
-        throw new InvalidPartOrderException();
+      if (completeParts.isEmpty()) {
+        throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
       }
-      pre = partOption.getPartNumber();
-      partsToComplete.put(partOption.getPartNumber(), UploadAssertions.assertPartMatches(uploadMetadata, partOption));
-    }
 
-    return UploadMetadata.builder()
-        .createDate(uploadMetadata.getCreateDate())
-        .contentType(uploadMetadata.getContentType())
-        .systemMetadata(uploadMetadata.getSystemMetadata())
-        .tagging(uploadMetadata.getTagging().orElse(null))
-        .userMetadata(uploadMetadata.getUserMetadata())
-        .parts(partsToComplete)
-        .build();
+      int pre = -1;
+      NavigableMap<Integer, UploadPartMetadata> partsToComplete = new TreeMap<>();
+      for (CompleteMultipartUploadPartOption partOption : completeParts) {
+        if (partOption.getPartNumber() <= pre) {
+          throw new InvalidPartOrderException();
+        }
+        pre = partOption.getPartNumber();
+        partsToComplete.put(partOption.getPartNumber(), UploadAssertions.assertPartMatches(uploadMetadata, partOption));
+      }
+
+      return UploadMetadata.builder()
+          .createDate(uploadMetadata.getCreateDate())
+          .contentType(uploadMetadata.getContentType())
+          .systemMetadata(uploadMetadata.getSystemMetadata())
+          .tagging(uploadMetadata.getTagging().orElse(null))
+          .userMetadata(uploadMetadata.getUserMetadata())
+          .parts(partsToComplete)
+          .build();
+    });
   }
 
   /**
@@ -267,40 +261,40 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    * @throws InvalidPartException if a part was uploaded again since it was validated, so that the version would
    *     reference content that isn't the content of the upload.
    */
-  @BucketChanged
-  @BucketWriteLock
   default CompleteMultipartUploadAns commitCompleteMultipartUpload(String bucket, String key, String uploadId,
                                                                    VersionedObjectMetadata versionedObjectMetadata,
                                                                    NavigableMap<Integer, UploadPartMetadata> partsToComplete) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-    UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
-    // The data of a part is stored under a new ID whenever the part is uploaded, so an unchanged ID is an unchanged part.
-    partsToComplete.forEach((partNumber, completing) -> {
-      UploadPartMetadata current = uploadMetadata.getParts().get(partNumber);
-      if (current == null || current.getFileId() != completing.getFileId()) {
-        throw InvalidPartException.replaced(partNumber);
-      }
-    });
-    PutObjectAns putObjectAns = PutObjectService.addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+    return changeBucket(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+      // The data of a part is stored under a new ID whenever the part is uploaded, so an unchanged ID is an unchanged part.
+      partsToComplete.forEach((partNumber, completing) -> {
+        UploadPartMetadata current = uploadMetadata.getParts().get(partNumber);
+        if (current == null || current.getFileId() != completing.getFileId()) {
+          throw InvalidPartException.replaced(partNumber);
+        }
+      });
+      PutObjectAns putObjectAns = PutObjectService.addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
 
-    // The content of the parts that complete the upload now belongs to the object; only the other parts are deleted.
-    uploadMetadata.getParts().forEach((partNumber, part) -> {
-      if (!partsToComplete.containsKey(partNumber)) {
-        storage().delete(part.getFileId());
+      // The content of the parts that complete the upload now belongs to the object; only the other parts are deleted.
+      uploadMetadata.getParts().forEach((partNumber, part) -> {
+        if (!partsToComplete.containsKey(partNumber)) {
+          storage().delete(part.getFileId());
+        }
+      });
+      Map<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
+      uploads.get(key).remove(uploadId);
+      if (uploads.get(key).isEmpty()) {
+        uploads.remove(key);
       }
-    });
-    Map<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
-    uploads.get(key).remove(uploadId);
-    if (uploads.get(key).isEmpty()) {
-      uploads.remove(key);
-    }
 
-    return CompleteMultipartUploadAns.builder()
-        .location("/" + bucket + "/" + key)
-        .versionId(putObjectAns.getVersionId())
-        .etag(putObjectAns.getEtag())
-        .size(putObjectAns.getSize())
-        .build();
+      return CompleteMultipartUploadAns.builder()
+          .location("/" + bucket + "/" + key)
+          .versionId(putObjectAns.getVersionId())
+          .etag(putObjectAns.getEtag())
+          .size(putObjectAns.getSize())
+          .build();
+    });
   }
 
 }

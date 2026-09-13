@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
@@ -24,13 +23,14 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
   /**
    * Get object.
    */
-  @BucketReadLock
   default GetObjectAns getObject(String bucketName, String key, GetObjectOptions options) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
-      return getObjectFromUnVersionedBucket(bucketMetadata, storage(), bucketName, key, false, options);
-    }
-    return getObject(bucketMetadata, storage(), bucketName, key, false, options);
+    return withBucketReadLock(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
+        return getObjectFromUnVersionedBucket(bucketMetadata, storage(), bucketName, key, false, options);
+      }
+      return getObject(bucketMetadata, storage(), bucketName, key, false, options);
+    });
   }
 
   static GetObjectAns getObjectFromUnVersionedBucket(BucketMetadata bucketMetadata, Storage storage,
@@ -198,14 +198,15 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
    * @param options options.
    * @return versioned object with metadata only.
    */
-  @BucketReadLock
   default GetObjectAns headObject(String bucketName, String key, GetObjectOptions options) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
-      return getObjectFromUnVersionedBucket(bucketMetadata, storage(), bucketName, key, true, options);
-    }
+    return withBucketReadLock(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
+        return getObjectFromUnVersionedBucket(bucketMetadata, storage(), bucketName, key, true, options);
+      }
 
-    return getObject(bucketMetadata, storage(), bucketName, key, true, options);
+      return getObject(bucketMetadata, storage(), bucketName, key, true, options);
+    });
   }
 
 }

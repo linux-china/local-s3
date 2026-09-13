@@ -19,14 +19,33 @@ public class InMemoryBucketService implements BucketService {
    * @return a new {@linkplain InMemoryBucketService} with a {@linkplain BucketMetadata} from the {@code provider}.
    */
   public static BucketService create(LocalS3Metadata s3Metadata) {
+    return create(s3Metadata, BucketGuard.inMemory());
+  }
+
+  /**
+   * Create an {@linkplain InMemoryBucketService}.
+   *
+   * @param s3Metadata s3 metadata.
+   * @param bucketGuard the guard of the buckets, shared with the object service of the same LocalS3 service.
+   * @return a new {@linkplain InMemoryBucketService}.
+   */
+  public static BucketService create(LocalS3Metadata s3Metadata, BucketGuard bucketGuard) {
     Objects.requireNonNull(s3Metadata);
-    return new InMemoryBucketService(s3Metadata);
+    return new InMemoryBucketService(s3Metadata, bucketGuard);
   }
 
   private final LocalS3Metadata s3Metadata;
 
-  private InMemoryBucketService(LocalS3Metadata metadata) {
+  private final BucketGuard bucketGuard;
+
+  private InMemoryBucketService(LocalS3Metadata metadata, BucketGuard bucketGuard) {
     this.s3Metadata = metadata;
+    this.bucketGuard = Objects.requireNonNull(bucketGuard);
+  }
+
+  @Override
+  public BucketGuard bucketGuard() {
+    return bucketGuard;
   }
 
   @Override
@@ -36,32 +55,40 @@ public class InMemoryBucketService implements BucketService {
 
   @Override
   public Bucket deleteBucket(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
-    BucketAssertions.assertBucketIsEmpty(bucketMetadata);
-    s3Metadata.getBucketMetadataMap().remove(bucketName);
-    return Bucket.fromBucketMetadata(bucketMetadata);
+    return changeBucket(bucketName, BucketGuard.Change.DELETE, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
+      BucketAssertions.assertBucketIsEmpty(bucketMetadata);
+      s3Metadata.getBucketMetadataMap().remove(bucketName);
+      return Bucket.fromBucketMetadata(bucketMetadata);
+    });
   }
 
   @Override
   public Bucket getBucket(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
-    return Bucket.fromBucketMetadata(bucketMetadata);
+    return withBucketReadLock(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
+      return Bucket.fromBucketMetadata(bucketMetadata);
+    });
   }
 
   @Override
   public Bucket setVersioningEnabled(String bucketName, boolean versioningEnabled) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
-    bucketMetadata.setVersioningEnabled(versioningEnabled);
-    return Bucket.fromBucketMetadata(bucketMetadata);
+    return changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
+      bucketMetadata.setVersioningEnabled(versioningEnabled);
+      return Bucket.fromBucketMetadata(bucketMetadata);
+    });
   }
 
   @Override
   public Boolean getVersioningEnabled(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
-    return bucketMetadata.getVersioningEnabled();
+    return withBucketReadLock(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucketName);
+      return bucketMetadata.getVersioningEnabled();
+    });
   }
 }

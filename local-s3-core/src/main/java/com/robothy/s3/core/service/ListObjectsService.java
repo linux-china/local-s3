@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
@@ -31,22 +30,23 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
    * @param prefix       the prefix restricting what keys will be listed.
    * @return a listing of objects from the specified bucket.
    */
-  @BucketReadLock
   default ListObjectsAns listObjects(String bucket, String delimiter, String encodingType,
                                      String marker, int maxKeys, String prefix) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-    String effectivePrefix = Objects.toString(prefix, "");
+    return withBucketReadLock(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      String effectivePrefix = Objects.toString(prefix, "");
 
-    NavigableMap<String, ObjectMetadata> objectsAfterMarker =
-            ListItemUtils.filterByKeyMarkerAndDelimiterForListObjects(bucketMetadata.getObjectMap(), marker, effectivePrefix, delimiter);
-    NavigableMap<String, ObjectMetadata> filteredByPrefix = ListItemUtils.filterByPrefix(objectsAfterMarker, prefix);
+      NavigableMap<String, ObjectMetadata> objectsAfterMarker =
+              ListItemUtils.filterByKeyMarkerAndDelimiterForListObjects(bucketMetadata.getObjectMap(), marker, effectivePrefix, delimiter);
+      NavigableMap<String, ObjectMetadata> filteredByPrefix = ListItemUtils.filterByPrefix(objectsAfterMarker, prefix);
 
-    ListObjectsAns listObjectsAns = listObjectsAndCommonPrefixes(filteredByPrefix, effectivePrefix, delimiter, maxKeys);
-    listObjectsAns.setDelimiter(delimiter);
-    listObjectsAns.setMarker(Objects.isNull(marker) ? "" : marker);
-    listObjectsAns.setPrefix(effectivePrefix);
-    encodeIfNeeded(listObjectsAns, encodingType);
-    return listObjectsAns;
+      ListObjectsAns listObjectsAns = listObjectsAndCommonPrefixes(filteredByPrefix, effectivePrefix, delimiter, maxKeys);
+      listObjectsAns.setDelimiter(delimiter);
+      listObjectsAns.setMarker(Objects.isNull(marker) ? "" : marker);
+      listObjectsAns.setPrefix(effectivePrefix);
+      encodeIfNeeded(listObjectsAns, encodingType);
+      return listObjectsAns;
+    });
   }
 
   static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadata> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {

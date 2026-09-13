@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.assertions.vectors.VectorBucketAssertions;
 import com.robothy.s3.core.assertions.vectors.VectorIndexAssertions;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
@@ -16,21 +15,21 @@ import java.util.List;
 
 public interface CreateIndexService extends S3VectorsMetadataAware {
 
-  @BucketChanged
   default CreateIndexResponse createIndex(String vectorBucketName, String indexName,
       VectorDataType dataType, int dimension, DistanceMetric distanceMetric,
       List<String> nonFilterableMetadataKeys) {
+    return changeBucket(vectorBucketName, () -> {
+      validateIndexParameters(indexName, dimension, dataType, distanceMetric);
 
-    validateIndexParameters(indexName, dimension, dataType, distanceMetric);
+      VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
+      VectorIndexAssertions.assertVectorIndexNotExists(bucketMetadata, indexName);
 
-    VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
-    VectorIndexAssertions.assertVectorIndexNotExists(bucketMetadata, indexName);
+      VectorIndexMetadata indexMetadata =
+          createIndexMetadata(indexName, dimension, dataType, distanceMetric, nonFilterableMetadataKeys);
+      bucketMetadata.putIndexMetadata(indexName, indexMetadata);
 
-    VectorIndexMetadata indexMetadata =
-        createIndexMetadata(indexName, dimension, dataType, distanceMetric, nonFilterableMetadataKeys);
-    bucketMetadata.putIndexMetadata(indexName, indexMetadata);
-
-    return CreateIndexResponse.builder().build();
+      return CreateIndexResponse.builder().build();
+    });
   }
 
   private void validateIndexParameters(String indexName, int dimension, VectorDataType dataType, DistanceMetric distanceMetric) {

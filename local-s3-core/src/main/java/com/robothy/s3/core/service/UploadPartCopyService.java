@@ -2,7 +2,6 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.GetObjectAns;
@@ -34,7 +33,6 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
    * @param options copy options.
    * @return result of the copy.
    */
-  @CallsThroughProxy
   default UploadPartCopyAns uploadPartCopy(String bucket, String key, String uploadId, Integer partNumber,
                                            UploadPartCopyOptions options) {
     // Reject an invalid part number or a missing upload before the source is opened, so that a request that
@@ -42,7 +40,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
     UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
-    // Invoked on the proxy, which read locks the source bucket while the source object is resolved.
+    // getObject read locks the source bucket while the source object is resolved; the content is read without it.
     GetObjectAns source = getObject(options.getSourceBucket(), options.getSourceKey(),
         GetObjectOptions.builder()
             .versionId(options.getSourceVersion().orElse(null))
@@ -56,7 +54,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
 
     UploadPartAns part;
     try {
-      // Invoked on the proxy, which stores the content before it write locks the destination bucket. The ETag
+      // uploadPart stores the content before commitUploadPart write locks the destination bucket. The ETag
       // of the part is the one of the copied bytes, which uploadPart computes while it stores them.
       part = uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
           .contentLength(source.getSize())

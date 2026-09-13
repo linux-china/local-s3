@@ -269,6 +269,15 @@ class CreateIndexServiceTest {
    * Test implementation of CreateIndexService for testing purposes.
    */
   private static class CreateIndexServiceImpl implements CreateIndexService {
+
+    private final com.robothy.s3.core.service.BucketGuard bucketGuard =
+        com.robothy.s3.core.service.BucketGuard.inMemory();
+
+    @Override
+    public com.robothy.s3.core.service.BucketGuard bucketGuard() {
+      return bucketGuard;
+    }
+
     private final LocalS3VectorsMetadata mockMetadata = mock(LocalS3VectorsMetadata.class);
     private final Map<String, VectorBucketMetadata> bucketMap = new HashMap<>();
 

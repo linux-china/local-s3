@@ -1,8 +1,5 @@
 package com.robothy.s3.core.service;
 
-import com.robothy.s3.core.annotations.BucketChanged;
-import com.robothy.s3.core.annotations.BucketReadLock;
-import com.robothy.s3.core.annotations.BucketWriteLock;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
@@ -22,12 +19,12 @@ public interface BucketPublicAccessBlockService extends LocalS3MetadataApplicabl
    * @param bucketName bucket that associates with the public access block configuration.
    * @param configuration public access block configuration.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void putPublicAccessBlock(String bucketName, PublicAccessBlockConfiguration configuration) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setPublicAccessBlock(configuration);
+    changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setPublicAccessBlock(configuration);
+    });
   }
 
   /**
@@ -36,11 +33,12 @@ public interface BucketPublicAccessBlockService extends LocalS3MetadataApplicabl
    * @param bucketName the bucket that associates with the public access block configuration.
    * @return the public access block configuration.
    */
-  @BucketReadLock
   default Optional<PublicAccessBlockConfiguration> getPublicAccessBlock(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    return bucketMetadata.getPublicAccessBlock();
+    return withBucketReadLock(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      return bucketMetadata.getPublicAccessBlock();
+    });
   }
 
   /**
@@ -48,11 +46,11 @@ public interface BucketPublicAccessBlockService extends LocalS3MetadataApplicabl
    *
    * @param bucketName the bucket name.
    */
-  @BucketChanged
-  @BucketWriteLock
   default void deletePublicAccessBlock(String bucketName) {
-    BucketAssertions.assertBucketNameIsValid(bucketName);
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-    bucketMetadata.setPublicAccessBlock(null);
+    changeBucket(bucketName, () -> {
+      BucketAssertions.assertBucketNameIsValid(bucketName);
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      bucketMetadata.setPublicAccessBlock(null);
+    });
   }
 }

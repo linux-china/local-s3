@@ -291,6 +291,15 @@ class QueryVectorsServiceTest {
   }
 
   private static class TestQueryVectorsService implements QueryVectorsService {
+
+    private final com.robothy.s3.core.service.BucketGuard bucketGuard =
+        com.robothy.s3.core.service.BucketGuard.inMemory();
+
+    @Override
+    public com.robothy.s3.core.service.BucketGuard bucketGuard() {
+      return bucketGuard;
+    }
+
     private final LocalS3VectorsMetadata metadata;
     private final VectorStorage vectorStorage;
 
