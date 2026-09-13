@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage;
 
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Objects;
 
 /**
@@ -38,6 +39,16 @@ class LayeredStorage implements Storage {
   @Override
   public Long put(Long id, InputStream data) {
     return this.front.put(id, data);
+  }
+
+  @Override
+  public Long put(Long id, Path file) {
+    return this.front.put(id, file);
+  }
+
+  @Override
+  public long size(Long id) {
+    return front.isExist(id) ? front.size(id) : back.size(id);
   }
 
   @Override

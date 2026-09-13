@@ -2,7 +2,11 @@ package com.robothy.s3.core.storage;
 
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.RangeUtils;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -99,6 +103,53 @@ public interface Storage {
    * Put octet-stream to the storage.
    */
   Long put(Long id, InputStream data);
+
+  /**
+   * Put the content of a file to the storage, with a generated ID.
+   *
+   * @param file a file that holds exactly the content of the object.
+   * @return the storage generated object ID.
+   * @see #put(Long, Path)
+   */
+  default Long put(Path file) {
+    return put(IdUtils.defaultGenerator().nextId(), file);
+  }
+
+  /**
+   * Put the content of a file to the storage. The storage may take the file over instead of copying it, e.g. a
+   * storage on the same file system renames it, so that storing a large object doesn't write its content a second
+   * time. The caller must not rely on the file afterwards: it may be gone, and if it still exists the caller
+   * deletes it.
+   *
+   * <p>The default implementation copies the content of the file.
+   *
+   * @param id the object ID.
+   * @param file a file that holds exactly the content of the object.
+   * @return the object ID.
+   */
+  default Long put(Long id, Path file) {
+    try (InputStream in = Files.newInputStream(file)) {
+      return put(id, in);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to open " + file + " to store object " + id + ".", e);
+    }
+  }
+
+  /**
+   * The number of bytes of an object.
+   *
+   * <p>The default implementation reads the whole object; storages that know the size override it.
+   *
+   * @param id the object ID.
+   * @return the size of the object in bytes.
+   */
+  default long size(Long id) {
+    try (InputStream in = getInputStream(id)) {
+      return in.transferTo(OutputStream.nullOutputStream());
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read object " + id + ".", e);
+    }
+  }
 
   /**
    * Get all bytes of the object by ID.

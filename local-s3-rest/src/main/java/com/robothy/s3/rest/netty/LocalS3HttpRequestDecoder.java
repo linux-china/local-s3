@@ -29,6 +29,7 @@ import io.netty.handler.codec.http.TooLongHttpHeaderException;
 import io.netty.handler.codec.http.TooLongHttpLineException;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -60,7 +61,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>A body of up to {@code requestBodyFileThreshold} bytes is buffered on the Java heap. A larger body
  * is written to a temporary file, which is memory-mapped as the body of the request, so that large
- * uploads don't take heap memory. The file is deleted once mapped, or when the body is released.
+ * uploads don't take heap memory. The file is kept while the body is alive, so that a handler can hand it over to a
+ * storage instead of copying the body (see {@linkplain RequestBodies#file}), and is deleted when the body is released.
+ * The files are created in the configured directory, e.g. one on the file system of the storage, which then renames a
+ * file into place, or in the default temporary directory.
  */
 public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 
@@ -75,6 +79,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private final XmlMapper xmlMapper;
 
   private final RequestHeadVerifier headVerifier;
+
+  /**
+   * The directory that the temporary body files are created in; {@code null} for the default temporary directory.
+   */
+  private final Path bodyFileDirectory;
 
   private HttpRequest.HttpRequestBuilder builder;
 
@@ -122,6 +131,21 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    */
   public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper,
                                    RequestHeadVerifier headVerifier) {
+    this(maxRequestBodySize, requestBodyFileThreshold, xmlMapper, headVerifier, null);
+  }
+
+  /**
+   * Create a decoder.
+   *
+   * @param maxRequestBodySize max request body size in bytes.
+   * @param requestBodyFileThreshold size in bytes above which a request body is buffered in a temporary file.
+   * @param xmlMapper used to render the error of rejected requests.
+   * @param headVerifier verifies the head of a request with a body before the body is received.
+   * @param bodyFileDirectory the directory that the temporary body files are created in, which must exist;
+   *     {@code null} for the default temporary directory.
+   */
+  public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper,
+                                   RequestHeadVerifier headVerifier, Path bodyFileDirectory) {
     if (maxRequestBodySize <= 0) {
       throw new IllegalArgumentException("maxRequestBodySize must be positive.");
     }
@@ -132,6 +156,23 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     this.requestBodyFileThreshold = requestBodyFileThreshold;
     this.xmlMapper = xmlMapper;
     this.headVerifier = Objects.requireNonNull(headVerifier);
+    this.bodyFileDirectory = bodyFileDirectory;
+  }
+
+  /**
+   * Prepare a directory for the temporary body files: create it if it doesn't exist, and delete the body files that a
+   * process which died while it received requests left behind in it.
+   *
+   * @param directory the directory.
+   * @throws IOException if the directory can't be created or cleaned.
+   */
+  public static void prepareBodyFileDirectory(Path directory) throws IOException {
+    Files.createDirectories(directory);
+    try (DirectoryStream<Path> leftovers = Files.newDirectoryStream(directory, BODY_FILE_PREFIX + "*.tmp")) {
+      for (Path leftover : leftovers) {
+        Files.deleteIfExists(leftover);
+      }
+    }
   }
 
   @Override
@@ -242,7 +283,9 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    * Move the body buffered so far to a temporary file, to which the rest of the body is written.
    */
   private void writeBodyToFile() throws IOException {
-    bodyFile = Files.createTempFile(BODY_FILE_PREFIX, ".tmp");
+    bodyFile = bodyFileDirectory == null
+        ? Files.createTempFile(BODY_FILE_PREFIX, ".tmp")
+        : Files.createTempFile(bodyFileDirectory, BODY_FILE_PREFIX, ".tmp");
     bodyChannel = FileChannel.open(bodyFile, StandardOpenOption.READ, StandardOpenOption.WRITE);
     writeToFile(body);
     body.release();

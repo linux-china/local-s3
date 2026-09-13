@@ -2,6 +2,7 @@ package com.robothy.s3.core.model.request;
 
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +25,13 @@ public class PutObjectOptions {
   private long size;
 
   private InputStream content;
+
+  /**
+   * A file that holds exactly the {@linkplain #content}, e.g. the file that a large request body was buffered in;
+   * {@code null} if there is none. The storage may take the file over instead of copying the content, and the
+   * caller must not rely on the file afterwards.
+   */
+  private Path contentFile;
 
   private String contentMd5;
 

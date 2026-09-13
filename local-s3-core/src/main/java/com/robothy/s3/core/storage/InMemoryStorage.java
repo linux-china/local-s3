@@ -1,25 +1,43 @@
 package com.robothy.s3.core.storage;
 
 import com.robothy.s3.core.exception.TotalSizeExceedException;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * {@linkplain Storage} implementation based on Java Heap.
+ *
+ * <p>The content of an object is kept in chunks of at most {@linkplain #DEFAULT_CHUNK_SIZE} bytes rather than in a
+ * single array, so that an object may be larger than the largest array of the JVM, i.e. about 2 GiB, and storing a
+ * large object doesn't need a contiguous block of heap as large as the object.
  */
 class InMemoryStorage implements Storage {
 
-  private final Map<Long, byte[]> store = new ConcurrentHashMap<>();
+  /**
+   * The max size of a chunk of the content of an object.
+   */
+  static final int DEFAULT_CHUNK_SIZE = 16 * 1024 * 1024;
+
+  /**
+   * The size of the first buffer that a stream is read into when the stream doesn't tell how much it holds.
+   */
+  private static final int INITIAL_BUFFER_SIZE = 8192;
+
+  private final Map<Long, Content> store = new ConcurrentHashMap<>();
 
   private final AtomicLong totalSize = new AtomicLong(0);
 
   private final AtomicLong maxTotalSize = new AtomicLong(Long.MAX_VALUE);
+
+  private final int chunkSize;
 
   /**
    * Create an {@linkplain InMemoryStorage} instance with total size limitation.
@@ -27,59 +45,138 @@ class InMemoryStorage implements Storage {
    * @param maxTotalSize max total size.
    */
   InMemoryStorage(long maxTotalSize) {
-    this.maxTotalSize.set(maxTotalSize);
+    this(maxTotalSize, DEFAULT_CHUNK_SIZE);
   }
 
   /**
    * Create an {@linkplain InMemoryStorage} instance without total size limitation.
    */
   InMemoryStorage() {
+    this(Long.MAX_VALUE, DEFAULT_CHUNK_SIZE);
+  }
 
+  /**
+   * Create an {@linkplain InMemoryStorage} instance. For tests, which exercise the chunk boundaries with small chunks.
+   *
+   * @param maxTotalSize max total size.
+   * @param chunkSize max size of a chunk of the content of an object.
+   */
+  InMemoryStorage(long maxTotalSize, int chunkSize) {
+    if (chunkSize <= 0) {
+      throw new IllegalArgumentException("chunkSize must be positive.");
+    }
+    this.maxTotalSize.set(maxTotalSize);
+    this.chunkSize = chunkSize;
   }
 
   @Override
   public Long put(Long id, byte[] data) {
     // Copy the data, since the caller may change the array afterwards.
-    return putData(id, Arrays.copyOf(data, data.length));
+    List<byte[]> chunks = new ArrayList<>();
+    for (int offset = 0; offset < data.length; offset += chunkSize) {
+      chunks.add(Arrays.copyOfRange(data, offset, Math.min(data.length, offset + chunkSize)));
+    }
+    return putContent(id, new Content(chunks.toArray(byte[][]::new), data.length));
   }
 
   @Override
   public Long put(Long id, InputStream data) {
     try {
-      // The array returned by readAllBytes() isn't referenced by anyone else.
-      return putData(id, data.readAllBytes());
+      List<byte[]> chunks = new ArrayList<>();
+      long length = 0;
+      byte[] chunk;
+      while ((chunk = readChunk(data)) != null) {
+        ensureNotExceedTotalSize(length + chunk.length);
+        chunks.add(chunk);
+        length += chunk.length;
+      }
+      return putContent(id, new Content(chunks.toArray(byte[][]::new), length));
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to store object " + id + ".", e);
     }
   }
 
-  private Long putData(Long id, byte[] data) {
-    ensureNotExceedTotalSize(data.length);
-    byte[] previous = store.put(id, data);
-    totalSize.addAndGet(data.length - (previous == null ? 0 : previous.length));
+  /**
+   * Read the next chunk of a stream. The buffer starts at the size that the stream reports to be available, and
+   * grows up to the chunk size while the stream holds more, so that a small object doesn't take a whole chunk.
+   *
+   * @return the chunk, exactly as long as the bytes read; {@code null} at the end of the stream.
+   */
+  private byte[] readChunk(InputStream in) throws IOException {
+    int capacity = (int) Math.min(chunkSize, Math.max(INITIAL_BUFFER_SIZE, in.available()));
+    byte[] buffer = new byte[capacity];
+    int filled = 0;
+    while (true) {
+      int read = in.read(buffer, filled, buffer.length - filled);
+      if (read < 0) {
+        break;
+      }
+      filled += read;
+      if (filled == buffer.length) {
+        if (buffer.length == chunkSize) {
+          break;
+        }
+        buffer = Arrays.copyOf(buffer, (int) Math.min(chunkSize, (long) buffer.length * 2));
+      }
+    }
+    if (filled == 0) {
+      return null;
+    }
+    return filled == buffer.length ? buffer : Arrays.copyOf(buffer, filled);
+  }
+
+  private Long putContent(Long id, Content content) {
+    ensureNotExceedTotalSize(content.length());
+    Content previous = store.put(id, content);
+    totalSize.addAndGet(content.length() - (previous == null ? 0 : previous.length()));
     return id;
   }
 
   @Override
   public byte[] getBytes(Long id) {
-    byte[] data = getData(id);
+    Content content = getContent(id);
+    if (content.length() > Integer.MAX_VALUE - 8) {
+      throw new IllegalStateException("Object id='" + id + "' is too large to be read into an array.");
+    }
     // Copy the data, since the caller may change the returned array.
-    return Arrays.copyOf(data, data.length);
+    byte[] bytes = new byte[(int) content.length()];
+    int offset = 0;
+    for (byte[] chunk : content.chunks()) {
+      System.arraycopy(chunk, 0, bytes, offset, chunk.length);
+      offset += chunk.length;
+    }
+    return bytes;
   }
 
   @Override
   public InputStream getInputStream(Long id) {
-    // A ByteArrayInputStream never changes its array, so the stored data needn't be copied.
-    return new ByteArrayInputStream(getData(id));
+    Content content = getContent(id);
+    // The stream never changes the chunks, so the stored data needn't be copied.
+    return new ChunksInputStream(content.chunks(), 0, content.length());
+  }
+
+  @Override
+  public InputStream getInputStream(Long id, long position, long length) {
+    Content content = getContent(id);
+    if (position < 0 || length < 0 || position > content.length() || length > content.length() - position) {
+      throw new IllegalArgumentException("Invalid region of object id='" + id + "': position=" + position
+          + ", length=" + length + ".");
+    }
+    return new ChunksInputStream(content.chunks(), position, length);
+  }
+
+  @Override
+  public long size(Long id) {
+    return getContent(id).length();
   }
 
   @Override
   public Long delete(Long id) {
-    byte[] removed = store.remove(id);
+    Content removed = store.remove(id);
     if (removed == null) {
       throw notExist(id);
     }
-    totalSize.addAndGet(-removed.length);
+    totalSize.addAndGet(-removed.length());
     return id;
   }
 
@@ -88,21 +185,106 @@ class InMemoryStorage implements Storage {
     return store.containsKey(id);
   }
 
-  private byte[] getData(Long id) {
-    byte[] data = store.get(id);
-    if (data == null) {
+  private Content getContent(Long id) {
+    Content content = store.get(id);
+    if (content == null) {
       throw notExist(id);
     }
-    return data;
+    return content;
   }
 
   private static IllegalArgumentException notExist(Long id) {
     return new IllegalArgumentException("Object id='" + id + "' not exists.");
   }
 
-  private void ensureNotExceedTotalSize(int incrementalSize) {
+  private void ensureNotExceedTotalSize(long incrementalSize) {
     if (totalSize.get() + incrementalSize > maxTotalSize.get()) {
       throw new TotalSizeExceedException(maxTotalSize.get(), totalSize.get() + incrementalSize);
+    }
+  }
+
+  /**
+   * The content of an object.
+   *
+   * @param chunks the chunks, none of them empty.
+   * @param length the total number of bytes of the chunks.
+   */
+  private record Content(byte[][] chunks, long length) {
+  }
+
+  /**
+   * A stream of a region of the content of an object.
+   */
+  private static final class ChunksInputStream extends InputStream {
+
+    private final byte[][] chunks;
+
+    private int chunkIndex;
+
+    private int offsetInChunk;
+
+    private long remaining;
+
+    ChunksInputStream(byte[][] chunks, long position, long length) {
+      this.chunks = chunks;
+      this.remaining = length;
+      long skip = position;
+      while (chunkIndex < chunks.length && skip >= chunks[chunkIndex].length) {
+        skip -= chunks[chunkIndex].length;
+        chunkIndex++;
+      }
+      this.offsetInChunk = (int) skip;
+    }
+
+    @Override
+    public int read() {
+      if (remaining == 0) {
+        return -1;
+      }
+      int value = Byte.toUnsignedInt(chunks[chunkIndex][offsetInChunk]);
+      advance(1);
+      return value;
+    }
+
+    @Override
+    public int read(byte[] bytes, int offset, int length) {
+      Objects.checkFromIndexSize(offset, length, bytes.length);
+      if (length == 0) {
+        return 0;
+      }
+      if (remaining == 0) {
+        return -1;
+      }
+      int count = (int) Math.min(Math.min(length, remaining), chunks[chunkIndex].length - offsetInChunk);
+      System.arraycopy(chunks[chunkIndex], offsetInChunk, bytes, offset, count);
+      advance(count);
+      return count;
+    }
+
+    @Override
+    public long skip(long count) {
+      long skipped = Math.min(Math.max(count, 0), remaining);
+      long left = skipped;
+      while (left > 0) {
+        int step = (int) Math.min(left, chunks[chunkIndex].length - offsetInChunk);
+        advance(step);
+        left -= step;
+      }
+      return skipped;
+    }
+
+    @Override
+    public int available() {
+      return (int) Math.min(remaining, Integer.MAX_VALUE);
+    }
+
+    private void advance(int count) {
+      remaining -= count;
+      offsetInChunk += count;
+      if (offsetInChunk == chunks[chunkIndex].length) {
+        chunkIndex++;
+        offsetInChunk = 0;
+      }
     }
   }
 

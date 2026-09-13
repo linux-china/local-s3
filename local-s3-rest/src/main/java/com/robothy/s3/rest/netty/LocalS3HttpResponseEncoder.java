@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.netty;
 
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.storage.CompositeInputStream;
 import com.robothy.s3.core.storage.FileRegionInputStream;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.DefaultFileRegion;
@@ -26,7 +27,9 @@ import java.util.List;
  * <p>A buffered response becomes a {@linkplain FullHttpResponse}. A {@linkplain StreamingHttpResponse}
  * with a body stream becomes the response headers followed by streaming content. File-backed content
  * is sent as a zero-copy {@linkplain DefaultFileRegion} on plaintext connections, or a
- * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}.
+ * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}. The content of an object
+ * stored in parts, i.e. a {@linkplain CompositeInputStream}, whose parts are all file-backed is sent as one
+ * {@linkplain DefaultFileRegion} per part on plaintext connections.
  */
 public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
 
@@ -49,7 +52,15 @@ public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResp
       HttpUtil.setTransferEncodingChunked(response, true);
     }
     out.add(response);
-    if (bodyStream instanceof FileRegionInputStream file) {
+    if (bodyStream instanceof CompositeInputStream composite && ctx.pipeline().get(SslHandler.class) == null
+        && composite.getStreams().stream().allMatch(FileRegionInputStream.class::isInstance)) {
+      // Each region owns the channel of its part from now on, and closes it once it is written or released.
+      for (InputStream part : composite.getStreams()) {
+        FileRegionInputStream file = (FileRegionInputStream) part;
+        out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
+      }
+      out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+    } else if (bodyStream instanceof FileRegionInputStream file) {
       if (ctx.pipeline().get(SslHandler.class) == null) {
         out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
         out.add(LastHttpContent.EMPTY_LAST_CONTENT);

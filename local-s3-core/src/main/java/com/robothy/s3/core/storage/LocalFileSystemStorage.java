@@ -8,6 +8,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -57,6 +58,36 @@ class LocalFileSystemStorage implements Storage {
       throw e;
     }
     return id;
+  }
+
+  /**
+   * Store the content of a file by renaming it to the object file, so that its content isn't written a second
+   * time. A file that can't be renamed atomically, e.g. because it is on another file system, or because Windows
+   * refuses to rename a file that is memory-mapped, is copied instead, like a stream.
+   */
+  @Override
+  public Long put(Long id, Path file) {
+    try {
+      Files.move(file, objectPath(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      return id;
+    } catch (IOException | UnsupportedOperationException e) {
+      // The file is left where it was; copy it.
+    }
+    try (InputStream in = Files.newInputStream(file)) {
+      return put(id, in);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to store object " + id + " from " + file + ".", e);
+    }
+  }
+
+  @Override
+  public long size(Long id) {
+    ensureExists(id);
+    try {
+      return Files.size(objectPath(id));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read the size of object " + id + ".", e);
+    }
   }
 
   @Override

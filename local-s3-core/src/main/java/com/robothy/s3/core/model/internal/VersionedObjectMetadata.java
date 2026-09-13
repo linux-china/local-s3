@@ -29,7 +29,10 @@ public class VersionedObjectMetadata {
   private boolean isDeleted;
 
   /**
-   * File ID in {@linkplain com.robothy.s3.core.storage.Storage}.
+   * File ID in {@linkplain com.robothy.s3.core.storage.Storage}; {@code null} for a delete marker, and for a version
+   * whose content is the content of its {@linkplain #parts}, each of which has its own file ID.
+   *
+   * @see com.robothy.s3.core.util.ObjectContentUtils
    */
   private Long fileId;
 
@@ -43,9 +46,10 @@ public class VersionedObjectMetadata {
   private Map<String, String> userMetadata = Collections.emptyMap();
 
   /**
-   * The parts of the multipart upload that stored this version, in the order they were concatenated in;
+   * The parts of the multipart upload that stored this version, in the order of the content;
    * {@code null} when {@code PutObject} stored it, or when an upload that a LocalS3 before 2.5 completed
-   * did. {@code GetObjectAttributes} answers the part layout of the object from it.
+   * did. {@code GetObjectAttributes} answers the part layout of the object from it, and, when the parts have
+   * file IDs, the content of the version is read from them.
    */
   private List<ObjectPartMetadata> parts;
 

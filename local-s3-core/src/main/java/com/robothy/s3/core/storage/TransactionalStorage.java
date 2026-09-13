@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage;
 
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -73,6 +74,17 @@ public final class TransactionalStorage implements Storage {
   public Long put(Long id, InputStream data) {
     recordWrite(id);
     return delegate.put(id, data);
+  }
+
+  @Override
+  public Long put(Long id, Path file) {
+    recordWrite(id);
+    return delegate.put(id, file);
+  }
+
+  @Override
+  public long size(Long id) {
+    return delegate.size(id);
   }
 
   @Override

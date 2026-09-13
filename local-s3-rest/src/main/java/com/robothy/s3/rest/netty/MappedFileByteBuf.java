@@ -13,8 +13,10 @@ import org.slf4j.LoggerFactory;
 /**
  * A buffer memory-mapped from a temporary file, so that its content takes no Java heap.
  *
- * <p>Releasing the buffer unmaps the file right away, rather than when the buffer is garbage collected,
- * which matters when the temporary directory is a {@code tmpfs}. The buffer must not be used afterwards.
+ * <p>The file is kept while the buffer is alive, so that a handler can hand it over to a storage, which may rename
+ * it into place instead of writing its content again; see {@linkplain RequestBodies#file}. Releasing the buffer
+ * unmaps the file right away, rather than when the buffer is garbage collected, which matters when the temporary
+ * directory is a {@code tmpfs}, and deletes the file unless it was taken over. The buffer must not be used afterwards.
  */
 final class MappedFileByteBuf extends UnpooledDirectByteBuf {
 
@@ -23,13 +25,12 @@ final class MappedFileByteBuf extends UnpooledDirectByteBuf {
   private final MappedByteBuffer mapped;
 
   /**
-   * The file to delete on release; {@code null} if it was deleted while mapped.
+   * The file that the buffer is mapped from, which is deleted on release if it still exists.
    */
   private final Path file;
 
   /**
-   * Map the first {@code size} bytes of {@code file} and delete the file, unless the platform doesn't
-   * allow deleting a mapped file; then the file is deleted when the buffer is released.
+   * Map the first {@code size} bytes of {@code file}.
    *
    * @param channel a channel of {@code file}, opened for reading and writing.
    * @param file the temporary file, owned by the returned buffer.
@@ -38,15 +39,7 @@ final class MappedFileByteBuf extends UnpooledDirectByteBuf {
    * @throws IOException if the file cannot be mapped.
    */
   static MappedFileByteBuf map(FileChannel channel, Path file, long size) throws IOException {
-    MappedByteBuffer mapped = channel.map(FileChannel.MapMode.READ_WRITE, 0, size);
-    Path undeleted = file;
-    try {
-      Files.delete(file);
-      undeleted = null;
-    } catch (IOException e) {
-      // Windows doesn't delete a file while it is mapped.
-    }
-    return new MappedFileByteBuf(mapped, undeleted);
+    return new MappedFileByteBuf(channel.map(FileChannel.MapMode.READ_WRITE, 0, size), file);
   }
 
   private MappedFileByteBuf(MappedByteBuffer mapped, Path file) {
@@ -55,17 +48,25 @@ final class MappedFileByteBuf extends UnpooledDirectByteBuf {
     this.file = file;
   }
 
+  /**
+   * The file that the buffer is mapped from. It holds exactly the readable bytes of the buffer, unless it was taken
+   * over, e.g. renamed, in which case it doesn't exist anymore.
+   *
+   * @return the file.
+   */
+  Path file() {
+    return file;
+  }
+
   @Override
   protected void deallocate() {
     super.deallocate();
     freeDirect(mapped);
-    if (file != null) {
-      try {
-        Files.deleteIfExists(file);
-      } catch (IOException e) {
-        log.warn("Failed to delete temporary request body file {}.", file, e);
-        file.toFile().deleteOnExit();
-      }
+    try {
+      Files.deleteIfExists(file);
+    } catch (IOException e) {
+      log.warn("Failed to delete temporary request body file {}.", file, e);
+      file.toFile().deleteOnExit();
     }
   }
 

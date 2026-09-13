@@ -124,6 +124,33 @@ class LocalFileSystemStorageTest {
     assertEquals(List.of(), listFiles());
   }
 
+  @Test
+  void renamesAFileIntoPlace() throws IOException {
+    Storage storage = Storage.createPersistent(directory);
+    Path file = Files.writeString(directory.resolve(".body.tmp"), "Hello");
+
+    Long id = storage.put(file);
+
+    assertFalse(Files.exists(file), "The file is taken over.");
+    assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
+    assertEquals(5, storage.size(id));
+    assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+  }
+
+  @Test
+  void copiesAFileThatCannotBeRenamed() throws IOException {
+    Storage storage = Storage.createPersistent(directory);
+    Path missing = directory.resolve("missing");
+    assertThrows(UncheckedIOException.class, () -> storage.put(missing));
+    assertEquals(List.of(), listFiles(), "Nothing is left behind.");
+  }
+
+  @Test
+  void sizeOfAMissingObjectIsReported() {
+    Storage storage = Storage.createPersistent(directory);
+    assertThrows(IllegalArgumentException.class, () -> storage.size(42L));
+  }
+
   private List<Path> listFiles() throws IOException {
     try (Stream<Path> files = Files.list(directory)) {
       return files.toList();

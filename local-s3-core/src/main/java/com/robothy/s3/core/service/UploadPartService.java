@@ -10,8 +10,6 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.request.UploadPartOptions;
-import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.util.Objects;
 
 /**
@@ -38,15 +36,16 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
-    MeasuredInputStream data = S3ObjectUtils.measuringStream(options.getData());
-    Long fileId = storage().put(data);
+    StoredContent data = storeContent(options.getData(), options.getDataFile());
+    Long fileId = data.fileId();
     try {
       UploadPartMetadata uploadPartMetadata = UploadPartMetadata.builder()
           .fileId(fileId)
           .lastModified(System.currentTimeMillis())
           // The length of the data that was stored, which the length declared by the request may not match.
-          .size(data.getSize())
-          .etag(options.getETag().orElseGet(data::etag))
+          .size(data.size())
+          .etag(options.getETag().orElse(data.md5()))
+          .contentMd5(data.md5())
           .build();
       return commitUploadPart(bucket, key, uploadId, partNumber, uploadPartMetadata);
     } catch (Throwable e) {

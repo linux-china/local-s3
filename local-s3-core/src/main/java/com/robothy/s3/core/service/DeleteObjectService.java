@@ -10,6 +10,7 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,7 +46,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
     ObjectMetadata removedObject = bucketMetadata.getObjectMap().remove(key);
     if (Objects.nonNull(removedObject)) { // the object exists
       VersionedObjectMetadata removedVersion = removedObject.getVersionedObjectMap().firstEntry().getValue();
-      storage.delete(removedVersion.getFileId());
+      ObjectContentUtils.delete(storage, removedVersion);
     }
     return DeleteObjectAns.builder().build();
   }
@@ -81,7 +82,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
           VersionedObjectMetadata removed =
               objectMetadata.getVersionedObjectMap().remove(objectMetadata.getVirtualVersion().get());
           if (!removed.isDeleted()) {
-            storage.delete(removed.getFileId());
+            ObjectContentUtils.delete(storage, removed);
           }
         }
         objectMetadata.setVirtualVersion(versionId);
@@ -129,7 +130,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
         VersionedObjectMetadata toRemove = objectMetadata.getVersionedObjectMap().remove(virtualVersionOpt.get());
         isDeleteMarker = toRemove.isDeleted();
         if (!isDeleteMarker) {
-          storage.delete(toRemove.getFileId());
+          ObjectContentUtils.delete(storage, toRemove);
         }
         objectMetadata.setVirtualVersion(null);
       }
@@ -140,7 +141,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
         VersionedObjectMetadata removed = objectMetadata.getVersionedObjectMap().remove(versionId);
         isDeleteMarker = removed.isDeleted();
         if (!isDeleteMarker) {
-          storage.delete(removed.getFileId());
+          ObjectContentUtils.delete(storage, removed);
         }
       }
     }

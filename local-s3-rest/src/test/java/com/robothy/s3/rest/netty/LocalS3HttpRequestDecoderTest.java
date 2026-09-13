@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -28,10 +29,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Random;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class LocalS3HttpRequestDecoderTest {
 
@@ -71,14 +74,78 @@ class LocalS3HttpRequestDecoderTest {
     try {
       assertInstanceOf(MappedFileByteBuf.class, body);
       assertArrayEquals(content, bytes(body));
-      if (!isWindows()) {
-        assertEquals(bodyFiles, countBodyFiles(), "The file is deleted once mapped.");
-      }
+      // The file is kept while the body is alive, so that a handler can hand it over to a storage.
+      assertEquals(bodyFiles + 1, countBodyFiles());
+      Path file = RequestBodies.file(body).orElseThrow();
+      assertArrayEquals(content, Files.readAllBytes(file));
     } finally {
       body.release();
     }
     assertEquals(0, body.refCnt());
     assertEquals(bodyFiles, countBodyFiles());
+  }
+
+  @Test
+  void exposesNoFileOfABodyOnTheHeap() {
+    byte[] content = randomBytes(FILE_THRESHOLD);
+    channel.writeInbound(request(content.length), last(content, 0, content.length));
+
+    ByteBuf body = readBody();
+    try {
+      assertTrue(RequestBodies.file(body).isEmpty());
+    } finally {
+      body.release();
+    }
+  }
+
+  /**
+   * A body file that a storage took over, e.g. renamed, is gone when the body is released, which must not fail.
+   */
+  @Test
+  void releasesABodyWhoseFileWasTakenOver(@TempDir Path directory) throws IOException {
+    // Windows refuses to rename a file that is memory-mapped; a storage copies such a file instead.
+    assumeFalse(isWindows());
+    byte[] content = randomBytes(100);
+    channel.writeInbound(request(content.length), last(content, 0, content.length));
+
+    ByteBuf body = readBody();
+    Path taken = directory.resolve("taken");
+    Files.move(RequestBodies.file(body).orElseThrow(), taken);
+    assertArrayEquals(content, bytes(body), "The body stays readable.");
+    body.release();
+
+    assertEquals(0, body.refCnt());
+    assertArrayEquals(content, Files.readAllBytes(taken));
+  }
+
+  @Test
+  void createsBodyFilesInTheConfiguredDirectory(@TempDir Path directory) throws IOException {
+    Path leftover = Files.createFile(directory.resolve(LocalS3HttpRequestDecoder.BODY_FILE_PREFIX + "1.tmp"));
+    Path unrelated = Files.createFile(directory.resolve("123"));
+    LocalS3HttpRequestDecoder.prepareBodyFileDirectory(directory);
+    assertFalse(Files.exists(leftover), "A body file left behind by a process that died is deleted.");
+    assertTrue(Files.exists(unrelated));
+
+    EmbeddedChannel configured = new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD,
+        new XmlMapper(), RequestHeadVerifier.ACCEPT_ALL, directory));
+    try {
+      byte[] content = randomBytes(100);
+      configured.writeInbound(request(content.length), last(content, 0, content.length));
+      HttpRequest request = configured.readInbound();
+      ByteBuf body = request.getBody();
+      try {
+        Path file = RequestBodies.file(body).orElseThrow();
+        assertEquals(directory, file.getParent());
+        assertArrayEquals(content, Files.readAllBytes(file));
+      } finally {
+        body.release();
+      }
+      try (Stream<Path> files = Files.list(directory)) {
+        assertEquals(List.of(unrelated), files.toList(), "The body file is deleted once the body is released.");
+      }
+    } finally {
+      configured.finishAndReleaseAll();
+    }
   }
 
   @Test

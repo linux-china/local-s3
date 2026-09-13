@@ -1,6 +1,9 @@
 package com.robothy.s3.core.storage;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -49,14 +52,36 @@ class CopyOnAccessStorage implements Storage {
   }
 
   @Override
-  public InputStream getInputStream(Long id) {
-    if (this.real.isExist(id)) {
-      return this.real.getInputStream(id);
-    }
+  public Long put(Long id, Path file) {
+    return this.real.put(id, file);
+  }
 
-    InputStream data = this.base.getInputStream(id);
-    this.real.put(id, data);
+  @Override
+  public InputStream getInputStream(Long id) {
+    copyIfAbsent(id);
     return this.real.getInputStream(id);
+  }
+
+  @Override
+  public InputStream getInputStream(Long id, long position, long length) {
+    copyIfAbsent(id);
+    return this.real.getInputStream(id, position, length);
+  }
+
+  @Override
+  public long size(Long id) {
+    return this.real.isExist(id) ? this.real.size(id) : this.base.size(id);
+  }
+
+  private void copyIfAbsent(Long id) {
+    if (this.real.isExist(id)) {
+      return;
+    }
+    try (InputStream data = this.base.getInputStream(id)) {
+      this.real.put(id, data);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to copy object " + id + ".", e);
+    }
   }
 
 

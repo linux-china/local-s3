@@ -10,6 +10,7 @@ import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.listener.S3EventDispatcher;
+import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -24,6 +25,8 @@ import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,6 +58,11 @@ public class LocalS3 implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
 
     private static final long SHUTDOWN_TIMEOUT_SECONDS = 5;
+
+    /**
+     * The directory in the storage directory that large request bodies are buffered in in {@code PERSISTENCE} mode.
+     */
+    static final String REQUEST_BODY_DIRECTORY = ".request-bodies";
 
     /**
      * Default max request body size(2G), the largest body the in-memory request aggregation can hold.
@@ -281,6 +289,7 @@ public class LocalS3 implements AutoCloseable {
             log.info("Create default buckets:{}", String.join(",", defaultBuckets));
             createBuckets();
         }
+        Path requestBodyFileDirectory = prepareRequestBodyFileDirectory();
         // start server
         this.parentGroup = new MultiThreadIoEventLoopGroup(nettyParentEventGroupThreadNum,
                 new NamingThreadFactory("locals3-parent-event-group", daemonThreads), NioIoHandler.newFactory());
@@ -296,7 +305,7 @@ public class LocalS3 implements AutoCloseable {
                     .childHandler(new LocalS3ServerInitializer(executor,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
                             serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold,
-                            idleConnectionTimeoutSeconds, maxRequestHeaderSize))
+                            idleConnectionTimeoutSeconds, maxRequestHeaderSize, requestBodyFileDirectory))
                     .bind(bindHost, configuredPort)
                     .sync();
         } catch (InterruptedException e) {
@@ -309,6 +318,28 @@ public class LocalS3 implements AutoCloseable {
         log.info("LocalS3 listens on {}:{}.", bindHost, port);
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
+    }
+
+    /**
+     * Prepare the directory that large request bodies are buffered in. In {@code PERSISTENCE} mode it is a directory
+     * of the storage, so that the storage stores the body of an upload by renaming its file rather than by writing the
+     * body a second time; otherwise the bodies are buffered in the default temporary directory.
+     *
+     * @return the directory; {@code null} for the default temporary directory.
+     */
+    private Path prepareRequestBodyFileDirectory() {
+        if (mode != LocalS3Mode.PERSISTENCE || dataPath == null) {
+            return null;
+        }
+        Path directory = dataPath.toAbsolutePath()
+                .resolve(LocalS3Manager.STORAGE_DIRECTORY)
+                .resolve(REQUEST_BODY_DIRECTORY);
+        try {
+            LocalS3HttpRequestDecoder.prepareBodyFileDirectory(directory);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to prepare the request body directory " + directory + ".", e);
+        }
+        return directory;
     }
 
     /**
@@ -923,7 +954,9 @@ public class LocalS3 implements AutoCloseable {
         /**
          * Set the size in bytes above which a request body is buffered in a temporary file instead of the
          * Java heap. The file is memory-mapped while the request is handled, so large uploads take neither
-         * heap memory nor a copy of the body. Default value is
+         * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
+         * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
+         * file, so that its content isn't written a second time. Default value is
          * {@linkplain LocalS3#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
          * request bodies on the heap.
          *

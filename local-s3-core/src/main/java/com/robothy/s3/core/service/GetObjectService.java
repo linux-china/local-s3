@@ -14,6 +14,7 @@ import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.ObjectContentUtils;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.Optional;
@@ -56,10 +57,10 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       contentLength = end - start + 1;
       contentRange = "bytes " + start + "-" + end + "/" + fullSize;
       if (!metadataOnly) {
-        content = storage.getInputStream(latestObject.getFileId(), start, contentLength);
+        content = ObjectContentUtils.open(storage, latestObject, start, contentLength);
       }
     } else if (!metadataOnly) {
-      content = storage.getInputStream(latestObject.getFileId());
+      content = ObjectContentUtils.open(storage, latestObject);
     }
 
     return GetObjectAns.builder()
@@ -142,10 +143,10 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         contentLength = end - start + 1;
         contentRange = "bytes " + start + "-" + end + "/" + fullSize;
         if (!metadataOnly) {
-          content = storage.getInputStream(versionedObjectMetadata.getFileId(), start, contentLength);
+          content = ObjectContentUtils.open(storage, versionedObjectMetadata, start, contentLength);
         }
       } else if (!metadataOnly) {
-        content = storage.getInputStream(versionedObjectMetadata.getFileId());
+        content = ObjectContentUtils.open(storage, versionedObjectMetadata);
       }
 
       return GetObjectAns.builder()

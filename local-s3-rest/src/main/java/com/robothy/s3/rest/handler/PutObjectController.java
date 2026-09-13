@@ -40,6 +40,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .systemMetadata(SystemMetadataHeaders.fromRequest(request))
         .size(decodedBody.getDecodedContentLength())
         .content(decodedBody.getDecodedBody())
+        .contentFile(decodedBody.getBodyFile())
         .contentMd5(request.header("Content-MD5").orElse(null))
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))

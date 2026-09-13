@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.HttpObjectDecoder;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
 import io.netty.handler.stream.ChunkedWriteHandler;
+import java.nio.file.Path;
 import java.util.concurrent.Executor;
 
 /**
@@ -34,6 +35,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     private final long idleConnectionTimeoutSeconds;
 
     private final int maxRequestHeaderSize;
+
+    private final Path requestBodyFileDirectory;
 
     /**
      * Create a channel initializer.
@@ -66,6 +69,29 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     public LocalS3ServerInitializer(Executor executor, Router router, XmlMapper xmlMapper,
                                     long maxRequestBodySize, long requestBodyFileThreshold,
                                     long idleConnectionTimeoutSeconds, int maxRequestHeaderSize) {
+        this(executor, router, xmlMapper, maxRequestBodySize, requestBodyFileThreshold, idleConnectionTimeoutSeconds,
+                maxRequestHeaderSize, null);
+    }
+
+    /**
+     * Create a channel initializer.
+     *
+     * @param executor                     executes request handling, shared by all connections.
+     * @param router                       routes requests to handlers.
+     * @param xmlMapper                    renders S3 errors.
+     * @param maxRequestBodySize           max request body size in bytes.
+     * @param requestBodyFileThreshold     size in bytes above which a request body is buffered in a temporary file.
+     * @param idleConnectionTimeoutSeconds seconds after which an idle connection is closed; {@code 0} never closes it.
+     * @param maxRequestHeaderSize         max size in bytes of the header section of a request.
+     * @param requestBodyFileDirectory     the directory that temporary request body files are created in, e.g. one on
+     *                                     the file system of the storage, which then renames them into place;
+     *                                     {@code null} for the default temporary directory.
+     */
+    public LocalS3ServerInitializer(Executor executor, Router router, XmlMapper xmlMapper,
+                                    long maxRequestBodySize, long requestBodyFileThreshold,
+                                    long idleConnectionTimeoutSeconds, int maxRequestHeaderSize,
+                                    Path requestBodyFileDirectory) {
+        this.requestBodyFileDirectory = requestBodyFileDirectory;
         this.maxRequestHeaderSize = maxRequestHeaderSize;
         this.executor = executor;
         this.router = router;
@@ -89,7 +115,7 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         RequestHeadVerifier headVerifier = router instanceof RequestHeadVerifier verifier ? verifier : RequestHeadVerifier.ACCEPT_ALL;
         ch.pipeline()
                 .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
-                        requestBodyFileThreshold, xmlMapper, headVerifier))
+                        requestBodyFileThreshold, xmlMapper, headVerifier, requestBodyFileDirectory))
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor));
     }

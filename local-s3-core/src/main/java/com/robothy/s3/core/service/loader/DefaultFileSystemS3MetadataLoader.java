@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.loader;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -62,6 +64,10 @@ public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLo
         for (Map.Entry<String, VersionedObjectMetadata> version : objectMetadata.getVersionedObjectMap().entrySet()) {
           maxId = Math.max(maxId, toId(version.getKey()));
           maxId = Math.max(maxId, toId(version.getValue().getFileId()));
+          // The content of a version completed from a multipart upload is stored in its parts.
+          for (ObjectPartMetadata part : version.getValue().getParts().orElse(List.of())) {
+            maxId = Math.max(maxId, toId(part.getFileId()));
+          }
         }
       }
 

@@ -36,6 +36,7 @@ class UploadPartController implements HttpRequestHandler {
     UploadPartAns uploadPartAns = uploadPartService.uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
         .contentLength(decodedBody.getDecodedContentLength())
         .data(decodedBody.getDecodedBody())
+        .dataFile(decodedBody.getBodyFile())
         .etag(RequestUtils.getETag(request).orElse(null))
         .build());
 

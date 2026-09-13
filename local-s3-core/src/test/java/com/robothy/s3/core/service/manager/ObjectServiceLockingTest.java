@@ -70,8 +70,42 @@ class ObjectServiceLockingTest {
     }
   }
 
+  /**
+   * An upload is completed without reading its parts: the object references their content, and the entity tag of
+   * the object is computed from the digests recorded when the parts were stored.
+   */
   @Test
-  void completeMultipartUploadDoesNotLockTheBucketWhileConcatenatingParts() throws Exception {
+  void completeMultipartUploadDoesNotReadTheParts() throws Exception {
+    BlockingStorage storage = new BlockingStorage();
+    InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
+    BucketService bucketService = manager.bucketService();
+    ObjectService objectService = manager.objectService();
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = objectService.createMultipartUpload(bucket, key,
+        CreateMultipartUploadOptions.builder().contentType("plain/text").build());
+    objectService.uploadPart(bucket, key, uploadId, 1, part("Robo"));
+    objectService.uploadPart(bucket, key, uploadId, 2, part("thy"));
+
+    storage.blockNextRead();
+    try {
+      CompleteMultipartUploadAns completed = assertTimeoutPreemptively(Duration.ofSeconds(5),
+          () -> objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
+      // The entity tag of an object uploaded in parts, i.e. the digest of the digests of "Robo" and "thy".
+      assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Robo"), DigestUtils.md5("thy"))),
+          completed.getEtag());
+    } finally {
+      storage.releaseBlockedRead();
+    }
+  }
+
+  /**
+   * The digest of the whole content, which a service configured with the entity tags of LocalS3 before 2.5 gives
+   * the object, is read from the parts without a lock.
+   */
+  @Test
+  void completeMultipartUploadDoesNotLockTheBucketWhileReadingParts() throws Exception {
     BlockingStorage storage = new BlockingStorage();
     InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
     BucketService bucketService = manager.bucketService();
@@ -88,18 +122,14 @@ class ObjectServiceLockingTest {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
       Future<CompleteMultipartUploadAns> completing = executor.submit(() ->
-          objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
-              CompleteMultipartUploadPartOption.builder().partNumber(1).build(),
-              CompleteMultipartUploadPartOption.builder().partNumber(2).build())));
+          objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2), 0, false));
       BlockingInputStream blocked = storage.awaitBlockedRead();
 
-      // Writes to the bucket don't wait for the parts to be concatenated.
+      // Writes to the bucket don't wait for the parts to be read.
       assertTimeoutPreemptively(Duration.ofSeconds(5), () -> putText(objectService, bucket, "another", "!"));
 
       blocked.release();
-      // The entity tag of an object uploaded in parts, i.e. the digest of the digests of "Robo" and "thy".
-      assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Robo"), DigestUtils.md5("thy"))),
-          completing.get(5, TimeUnit.SECONDS).getEtag());
+      assertEquals(DigestUtils.md5Hex("Robothy"), completing.get(5, TimeUnit.SECONDS).getEtag());
     } finally {
       storage.releaseBlockedRead();
       executor.shutdownNow();
@@ -107,11 +137,11 @@ class ObjectServiceLockingTest {
   }
 
   /**
-   * A part uploaded again while the parts are concatenated isn't the part that was concatenated, so the upload
-   * isn't completed with the stale data; it can be completed again with the part as it is now.
+   * A part uploaded again while the parts are read isn't the part that was read, so the upload isn't completed with
+   * the stale data; it can be completed again with the part as it is now.
    */
   @Test
-  void completeMultipartUploadRejectsAPartUploadedAgainWhileConcatenating() throws Exception {
+  void completeMultipartUploadRejectsAPartUploadedAgainWhileReadingParts() throws Exception {
     BlockingStorage storage = new BlockingStorage();
     InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
     BucketService bucketService = manager.bucketService();
@@ -128,7 +158,7 @@ class ObjectServiceLockingTest {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     try {
       Future<CompleteMultipartUploadAns> completing = executor.submit(() ->
-          objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
+          objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2), 0, false));
       BlockingInputStream blocked = storage.awaitBlockedRead();
 
       objectService.uploadPart(bucket, key, uploadId, 1, part("Andy"));
@@ -149,7 +179,7 @@ class ObjectServiceLockingTest {
   }
 
   /**
-   * A part uploaded again after the upload was validated, but before its data was opened, has its data
+   * A part uploaded again after the upload was validated, but before its data was opened to be read, has its data
    * deleted; that is an {@code InvalidPart} too, rather than an error of the storage.
    */
   @Test
@@ -169,7 +199,7 @@ class ObjectServiceLockingTest {
     storage.beforeNextOpen(() -> objectService.uploadPart(bucket, key, uploadId, 1, part("Andy")));
 
     assertThrows(InvalidPartException.class,
-        () -> objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
+        () -> objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2), 0, false));
     assertThrows(ObjectNotExistException.class,
         () -> objectService.getObject(bucket, key, GetObjectOptions.builder().build()));
   }
@@ -270,6 +300,11 @@ class ObjectServiceLockingTest {
     @Override
     public byte[] getBytes(Long id) {
       return delegate.getBytes(id);
+    }
+
+    @Override
+    public long size(Long id) {
+      return delegate.size(id);
     }
 
     @Override

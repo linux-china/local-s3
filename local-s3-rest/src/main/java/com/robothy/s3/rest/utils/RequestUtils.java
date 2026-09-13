@@ -9,6 +9,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -54,6 +55,8 @@ public class RequestUtils {
         throw new LocalS3RequestException(S3ErrorCode.NotImplemented,
             "The payload signing algorithm " + amzContentSha256 + " is not implemented.");
       default:
+        // Taken before the body is read: the body is only the content of its file while it is unread.
+        RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
         result.setDecodedBody(new ByteBufInputStream(request.getBody()));
         result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
     }

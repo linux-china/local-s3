@@ -13,9 +13,8 @@ import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
-import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 
 import java.util.Base64;
 import java.util.Objects;
@@ -53,20 +52,20 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
 
-    MeasuredInputStream content = S3ObjectUtils.measuringStream(options.getContent());
-    Long fileId = storage().put(content);
+    StoredContent content = storeContent(options.getContent(), options.getContentFile());
+    Long fileId = content.fileId();
     try {
       VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
       versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
       versionedObjectMetadata.setContentType(options.getContentType());
       versionedObjectMetadata.setSystemMetadata(options.getSystemMetadata());
       // The length of the content that was stored, which the length declared by the request may not match.
-      versionedObjectMetadata.setSize(content.getSize());
+      versionedObjectMetadata.setSize(content.size());
       if (Objects.nonNull(options.getUserMetadata())) {
         versionedObjectMetadata.setUserMetadata(options.getUserMetadata());
       }
       versionedObjectMetadata.setFileId(fileId);
-      versionedObjectMetadata.setEtag(content.etag());
+      versionedObjectMetadata.setEtag(content.md5());
       checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
       options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 
@@ -151,9 +150,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       if (virtualVersionOpt.isPresent()) {
         String lastVirtualVersion = virtualVersionOpt.get();
         VersionedObjectMetadata previousVersion = objectMetadata.getVersionedObjectMap().remove(lastVirtualVersion);
-        if (Objects.nonNull(previousVersion.getFileId())) { // Not a delete marker.
-          storage.delete(previousVersion.getFileId());
-        }
+        // Nothing is deleted for a delete marker.
+        ObjectContentUtils.delete(storage, previousVersion);
 
         objectMetadata.setVirtualVersion(versionId);
       } else {
