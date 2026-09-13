@@ -71,7 +71,7 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   }
 
   /**
-   * Set the LocalS3 mode. i.e. Set the environment variable "MODE" when starting a container.
+   * Set the LocalS3 mode. i.e. Set the environment variable "LOCAL_S3_MODE" when starting a container.
    *
    * @param mode {@linkplain Mode}.
    * @return this.
