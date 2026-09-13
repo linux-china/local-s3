@@ -450,7 +450,7 @@ The container is configured by environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `LOCAL_S3_PORT` | `29090` | Port that LocalS3 listens on. |
-| `LOCAL_S3_MODE` | `PERSISTENCE` | `PERSISTENCE` or `IN_MEMORY`. `MODE` is still accepted. |
+| `LOCAL_S3_MODE` | `PERSISTENCE` | `PERSISTENCE` or `IN_MEMORY`. |
 | `LOCAL_S3_DATA_PATH` | `/data` | Data directory, or initial data in `IN_MEMORY` mode. |
 | `LOCAL_S3_STRICT_BUCKET_NAMES` | `false` | Reject bucket names that Amazon S3 doesn't accept. |
 | `LOCAL_S3_STRICT_PART_SIZES` | `false` | Reject a multipart upload whose parts, except the last one, are smaller than the 5 MiB that Amazon S3 requires. |
