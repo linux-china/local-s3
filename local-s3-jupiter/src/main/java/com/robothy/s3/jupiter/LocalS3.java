@@ -74,9 +74,6 @@ public @interface LocalS3 {
    */
   int port() default -1;
 
-  @Deprecated
-  boolean inmemory() default true;
-
   /**
    * Set LocalS3 running mode.
    *
