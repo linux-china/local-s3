@@ -13,6 +13,7 @@ import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.utils.ByteBufUtils;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
@@ -63,9 +64,10 @@ class GetObjectController implements HttpRequestHandler {
         response.status(HttpResponseStatus.OK);
       }
 
-      response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), getObjectAns.getContentType())
-          .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), getObjectAns.getSize())
+      response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), getObjectAns.getSize())
           .putHeader("Accept-Ranges", "bytes");
+      SystemMetadataHeaders.addResponseHeaders(request, response, getObjectAns.getContentType(),
+          getObjectAns.getSystemMetadata());
 
       if (0 != getObjectAns.getTaggingCount()) {
         response.putHeader(AmzHeaderNames.X_AMZ_TAGGING_COUNT, getObjectAns.getTaggingCount());

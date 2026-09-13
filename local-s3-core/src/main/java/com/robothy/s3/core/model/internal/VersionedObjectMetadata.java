@@ -14,6 +14,11 @@ public class VersionedObjectMetadata {
 
   private String contentType;
 
+  /**
+   * The system-defined metadata of the object besides its content type; {@code null} if it has none.
+   */
+  private SystemMetadata systemMetadata;
+
   private long creationDate;
 
   private long size;

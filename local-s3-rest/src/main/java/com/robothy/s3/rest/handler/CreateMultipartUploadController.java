@@ -12,6 +12,7 @@ import com.robothy.s3.rest.model.response.InitiateMultipartUploadResult;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
@@ -36,7 +37,9 @@ class CreateMultipartUploadController implements HttpRequestHandler {
     String uploadId = uploadService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
-        .contentType(contentType).build());
+        .contentType(contentType)
+        .systemMetadata(SystemMetadataHeaders.fromRequest(request))
+        .build());
     InitiateMultipartUploadResult result = InitiateMultipartUploadResult.builder()
         .bucket(bucket)
         .key(key)

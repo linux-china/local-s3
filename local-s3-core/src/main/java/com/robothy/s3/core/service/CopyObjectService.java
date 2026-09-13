@@ -4,6 +4,7 @@ import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
@@ -33,15 +34,13 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
       throw new IllegalArgumentException("The source of a copy request may not specifically refer to a delete marker by version id.");
     }
 
-    // Determine which metadata to use based on the metadata directive
-    Map<String, String> metadataToUse;
-    if (options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE) {
-      // Use the metadata provided in the request
-      metadataToUse = options.getUserMetadata();
-    } else {
-      // Use the metadata from the source object
-      metadataToUse = srcObjectAns.getUserMetadata();
-    }
+    // The metadata of the source object is copied, unless the directive replaces all of it, the content type and
+    // the system-defined metadata included, with the one of the request.
+    boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
+    Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
+    String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
+    SystemMetadata systemMetadataToUse = replaceMetadata ? options.getSystemMetadata()
+        : srcObjectAns.getSystemMetadata();
 
     // The tagging of the source object is copied, unless the directive replaces it with the requested one.
     String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE
@@ -51,7 +50,8 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
     // Invoked on the proxy, which stores the content before it write locks the destination bucket.
     PutObjectAns putObjectAns = putObject(bucket, key, PutObjectOptions.builder()
         .content(srcObjectAns.getContent())
-        .contentType(srcObjectAns.getContentType())
+        .contentType(contentTypeToUse)
+        .systemMetadata(systemMetadataToUse)
         .size(srcObjectAns.getSize())
         .userMetadata(metadataToUse)
         .tagging(taggingToUse)

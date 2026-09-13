@@ -95,11 +95,11 @@ class ListMultipartUploadsServiceTest {
   void testListMultipartUploadsWithMaxUploads() {
     NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
     NavigableMap<String, UploadMetadata> uploadMetadataMap1 = new TreeMap<>();
-    uploadMetadataMap1.put("uploadId1", new UploadMetadata(123456789L, "contentType", null, null, null));
+    uploadMetadataMap1.put("uploadId1", UploadMetadata.builder().createDate(123456789L).contentType("contentType").build());
     uploads.put("key1", uploadMetadataMap1);
 
     NavigableMap<String, UploadMetadata> uploadMetadataMap2 = new TreeMap<>();
-    uploadMetadataMap2.put("uploadId2", new UploadMetadata(987654321L, "contentType", null, null, null));
+    uploadMetadataMap2.put("uploadId2", UploadMetadata.builder().createDate(987654321L).contentType("contentType").build());
     uploads.put("key2", uploadMetadataMap2);
 
     ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, null, 1, null);

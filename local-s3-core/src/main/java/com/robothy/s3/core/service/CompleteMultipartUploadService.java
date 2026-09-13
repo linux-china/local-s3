@@ -120,6 +120,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
       versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
       versionedObjectMetadata.setContentType(uploadMetadata.getContentType());
+      versionedObjectMetadata.setSystemMetadata(uploadMetadata.getSystemMetadata());
       // The length of the concatenated parts, which the lengths declared when they were uploaded may not match.
       versionedObjectMetadata.setSize(content.getSize());
       versionedObjectMetadata.setFileId(fileId);
@@ -247,6 +248,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     return UploadMetadata.builder()
         .createDate(uploadMetadata.getCreateDate())
         .contentType(uploadMetadata.getContentType())
+        .systemMetadata(uploadMetadata.getSystemMetadata())
         .tagging(uploadMetadata.getTagging().orElse(null))
         .userMetadata(uploadMetadata.getUserMetadata())
         .parts(partsToComplete)

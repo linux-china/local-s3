@@ -31,6 +31,7 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
     uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
     uploads.get(key).put(uploadId, UploadMetadata.builder()
         .contentType(options.getContentType())
+        .systemMetadata(options.getSystemMetadata())
         .createDate(System.currentTimeMillis())
         .tagging(options.getTagging().orElse(null))
         .userMetadata(options.getUserMetadata())

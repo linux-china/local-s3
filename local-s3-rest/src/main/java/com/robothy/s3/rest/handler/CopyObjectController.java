@@ -15,6 +15,7 @@ import com.robothy.s3.rest.model.response.CopyObjectResult;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -72,6 +73,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     // Parse metadata directive and user metadata
     CopyObjectOptions.MetadataDirective metadataDirective = parseMetadataDirective(request);
     Map<String, String> userMetadata = extractUserMetadata(request, metadataDirective);
+    boolean replaceMetadata = metadataDirective == CopyObjectOptions.MetadataDirective.REPLACE;
 
     // Parse tagging directive and the tagging that replaces the one of the source object.
     CopyObjectOptions.TaggingDirective taggingDirective = parseTaggingDirective(request);
@@ -85,6 +87,8 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .sourceVersion(copySource.versionId())
         .metadataDirective(metadataDirective)
         .userMetadata(userMetadata)
+        .contentType(replaceMetadata ? request.header(HttpHeaderNames.CONTENT_TYPE).orElse(null) : null)
+        .systemMetadata(replaceMetadata ? SystemMetadataHeaders.fromRequest(request) : null)
         .taggingDirective(taggingDirective)
         .tagging(tagging)
         .build();

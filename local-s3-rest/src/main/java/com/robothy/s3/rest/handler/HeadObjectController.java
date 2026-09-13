@@ -13,6 +13,7 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -59,8 +60,8 @@ class HeadObjectController implements HttpRequestHandler {
 
       response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), object.getSize())
           .putHeader(HttpHeaderNames.ETAG.toString(), object.getEtag())
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), object.getContentType())
           .putHeader("Accept-Ranges", "bytes");
+      SystemMetadataHeaders.addResponseHeaders(request, response, object.getContentType(), object.getSystemMetadata());
       ResponseUtils.addETag(response, object.getEtag());
       object.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
     } else {

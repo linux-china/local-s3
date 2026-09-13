@@ -81,7 +81,28 @@
       {"name":"getParts","parameterTypes":[] },
       {"name":"setContentType","parameterTypes":["java.lang.String"] },
       {"name":"setCreateDate","parameterTypes":["long"] },
-      {"name":"setParts","parameterTypes":["java.util.NavigableMap"] }
+      {"name":"getSystemMetadata","parameterTypes":[] },
+      {"name":"setParts","parameterTypes":["java.util.NavigableMap"] },
+      {"name":"setSystemMetadata","parameterTypes":["com.robothy.s3.core.model.internal.SystemMetadata"] }
+    ]
+  },
+  {
+    "name":"com.robothy.s3.core.model.internal.SystemMetadata",
+    "allDeclaredFields":true,
+    "queryAllDeclaredMethods":true,
+    "queryAllDeclaredConstructors":true,
+    "methods":[
+      {"name":"<init>","parameterTypes":[] },
+      {"name":"getCacheControl","parameterTypes":[] },
+      {"name":"getContentDisposition","parameterTypes":[] },
+      {"name":"getContentEncoding","parameterTypes":[] },
+      {"name":"getContentLanguage","parameterTypes":[] },
+      {"name":"getExpires","parameterTypes":[] },
+      {"name":"setCacheControl","parameterTypes":["java.lang.String"] },
+      {"name":"setContentDisposition","parameterTypes":["java.lang.String"] },
+      {"name":"setContentEncoding","parameterTypes":["java.lang.String"] },
+      {"name":"setContentLanguage","parameterTypes":["java.lang.String"] },
+      {"name":"setExpires","parameterTypes":["java.lang.String"] }
     ]
   },
   {
@@ -113,6 +134,7 @@
       {"name":"getEtag","parameterTypes":[] },
       {"name":"getFileId","parameterTypes":[] },
       {"name":"getSize","parameterTypes":[] },
+      {"name":"getSystemMetadata","parameterTypes":[] },
       {"name":"getTagging","parameterTypes":[] },
       {"name":"isDeleted","parameterTypes":[] },
       {"name":"setContentType","parameterTypes":["java.lang.String"] },
@@ -121,6 +143,7 @@
       {"name":"setEtag","parameterTypes":["java.lang.String"] },
       {"name":"setFileId","parameterTypes":["java.lang.Long"] },
       {"name":"setSize","parameterTypes":["long"] },
+      {"name":"setSystemMetadata","parameterTypes":["com.robothy.s3.core.model.internal.SystemMetadata"] },
       {"name":"setTagging","parameterTypes":["java.lang.String[][]"] }
     ]
   },

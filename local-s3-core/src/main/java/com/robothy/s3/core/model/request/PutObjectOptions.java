@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.Map;
@@ -14,6 +15,11 @@ import lombok.Getter;
 public class PutObjectOptions {
 
   private String contentType;
+
+  /**
+   * The system-defined metadata of the object besides its content type; {@code null} if it has none.
+   */
+  private SystemMetadata systemMetadata;
 
   private long size;
 

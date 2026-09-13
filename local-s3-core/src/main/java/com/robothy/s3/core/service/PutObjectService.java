@@ -59,6 +59,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
       versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
       versionedObjectMetadata.setContentType(options.getContentType());
+      versionedObjectMetadata.setSystemMetadata(options.getSystemMetadata());
       // The length of the content that was stored, which the length declared by the request may not match.
       versionedObjectMetadata.setSize(content.getSize());
       if (Objects.nonNull(options.getUserMetadata())) {

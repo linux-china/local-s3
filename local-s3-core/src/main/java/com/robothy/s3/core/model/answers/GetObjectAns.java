@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.answers;
 
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,11 @@ public class GetObjectAns {
   private boolean notModified;
 
   private String contentType;
+
+  /**
+   * The system-defined metadata of the object besides its content type; {@code null} if it has none.
+   */
+  private SystemMetadata systemMetadata;
 
   private long size;
 

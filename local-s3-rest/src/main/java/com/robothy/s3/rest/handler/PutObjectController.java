@@ -14,6 +14,7 @@ import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Objects;
@@ -36,6 +37,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
 
     PutObjectOptions options = PutObjectOptions.builder()
         .contentType(request.header(HttpHeaderNames.CONTENT_TYPE).orElse(null))
+        .systemMetadata(SystemMetadataHeaders.fromRequest(request))
         .size(decodedBody.getDecodedContentLength())
         .content(decodedBody.getDecodedBody())
         .contentMd5(request.header("Content-MD5").orElse(null))

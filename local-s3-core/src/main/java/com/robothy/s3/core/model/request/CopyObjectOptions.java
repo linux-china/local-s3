@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -51,6 +52,18 @@ public class CopyObjectOptions {
   private MetadataDirective metadataDirective;
 
   private Map<String, String> userMetadata;
+
+  /**
+   * The content type of the copy when {@linkplain #getMetadataDirective()} is {@linkplain MetadataDirective#REPLACE};
+   * {@code null} if the request carries none.
+   */
+  private String contentType;
+
+  /**
+   * The system-defined metadata of the copy when {@linkplain #getMetadataDirective()} is
+   * {@linkplain MetadataDirective#REPLACE}; {@code null} if the request carries none.
+   */
+  private SystemMetadata systemMetadata;
 
   private TaggingDirective taggingDirective;
 
