@@ -1,7 +1,7 @@
 package com.robothy.s3.jupiter.extensions;
 
+import com.robothy.s3.jupiter.LocalS3;
 import lombok.SneakyThrows;
-import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -16,14 +16,14 @@ public class S3ClientResolver extends AbstractLocalS3ParameterResolver {
 
   @SneakyThrows
   @Override
-  protected Object resolve(int port) {
+  protected Object resolve(int port, LocalS3 s3Config) {
     String endpoint = "http://localhost:" + port;
 
     return S3Client.builder()
       .forcePathStyle(true)
       .endpointOverride(new URI(endpoint))
       .region(Region.of("local"))
-      .credentialsProvider(AnonymousCredentialsProvider.create())
+      .credentialsProvider(credentialsProvider(s3Config))
       .build();
   }
 

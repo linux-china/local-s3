@@ -53,6 +53,21 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
  *  }
  * }</pre>
  *
+ * <p>Signature verification is off unless {@linkplain #accessKey()} and {@linkplain #secretKey()} are set,
+ * which makes the service reject a request that isn't signed with them and gives the injected clients those
+ * credentials:
+ *
+ * <pre>{@code
+ *  @LocalS3(accessKey = "an-access-key", secretKey = "a-secret-key")
+ *  class AppTest {
+ *    @Test
+ *    void test(S3Client s3) {
+ *      // Signed with the credentials above, so it is accepted.
+ *      s3.createBucket(request -> request.bucket("my-bucket"));
+ *    }
+ *  }
+ * }</pre>
+ *
  * <p> If {@code @LocalS3} is on a test class, the Junit5 extension will create a shared
  * service for all test methods in the class and shut it down in the "after all" callback.
  * If {@code @LocalS3} is on a test method, the extension creates an exclusive service
@@ -145,4 +160,26 @@ public @interface LocalS3 {
    * @return additional virtual-host domains.
    */
   String[] virtualHostDomains() default {};
+
+  /**
+   * Set the access key ID that the service accepts, which turns on AWS Signature Version 4 verification:
+   * a request that isn't signed with these credentials is rejected the way Amazon S3 rejects it, so a test
+   * can assert that its code signs its requests. The injected {@linkplain S3Client} and
+   * {@linkplain S3VectorsClient} are given the same credentials, so the tests that don't assert anything
+   * about signing keep reading as they did.
+   *
+   * <p>Must be set together with {@linkplain #secretKey()}. The default is the empty string, which leaves
+   * verification off: every request is then accepted, signed or not.
+   *
+   * @return the access key ID that the service accepts; empty to verify no signature.
+   */
+  String accessKey() default "";
+
+  /**
+   * Set the secret access key that request signatures are verified with. Must be set together with
+   * {@linkplain #accessKey()}.
+   *
+   * @return the secret access key that signatures are verified with; empty to verify no signature.
+   */
+  String secretKey() default "";
 }

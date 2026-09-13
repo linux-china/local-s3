@@ -240,6 +240,23 @@ localS3.start();
 
 The [health check](#health-check) needs no authentication, so probes keep working.
 
+The JUnit 5 extension takes the same pair through `accessKey` and `secretKey`, and signs the clients it
+injects with it, so a test of signed requests needs no hand-built service:
+
+```java
+@LocalS3(accessKey = "access-key-id", secretKey = "secret-access-key")
+class AppTest {
+
+  @Test
+  void theInjectedClientIsSigned(S3Client s3) {
+    s3.createBucket(request -> request.bucket("my-bucket"));
+  }
+}
+```
+
+Both attributes must be set together; setting neither, which is the default, leaves verification off and
+injects an anonymous client.
+
 #### Listen to bucket and object events
 
 `bucketEventListener` and `objectEventListener` are functional interfaces that receive an event whenever a

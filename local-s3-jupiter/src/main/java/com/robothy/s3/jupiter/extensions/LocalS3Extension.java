@@ -101,10 +101,32 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     if (dataPath != null && !dataPath.isBlank()) {
       builder.dataPath(dataPath);
     }
+    if (verifiesSignatures(s3Config)) {
+      builder.credentials(s3Config.accessKey(), s3Config.secretKey());
+    }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();
     logger.debug("LocalS3 endpoint http://localhost:" + localS3.getPort());
     return localS3;
+  }
+
+  /**
+   * Whether the annotation configures the credentials that requests are verified against, which turns on
+   * AWS Signature Version 4 verification.
+   *
+   * @param s3Config the annotation.
+   * @return {@code true} if the service verifies signatures.
+   * @throws IllegalArgumentException if only one of the two is configured, which would otherwise leave
+   *     verification off without saying so.
+   */
+  static boolean verifiesSignatures(LocalS3 s3Config) {
+    boolean hasAccessKey = !s3Config.accessKey().isBlank();
+    boolean hasSecretKey = !s3Config.secretKey().isBlank();
+    if (hasAccessKey != hasSecretKey) {
+      throw new IllegalArgumentException("@LocalS3 accessKey and secretKey must be set together; "
+          + (hasAccessKey ? "secretKey" : "accessKey") + " is missing.");
+    }
+    return hasAccessKey;
   }
 
   @SneakyThrows
