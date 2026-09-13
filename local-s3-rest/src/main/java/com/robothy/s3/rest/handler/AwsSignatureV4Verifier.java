@@ -432,6 +432,7 @@ final class AwsSignatureV4Verifier {
 
   private static byte[] hmac(byte[] key, String value) {
     try {
+      // thread safe for Thread and VirtualThread, and don't optimize
       Mac mac = Mac.getInstance("HmacSHA256");
       mac.init(new SecretKeySpec(key, "HmacSHA256"));
       return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
