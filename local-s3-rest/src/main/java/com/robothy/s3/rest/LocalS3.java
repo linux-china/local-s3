@@ -669,25 +669,11 @@ public class LocalS3 implements AutoCloseable {
          * Set the LocalS3 data directory. The default value is {@code null},
          * while data is stored in Java Heap.
          *
-         * <p>
-         * If the path is specified and the {@code mode} is {@code PERSISTENCE},
-         * then the LocalS3 service load data from and store data in this directory.
-         *
-         * <p>
-         * If the data directory is set and LocalS3 runs in {@code IN_MEMORY} mode,
-         * then data from that path will be loaded as initial data. All changes are
-         * only available in the memory, i.e. won't write back to the specified path.
-         * <p>
-         * Besides, LocalS3 will cache accessed data from this path; which could reduce
-         * disk I/O when start LocalS3 in {@code IN_MEMORY} mode with the same initial
-         * data for multi-times.
-         *
          * @param dataPath data path.
          * @return builder.
          */
         public Builder dataPath(@NonNull String dataPath) {
             this.dataPath = Paths.get(dataPath);
-            this.mode = LocalS3Mode.PERSISTENCE;
             return this;
         }
 
