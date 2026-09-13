@@ -7,25 +7,23 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * A {@linkplain VectorStorage} whose deletions can be deferred to the end of a transaction, so that the vectors stay
- * consistent with the persisted metadata of the vector buckets that references them.
+ * A {@linkplain VectorStorage} whose changes can be grouped into a transaction, so that the vectors stay consistent
+ * with the persisted metadata of the vector buckets that references them.
  *
  * <p>Within a transaction started by {@link #begin()} on the current thread, deleting a vector only records the
- * deletion. {@link #commit()} performs the recorded deletions; {@link #rollback()} discards them. Outside a
- * transaction, this storage behaves like the underlying one.
+ * deletion. {@link #commit()} performs the recorded deletions; {@link #rollback()} discards them and deletes the
+ * vectors written during the transaction instead, which only the in-memory metadata of the failed change, reloaded from
+ * the store after the rollback, references. Outside a transaction, this storage behaves like the underlying one.
  *
  * <p>Committing after the metadata is persisted means that the persisted metadata never references a deleted vector,
- * even if the process dies in between; at worst, an unreferenced vector is left behind. Unlike
- * {@linkplain com.robothy.s3.core.storage.TransactionalStorage}, a rollback keeps the vectors written within the
- * transaction: the in-memory metadata of a vector bucket isn't reloaded after a failed change, so it may still
- * reference them.
+ * even if the process dies in between; at worst, an unreferenced vector is left behind.
  */
 @Slf4j
 public final class TransactionalVectorStorage implements VectorStorage, StorageTransactions {
 
   private final VectorStorage delegate;
 
-  private final ThreadLocal<Set<Long>> deletions = new ThreadLocal<>();
+  private final ThreadLocal<Transaction> transaction = new ThreadLocal<>();
 
   /**
    * Create a {@linkplain TransactionalVectorStorage} on top of {@code delegate}.
@@ -38,26 +36,31 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
 
   @Override
   public boolean begin() {
-    if (deletions.get() != null) {
+    if (transaction.get() != null) {
       return false;
     }
-    deletions.set(new LinkedHashSet<>());
+    transaction.set(new Transaction());
     return true;
   }
 
   @Override
   public void commit() {
-    end().forEach(this::deleteQuietly);
+    end().deleted.forEach(this::deleteQuietly);
   }
 
   @Override
   public void rollback() {
-    end();
+    end().written.forEach(this::deleteQuietly);
   }
 
   @Override
   public Long putVectorData(float[] vectorData) {
-    return delegate.putVectorData(vectorData);
+    Long storageId = delegate.putVectorData(vectorData);
+    Transaction current = transaction.get();
+    if (current != null) {
+      current.written.add(storageId);
+    }
+    return storageId;
   }
 
   @Override
@@ -67,14 +70,14 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
 
   @Override
   public boolean deleteVectorData(Long storageId) {
-    Set<Long> current = deletions.get();
+    Transaction current = transaction.get();
     if (current == null) {
       return delegate.deleteVectorData(storageId);
     }
     if (!delegate.vectorDataExists(storageId)) {
       return false;
     }
-    current.add(storageId);
+    current.deleted.add(storageId);
     return true;
   }
 
@@ -93,12 +96,12 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
     return delegate.getVectorDataSize(storageId);
   }
 
-  private Set<Long> end() {
-    Set<Long> current = deletions.get();
+  private Transaction end() {
+    Transaction current = transaction.get();
     if (current == null) {
       throw new IllegalStateException("No active transaction on the current thread.");
     }
-    deletions.remove();
+    transaction.remove();
     return current;
   }
 
@@ -108,6 +111,14 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
     } catch (RuntimeException e) {
       log.warn("Failed to delete vector {}; it is left as an unreferenced vector.", storageId, e);
     }
+  }
+
+  private static final class Transaction {
+
+    private final Set<Long> deleted = new LinkedHashSet<>();
+
+    private final Set<Long> written = new LinkedHashSet<>();
+
   }
 
 }

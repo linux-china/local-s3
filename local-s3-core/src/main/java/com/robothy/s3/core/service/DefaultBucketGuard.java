@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.StorageTransactions;
@@ -105,9 +106,10 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
    * after the metadata is persisted. If the operation or the persistence fails, the objects written by the operation
    * are deleted.
    *
-   * <p>A {@linkplain LocalS3Exception} thrown by the operation rejects the request, which services do before they
-   * change the metadata, so the in-memory metadata is kept. After any other failure, or if the persistence fails, the
-   * in-memory metadata of the bucket is reloaded from the store, dropping the changes that were made in memory only.
+   * <p>A {@linkplain LocalS3Exception} or a {@linkplain LocalS3VectorException} thrown by the operation rejects the
+   * request, which services do before they change the metadata, so the in-memory metadata is kept. After any other
+   * failure, or if the persistence fails, the in-memory metadata of the bucket is reloaded from the store, dropping the
+   * changes that were made in memory only.
    */
   private <T> T invokeAndPersist(String bucketName, Change change, Supplier<T> operation) {
     boolean ownsTransaction = storage != null && storage.begin();
@@ -115,7 +117,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     try {
       result = operation.get();
     } catch (RuntimeException | Error e) {
-      rollback(ownsTransaction, bucketName, e, !(e instanceof LocalS3Exception));
+      rollback(ownsTransaction, bucketName, e, !isRejection(e));
       throw e;
     }
 
@@ -130,6 +132,10 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
       storage.commit();
     }
     return result;
+  }
+
+  private static boolean isRejection(Throwable e) {
+    return e instanceof LocalS3Exception || e instanceof LocalS3VectorException;
   }
 
   private void persistBucket(String bucketName, Change change) {

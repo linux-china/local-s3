@@ -9,6 +9,11 @@ public enum LocalS3VectorErrorType {
   INDEX_NOT_FOUND("IndexNotFoundException", 404),
   INDEX_ALREADY_EXISTS("IndexAlreadyExistsException", 409),
   INVALID_REQUEST("InvalidRequestException", 400),
+  /**
+   * The request doesn't satisfy the constraints of the operation, e.g. a vector whose dimension differs from the
+   * dimension of its index, which the AWS SDK throws as {@code ValidationException}.
+   */
+  VALIDATION("ValidationException", 400),
   INTERNAL_SERVER_ERROR("InternalServerException", 500),
   ;
 

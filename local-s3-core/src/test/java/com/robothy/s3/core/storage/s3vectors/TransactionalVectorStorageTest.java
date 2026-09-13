@@ -37,7 +37,7 @@ class TransactionalVectorStorageTest {
   }
 
   @Test
-  void rollbackKeepsTheDeletedAndTheWrittenVectors() {
+  void rollbackKeepsTheDeletedVectorsAndDeletesTheWrittenOnes() {
     Long existing = storage.putVectorData(new float[] {1.0f});
 
     assertTrue(storage.begin());
@@ -46,8 +46,7 @@ class TransactionalVectorStorageTest {
     storage.rollback();
 
     assertTrue(delegate.vectorDataExists(existing));
-    assertTrue(delegate.vectorDataExists(written),
-        "The in-memory metadata of a vector bucket isn't reloaded, so it may still reference the written vector.");
+    assertFalse(delegate.vectorDataExists(written));
   }
 
   @Test

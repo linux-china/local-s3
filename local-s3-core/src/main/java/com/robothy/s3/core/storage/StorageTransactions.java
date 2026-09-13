@@ -24,8 +24,7 @@ public interface StorageTransactions {
   void commit();
 
   /**
-   * End the transaction of the current thread and keep the data deleted within it. An implementation may also delete
-   * the data written within it, if nothing references that data after a failed change.
+   * End the transaction of the current thread, keep the data deleted within it, and delete the data written within it.
    */
   void rollback();
 

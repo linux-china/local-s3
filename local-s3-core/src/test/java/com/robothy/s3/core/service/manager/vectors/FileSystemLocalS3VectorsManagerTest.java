@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,10 +15,12 @@ import com.robothy.s3.datatypes.s3vectors.VectorBucket;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
 import com.robothy.s3.datatypes.s3vectors.response.ListVectorBucketsResponse;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class FileSystemLocalS3VectorsManagerTest {
 
@@ -168,5 +171,24 @@ class FileSystemLocalS3VectorsManagerTest {
         FileUtils.deleteDirectory(tempDirectory.toFile());
       }
     }
+  }
+
+  @Test
+  void createsTheServiceOnce(@TempDir Path dataPath) {
+    LocalS3VectorsManager manager = LocalS3VectorsManager.createFileSystem(dataPath);
+    assertSame(manager.s3VectorsService(), manager.s3VectorsService(),
+        "A second service would keep a copy of the metadata of its own and write the same files.");
+  }
+
+  @Test
+  void aVectorBucketThatFailsToBePersistedIsNotKeptInMemory(@TempDir Path dataPath) throws IOException {
+    S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
+    // A non-empty directory takes the place of the metadata file of the bucket, so the bucket can't be persisted.
+    Files.createDirectories(dataPath.resolve("blocked-bucket.vectorbucket.meta").resolve("child"));
+
+    assertThrows(UncheckedIOException.class, () -> service.createVectorBucket("blocked-bucket", null));
+
+    assertTrue(service.listVectorBuckets(null, null, null).getVectorBuckets().isEmpty(),
+        "The in-memory metadata is reloaded from the store, which doesn't have the bucket.");
   }
 }

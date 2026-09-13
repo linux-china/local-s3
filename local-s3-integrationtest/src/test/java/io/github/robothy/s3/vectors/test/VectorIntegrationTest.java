@@ -2,6 +2,8 @@ package io.github.robothy.s3.vectors.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
 import java.util.HashMap;
 import java.util.List;
@@ -18,8 +20,28 @@ import software.amazon.awssdk.services.s3vectors.model.DistanceMetric;
 import software.amazon.awssdk.services.s3vectors.model.GetOutputVector;
 import software.amazon.awssdk.services.s3vectors.model.GetVectorsResponse;
 import software.amazon.awssdk.services.s3vectors.model.PutVectorsResponse;
+import software.amazon.awssdk.services.s3vectors.model.ValidationException;
 
 public class VectorIntegrationTest {
+
+  @LocalS3
+  @Test
+  void anInvalidVectorRejectsTheWholePutVectorsRequest(S3VectorsClient vectorsClient) {
+    String bucketName = "test-vector-bucket" + UUID.randomUUID();
+    String indexName = "test-vector-index";
+    vectorsClient.createVectorBucket(b -> b.vectorBucketName(bucketName));
+    vectorsClient.createIndex(index -> index.vectorBucketName(bucketName).indexName(indexName)
+        .dimension(2).dataType(DataType.FLOAT32).distanceMetric(DistanceMetric.EUCLIDEAN));
+
+    ValidationException thrown = assertThrows(ValidationException.class,
+        () -> vectorsClient.putVectors(b -> b.vectorBucketName(bucketName).indexName(indexName).vectors(
+            v -> v.key("valid").data(d -> d.float32(1.0f, 2.0f)),
+            v -> v.key("invalid").data(d -> d.float32(1.0f, 2.0f, 3.0f)))));
+    assertEquals(400, thrown.statusCode());
+
+    assertTrue(vectorsClient.getVectors(b -> b.vectorBucketName(bucketName).indexName(indexName)
+        .keys("valid", "invalid")).vectors().isEmpty(), "No vector of the rejected request is put.");
+  }
 
   @LocalS3
   @Test
