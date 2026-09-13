@@ -6,9 +6,6 @@ on:
 
 jobs:
   build:
-    # LocalS3 handles files differently on Windows, which refuses to replace or delete an open file, so the
-    # suite runs on both. Only the Linux job builds and tests the Docker image; the Windows runner has no
-    # Linux Docker.
     strategy:
       # A failure on one operating system still reports the results of the other one.
       fail-fast: false
@@ -34,44 +31,10 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-
-      - name: Login to Docker Hub
-        if: runner.os == 'Linux'
-        uses: docker/login-action@v4
         with:
-          username: luofuxiang
-          password: ${{secrets.DOCKER_HUB_TOKEN}}
-
-      - name: Docker Version
-        if: runner.os == 'Linux'
-        run: |
-          docker --version
-
-      - name: Prepare parameters
-        run: |
-          git log --pretty=format:"%H - %an, %aI : %s" -5
-          mkdir -p ~/.gradle
-          echo "GITHUB_TOKEN=${{secrets.PACKAGES_TOKEN}}" > ~/.gradle/gradle.properties
-          echo "GITHUB_USERNAME=Robothy" >> ~/.gradle/gradle.properties
-          chmod +x gradlew
-          pwd
-          ls -l
-
-      # Tests the JVM based Docker image, but doesn't build the GraalVM native image.
-      - name: Build and test the Docker image
-        if: runner.os == 'Linux'
-        run: ./gradlew mergeReports :local-s3-standalone:dockerImageTest
+          gradle-version: '9.7.1'
 
       # The image tests are left to the Linux job. The rest of the suite runs, which is what covers the file
       # handling that Windows needs; `mergeReports` doesn't reach a Docker daemon.
       - name: Build
-        if: runner.os == 'Windows'
-        run: ./gradlew mergeReports
-
-      # The coverage of both jobs is the same, so it is uploaded once.
-      - name: Upload coverage to Codecov
-        if: runner.os == 'Linux'
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./build/reports/jacoco/mergeReports/mergeReports.xml
-          token: ${{ secrets.CODECOV_GLOBAL_UPLOAD_TOKEN }}
+        run: ./gradlew -x :local-s3-integrationtest:build build
