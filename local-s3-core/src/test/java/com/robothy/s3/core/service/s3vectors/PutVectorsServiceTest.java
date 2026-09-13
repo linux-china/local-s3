@@ -161,7 +161,7 @@ class PutVectorsServiceTest {
   }
 
   private long vectorFileCount() throws IOException {
-    try (Stream<Path> files = Files.list(dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY))) {
+    try (Stream<Path> files = Files.walk(dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY))) {
       return files.filter(Files::isRegularFile).count();
     }
   }

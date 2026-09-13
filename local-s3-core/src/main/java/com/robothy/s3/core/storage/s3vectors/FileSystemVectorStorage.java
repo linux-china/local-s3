@@ -1,5 +1,6 @@
 package com.robothy.s3.core.storage.s3vectors;
 
+import com.robothy.s3.core.storage.ShardedFileLayout;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.PathUtils;
 import java.io.BufferedInputStream;
@@ -23,12 +24,17 @@ import lombok.extern.slf4j.Slf4j;
  * Stores vector data as individual files in the specified directory.
  * Uses least recently used (LRU) eviction strategy for memory cache.
  *
+ * <p>The vector files are spread over two levels of subdirectories, {@code ab/cd/<id>}, like the object files of a
+ * storage, see {@linkplain ShardedFileLayout}, so that a storage of millions of vectors doesn't keep millions of files in
+ * one directory. A storage of a LocalS3 before 2.5 kept every vector file directly in the directory. Such files are
+ * still found, and a writable storage moves them into their subdirectories when it is created.
+ *
  * <p>A vector is written to a temporary file first, which is then moved to the vector file, so that a process that
  * dies while writing leaves either the whole vector or no vector file at all, never a partial one. The temporary files
  * left behind by such a process are deleted when the storage is created.
  *
  * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
- * anything in its directory, which may not even exist, and rejects writes.
+ * anything in its directory, which may not even exist: it reads vectors in either layout, and rejects writes.
  */
 @Slf4j
 class FileSystemVectorStorage implements VectorStorage {
@@ -86,6 +92,12 @@ class FileSystemVectorStorage implements VectorStorage {
       // Create storage directory if it doesn't exist
       Files.createDirectories(storageDirectory);
       deleteTempFiles();
+      long start = System.nanoTime();
+      long moved = ShardedFileLayout.moveFlatFilesIntoSubdirectories(storageDirectory);
+      if (moved > 0) {
+        log.info("Moved {} vector files of {} into subdirectories in {} ms.", moved, storageDirectory,
+            (System.nanoTime() - start) / 1_000_000);
+      }
 
       log.info("FileSystemVectorStorage initialized with directory: {}, max cache size: {}",
           storageDirectory, maxCachedVectorCount);
@@ -110,7 +122,7 @@ class FileSystemVectorStorage implements VectorStorage {
     }
 
     Long storageId = IdUtils.defaultGenerator().nextId();
-    Path vectorFile = storageDirectory.resolve(String.valueOf(storageId));
+    Path vectorFile = vectorFile(storageId);
 
     try {
       // Write vector data to file
@@ -152,13 +164,12 @@ class FileSystemVectorStorage implements VectorStorage {
     }
 
     // Load from file if not in cache
-    Path vectorFile = storageDirectory.resolve(String.valueOf(storageId));
+    Path vectorFile = existingVectorFile(storageId);
+    if (vectorFile == null) {
+      return null;
+    }
 
     try {
-      if (!Files.exists(vectorFile)) {
-        return null;
-      }
-
       float[] vectorData = readVectorFromFile(vectorFile);
 
       // Add to cache
@@ -184,14 +195,13 @@ class FileSystemVectorStorage implements VectorStorage {
       return false;
     }
 
-    Path vectorFile = storageDirectory.resolve(String.valueOf(storageId));
-    boolean deleted = false;
+    Path vectorFile = vectorFile(storageId);
+    boolean deleted;
 
     try {
-      // Remove from file system
-      if (Files.exists(vectorFile)) {
-        Files.delete(vectorFile);
-        deleted = true;
+      // Remove from file system, in either layout.
+      deleted = Files.deleteIfExists(vectorFile) | Files.deleteIfExists(flatVectorFile(storageId));
+      if (deleted) {
         log.debug("Deleted vector file: {}", vectorFile);
       }
 
@@ -228,8 +238,7 @@ class FileSystemVectorStorage implements VectorStorage {
     }
 
     // Check file system
-    Path vectorFile = storageDirectory.resolve(String.valueOf(storageId));
-    return Files.exists(vectorFile);
+    return existingVectorFile(storageId) != null;
   }
 
   @Override
@@ -237,17 +246,9 @@ class FileSystemVectorStorage implements VectorStorage {
     if (!Files.isDirectory(storageDirectory)) {
       return 0;
     }
-    try (var files = Files.list(storageDirectory)) {
-      return files.filter(Files::isRegularFile)
-          .filter(file -> {
-            try {
-              Long.parseLong(file.getFileName().toString());
-              return true;
-            } catch (NumberFormatException e) {
-              return false;
-            }
-          })
-          .count();
+    // The vector files of both layouts: in the subdirectories, and directly in the directory.
+    try (var files = Files.walk(storageDirectory, 3)) {
+      return files.filter(ShardedFileLayout::isIdFile).count();
     } catch (IOException e) {
       log.error("Failed to count vector files in directory: {}", storageDirectory, e);
       return 0;
@@ -272,12 +273,11 @@ class FileSystemVectorStorage implements VectorStorage {
     }
 
     // Check file system
-    Path vectorFile = storageDirectory.resolve(String.valueOf(storageId));
+    Path vectorFile = existingVectorFile(storageId);
+    if (vectorFile == null) {
+      return -1;
+    }
     try {
-      if (!Files.exists(vectorFile)) {
-        return -1;
-      }
-
       // Read just the dimension count to calculate size
       try (DataInputStream dis = new DataInputStream(Files.newInputStream(vectorFile))) {
         int dimensions = dis.readInt();
@@ -333,6 +333,7 @@ class FileSystemVectorStorage implements VectorStorage {
           dos.writeFloat(value);
         }
       }
+      Files.createDirectories(file.getParent());
       PathUtils.moveAtomically(temp, file);
     } catch (IOException | RuntimeException e) {
       try {
@@ -353,6 +354,35 @@ class FileSystemVectorStorage implements VectorStorage {
         Files.deleteIfExists(tempFile);
       }
     }
+  }
+
+  /**
+   * The file of a vector: {@code <directory>/ab/cd/<id>}, see {@linkplain ShardedFileLayout#shardedPath(Path, long)}.
+   */
+  Path vectorFile(Long storageId) {
+    return ShardedFileLayout.shardedPath(storageDirectory, storageId);
+  }
+
+  /**
+   * The file of a vector in the flat layout of a LocalS3 before 2.5.
+   */
+  private Path flatVectorFile(Long storageId) {
+    return ShardedFileLayout.flatPath(storageDirectory, storageId);
+  }
+
+  /**
+   * The file that holds a vector, in either layout: a read-only storage doesn't move the files of the flat layout, and
+   * a writable one may find a file that a process which died while moving the files left.
+   *
+   * @return the file, or {@code null} if the vector doesn't exist.
+   */
+  private Path existingVectorFile(Long storageId) {
+    Path vectorFile = vectorFile(storageId);
+    if (Files.exists(vectorFile)) {
+      return vectorFile;
+    }
+    Path flat = flatVectorFile(storageId);
+    return Files.exists(flat) ? flat : null;
   }
 
   private void ensureWritable() {

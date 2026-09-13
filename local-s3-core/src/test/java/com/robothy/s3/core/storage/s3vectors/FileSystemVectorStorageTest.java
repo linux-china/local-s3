@@ -45,9 +45,9 @@ class FileSystemVectorStorageTest {
     
     Long storageId = vectorStorage.putVectorData(vectorData);
     
-    Path expectedFile = tempDir.resolve(String.valueOf(storageId));
-    assertTrue(Files.exists(expectedFile));
+    Path expectedFile = ((FileSystemVectorStorage) vectorStorage).vectorFile(storageId);
     assertTrue(Files.isRegularFile(expectedFile));
+    assertEquals(tempDir, expectedFile.getParent().getParent().getParent(), "The file is in two levels of subdirectories.");
   }
 
   @Test
@@ -293,8 +293,8 @@ class FileSystemVectorStorageTest {
     for (int i = 0; i < 10; i++) {
       vectorStorage.putVectorData(new float[] {i, i});
     }
-    try (var files = Files.list(tempDir)) {
-      assertTrue(files.allMatch(file -> file.getFileName().toString().matches("[0-9]+")),
+    try (var files = Files.walk(tempDir)) {
+      assertTrue(files.filter(Files::isRegularFile).allMatch(file -> file.getFileName().toString().matches("[0-9]+")),
           "Only complete vector files are left in the directory.");
     }
     assertEquals(10, vectorStorage.getStoredVectorCount());
@@ -334,6 +334,84 @@ class FileSystemVectorStorageTest {
     assertEquals(8, existing.getVectorDataSize(id));
     assertThrows(UnsupportedOperationException.class, () -> existing.putVectorData(new float[] {1.0f}));
     assertThrows(UnsupportedOperationException.class, () -> existing.deleteVectorData(id));
-    assertTrue(Files.exists(tempDir.resolve(String.valueOf(id))));
+    assertTrue(Files.exists(((FileSystemVectorStorage) vectorStorage).vectorFile(id)));
+  }
+
+  /**
+   * The vector files are spread over two levels of subdirectories, like the object files of a storage. The layout
+   * decides where the vectors that are already stored are found, so it must never change.
+   */
+  @Test
+  void storesVectorsInTwoLevelsOfSubdirectories() throws IOException {
+    FileSystemVectorStorage storage = (FileSystemVectorStorage) vectorStorage;
+    assertEquals(tempDir.resolve("b4").resolve("56").resolve("1"), storage.vectorFile(1L));
+    assertEquals(tempDir.resolve("81").resolve("08").resolve("42"), storage.vectorFile(42L));
+
+    Long id = storage.putVectorData(new float[] {1.0f, 2.0f});
+    assertEquals(List.of(storage.vectorFile(id)), vectorFiles());
+  }
+
+  /**
+   * A writable storage moves the vector files of the flat layout of a LocalS3 before 2.5 into their subdirectories,
+   * and leaves every other entry of the directory alone.
+   */
+  @Test
+  void movesTheVectorFilesOfTheFlatLayout() throws IOException {
+    Long id = vectorStorage.putVectorData(new float[] {1.0f, 2.0f});
+    Path sharded = ((FileSystemVectorStorage) vectorStorage).vectorFile(id);
+    Path flat = Files.move(sharded, tempDir.resolve(String.valueOf(id)));
+    Path notes = Files.writeString(tempDir.resolve("notes.txt"), "not a vector");
+
+    FileSystemVectorStorage reopened = new FileSystemVectorStorage(tempDir, 0);
+
+    assertFalse(Files.exists(flat));
+    assertTrue(Files.isRegularFile(sharded));
+    assertTrue(Files.exists(notes));
+    assertArrayEquals(new float[] {1.0f, 2.0f}, reopened.getVectorData(id));
+    assertEquals(1, reopened.getStoredVectorCount());
+  }
+
+  /**
+   * A vector file of the flat layout that appears after the storage was created, e.g. one that a process which died
+   * during the move left, is still found, counted and deleted.
+   */
+  @Test
+  void findsAndDeletesAVectorFileOfTheFlatLayout() throws IOException {
+    FileSystemVectorStorage storage = new FileSystemVectorStorage(tempDir, 0);
+    Long id = storage.putVectorData(new float[] {3.0f});
+    Path flat = Files.move(storage.vectorFile(id), tempDir.resolve(String.valueOf(id)));
+
+    assertTrue(storage.vectorDataExists(id));
+    assertArrayEquals(new float[] {3.0f}, storage.getVectorData(id));
+    assertEquals(4, storage.getVectorDataSize(id));
+    assertEquals(1, storage.getStoredVectorCount());
+
+    assertTrue(storage.deleteVectorData(id));
+    assertFalse(Files.exists(flat));
+    assertFalse(storage.vectorDataExists(id));
+  }
+
+  /**
+   * A read-only storage reads the vectors of both layouts without moving the files of the flat layout.
+   */
+  @Test
+  void aReadOnlyStorageReadsBothLayoutsWithoutMovingFiles() throws IOException {
+    Long sharded = vectorStorage.putVectorData(new float[] {1.0f});
+    Long flatId = vectorStorage.putVectorData(new float[] {2.0f});
+    Path flat = Files.move(((FileSystemVectorStorage) vectorStorage).vectorFile(flatId),
+        tempDir.resolve(String.valueOf(flatId)));
+
+    VectorStorage readOnly = VectorStorage.createReadOnlyFileSystem(tempDir, 0);
+
+    assertArrayEquals(new float[] {1.0f}, readOnly.getVectorData(sharded));
+    assertArrayEquals(new float[] {2.0f}, readOnly.getVectorData(flatId));
+    assertEquals(2, readOnly.getStoredVectorCount());
+    assertTrue(Files.exists(flat), "The flat layout isn't changed.");
+  }
+
+  private List<Path> vectorFiles() throws IOException {
+    try (var files = Files.walk(tempDir)) {
+      return files.filter(Files::isRegularFile).toList();
+    }
   }
 }

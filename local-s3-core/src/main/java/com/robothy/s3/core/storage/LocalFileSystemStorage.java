@@ -19,11 +19,8 @@ import lombok.extern.slf4j.Slf4j;
  * <p>Objects are written to a temporary file first, which then replaces the object file. If the
  * process dies while writing, the object file keeps its previous content or doesn't exist at all.
  *
- * <p>The object files are spread over two levels of subdirectories, {@code ab/cd/<id>}, so that no directory holds
- * more than a small share of the objects: a directory with millions of entries is slow to list, and slow to look files
- * up in on some file systems. The subdirectories are named by a hash of the ID rather than by its bits, since the high
- * bits of the IDs of the generator are a timestamp, and the low bits a sequence that is mostly zero, so either would
- * put the objects stored around the same time in the same directory.
+ * <p>The object files are spread over two levels of subdirectories, {@code ab/cd/<id>}, as
+ * {@linkplain ShardedFileLayout} describes, so that no directory holds more than a small share of the objects.
  *
  * <p>A storage of a LocalS3 before 2.5 kept every object file directly in the directory. Such files are still found,
  * and a writable storage moves them into their subdirectories when it is created, renaming one at a time, so that a
@@ -39,14 +36,6 @@ class LocalFileSystemStorage implements Storage {
    * Suffix of the temporary files that objects are written to.
    */
   private static final String TEMP_FILE_SUFFIX = ".tmp";
-
-  private static final String[] SHARD_NAMES = new String[256];
-
-  static {
-    for (int i = 0; i < SHARD_NAMES.length; i++) {
-      SHARD_NAMES[i] = String.format("%02x", i);
-    }
-  }
 
   private final Path directory;
 
@@ -193,37 +182,17 @@ class LocalFileSystemStorage implements Storage {
   }
 
   /**
-   * The file of an object: {@code <directory>/ab/cd/<id>}, where {@code ab} and {@code cd} are the two highest bytes of
-   * {@linkplain #shardHash(long) the hash of the ID}, as two lowercase hex digits each.
+   * The file of an object: {@code <directory>/ab/cd/<id>}, see {@linkplain ShardedFileLayout#shardedPath(Path, long)}.
    */
   Path objectPath(Long id) {
-    long hash = shardHash(id);
-    return directory.resolve(SHARD_NAMES[(int) (hash >>> 56)])
-        .resolve(SHARD_NAMES[(int) (hash >>> 48) & 0xff])
-        .resolve(String.valueOf(id));
-  }
-
-  /**
-   * The finalizer of MurmurHash3 ({@code fmix64}), whose every output bit depends on every input bit, so the
-   * subdirectories are used evenly whatever the IDs have in common, e.g. the IDs generated in a burst, which differ
-   * only in their low bits. Fibonacci hashing, i.e. a single multiplication, leaves about a fifth of the subdirectories
-   * unused for such IDs. The hash decides where the objects that are already stored are, so it must never change.
-   */
-  static long shardHash(long id) {
-    long hash = id;
-    hash ^= hash >>> 33;
-    hash *= 0xff51afd7ed558ccdL;
-    hash ^= hash >>> 33;
-    hash *= 0xc4ceb9fe1a85ec53L;
-    hash ^= hash >>> 33;
-    return hash;
+    return ShardedFileLayout.shardedPath(directory, id);
   }
 
   /**
    * The file of an object in the flat layout of a LocalS3 before 2.5.
    */
   private Path flatObjectPath(Long id) {
-    return directory.resolve(String.valueOf(id));
+    return ShardedFileLayout.flatPath(directory, id);
   }
 
   /**
@@ -275,39 +244,11 @@ class LocalFileSystemStorage implements Storage {
    * atomically, so an object is always in one of the layouts, which both are read.
    */
   private void moveFlatObjectFilesIntoSubdirectories() {
-    long moved = 0;
     long start = System.nanoTime();
-    try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory, LocalFileSystemStorage::isFlatObjectFile)) {
-      for (Path file : entries) {
-        long id = Long.parseLong(file.getFileName().toString());
-        PathUtils.moveAtomically(file, createObjectDirectory(id));
-        moved++;
-      }
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to move the object files of " + directory + " into subdirectories.", e);
-    }
+    long moved = ShardedFileLayout.moveFlatFilesIntoSubdirectories(directory);
     if (moved > 0) {
       log.info("Moved {} object files of {} into subdirectories in {} ms.", moved, directory,
           (System.nanoTime() - start) / 1_000_000);
-    }
-  }
-
-  private static boolean isFlatObjectFile(Path path) {
-    String name = path.getFileName().toString();
-    if (name.isEmpty() || name.length() > 19 || !Files.isRegularFile(path)) {
-      return false;
-    }
-    for (int i = 0; i < name.length(); i++) {
-      if (name.charAt(i) < '0' || name.charAt(i) > '9') {
-        return false;
-      }
-    }
-    try {
-      Long.parseLong(name);
-      return true;
-    } catch (NumberFormatException e) {
-      // Too large to be an ID.
-      return false;
     }
   }
 
