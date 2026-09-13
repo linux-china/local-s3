@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage;
 
 import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.core.util.RangeUtils;
 import java.io.InputStream;
 import java.nio.file.Path;
 
@@ -114,6 +115,19 @@ public interface Storage {
    * @return octet-stream.
    */
   InputStream getInputStream(Long id);
+
+  /**
+   * Get a bounded region of the object. Storage implementations that support seeking should override
+   * this method so that the requested position can be selected without skipping through the stream.
+   *
+   * @param id the object ID.
+   * @param position the first byte to read.
+   * @param length the number of bytes to read.
+   * @return a stream of the requested region.
+   */
+  default InputStream getInputStream(Long id, long position, long length) {
+    return RangeUtils.applyRange(getInputStream(id), position, length);
+  }
 
   /**
    * Delete an object by ID.

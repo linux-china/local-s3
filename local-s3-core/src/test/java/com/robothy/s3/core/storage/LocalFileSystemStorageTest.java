@@ -3,7 +3,9 @@ package com.robothy.s3.core.storage;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -53,6 +55,20 @@ class LocalFileSystemStorageTest {
 
     assertArrayEquals("Hi".getBytes(), storage.getBytes(id));
     assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+  }
+
+  @Test
+  void opensFileRegionsAtTheRequestedPosition() throws IOException {
+    Storage storage = Storage.createPersistent(directory);
+    Long id = storage.put("Hello".getBytes());
+
+    try (InputStream content = storage.getInputStream(id, 1, 3)) {
+      FileRegionInputStream fileRegion = assertInstanceOf(FileRegionInputStream.class, content);
+      assertEquals(1, fileRegion.getPosition());
+      assertEquals(3, fileRegion.getCount());
+      assertArrayEquals("ell".getBytes(), fileRegion.readAllBytes());
+      assertTrue(fileRegion.getChannel().isOpen());
+    }
   }
 
   @Test

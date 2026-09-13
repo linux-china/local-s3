@@ -50,6 +50,13 @@ class LayeredStorage implements Storage {
     return front.isExist(id) ? front.getInputStream(id) : back.getInputStream(id);
   }
 
+  @Override
+  public InputStream getInputStream(Long id, long position, long length) {
+    return front.isExist(id)
+        ? front.getInputStream(id, position, length)
+        : back.getInputStream(id, position, length);
+  }
+
   /**
    * Delete the object ID from the front storage if exists.
    *

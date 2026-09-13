@@ -78,7 +78,17 @@ class LocalFileSystemStorage implements Storage {
   public InputStream getInputStream(Long id) {
     ensureExists(id);
     try {
-      return Files.newInputStream(objectPath(id));
+      return FileRegionInputStream.open(objectPath(id));
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to open object " + id + ".", e);
+    }
+  }
+
+  @Override
+  public InputStream getInputStream(Long id, long position, long length) {
+    ensureExists(id);
+    try {
+      return FileRegionInputStream.open(objectPath(id), position, length);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to open object " + id + ".", e);
     }

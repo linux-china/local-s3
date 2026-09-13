@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -20,15 +21,46 @@ import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.model.request.Range;
+import com.robothy.s3.core.service.manager.LocalS3Manager;
+import com.robothy.s3.core.storage.FileRegionInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Optional;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class GetObjectServiceTest extends LocalS3ServiceTestBase {
+
+  @TempDir
+  Path directory;
+
+  @Test
+  void fileSystemGetUsesTheRequestedFileRegion() throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(directory);
+    manager.bucketService().createBucket("my-bucket");
+    manager.objectService().putObject("my-bucket", "key", PutObjectOptions.builder()
+        .contentType("text/plain")
+        .size(10)
+        .content(new ByteArrayInputStream("0123456789".getBytes()))
+        .build());
+
+    GetObjectAns answer = manager.objectService().getObject("my-bucket", "key", GetObjectOptions.builder()
+        .range(Range.of(2, 5))
+        .build());
+
+    try (InputStream content = answer.getContent()) {
+      FileRegionInputStream fileRegion = assertInstanceOf(FileRegionInputStream.class, content);
+      assertEquals(2, fileRegion.getPosition());
+      assertEquals(4, fileRegion.getCount());
+      assertEquals("2345", new String(fileRegion.readAllBytes()));
+    }
+  }
 
   @MethodSource("localS3Services")
   @ParameterizedTest

@@ -15,9 +15,12 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.storage.FileRegionInputStream;
+import com.robothy.s3.core.storage.Storage;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.FileRegion;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.DefaultHttpRequest;
@@ -38,13 +41,19 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.SocketException;
 import java.io.InputStream;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class LocalS3HttpPipelineTest {
+
+  @TempDir
+  Path directory;
 
   private static final long MAX_REQUEST_BODY_SIZE = 16;
 
@@ -194,6 +203,34 @@ class LocalS3HttpPipelineTest {
     assertArrayEquals(data, received.toByteArray());
     assertTrue(closed.get());
     channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void sendsFileRegionWithoutCopyingThroughAChunkedStream() throws IOException {
+    byte[] data = "0123456789".getBytes(StandardCharsets.UTF_8);
+    Storage storage = Storage.createPersistent(directory);
+    Long id = storage.put(data);
+    FileRegionInputStream content = assertInstanceOf(
+        FileRegionInputStream.class, storage.getInputStream(id, 2, 4));
+    EmbeddedChannel channel = channel(router((request, response) ->
+        ((StreamingHttpResponse) response).stream(content)
+            .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), content.getCount())));
+
+    channel.writeInbound(request(HttpMethod.GET, 0), LastHttpContent.EMPTY_LAST_CONTENT);
+
+    HttpResponse head = assertInstanceOf(HttpResponse.class, channel.readOutbound());
+    assertEquals("4", head.headers().get(HttpHeaderNames.CONTENT_LENGTH));
+    FileRegion region = assertInstanceOf(FileRegion.class, channel.readOutbound());
+    assertEquals(2, region.position());
+    assertEquals(4, region.count());
+    ByteArrayOutputStream received = new ByteArrayOutputStream();
+    assertEquals(4, region.transferTo(Channels.newChannel(received), 0));
+    assertArrayEquals("2345".getBytes(StandardCharsets.UTF_8), received.toByteArray());
+    assertInstanceOf(LastHttpContent.class, channel.readOutbound()).release();
+
+    region.release();
+    assertFalse(content.getChannel().isOpen());
+    assertFalse(channel.finishAndReleaseAll());
   }
 
   @Test

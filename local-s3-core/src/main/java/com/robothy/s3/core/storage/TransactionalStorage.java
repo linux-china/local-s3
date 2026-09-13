@@ -86,6 +86,11 @@ public final class TransactionalStorage implements Storage {
   }
 
   @Override
+  public InputStream getInputStream(Long id, long position, long length) {
+    return delegate.getInputStream(id, position, length);
+  }
+
+  @Override
   public Long delete(Long id) {
     Transaction current = transaction.get();
     if (current == null) {

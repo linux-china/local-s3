@@ -173,6 +173,36 @@ class LocalS3Test {
   }
 
   @Test
+  void servesPersistentObjectRangesThroughFileRegions() throws Exception {
+    Path dataPath = Files.createTempDirectory("local-s3");
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .mode(LocalS3Mode.PERSISTENCE)
+        .dataPath(dataPath.toString())
+        .buckets("file-bucket")
+        .build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      URI objectUrl = URI.create("http://127.0.0.1:" + localS3.getPort() + "/file-bucket/object");
+      HttpResponse<Void> put = client.send(HttpRequest.newBuilder(objectUrl)
+          .PUT(HttpRequest.BodyPublishers.ofString("0123456789")).build(), HttpResponse.BodyHandlers.discarding());
+      assertEquals(200, put.statusCode());
+
+      HttpResponse<String> get = client.send(HttpRequest.newBuilder(objectUrl)
+              .header("Range", "bytes=2-5")
+              .GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertEquals(206, get.statusCode());
+      assertEquals("bytes 2-5/10", get.headers().firstValue("content-range").orElse(null));
+      assertEquals("2345", get.body());
+    } finally {
+      localS3.shutdown();
+      FileUtils.deleteDirectory(dataPath.toFile());
+    }
+  }
+
+  @Test
   void storesBodiesBufferedInTemporaryFiles() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
