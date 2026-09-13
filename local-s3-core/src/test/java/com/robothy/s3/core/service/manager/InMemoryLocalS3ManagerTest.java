@@ -15,6 +15,7 @@ import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.core.storage.CopyBudget;
 import com.robothy.s3.core.storage.Storage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -49,9 +50,9 @@ class InMemoryLocalS3ManagerTest {
 
   @Test
   void cacheDropsTheLeastRecentlyUsedDataPath() {
-    InMemoryLocalS3Manager.InitialDataCache cache = new InMemoryLocalS3Manager.InitialDataCache(2);
+    InitialDataCache cache = new InitialDataCache(2);
 
-    InMemoryLocalS3Manager.InitialDataCache.CacheValue first = cache.computeIfAbsent("/a", key -> cacheValue());
+    InitialDataCache.CacheValue first = cache.computeIfAbsent("/a", key -> cacheValue());
     assertSame(first, cache.computeIfAbsent("/a", key -> fail("The cached data path was loaded again.")));
     cache.computeIfAbsent("/b", key -> cacheValue());
     assertEquals(2, cache.size());
@@ -80,8 +81,9 @@ class InMemoryLocalS3ManagerTest {
     FileUtils.deleteDirectory(dataPath.toFile());
   }
 
-  private static InMemoryLocalS3Manager.InitialDataCache.CacheValue cacheValue() {
-    return new InMemoryLocalS3Manager.InitialDataCache.CacheValue(new LocalS3Metadata(), Storage.createInMemory());
+  private static InitialDataCache.CacheValue cacheValue() {
+    return new InitialDataCache.CacheValue(new LocalS3Metadata(),
+        Storage.createCopyOnAccess(Storage.createInMemory(), CopyBudget.UNLIMITED));
   }
 
   @Test

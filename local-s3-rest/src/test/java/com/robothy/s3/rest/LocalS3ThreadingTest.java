@@ -1,6 +1,7 @@
 package com.robothy.s3.rest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -36,6 +37,7 @@ class LocalS3ThreadingTest {
     assertEquals(Math.max(2, processors / 2), localS3.getNettyChildEventGroupThreadNum());
     assertEquals(Math.max(4, processors), localS3.getS3ExecutorThreadNum());
     assertTrue(localS3.getS3ExecutorThreadNum() >= 4);
+    assertTrue(localS3.isVirtualThreads());
     assertTrue(localS3.getNettyChildEventGroupThreadNum() >= 2);
   }
 
@@ -45,11 +47,44 @@ class LocalS3ThreadingTest {
         .nettyParentEventGroupThreadNum(3)
         .nettyChildEventGroupThreadNum(5)
         .s3ExecutorThreadNum(7)
+        .virtualThreads(false)
         .build();
 
     assertEquals(3, localS3.getNettyParentEventGroupThreadNum());
     assertEquals(5, localS3.getNettyChildEventGroupThreadNum());
     assertEquals(7, localS3.getS3ExecutorThreadNum());
+    assertFalse(localS3.isVirtualThreads());
+  }
+
+  /**
+   * By default every request is handled on a virtual thread of its own; a pool of platform threads when virtual
+   * threads are disabled.
+   */
+  @Test
+  void handlesRequestsOnVirtualThreadsByDefault() throws Exception {
+    for (boolean virtualThreads : new boolean[] {true, false}) {
+      Map<String, Boolean> virtualByKey = new ConcurrentHashMap<>();
+      Map<String, String> threadByKey = new ConcurrentHashMap<>();
+      LocalS3 localS3 = LocalS3.builder()
+          .port(-1)
+          .buckets("threads")
+          .virtualThreads(virtualThreads)
+          .objectEventListener(event -> {
+            // A listener runs synchronously on the thread that handles the request.
+            virtualByKey.put(event.getObjectKey(), Thread.currentThread().isVirtual());
+            threadByKey.put(event.getObjectKey(), Thread.currentThread().getName());
+          })
+          .build();
+      localS3.start();
+      try {
+        put(localS3, List.of("a", "b"));
+      } finally {
+        localS3.shutdown();
+      }
+      assertEquals(Map.of("a", virtualThreads, "b", virtualThreads), virtualByKey);
+      assertTrue(threadByKey.values().stream().allMatch(name -> name.startsWith("locals3-executor-group")),
+          threadByKey.toString());
+    }
   }
 
   /**
@@ -64,6 +99,7 @@ class LocalS3ThreadingTest {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
         .buckets("threads")
+        .virtualThreads(false)
         .s3ExecutorThreadNum(2)
         .objectEventListener(event -> {
           threadByKey.put(event.getObjectKey(), Thread.currentThread().getName());

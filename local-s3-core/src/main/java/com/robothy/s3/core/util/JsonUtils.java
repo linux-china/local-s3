@@ -1,9 +1,11 @@
 package com.robothy.s3.core.util;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.util.TokenBuffer;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import java.io.File;
 import java.io.IOException;
@@ -56,6 +58,38 @@ public class JsonUtils {
       return jsonReader.readValue(jsonFile, clazz);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read a " + clazz.getSimpleName() + " from " + jsonFile + ".", e);
+    }
+  }
+
+  /**
+   * Write an object as JSON tokens, which {@linkplain #fromTokens} reads as a new object as often as needed, without
+   * encoding the JSON as text. Copying an object this way is about twice as fast as a round trip through a string.
+   *
+   * @param object the object to write.
+   * @return the tokens of the object.
+   */
+  public static TokenBuffer toTokens(Object object) {
+    TokenBuffer tokens = new TokenBuffer(jsonMapper, false);
+    try {
+      jsonMapper.writeValue(tokens, object);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to write " + object.getClass().getSimpleName() + " as JSON tokens.", e);
+    }
+    return tokens;
+  }
+
+  /**
+   * Read a new object from the tokens that {@linkplain #toTokens} wrote.
+   *
+   * @param tokens the tokens.
+   * @param clazz the type of the object.
+   * @return a new object.
+   */
+  public static <T> T fromTokens(TokenBuffer tokens, Class<T> clazz) {
+    try (JsonParser parser = tokens.asParser()) {
+      return jsonMapper.readValue(parser, clazz);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read a " + clazz.getSimpleName() + " from JSON tokens.", e);
     }
   }
 

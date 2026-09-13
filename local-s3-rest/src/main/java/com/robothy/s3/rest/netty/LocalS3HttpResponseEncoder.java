@@ -28,8 +28,13 @@ import java.util.List;
  * with a body stream becomes the response headers followed by streaming content. File-backed content
  * is sent as a zero-copy {@linkplain DefaultFileRegion} on plaintext connections, or a
  * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}. The content of an object
- * stored in parts, i.e. a {@linkplain CompositeInputStream}, whose parts are all file-backed is sent as one
- * {@linkplain DefaultFileRegion} per part on plaintext connections.
+ * stored in parts, i.e. a {@linkplain CompositeInputStream}, is sent part by part on plaintext connections: a
+ * file-backed part as a {@linkplain DefaultFileRegion}, and any other part as a {@linkplain ChunkedStream}.
+ *
+ * <p>The content is written on the event loop of the connection. So that a large response doesn't block the other
+ * connections of the loop, file-backed content is never read through the Java heap there: the kernel transfers it.
+ * The other streams that storages answer hold their content in memory, which a chunk of is copied at a time, as far as
+ * the connection is writable.
  */
 public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
 
@@ -52,12 +57,15 @@ public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResp
       HttpUtil.setTransferEncodingChunked(response, true);
     }
     out.add(response);
-    if (bodyStream instanceof CompositeInputStream composite && ctx.pipeline().get(SslHandler.class) == null
-        && composite.getStreams().stream().allMatch(FileRegionInputStream.class::isInstance)) {
-      // Each region owns the channel of its part from now on, and closes it once it is written or released.
+    if (bodyStream instanceof CompositeInputStream composite && ctx.pipeline().get(SslHandler.class) == null) {
+      // Each region or chunked stream owns the stream of its part from now on, and closes it once it is written or
+      // released.
       for (InputStream part : composite.getStreams()) {
-        FileRegionInputStream file = (FileRegionInputStream) part;
-        out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
+        if (part instanceof FileRegionInputStream file) {
+          out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
+        } else {
+          out.add(new ChunkedStream(part, STREAM_CHUNK_SIZE));
+        }
       }
       out.add(LastHttpContent.EMPTY_LAST_CONTENT);
     } else if (bodyStream instanceof FileRegionInputStream file) {

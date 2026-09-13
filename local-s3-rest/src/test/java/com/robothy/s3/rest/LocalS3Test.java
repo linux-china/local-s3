@@ -306,6 +306,9 @@ class LocalS3Test {
     LocalS3 localS3 = LocalS3.builder().fromEnvironment(variables::get).build();
 
     assertEquals(29500, localS3.getPort());
+    assertTrue(localS3.isVirtualThreads());
+    assertFalse(LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_VIRTUAL_THREADS, "false")::get).build()
+        .isVirtualThreads());
     assertEquals("127.0.0.1", localS3.getBindHost(), "An embedded service stays local by default.");
     assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
     assertNull(localS3.getDataPath());

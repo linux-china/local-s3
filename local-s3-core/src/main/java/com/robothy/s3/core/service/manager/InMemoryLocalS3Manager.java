@@ -9,16 +9,12 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.Storage;
-import com.robothy.s3.core.util.JsonUtils;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
 
 /**
  * In memory implementation of {@linkplain LocalS3Manager}. Mange in memory
@@ -46,6 +42,17 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    * @param initialDataPath initial data path.
    */
   InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache) {
+    this(initialDataPath, enableInitialDataCache, cache);
+  }
+
+  /**
+   * Create a {@linkplain InMemoryLocalS3Manager} with initial data, cached in the given cache. For tests.
+   *
+   * @param initialDataPath initial data path.
+   * @param enableInitialDataCache whether the initial data is cached.
+   * @param cache the cache of the initial data.
+   */
+  InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
     if (Objects.isNull(initialDataPath) || !Files.exists(initialDataPath)) {
       this.storage = Storage.createInMemory();
       this.s3Metadata = new LocalS3Metadata();
@@ -57,9 +64,8 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
         InitialDataCache.CacheValue cacheValue = cache.computeIfAbsent(absPath, key -> {
           LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
           Storage persistent = Storage.createPersistent(storagePath);
-          // Create a CopyOnAccessStorage for the persistent one to reduce disk I/O.
-          Storage copyOnAccess = Storage.createCopyOnAccess(persistent);
-          return new InitialDataCache.CacheValue(metadata, copyOnAccess);
+          // Copies of the objects of the persistent storage reduce disk I/O, within the byte budget of the cache.
+          return new InitialDataCache.CacheValue(metadata, Storage.createCopyOnAccess(persistent, cache));
         });
         this.storage = cacheValue.storage();
         this.s3Metadata = cacheValue.metadata();
@@ -133,107 +139,27 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   }
 
   /**
+   * Change the limits of the initial data cache.
+   *
+   * @param maxEntries the max number of data paths, positive.
+   * @param maxBytes the max number of bytes that the copies of objects take, not negative.
+   */
+  static void configureInitialDataCache(int maxEntries, long maxBytes) {
+    cache.setLimits(maxEntries, maxBytes);
+  }
+
+  /**
    * The number of data paths whose initial data is cached. For tests.
    */
   static int initialDataCacheSize() {
     return cache.size();
   }
 
-  static class InitialDataCache {
-
-    /**
-     * The number of data paths whose initial data is kept. The cache holds the loaded metadata of a path and
-     * a copy of every object read from it, which would otherwise grow for the whole life of the JVM, e.g.
-     * over a large test suite. What a dropped path holds is loaded again when it is used next.
-     */
-    static final int DEFAULT_MAX_ENTRIES = 1024;
-
-    private final Map<String, CacheValue> cache;
-
-    InitialDataCache() {
-      this(DEFAULT_MAX_ENTRIES);
-    }
-
-    InitialDataCache(int maxEntries) {
-      if (maxEntries <= 0) {
-        throw new IllegalArgumentException("maxEntries must be positive.");
-      }
-
-      // Ordered by access, so that the least recently used data path is dropped first.
-      this.cache = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, CacheValue> eldest) {
-          return size() > maxEntries;
-        }
-      };
-    }
-
-    /**
-     * Get the cached value of {@code key}, loading it if absent. Concurrent callers with the same key
-     * load the value only once and share it; a value is loaded while the cache is locked, so that two
-     * callers never load the same data path at once.
-     *
-     * @param key the cache key.
-     * @param loader loads the value of an absent key.
-     * @return the cached value.
-     */
-    public synchronized CacheValue computeIfAbsent(String key, Function<String, CacheValue> loader) {
-      CacheValue value = cache.get(key);
-      if (value == null) {
-        value = loader.apply(key);
-        cache.put(key, value);
-      }
-      return value;
-    }
-
-    /**
-     * Drop the cached data of every path, releasing the heap it holds.
-     */
-    public synchronized void clear() {
-      cache.clear();
-    }
-
-    /**
-     * The number of data paths currently cached.
-     */
-    synchronized int size() {
-      return cache.size();
-    }
-
-    static class CacheValue {
-
-      private final LocalS3Metadata metadata;
-
-      /**
-       * This storage should be a {@code CopyOnAccessStorage}.
-       */
-      private final Storage storage;
-
-      CacheValue(LocalS3Metadata metadata, Storage storage) {
-        this.metadata = metadata;
-        this.storage = storage;
-      }
-
-      /**
-       * Create a {@code LayeredStorage} with the real storage as backend and
-       * a new {@code InMemoryStorage} as frontend.
-       *
-       * @return a {@code LayeredStorage} to make sure the real data won't be polluted.
-       */
-      public Storage storage() {
-        return Storage.createLayered(Storage.createInMemory(), storage);
-      }
-
-      /**
-       * Create a copy of cached data.
-       *
-       * @return cached metadata.
-       */
-      public LocalS3Metadata metadata() {
-        return JsonUtils.fromJson(JsonUtils.toJson(metadata), LocalS3Metadata.class);
-      }
-    }
-
+  /**
+   * The initial data cache shared by the managers of the JVM. For tests.
+   */
+  static InitialDataCache initialDataCache() {
+    return cache;
   }
 
 }

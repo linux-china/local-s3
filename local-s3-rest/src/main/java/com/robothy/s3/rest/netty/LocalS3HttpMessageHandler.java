@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +34,9 @@ import org.slf4j.LoggerFactory;
  * connection are handled one at a time, in the order they were received, and each response is written on the
  * event loop before the next request is handled. While a request is in flight the channel stops reading, so that
  * the bodies of further requests are not received, and pile up, before the request has been answered.
+ *
+ * <p>Every request is counted in {@linkplain InFlightRequests} from the moment it is handed to the executor until its
+ * response is written, so that a server that shuts down can wait for the responses in flight.
  */
 public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
@@ -41,6 +45,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   private final Router router;
 
   private final Executor executor;
+
+  private final InFlightRequests inFlightRequests;
 
   /**
    * Requests received, e.g. pipelined, while another request of the connection is in flight. Only accessed on the
@@ -69,8 +75,20 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * @param executor runs the handlers of the requests, shared by all connections.
    */
   public LocalS3HttpMessageHandler(Router router, Executor executor) {
+    this(router, executor, InFlightRequests.NONE);
+  }
+
+  /**
+   * Create a handler.
+   *
+   * @param router           routes requests to handlers.
+   * @param executor         runs the handlers of the requests, shared by all connections.
+   * @param inFlightRequests counts the requests in flight, shared by all connections.
+   */
+  public LocalS3HttpMessageHandler(Router router, Executor executor, InFlightRequests inFlightRequests) {
     this.router = router;
     this.executor = Objects.requireNonNull(executor);
+    this.inFlightRequests = Objects.requireNonNull(inFlightRequests);
   }
 
   @Override
@@ -101,19 +119,34 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     }
 
     inFlight = true;
+    Runnable end = endOnce();
     try {
-      executor.execute(() -> handleOnExecutor(ctx, request));
+      executor.execute(() -> handleOnExecutor(ctx, request, end));
     } catch (RejectedExecutionException e) {
       // The server is shutting down.
       log.debug("Closing connection {}: the request executor rejected {} {}.", ctx.channel().id(),
           request.getMethod(), request.getUri());
+      end.run();
       releaseBody(request);
       releasePendingRequests();
       ctx.close();
     }
   }
 
-  private void handleOnExecutor(ChannelHandlerContext ctx, HttpRequest request) {
+  /**
+   * Count a request in flight, and return the action that ends it, which may be run more than once but ends it once.
+   */
+  private Runnable endOnce() {
+    inFlightRequests.begin();
+    AtomicBoolean ended = new AtomicBoolean();
+    return () -> {
+      if (ended.compareAndSet(false, true)) {
+        inFlightRequests.end();
+      }
+    };
+  }
+
+  private void handleOnExecutor(ChannelHandlerContext ctx, HttpRequest request, Runnable end) {
     StreamingHttpResponse response = null;
     Throwable failure = null;
     try {
@@ -132,7 +165,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
     StreamingHttpResponse result = response;
     Throwable cause = failure;
-    Runnable complete = () -> complete(ctx, request, result, cause);
+    Runnable complete = () -> complete(ctx, request, result, cause, end);
     if (ctx.executor().inEventLoop()) {
       complete.run();
       return;
@@ -144,6 +177,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       if (result != null) {
         result.discard();
       }
+      end.run();
     }
   }
 
@@ -151,11 +185,12 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * Write the response of a handled request on the event loop, and go on with the next request once it is written.
    */
   private void complete(ChannelHandlerContext ctx, HttpRequest request, StreamingHttpResponse response,
-                        Throwable failure) {
+                        Throwable failure, Runnable end) {
     if (failure != null) {
       if (response != null) {
         response.discard();
       }
+      end.run();
       inFlight = false;
       releasePendingRequests();
       exceptionCaught(ctx, failure);
@@ -163,6 +198,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     }
 
     ChannelFuture future = ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+    // The request is in flight until its response is written, or fails to be written.
+    future.addListener(written -> end.run());
     if (!isKeepAlive(request)) {
       // Nothing after this response is handled.
       releasePendingRequests();

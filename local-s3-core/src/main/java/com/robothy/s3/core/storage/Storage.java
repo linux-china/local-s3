@@ -71,6 +71,17 @@ public interface Storage {
   }
 
   /**
+   * Create a {@linkplain CopyOnAccessStorage} instance whose copies take heap within a budget.
+   *
+   * @param base the base storage of the {@linkplain CopyOnAccessStorage}.
+   * @param budget the budget that the copies take heap within, which may be shared by several storages.
+   * @return a {@linkplain CopyOnAccessStorage} instance.
+   */
+  static CopyOnAccessStorage createCopyOnAccess(Storage base, CopyBudget budget) {
+    return new CopyOnAccessStorage(base, budget);
+  }
+
+  /**
    * Put binary data to the storage.
    *
    * @param data data.

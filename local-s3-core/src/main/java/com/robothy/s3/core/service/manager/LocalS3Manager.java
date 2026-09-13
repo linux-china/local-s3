@@ -38,6 +38,22 @@ public interface LocalS3Manager {
   }
 
   /**
+   * Change the limits of the initial data that the {@linkplain #createInMemoryS3Manager(Path, boolean) in-memory
+   * managers} of the JVM cache: the number of data paths whose metadata is kept, and the number of bytes of heap that
+   * the copies of the objects read from them take. A copy that would exceed the bytes drops the least recently used
+   * data paths first; an object that there is still no room for is read from the disk instead. The limits default to
+   * 1024 data paths and a quarter of the max heap, or to the environment variables or system properties
+   * {@code LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES} and {@code LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES}, e.g.
+   * {@code 512m}.
+   *
+   * @param maxEntries the max number of data paths, positive.
+   * @param maxBytes the max number of bytes that the copies of objects take, not negative; {@code 0} copies nothing.
+   */
+  static void configureInitialDataCache(int maxEntries, long maxBytes) {
+    InMemoryLocalS3Manager.configureInitialDataCache(maxEntries, maxBytes);
+  }
+
+  /**
    * Create a file system implementation of {@linkplain LocalS3Manager}.
    *
    * @return an instance of file system implementation.

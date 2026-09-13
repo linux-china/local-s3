@@ -35,6 +35,8 @@ final class LocalS3Environment {
     variable(variables, LocalS3.LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
     variable(variables, LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES)
         .ifPresent(strict -> builder.strictBucketNames(Boolean.parseBoolean(strict)));
+    variable(variables, LocalS3.LOCAL_S3_VIRTUAL_THREADS)
+        .ifPresent(virtual -> builder.virtualThreads(Boolean.parseBoolean(virtual)));
     variable(variables, LocalS3.LOCAL_S3_STRICT_PART_SIZES)
         .ifPresent(strict -> builder.strictPartSizes(Boolean.parseBoolean(strict)));
     variable(variables, LocalS3.LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
