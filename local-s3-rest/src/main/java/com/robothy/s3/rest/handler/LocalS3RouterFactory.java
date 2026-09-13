@@ -2,21 +2,111 @@ package com.robothy.s3.rest.handler;
 
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_KEY_PATH;
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_PATH;
+import static com.robothy.s3.rest.handler.LocalS3Router.HEALTH_CHECK_PATH;
+import static com.robothy.s3.rest.handler.ParamCondition.equalTo;
+import static com.robothy.s3.rest.handler.ParamCondition.has;
+import static io.netty.handler.codec.http.HttpMethod.DELETE;
+import static io.netty.handler.codec.http.HttpMethod.GET;
+import static io.netty.handler.codec.http.HttpMethod.HEAD;
+import static io.netty.handler.codec.http.HttpMethod.OPTIONS;
+import static io.netty.handler.codec.http.HttpMethod.POST;
+import static io.netty.handler.codec.http.HttpMethod.PUT;
+import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
+import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.handler.s3vectors.CreateIndexController;
+import com.robothy.s3.rest.handler.s3vectors.CreateVectorBucketController;
+import com.robothy.s3.rest.handler.s3vectors.DeleteIndexController;
+import com.robothy.s3.rest.handler.s3vectors.DeleteVectorBucketController;
+import com.robothy.s3.rest.handler.s3vectors.DeleteVectorBucketPolicyController;
+import com.robothy.s3.rest.handler.s3vectors.DeleteVectorsController;
+import com.robothy.s3.rest.handler.s3vectors.GetIndexController;
+import com.robothy.s3.rest.handler.s3vectors.GetVectorBucketController;
+import com.robothy.s3.rest.handler.s3vectors.GetVectorBucketPolicyController;
+import com.robothy.s3.rest.handler.s3vectors.GetVectorsController;
+import com.robothy.s3.rest.handler.s3vectors.ListIndexesController;
+import com.robothy.s3.rest.handler.s3vectors.ListVectorBucketsController;
+import com.robothy.s3.rest.handler.s3vectors.ListVectorsController;
 import com.robothy.s3.rest.handler.s3vectors.LocalS3VectorExceptionHandler;
+import com.robothy.s3.rest.handler.s3vectors.PutVectorBucketPolicyController;
+import com.robothy.s3.rest.handler.s3vectors.PutVectorsController;
+import com.robothy.s3.rest.handler.s3vectors.QueryVectorsController;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
-import com.robothy.s3.core.service.BucketService;
 import io.netty.handler.codec.http.HttpMethod;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
 public class LocalS3RouterFactory {
+
+  /**
+   * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
+   * error that names the operation, so that a client fails clearly instead of appearing to succeed. Operations whose
+   * requests are the same, e.g. {@code GetBucketLifecycle} and {@code GetBucketLifecycleConfiguration}, share one route.
+   */
+  private static final List<NotImplementedOperation> NOT_IMPLEMENTED_OPERATIONS = List.of(
+      // Bucket configurations.
+      new NotImplementedOperation("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate")),
+      new NotImplementedOperation("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate")),
+      new NotImplementedOperation("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle")),
+      new NotImplementedOperation("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle")),
+      new NotImplementedOperation("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle")),
+      new NotImplementedOperation("GetBucketLogging", GET, BUCKET_PATH, has("logging")),
+      new NotImplementedOperation("PutBucketLogging", PUT, BUCKET_PATH, has("logging")),
+      new NotImplementedOperation("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification")),
+      new NotImplementedOperation("PutBucketNotificationConfiguration", PUT, BUCKET_PATH, has("notification")),
+      new NotImplementedOperation("GetBucketOwnershipControls", GET, BUCKET_PATH, has("ownershipControls")),
+      new NotImplementedOperation("PutBucketOwnershipControls", PUT, BUCKET_PATH, has("ownershipControls")),
+      new NotImplementedOperation("DeleteBucketOwnershipControls", DELETE, BUCKET_PATH, has("ownershipControls")),
+      new NotImplementedOperation("GetBucketRequestPayment", GET, BUCKET_PATH, has("requestPayment")),
+      new NotImplementedOperation("PutBucketRequestPayment", PUT, BUCKET_PATH, has("requestPayment")),
+      new NotImplementedOperation("GetBucketWebsite", GET, BUCKET_PATH, has("website")),
+      new NotImplementedOperation("PutBucketWebsite", PUT, BUCKET_PATH, has("website")),
+      new NotImplementedOperation("DeleteBucketWebsite", DELETE, BUCKET_PATH, has("website")),
+      // Bucket configurations of which a bucket has several, each named by an id: a GET with the id reads one, and a
+      // GET without it lists them.
+      new NotImplementedOperation("GetBucketAnalyticsConfiguration", GET, BUCKET_PATH, has("analytics", "id")),
+      new NotImplementedOperation("ListBucketAnalyticsConfigurations", GET, BUCKET_PATH,
+          has("analytics").andHasNot("id")),
+      new NotImplementedOperation("PutBucketAnalyticsConfiguration", PUT, BUCKET_PATH, has("analytics")),
+      new NotImplementedOperation("DeleteBucketAnalyticsConfiguration", DELETE, BUCKET_PATH, has("analytics")),
+      new NotImplementedOperation("GetBucketIntelligentTieringConfiguration", GET, BUCKET_PATH,
+          has("intelligent-tiering", "id")),
+      new NotImplementedOperation("ListBucketIntelligentTieringConfigurations", GET, BUCKET_PATH,
+          has("intelligent-tiering").andHasNot("id")),
+      new NotImplementedOperation("PutBucketIntelligentTieringConfiguration", PUT, BUCKET_PATH,
+          has("intelligent-tiering")),
+      new NotImplementedOperation("DeleteBucketIntelligentTieringConfiguration", DELETE, BUCKET_PATH,
+          has("intelligent-tiering")),
+      new NotImplementedOperation("GetBucketInventoryConfiguration", GET, BUCKET_PATH, has("inventory", "id")),
+      new NotImplementedOperation("ListBucketInventoryConfigurations", GET, BUCKET_PATH,
+          has("inventory").andHasNot("id")),
+      new NotImplementedOperation("PutBucketInventoryConfiguration", PUT, BUCKET_PATH, has("inventory")),
+      new NotImplementedOperation("DeleteBucketInventoryConfiguration", DELETE, BUCKET_PATH, has("inventory")),
+      new NotImplementedOperation("GetBucketMetricsConfiguration", GET, BUCKET_PATH, has("metrics", "id")),
+      new NotImplementedOperation("ListBucketMetricsConfigurations", GET, BUCKET_PATH,
+          has("metrics").andHasNot("id")),
+      new NotImplementedOperation("PutBucketMetricsConfiguration", PUT, BUCKET_PATH, has("metrics")),
+      new NotImplementedOperation("DeleteBucketMetricsConfiguration", DELETE, BUCKET_PATH, has("metrics")),
+      // Object lock and retention.
+      new NotImplementedOperation("GetObjectLegalHold", GET, BUCKET_KEY_PATH, has("legal-hold")),
+      new NotImplementedOperation("PutObjectLegalHold", PUT, BUCKET_KEY_PATH, has("legal-hold")),
+      new NotImplementedOperation("GetObjectLockConfiguration", GET, BUCKET_KEY_PATH, has("object-lock")),
+      new NotImplementedOperation("PutObjectLockConfiguration", PUT, BUCKET_KEY_PATH, has("object-lock")),
+      new NotImplementedOperation("GetObjectRetention", GET, BUCKET_KEY_PATH, has("retention")),
+      new NotImplementedOperation("PutObjectRetention", PUT, BUCKET_KEY_PATH, has("retention")),
+      // Object retrieval and transformation.
+      new NotImplementedOperation("GetObjectTorrent", GET, BUCKET_KEY_PATH, has("torrent")),
+      new NotImplementedOperation("RestoreObject", POST, BUCKET_KEY_PATH, has("restore")),
+      new NotImplementedOperation("SelectObjectContent", POST, BUCKET_KEY_PATH, has("select")),
+      new NotImplementedOperation("WriteGetObjectResponse", POST, "/WriteGetObjectResponse", null)
+  );
 
   /**
    * Create a new LocalS3Router instance.
@@ -28,17 +118,16 @@ public class LocalS3RouterFactory {
   /**
    * Create a new LocalS3Router instance with optional SigV4 authentication.
    *
-   * <p>The routes are declared by the methods below, split by the resource they address and by whether they
-   * read or write it. The split follows the key that {@linkplain LocalS3Router} dispatches on, i.e. the HTTP
-   * method and the path of a route, so that every route of one (method, path) is registered by one method.
+   * <p>The routes are declared one per line: the routes of the implemented operations by the methods below, split by
+   * the resource they address and by whether they read or write it, and the routes of the operations that answer
+   * {@code 501 NotImplemented} by {@linkplain #NOT_IMPLEMENTED_OPERATIONS}.
    *
    * <p>The conditions of a route are declared with {@linkplain ParamCondition} and {@linkplain HeaderCondition},
    * and the order the routes are registered in doesn't matter: once they are registered,
    * {@linkplain LocalS3Router#verifyRoutes()} fails the creation of the router if two routes of the same
    * (method, path) match the same request equally, or if a route can't be reached, so that a route that
    * overlaps another one is found when the service starts rather than by a request that reaches the wrong
-   * handler. Operations whose requests are the same, e.g. {@code GetBucketLifecycle} and
-   * {@code GetBucketLifecycleConfiguration}, are answered by one route.
+   * handler.
    */
   public static Router create(ServiceFactory serviceFactory, String accessKeyId,
       String secretAccessKey) {
@@ -58,13 +147,18 @@ public class LocalS3RouterFactory {
         accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), virtualHostParser,
         corsResponseHeaders);
 
+    Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
-    serviceRoutes(router, serviceFactory);
-    bucketReadRoutes(router, serviceFactory, shared);
-    bucketWriteRoutes(router, serviceFactory, shared);
-    objectReadRoutes(router, serviceFactory, shared);
-    objectWriteRoutes(router, serviceFactory, shared);
-    vectorRoutes(router, serviceFactory);
+    serviceRoutes(routes, serviceFactory);
+    bucketReadRoutes(routes, serviceFactory, shared);
+    bucketWriteRoutes(routes, serviceFactory, shared);
+    objectReadRoutes(routes, serviceFactory, shared);
+    objectWriteRoutes(routes, serviceFactory, shared);
+    vectorRoutes(routes, serviceFactory);
+    for (NotImplementedOperation operation : NOT_IMPLEMENTED_OPERATIONS) {
+      routes.add(operation.name(), operation.method(), operation.path(), operation.params(), null,
+          new NotImplementedOperationController(serviceFactory, operation.name()));
+    }
     router.verifyRoutes();
 
     return router
@@ -96,263 +190,42 @@ public class LocalS3RouterFactory {
    * The routes that aren't Amazon S3 operations: the health check that a container probe requests, and
    * the CORS preflight that a browser sends before a cross-origin request. Neither of them is signed.
    */
-  private static void serviceRoutes(LocalS3Router router, ServiceFactory serviceFactory) {
+  private static void serviceRoutes(Routes routes, ServiceFactory serviceFactory) {
     // The two health check routes answer through one controller, and so do the two preflight ones.
-    HealthCheckController healthCheckController = new HealthCheckController();
-    CorsPreflightController corsPreflightController = new CorsPreflightController(serviceFactory);
+    HealthCheckController healthCheck = new HealthCheckController();
+    CorsPreflightController corsPreflight = new CorsPreflightController(serviceFactory);
 
-    Route HealthCheck = Route.builder()
-        .method(HttpMethod.GET)
-        .path(LocalS3Router.HEALTH_CHECK_PATH)
-        .handler(healthCheckController)
-        .build();
-    Route HeadHealthCheck = Route.builder()
-        .method(HttpMethod.HEAD)
-        .path(LocalS3Router.HEALTH_CHECK_PATH)
-        .handler(healthCheckController)
-        .build();
-    Route BucketCorsPreflight = Route.builder()
-        .method(HttpMethod.OPTIONS)
-        .path(BUCKET_PATH)
-        .handler(corsPreflightController)
-        .build();
-    Route ObjectCorsPreflight = Route.builder()
-        .method(HttpMethod.OPTIONS)
-        .path(BUCKET_KEY_PATH)
-        .handler(corsPreflightController)
-        .build();
-
-    router
-        .route("HealthCheck", HealthCheck)
-        .route("HeadHealthCheck", HeadHealthCheck)
-        .route("BucketCorsPreflight", BucketCorsPreflight)
-        .route("ObjectCorsPreflight", ObjectCorsPreflight)
-        ;
+    routes
+        .add("HealthCheck", GET, HEALTH_CHECK_PATH, healthCheck)
+        .add("HeadHealthCheck", HEAD, HEALTH_CHECK_PATH, healthCheck)
+        .add("BucketCorsPreflight", OPTIONS, BUCKET_PATH, corsPreflight)
+        .add("ObjectCorsPreflight", OPTIONS, BUCKET_KEY_PATH, corsPreflight);
   }
 
   /**
    * The operations that read a bucket, its configuration or the list of buckets, i.e. the {@code GET}
    * and {@code HEAD} requests addressed at one.
    */
-  private static void bucketReadRoutes(LocalS3Router router, ServiceFactory serviceFactory, SharedControllers shared) {
-
-    Route GetBucketAccelerateConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("accelerate"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketAccelerateConfiguration"))
-        .build();
-    Route GetBucketAcl = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("acl"))
-        .handler(new GetBucketAclController(serviceFactory))
-        .build();
-    Route GetBucketAnalyticsConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("analytics", "id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketAnalyticsConfiguration"))
-        .build();
-    Route GetBucketCors = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("cors"))
-        .handler(new GetBucketCorsController(serviceFactory))
-        .build();
-    Route GetBucketEncryption = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("encryption"))
-        .handler(shared.bucketEncryption()::get)
-        .build();
-    Route GetBucketIntelligentTieringConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("intelligent-tiering", "id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketIntelligentTieringConfiguration"))
-        .build();
-    Route GetBucketInventoryConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("inventory", "id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketInventoryConfiguration"))
-        .build();
-    Route GetBucketLifecycleConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("lifecycle"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketLifecycleConfiguration"))
-        .build();
-    Route GetBucketLocation = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("location"))
-        .handler(new GetBucketLocationController(serviceFactory))
-        .build();
-    Route GetBucketLogging = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("logging"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketLogging"))
-        .build();
-    Route GetBucketMetricsConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("metrics", "id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketMetricsConfiguration"))
-        .build();
-    Route GetBucketNotificationConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("notification"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketNotificationConfiguration"))
-        .build();
-    Route GetBucketOwnershipControls = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("ownershipControls"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketOwnershipControls"))
-        .build();
-    Route GetBucketPolicy = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("policy"))
-        .handler(shared.bucketPolicy()::get)
-        .build();
-    Route GetBucketPolicyStatus = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("policyStatus"))
-        .handler(new GetBucketPolicyStatusController(serviceFactory))
-        .build();
-    Route GetBucketReplication = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("replication"))
-        .handler(shared.bucketReplication()::get)
-        .build();
-    Route GetBucketRequestPayment = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("requestPayment"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketRequestPayment"))
-        .build();
-    Route GetBucketTagging = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(new GetBucketTaggingController(serviceFactory))
-        .build();
-    Route GetBucketVersioning = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("versioning"))
-        .handler(new GetBucketVersioningController(serviceFactory))
-        .build();
-    Route GetBucketWebsite = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("website"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetBucketWebsite"))
-        .build();
-    Route GetPublicAccessBlock = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("publicAccessBlock"))
-        .handler(new GetPublicAccessBlockController(serviceFactory))
-        .build();
-    Route HeadBucket = Route.builder()
-        .method(HttpMethod.HEAD)
-        .path(BUCKET_PATH)
-        .handler(new HeadBucketController(serviceFactory))
-        .build();
-    Route ListBucketAnalyticsConfigurations = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("analytics").andHasNot("id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "ListBucketAnalyticsConfigurations"))
-        .build();
-    Route ListBucketIntelligentTieringConfigurations = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("intelligent-tiering").andHasNot("id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "ListBucketIntelligentTieringConfigurations"))
-        .build();
-    Route ListBucketInventoryConfigurations = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("inventory").andHasNot("id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "ListBucketInventoryConfigurations"))
-        .build();
-    Route ListBucketMetricsConfigurations = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("metrics").andHasNot("id"))
-        .handler(new NotImplementedOperationController(serviceFactory, "ListBucketMetricsConfigurations"))
-        .build();
-    Route ListBuckets = Route.builder()
-        .method(HttpMethod.GET)
-        .path("/")
-        .handler(new ListBucketsController(serviceFactory))
-        .build();
-    Route ListMultipartUploads = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("uploads"))
-        .handler(new ListMultipartUploadsController(serviceFactory))
-        .build();
-    Route ListObjects = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .handler(new ListObjectsController(serviceFactory))
-        .build();
-    Route ListObjectsV2 = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.equalTo("list-type", "2"))
-        .handler(new ListObjectsV2Controller(serviceFactory))
-        .build();
-    Route ListObjectVersions = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("versions"))
-        .handler(new ListObjectVersionsController(serviceFactory))
-        .build();
-
-    router
-        .route("GetBucketAccelerateConfiguration", GetBucketAccelerateConfiguration)
-        .route("GetBucketAcl", GetBucketAcl)
-        .route("GetBucketAnalyticsConfiguration", GetBucketAnalyticsConfiguration)
-        .route("GetBucketCors", GetBucketCors)
-        .route("GetBucketEncryption", GetBucketEncryption)
-        .route("GetBucketIntelligentTieringConfiguration", GetBucketIntelligentTieringConfiguration)
-        .route("GetBucketInventoryConfiguration", GetBucketInventoryConfiguration)
-        .route("GetBucketLifecycleConfiguration", GetBucketLifecycleConfiguration)
-        .route("GetBucketLocation", GetBucketLocation)
-        .route("GetBucketLogging", GetBucketLogging)
-        .route("GetBucketMetricsConfiguration", GetBucketMetricsConfiguration)
-        .route("GetBucketNotificationConfiguration", GetBucketNotificationConfiguration)
-        .route("GetBucketOwnershipControls", GetBucketOwnershipControls)
-        .route("GetBucketPolicy", GetBucketPolicy)
-        .route("GetBucketPolicyStatus", GetBucketPolicyStatus)
-        .route("GetBucketReplication", GetBucketReplication)
-        .route("GetBucketRequestPayment", GetBucketRequestPayment)
-        .route("GetBucketTagging", GetBucketTagging)
-        .route("GetBucketVersioning", GetBucketVersioning)
-        .route("GetBucketWebsite", GetBucketWebsite)
-        .route("GetPublicAccessBlock", GetPublicAccessBlock)
-        .route("HeadBucket", HeadBucket)
-        .route("ListBucketAnalyticsConfigurations", ListBucketAnalyticsConfigurations)
-        .route("ListBucketIntelligentTieringConfigurations", ListBucketIntelligentTieringConfigurations)
-        .route("ListBucketInventoryConfigurations", ListBucketInventoryConfigurations)
-        .route("ListBucketMetricsConfigurations", ListBucketMetricsConfigurations)
-        .route("ListBuckets", ListBuckets)
-        .route("ListMultipartUploads", ListMultipartUploads)
-        .route("ListObjects", ListObjects)
-        .route("ListObjectsV2", ListObjectsV2)
-        .route("ListObjectVersions", ListObjectVersions)
-        ;
+  private static void bucketReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+    routes
+        .add("GetBucketAcl", GET, BUCKET_PATH, has("acl"), new GetBucketAclController(factory))
+        .add("GetBucketCors", GET, BUCKET_PATH, has("cors"), new GetBucketCorsController(factory))
+        .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
+        .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
+        .add("GetBucketPolicy", GET, BUCKET_PATH, has("policy"), shared.bucketPolicy()::get)
+        .add("GetBucketPolicyStatus", GET, BUCKET_PATH, has("policyStatus"),
+            new GetBucketPolicyStatusController(factory))
+        .add("GetBucketReplication", GET, BUCKET_PATH, has("replication"), shared.bucketReplication()::get)
+        .add("GetBucketTagging", GET, BUCKET_PATH, has("tagging"), new GetBucketTaggingController(factory))
+        .add("GetBucketVersioning", GET, BUCKET_PATH, has("versioning"), new GetBucketVersioningController(factory))
+        .add("GetPublicAccessBlock", GET, BUCKET_PATH, has("publicAccessBlock"),
+            new GetPublicAccessBlockController(factory))
+        .add("HeadBucket", HEAD, BUCKET_PATH, new HeadBucketController(factory))
+        .add("ListBuckets", GET, "/", new ListBucketsController(factory))
+        .add("ListMultipartUploads", GET, BUCKET_PATH, has("uploads"), new ListMultipartUploadsController(factory))
+        .add("ListObjects", GET, BUCKET_PATH, new ListObjectsController(factory))
+        .add("ListObjectsV2", GET, BUCKET_PATH, equalTo("list-type", "2"), new ListObjectsV2Controller(factory))
+        .add("ListObjectVersions", GET, BUCKET_PATH, has("versions"), new ListObjectVersionsController(factory));
   }
 
   /**
@@ -360,566 +233,144 @@ public class LocalS3RouterFactory {
    * {@code DELETE} requests addressed at one. {@code DeleteObjects} is here as well: it is posted to the
    * bucket rather than to an object.
    */
-  private static void bucketWriteRoutes(LocalS3Router router, ServiceFactory serviceFactory, SharedControllers shared) {
-
-    Route CreateBucket = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .handler(new CreateBucketController(serviceFactory))
-        .build();
-    Route DeleteBucket = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .handler(new DeleteBucketController(serviceFactory))
-        .build();
-    Route DeleteBucketAnalyticsConfiguration = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("analytics"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketAnalyticsConfiguration"))
-        .build();
-    Route DeleteBucketCors = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("cors"))
-        .handler(new DeleteBucketCorsController(serviceFactory))
-        .build();
-    Route DeleteBucketEncryption = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("encryption"))
-        .handler(shared.bucketEncryption()::delete)
-        .build();
-    Route DeleteBucketIntelligentTieringConfiguration = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("intelligent-tiering"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketIntelligentTieringConfiguration"))
-        .build();
-    Route DeleteBucketInventoryConfiguration = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("inventory"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketInventoryConfiguration"))
-        .build();
-    Route DeleteBucketLifecycle = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("lifecycle"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketLifecycle"))
-        .build();
-    Route DeleteBucketMetricsConfiguration = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("metrics"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketMetricsConfiguration"))
-        .build();
-    Route DeleteBucketOwnershipControls = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("ownershipControls"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketOwnershipControls"))
-        .build();
-    Route DeleteBucketPolicy = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("policy"))
-        .handler(shared.bucketPolicy()::delete)
-        .build();
-    Route DeleteBucketReplication = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("replication"))
-        .handler(shared.bucketReplication()::delete)
-        .build();
-    Route DeleteBucketTagging = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(new DeleteBucketTaggingController(serviceFactory))
-        .build();
-    Route DeleteBucketWebsite = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("website"))
-        .handler(new NotImplementedOperationController(serviceFactory, "DeleteBucketWebsite"))
-        .build();
-    Route DeleteObjects = Route.builder()
-        .method(HttpMethod.POST)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("delete"))
-        .handler(new DeleteObjectsController(serviceFactory))
-        .build();
-    Route DeletePublicAccessBlock = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("publicAccessBlock"))
-        .handler(new DeletePublicAccessBlockController(serviceFactory))
-        .build();
-    Route PutBucketAccelerateConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("accelerate"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketAccelerateConfiguration"))
-        .build();
-    Route PutBucketAcl = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("acl"))
-        .handler(new PutBucketAclController(serviceFactory))
-        .build();
-    Route PutBucketAnalyticsConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("analytics"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketAnalyticsConfiguration"))
-        .build();
-    Route PutBucketCors = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("cors"))
-        .handler(new PutBucketCorsController(serviceFactory))
-        .build();
-    Route PutBucketEncryption = Route.builder().method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("encryption"))
-        .handler(shared.bucketEncryption()::put)
-        .build();
-    Route PutBucketIntelligentTieringConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("intelligent-tiering"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketIntelligentTieringConfiguration"))
-        .build();
-    Route PutBucketInventoryConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("inventory"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketInventoryConfiguration"))
-        .build();
-    Route PutBucketLifecycleConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("lifecycle"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketLifecycleConfiguration"))
-        .build();
-    Route PutBucketLogging = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("logging"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketLogging"))
-        .build();
-    Route PutBucketMetricsConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("metrics"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketMetricsConfiguration"))
-        .build();
-    Route PutBucketNotificationConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("notification"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketNotificationConfiguration"))
-        .build();
-    Route PutBucketOwnershipControls = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("ownershipControls"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketOwnershipControls"))
-        .build();
-    Route PutBucketPolicy = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("policy"))
-        .handler(shared.bucketPolicy()::put)
-        .build();
-    Route PutBucketReplication = Route.builder().method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("replication"))
-        .handler(shared.bucketReplication()::put)
-        .build();
-    Route PutBucketRequestPayment = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("requestPayment"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketRequestPayment"))
-        .build();
-    Route PutBucketTagging = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(new PutBucketTaggingController(serviceFactory))
-        .build();
-    Route PutBucketVersioning = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("versioning"))
-        .handler(new PutBucketVersioningController(serviceFactory))
-        .build();
-    Route PutBucketWebsite = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("website"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutBucketWebsite"))
-        .build();
-    Route PutPublicAccessBlock = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_PATH)
-        .paramMatcher(ParamCondition.has("publicAccessBlock"))
-        .handler(new PutPublicAccessBlockController(serviceFactory))
-        .build();
-
-    router
-        .route("CreateBucket", CreateBucket)
-        .route("DeleteBucket", DeleteBucket)
-        .route("DeleteBucketAnalyticsConfiguration", DeleteBucketAnalyticsConfiguration)
-        .route("DeleteBucketCors", DeleteBucketCors)
-        .route("DeleteBucketEncryption", DeleteBucketEncryption)
-        .route("DeleteBucketIntelligentTieringConfiguration", DeleteBucketIntelligentTieringConfiguration)
-        .route("DeleteBucketInventoryConfiguration", DeleteBucketInventoryConfiguration)
-        .route("DeleteBucketLifecycle", DeleteBucketLifecycle)
-        .route("DeleteBucketMetricsConfiguration", DeleteBucketMetricsConfiguration)
-        .route("DeleteBucketOwnershipControls", DeleteBucketOwnershipControls)
-        .route("DeleteBucketPolicy", DeleteBucketPolicy)
-        .route("DeleteBucketReplication", DeleteBucketReplication)
-        .route("DeleteBucketTagging", DeleteBucketTagging)
-        .route("DeleteBucketWebsite", DeleteBucketWebsite)
-        .route("DeleteObjects", DeleteObjects)
-        .route("DeletePublicAccessBlock", DeletePublicAccessBlock)
-        .route("PutBucketAccelerateConfiguration", PutBucketAccelerateConfiguration)
-        .route("PutBucketAcl", PutBucketAcl)
-        .route("PutBucketAnalyticsConfiguration", PutBucketAnalyticsConfiguration)
-        .route("PutBucketCors", PutBucketCors)
-        .route("PutBucketEncryption", PutBucketEncryption)
-        .route("PutBucketIntelligentTieringConfiguration", PutBucketIntelligentTieringConfiguration)
-        .route("PutBucketInventoryConfiguration", PutBucketInventoryConfiguration)
-        .route("PutBucketLifecycleConfiguration", PutBucketLifecycleConfiguration)
-        .route("PutBucketLogging", PutBucketLogging)
-        .route("PutBucketMetricsConfiguration", PutBucketMetricsConfiguration)
-        .route("PutBucketNotificationConfiguration", PutBucketNotificationConfiguration)
-        .route("PutBucketOwnershipControls", PutBucketOwnershipControls)
-        .route("PutBucketPolicy", PutBucketPolicy)
-        .route("PutBucketReplication", PutBucketReplication)
-        .route("PutBucketRequestPayment", PutBucketRequestPayment)
-        .route("PutBucketTagging", PutBucketTagging)
-        .route("PutBucketVersioning", PutBucketVersioning)
-        .route("PutBucketWebsite", PutBucketWebsite)
-        .route("PutPublicAccessBlock", PutPublicAccessBlock)
-        ;
+  private static void bucketWriteRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+    routes
+        .add("CreateBucket", PUT, BUCKET_PATH, new CreateBucketController(factory))
+        .add("DeleteBucket", DELETE, BUCKET_PATH, new DeleteBucketController(factory))
+        .add("DeleteBucketCors", DELETE, BUCKET_PATH, has("cors"), new DeleteBucketCorsController(factory))
+        .add("DeleteBucketEncryption", DELETE, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::delete)
+        .add("DeleteBucketPolicy", DELETE, BUCKET_PATH, has("policy"), shared.bucketPolicy()::delete)
+        .add("DeleteBucketReplication", DELETE, BUCKET_PATH, has("replication"), shared.bucketReplication()::delete)
+        .add("DeleteBucketTagging", DELETE, BUCKET_PATH, has("tagging"), new DeleteBucketTaggingController(factory))
+        .add("DeleteObjects", POST, BUCKET_PATH, has("delete"), new DeleteObjectsController(factory))
+        .add("DeletePublicAccessBlock", DELETE, BUCKET_PATH, has("publicAccessBlock"),
+            new DeletePublicAccessBlockController(factory))
+        .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
+        .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
+        .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
+        .add("PutBucketPolicy", PUT, BUCKET_PATH, has("policy"), shared.bucketPolicy()::put)
+        .add("PutBucketReplication", PUT, BUCKET_PATH, has("replication"), shared.bucketReplication()::put)
+        .add("PutBucketTagging", PUT, BUCKET_PATH, has("tagging"), new PutBucketTaggingController(factory))
+        .add("PutBucketVersioning", PUT, BUCKET_PATH, has("versioning"), new PutBucketVersioningController(factory))
+        .add("PutPublicAccessBlock", PUT, BUCKET_PATH, has("publicAccessBlock"),
+            new PutPublicAccessBlockController(factory));
   }
 
   /**
    * The operations that read an object, its metadata or its tags, i.e. the {@code GET} and {@code HEAD}
    * requests addressed at one. {@code ListParts} is here as well: it reads the parts of an upload.
    */
-  private static void objectReadRoutes(LocalS3Router router, ServiceFactory serviceFactory, SharedControllers shared) {
-
-    Route GetObjectAttributes = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .headerMatcher(HeaderCondition.has(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES))
-        .handler(new GetObjectAttributesController(serviceFactory))
-        .build();
-    Route GetObject = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .headerMatcher(HeaderCondition.hasNot(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES))
-        .handler(new GetObjectController(serviceFactory))
-        .build();
-    Route GetObjectAcl = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("acl"))
-        .handler(new GetObjectAclController(serviceFactory))
-        .build();
-    Route GetObjectLegalHold = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("legal-hold"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectLegalHold"))
-        .build();
-    Route GetObjectLockConfiguration = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("object-lock"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectLockConfiguration"))
-        .build();
-    Route GetObjectRetention = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("retention"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectRetention"))
-        .build();
-    Route GetObjectTagging = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(shared.objectTagging()::get)
-        .build();
-    Route GetObjectTorrent = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("torrent"))
-        .handler(new NotImplementedOperationController(serviceFactory, "GetObjectTorrent"))
-        .build();
-    Route HeadObject = Route.builder()
-        .method(HttpMethod.HEAD)
-        .path(BUCKET_KEY_PATH)
-        .handler(new HeadObjectController(serviceFactory))
-        .build();
-    Route ListParts = Route.builder()
-        .method(HttpMethod.GET)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("uploadId"))
-        .handler(new ListPartsController(serviceFactory))
-        .build();
-
-    router
-        .route("GetObjectAttributes", GetObjectAttributes)
-        .route("GetObject", GetObject)
-        .route("GetObjectAcl", GetObjectAcl)
-        .route("GetObjectLegalHold", GetObjectLegalHold)
-        .route("GetObjectLockConfiguration", GetObjectLockConfiguration)
-        .route("GetObjectRetention", GetObjectRetention)
-        .route("GetObjectTagging", GetObjectTagging)
-        .route("GetObjectTorrent", GetObjectTorrent)
-        .route("HeadObject", HeadObject)
-        .route("ListParts", ListParts)
-        ;
+  private static void objectReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+    routes
+        .add("GetObject", GET, BUCKET_KEY_PATH, HeaderCondition.hasNot(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES),
+            new GetObjectController(factory))
+        .add("GetObjectAcl", GET, BUCKET_KEY_PATH, has("acl"), new GetObjectAclController(factory))
+        .add("GetObjectAttributes", GET, BUCKET_KEY_PATH, HeaderCondition.has(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES),
+            new GetObjectAttributesController(factory))
+        .add("GetObjectTagging", GET, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::get)
+        .add("HeadObject", HEAD, BUCKET_KEY_PATH, new HeadObjectController(factory))
+        .add("ListParts", GET, BUCKET_KEY_PATH, has("uploadId"), new ListPartsController(factory));
   }
 
   /**
    * The operations that store, copy or delete an object, i.e. the {@code PUT}, {@code POST} and
    * {@code DELETE} requests addressed at one, including the multipart upload of it.
    */
-  private static void objectWriteRoutes(LocalS3Router router, ServiceFactory serviceFactory, SharedControllers shared) {
-
-    Route AbortMultipartUpload = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("uploadId"))
-        .handler(new AbortMultipartUploadController(serviceFactory))
-        .build();
-    Route CompleteMultipartUpload = Route.builder()
-        .method(HttpMethod.POST)
-        .path(BUCKET_KEY_PATH)
-        .handler(new CompleteMultipartUploadController(serviceFactory))
-        .build();
-    Route CopyObject = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .headerMatcher(HeaderCondition.has(AmzHeaderNames.X_AMZ_COPY_SOURCE))
-        .handler(new CopyObjectController(serviceFactory))
-        .build();
-    Route CreateMultipartUpload = Route.builder()
-        .method(HttpMethod.POST)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("uploads"))
-        .handler(new CreateMultipartUploadController(serviceFactory))
-        .build();
-    Route DeleteObject = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_KEY_PATH)
-        .handler(new DeleteObjectController(serviceFactory))
-        .build();
-    Route DeleteObjectTagging = Route.builder()
-        .method(HttpMethod.DELETE)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(shared.objectTagging()::delete)
-        .build();
-    Route PutObject = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .handler(new PutObjectController(serviceFactory))
-        .build();
-    Route PutObjectAcl = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("acl"))
-        .handler(new PutObjectAclController(serviceFactory))
-        .build();
-    Route PutObjectLegalHold = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("legal-hold"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutObjectLegalHold"))
-        .build();
-    Route PutObjectLockConfiguration = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("object-lock"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutObjectLockConfiguration"))
-        .build();
-    Route PutObjectRetention = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("retention"))
-        .handler(new NotImplementedOperationController(serviceFactory, "PutObjectRetention"))
-        .build();
-    Route PutObjectTagging = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("tagging"))
-        .handler(shared.objectTagging()::put)
-        .build();
-    Route RestoreObject = Route.builder()
-        .method(HttpMethod.POST)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("restore"))
-        .handler(new NotImplementedOperationController(serviceFactory, "RestoreObject"))
-        .build();
-    Route SelectObjectContent = Route.builder()
-        .method(HttpMethod.POST)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("select"))
-        .handler(new NotImplementedOperationController(serviceFactory, "SelectObjectContent"))
-        .build();
-    Route UploadPart = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("uploadId", "partNumber"))
-        .handler(new UploadPartController(serviceFactory))
-        .build();
-    Route UploadPartCopy = Route.builder()
-        .method(HttpMethod.PUT)
-        .path(BUCKET_KEY_PATH)
-        .paramMatcher(ParamCondition.has("uploadId", "partNumber"))
-        .headerMatcher(HeaderCondition.has(AmzHeaderNames.X_AMZ_COPY_SOURCE))
-        .handler(new UploadPartCopyController(serviceFactory))
-        .build();
-    Route WriteGetObjectResponse = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/WriteGetObjectResponse")
-        .handler(new NotImplementedOperationController(serviceFactory, "WriteGetObjectResponse"))
-        .build();
-
-    router
-        .route("AbortMultipartUpload", AbortMultipartUpload)
-        .route("CompleteMultipartUpload", CompleteMultipartUpload)
-        .route("CopyObject", CopyObject)
-        .route("CreateMultipartUpload", CreateMultipartUpload)
-        .route("DeleteObject", DeleteObject)
-        .route("DeleteObjectTagging", DeleteObjectTagging)
-        .route("PutObject", PutObject)
-        .route("PutObjectAcl", PutObjectAcl)
-        .route("PutObjectLegalHold", PutObjectLegalHold)
-        .route("PutObjectLockConfiguration", PutObjectLockConfiguration)
-        .route("PutObjectRetention", PutObjectRetention)
-        .route("PutObjectTagging", PutObjectTagging)
-        .route("RestoreObject", RestoreObject)
-        .route("SelectObjectContent", SelectObjectContent)
-        .route("UploadPart", UploadPart)
-        .route("UploadPartCopy", UploadPartCopy)
-        .route("WriteGetObjectResponse", WriteGetObjectResponse)
-        ;
+  private static void objectWriteRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+    HeaderCondition copySource = HeaderCondition.has(AmzHeaderNames.X_AMZ_COPY_SOURCE);
+    routes
+        .add("AbortMultipartUpload", DELETE, BUCKET_KEY_PATH, has("uploadId"),
+            new AbortMultipartUploadController(factory))
+        .add("CompleteMultipartUpload", POST, BUCKET_KEY_PATH, new CompleteMultipartUploadController(factory))
+        .add("CopyObject", PUT, BUCKET_KEY_PATH, copySource, new CopyObjectController(factory))
+        .add("CreateMultipartUpload", POST, BUCKET_KEY_PATH, has("uploads"),
+            new CreateMultipartUploadController(factory))
+        .add("DeleteObject", DELETE, BUCKET_KEY_PATH, new DeleteObjectController(factory))
+        .add("DeleteObjectTagging", DELETE, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::delete)
+        .add("PutObject", PUT, BUCKET_KEY_PATH, new PutObjectController(factory))
+        .add("PutObjectAcl", PUT, BUCKET_KEY_PATH, has("acl"), new PutObjectAclController(factory))
+        .add("PutObjectTagging", PUT, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::put)
+        .add("UploadPart", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), new UploadPartController(factory))
+        .add("UploadPartCopy", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), copySource,
+            new UploadPartCopyController(factory));
   }
 
   /**
    * The <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors.html">S3 Vectors</a>
-   * operations, which are posted to a path of their own rather than addressed at a bucket or an object.
+   * operations, each of which is posted to a path named after it rather than addressed at a bucket or an object.
    */
-  private static void vectorRoutes(LocalS3Router router, ServiceFactory serviceFactory) {
+  private static void vectorRoutes(Routes routes, ServiceFactory factory) {
+    routes
+        .addVectorOperation("CreateVectorBucket", new CreateVectorBucketController(factory))
+        .addVectorOperation("GetVectorBucket", new GetVectorBucketController(factory))
+        .addVectorOperation("DeleteVectorBucket", new DeleteVectorBucketController(factory))
+        .addVectorOperation("ListVectorBuckets", new ListVectorBucketsController(factory))
+        .addVectorOperation("PutVectorBucketPolicy", new PutVectorBucketPolicyController(factory))
+        .addVectorOperation("GetVectorBucketPolicy", new GetVectorBucketPolicyController(factory))
+        .addVectorOperation("DeleteVectorBucketPolicy", new DeleteVectorBucketPolicyController(factory))
+        .addVectorOperation("CreateIndex", new CreateIndexController(factory))
+        .addVectorOperation("GetIndex", new GetIndexController(factory))
+        .addVectorOperation("ListIndexes", new ListIndexesController(factory))
+        .addVectorOperation("DeleteIndex", new DeleteIndexController(factory))
+        .addVectorOperation("PutVectors", new PutVectorsController(factory))
+        .addVectorOperation("QueryVectors", new QueryVectorsController(factory))
+        .addVectorOperation("GetVectors", new GetVectorsController(factory))
+        .addVectorOperation("DeleteVectors", new DeleteVectorsController(factory))
+        .addVectorOperation("ListVectors", new ListVectorsController(factory));
+  }
 
-    Route CreateVectorBucket = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/CreateVectorBucket")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.CreateVectorBucketController(serviceFactory))
-        .build();
-    Route GetVectorBucket = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/GetVectorBucket")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.GetVectorBucketController(serviceFactory))
-        .build();
-    Route DeleteVectorBucket = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/DeleteVectorBucket")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.DeleteVectorBucketController(serviceFactory))
-        .build();
-    Route ListVectorBuckets = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/ListVectorBuckets")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.ListVectorBucketsController(serviceFactory))
-        .build();
-    Route PutVectorBucketPolicy = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/PutVectorBucketPolicy")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.PutVectorBucketPolicyController(serviceFactory))
-        .build();
-    Route GetVectorBucketPolicy = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/GetVectorBucketPolicy")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.GetVectorBucketPolicyController(serviceFactory))
-        .build();
-    Route DeleteVectorBucketPolicy = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/DeleteVectorBucketPolicy")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.DeleteVectorBucketPolicyController(serviceFactory))
-        .build();
-    Route CreateIndex = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/CreateIndex")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.CreateIndexController(serviceFactory))
-        .build();
-    Route GetIndex = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/GetIndex")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.GetIndexController(serviceFactory))
-        .build();
-    Route ListIndexes = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/ListIndexes")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.ListIndexesController(serviceFactory))
-        .build();
-    Route DeleteIndex = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/DeleteIndex")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.DeleteIndexController(serviceFactory))
-        .build();
-    Route PutVectors = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/PutVectors")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.PutVectorsController(serviceFactory))
-        .build();
-    Route QueryVectors = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/QueryVectors")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.QueryVectorsController(serviceFactory))
-        .build();
-    Route GetVectors = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/GetVectors")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.GetVectorsController(serviceFactory))
-        .build();
-    Route DeleteVectors = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/DeleteVectors")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.DeleteVectorsController(serviceFactory))
-        .build();
-    Route ListVectors = Route.builder()
-        .method(HttpMethod.POST)
-        .path("/ListVectors")
-        .handler(new com.robothy.s3.rest.handler.s3vectors.ListVectorsController(serviceFactory))
-        .build();
+  /**
+   * An operation that LocalS3 routes but doesn't implement.
+   *
+   * @param name the name of the operation, which the error answered to its requests names.
+   * @param method the HTTP method of its requests.
+   * @param path the path of its requests.
+   * @param params the query parameters that tell its requests apart; {@code null} if the path alone does.
+   */
+  private record NotImplementedOperation(String name, HttpMethod method, String path, ParamCondition params) {
+  }
 
-    router
-        .route("CreateVectorBucket", CreateVectorBucket)
-        .route("GetVectorBucket", GetVectorBucket)
-        .route("DeleteVectorBucket", DeleteVectorBucket)
-        .route("ListVectorBuckets", ListVectorBuckets)
-        .route("PutVectorBucketPolicy", PutVectorBucketPolicy)
-        .route("GetVectorBucketPolicy", GetVectorBucketPolicy)
-        .route("DeleteVectorBucketPolicy", DeleteVectorBucketPolicy)
-        .route("CreateIndex", CreateIndex)
-        .route("GetIndex", GetIndex)
-        .route("ListIndexes", ListIndexes)
-        .route("DeleteIndex", DeleteIndex)
-        .route("PutVectors", PutVectors)
-        .route("QueryVectors", QueryVectors)
-        .route("GetVectors", GetVectors)
-        .route("DeleteVectors", DeleteVectors)
-        .route("ListVectors", ListVectors)
-        ;
+  /**
+   * Registers the routes of a router, one operation per call.
+   */
+  private record Routes(LocalS3Router router) {
+
+    Routes add(String operation, HttpMethod method, String path, HttpRequestHandler handler) {
+      return add(operation, method, path, null, null, handler);
+    }
+
+    Routes add(String operation, HttpMethod method, String path, ParamCondition params, HttpRequestHandler handler) {
+      return add(operation, method, path, params, null, handler);
+    }
+
+    Routes add(String operation, HttpMethod method, String path, HeaderCondition headers,
+               HttpRequestHandler handler) {
+      return add(operation, method, path, null, headers, handler);
+    }
+
+    /**
+     * Register the route of an operation.
+     *
+     * @param params the query parameters that a request of the operation has; {@code null} for any.
+     * @param headers the headers that a request of the operation has; {@code null} for any.
+     */
+    Routes add(String operation, HttpMethod method, String path, ParamCondition params, HeaderCondition headers,
+               HttpRequestHandler handler) {
+      Route.Builder route = Route.builder().method(method).path(path).handler(handler);
+      if (params != null) {
+        route.paramMatcher(params);
+      }
+      if (headers != null) {
+        route.headerMatcher(headers);
+      }
+      router.route(operation, route.build());
+      return this;
+    }
+
+    Routes addVectorOperation(String operation, HttpRequestHandler handler) {
+      return add(operation, POST, "/" + operation, handler);
+    }
+
   }
 
 }

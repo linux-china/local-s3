@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.WeakHashMap;
 
 import org.apache.commons.lang3.StringUtils;
@@ -348,6 +349,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     }
 
     return priority;
+  }
+
+  /**
+   * The registered routes by the operations they answer, e.g. to compare the operations of the router with the ones
+   * that the documentation lists.
+   *
+   * @return the routes, ordered by operation.
+   */
+  Map<String, Route> routesByOperation() {
+    Map<String, Route> routes = new TreeMap<>();
+    operations.forEach((route, operation) -> routes.put(operation, route));
+    return routes;
   }
 
   /**

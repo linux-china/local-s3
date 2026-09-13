@@ -2,6 +2,8 @@ package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.s3.rest.service.ServiceFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,9 +13,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 /**
  * Keeps the API lists of the README in step with the routes that {@linkplain LocalS3RouterFactory} builds.
@@ -23,22 +25,12 @@ import org.junit.jupiter.api.Test;
  * that is missing from "Known unimplemented" looks available until a test fails with a 501. Both have
  * happened, e.g. {@code UploadPartCopy} was implemented without being listed.
  *
- * <p>The routes are read from the source of the factory rather than from a built router, because the
- * router keeps its routes to itself and the name of an operation only exists in the source. If the shape
- * of a route declaration ever changes, this test stops finding routes and fails on the count below rather
- * than passing silently.
+ * <p>The routes are read from a router that the factory builds, by the operations they are registered for. If
+ * the router ever stops reporting its routes, this test fails on the counts below rather than passing silently.
  */
 class SupportedApiDocumentationTest {
 
-  private static final Path ROUTER_SOURCE =
-      Path.of("src/main/java/com/robothy/s3/rest/handler/LocalS3RouterFactory.java");
-
   private static final Path README = Path.of("../README.md");
-
-  /**
-   * A route whose handler names this class answers {@code 501 NotImplemented}.
-   */
-  private static final String NOT_IMPLEMENTED_HANDLER = "NotImplementedOperationController";
 
   /**
    * Routes that aren't Amazon S3 operations, so the README describes them in prose instead of listing
@@ -46,9 +38,6 @@ class SupportedApiDocumentationTest {
    */
   private static final Set<String> ROUTES_NOT_LISTED_BY_NAME =
       Set.of("HealthCheck", "HeadHealthCheck", "BucketCorsPreflight", "ObjectCorsPreflight");
-
-  private static final Pattern ROUTE = Pattern.compile(
-      "Route (\\w+) = Route\\.builder\\(\\)(.*?)\\.build\\(\\);", Pattern.DOTALL);
 
   /**
    * An entry of a list of the README, e.g. {@code + PutObject}. An entry that carries a description
@@ -63,33 +52,23 @@ class SupportedApiDocumentationTest {
   private static Set<String> notImplementedRoutes;
 
   @BeforeAll
-  static void readRoutes() throws IOException {
-    assertTrue(Files.exists(ROUTER_SOURCE), "Run this test with the module directory as the working "
-        + "directory; " + ROUTER_SOURCE.toAbsolutePath() + " doesn't exist.");
-
+  static void readRoutes() {
     implementedS3Routes = new TreeSet<>();
     implementedVectorRoutes = new TreeSet<>();
     notImplementedRoutes = new TreeSet<>();
 
-    Matcher routes = ROUTE.matcher(withoutCommentedLines(Files.readString(ROUTER_SOURCE)));
-    while (routes.find()) {
-      String name = routes.group(1);
-      String declaration = routes.group(2);
-      if (declaration.contains(NOT_IMPLEMENTED_HANDLER)) {
-        notImplementedRoutes.add(name);
-      } else if (declaration.contains(".handler.s3vectors.")) {
-        implementedVectorRoutes.add(name);
-      } else if (!ROUTES_NOT_LISTED_BY_NAME.contains(name)) {
-        implementedS3Routes.add(name);
+    LocalS3Router router = (LocalS3Router) LocalS3RouterFactory.create(
+        Mockito.mock(ServiceFactory.class, Mockito.RETURNS_MOCKS), null, null);
+    router.routesByOperation().forEach((operation, route) -> {
+      HttpRequestHandler handler = route.getHandler();
+      if (handler instanceof NotImplementedOperationController) {
+        notImplementedRoutes.add(operation);
+      } else if (handler.getClass().getPackageName().endsWith(".handler.s3vectors")) {
+        implementedVectorRoutes.add(operation);
+      } else if (!ROUTES_NOT_LISTED_BY_NAME.contains(operation)) {
+        implementedS3Routes.add(operation);
       }
-    }
-  }
-
-  /**
-   * A route that is commented out isn't a route, e.g. the {@code GetBucket} of the S3 Control API.
-   */
-  private static String withoutCommentedLines(String source) {
-    return source.lines().filter(line -> !line.strip().startsWith("//")).collect(Collectors.joining("\n"));
+    });
   }
 
   /**
@@ -114,14 +93,13 @@ class SupportedApiDocumentationTest {
   }
 
   /**
-   * Guards the reading of the source above: if the factory stops declaring routes the way this test
-   * expects, the sets are empty and every other assertion would pass for the wrong reason.
+   * Guards the reading of the routes above: if the router stops reporting them, the sets are empty and every
+   * other assertion would pass for the wrong reason.
    */
   @Test
   void theRoutesOfTheFactoryAreFound() {
     assertTrue(implementedS3Routes.size() > 40,
-        "Found only " + implementedS3Routes.size() + " implemented S3 routes; the route declarations of "
-            + "LocalS3RouterFactory probably no longer match this test.");
+        "Found only " + implementedS3Routes.size() + " implemented S3 routes.");
     assertTrue(notImplementedRoutes.size() > 20,
         "Found only " + notImplementedRoutes.size() + " unimplemented routes.");
     assertTrue(implementedVectorRoutes.size() > 10,

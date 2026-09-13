@@ -443,7 +443,7 @@ class LocalS3Test {
    */
   @Test
   void namesThreadsUniquelyWhenTheyAreCreatedConcurrently() throws Exception {
-    LocalS3.NamingThreadFactory factory = new LocalS3.NamingThreadFactory("locals3-naming-test", true);
+    NettyServer.NamingThreadFactory factory = new NettyServer.NamingThreadFactory("locals3-naming-test", true);
     int creators = 8;
     int threadsPerCreator = 200;
     ExecutorService executor = Executors.newFixedThreadPool(creators);
