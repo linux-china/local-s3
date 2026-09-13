@@ -400,7 +400,7 @@ LocalS3 localS3 = LocalS3.builder()
 ```
 
 In `PERSISTENCE` mode, the container gives the data
-directory to that user on startup, so that bind-mounted directories stay writable. To run as your own user and keep
+directory on startup, so that bind-mounted directories stay writable. To run as your own user and keep
 the ownership of a bind-mounted directory, start the container with `--user "$(id -u):$(id -g)"`. The images
 declare a Docker `HEALTHCHECK` that requests the health check below.
 
