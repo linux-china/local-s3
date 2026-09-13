@@ -44,6 +44,10 @@ import java.io.InputStream;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -414,6 +418,84 @@ class LocalS3HttpPipelineTest {
     response.release();
     assertTrue(channel.isOpen());
     assertFalse(channel.finishAndReleaseAll());
+  }
+
+  private static EmbeddedChannel channel(Router router, Queue<Runnable> executor) {
+    return new EmbeddedChannel(new ChunkedWriteHandler(),
+        new LocalS3HttpRequestDecoder(MAX_REQUEST_BODY_SIZE, new XmlMapper()),
+        new LocalS3HttpResponseEncoder(),
+        new LocalS3HttpMessageHandler(router, executor::add));
+  }
+
+  @Test
+  void stopsReadingWhileRequestIsInFlight() {
+    Queue<Runnable> executor = new ArrayDeque<>();
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")), executor);
+
+    channel.writeInbound(request(HttpMethod.GET, 0), LastHttpContent.EMPTY_LAST_CONTENT);
+
+    assertFalse(channel.config().isAutoRead(), "No more is read while the request is handled.");
+    assertNull(channel.readOutbound());
+
+    executor.remove().run();
+    channel.runPendingTasks();
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(HttpResponseStatus.OK, response.status());
+    response.release();
+    assertTrue(channel.config().isAutoRead(), "Reading resumes once the response is written.");
+    assertFalse(channel.finishAndReleaseAll());
+  }
+
+  @Test
+  void handlesPipelinedRequestsOneAtATimeInOrder() {
+    Queue<Runnable> executor = new ArrayDeque<>();
+    List<String> handled = new ArrayList<>();
+    EmbeddedChannel channel = channel(router((request, response) -> {
+      handled.add(request.getBody().toString(StandardCharsets.UTF_8));
+      response.write(request.getBody().toString(StandardCharsets.UTF_8));
+    }), executor);
+
+    ByteBuf second = pooled("b".getBytes(StandardCharsets.UTF_8));
+    channel.writeInbound(request(HttpMethod.PUT, 1), new DefaultLastHttpContent(pooled("a".getBytes(StandardCharsets.UTF_8))),
+        request(HttpMethod.PUT, 1), new DefaultLastHttpContent(second));
+
+    assertEquals(1, executor.size(), "The second request waits for the first one.");
+    executor.remove().run();
+    channel.runPendingTasks();
+    FullHttpResponse first = channel.readOutbound();
+    assertEquals("a", first.content().toString(StandardCharsets.UTF_8));
+    first.release();
+    assertFalse(channel.config().isAutoRead());
+
+    assertEquals(1, executor.size());
+    executor.remove().run();
+    channel.runPendingTasks();
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals("b", response.content().toString(StandardCharsets.UTF_8));
+    response.release();
+    assertEquals(List.of("a", "b"), handled);
+    assertEquals(0, second.refCnt());
+    assertTrue(channel.config().isAutoRead());
+    assertFalse(channel.finishAndReleaseAll());
+  }
+
+  @Test
+  void releasesBodiesOfPendingRequestsWhenConnectionCloses() {
+    Queue<Runnable> executor = new ArrayDeque<>();
+    EmbeddedChannel channel = channel(router((request, response) -> response.write("ok")), executor);
+
+    ByteBuf second = pooled("b".getBytes(StandardCharsets.UTF_8));
+    channel.writeInbound(request(HttpMethod.PUT, 1), new DefaultLastHttpContent(pooled("a".getBytes(StandardCharsets.UTF_8))),
+        request(HttpMethod.PUT, 1), new DefaultLastHttpContent(second));
+    channel.close();
+
+    assertEquals(0, second.refCnt());
+    // The request in flight still finishes, and releases its body, after the connection is closed.
+    executor.remove().run();
+    channel.runPendingTasks();
+    channel.finishAndReleaseAll();
+    assertTrue(executor.isEmpty());
   }
 
 }

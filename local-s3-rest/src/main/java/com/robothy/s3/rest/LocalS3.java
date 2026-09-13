@@ -17,7 +17,6 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.local.LocalIoHandler;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
@@ -32,8 +31,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
@@ -84,8 +88,8 @@ public class LocalS3 implements AutoCloseable {
 
     /**
      * Default number of threads that handle the requests: as many as the machine has processors, and at
-     * least 4. A connection is bound to one of them, so this is the number of connections whose requests are
-     * handled at the same time.
+     * least 4. The threads are shared by all connections, so this is the number of requests handled at the
+     * same time.
      */
     public static final int DEFAULT_S3_EXECUTOR_THREAD_NUM =
             Math.max(4, Runtime.getRuntime().availableProcessors());
@@ -180,7 +184,12 @@ public class LocalS3 implements AutoCloseable {
 
     private MultiThreadIoEventLoopGroup childGroup;
 
-    private EventExecutorGroup executorGroup;
+    private ExecutorService executor;
+
+    /**
+     * The threads of {@linkplain #executor}, so that shutting down from one of them doesn't wait for itself.
+     */
+    private final Set<Thread> executorThreads = ConcurrentHashMap.newKeySet();
 
     private Channel serverSocketChannel;
 
@@ -267,15 +276,14 @@ public class LocalS3 implements AutoCloseable {
                 new NamingThreadFactory("locals3-parent-event-group", daemonThreads), NioIoHandler.newFactory());
         this.childGroup = new MultiThreadIoEventLoopGroup(nettyChildEventGroupThreadNum,
                 new NamingThreadFactory("locals3-child-event-group", daemonThreads), NioIoHandler.newFactory());
-        this.executorGroup = new MultiThreadIoEventLoopGroup(s3ExecutorThreadNum,
-                new NamingThreadFactory("locals3-executor-group", daemonThreads), LocalIoHandler.newFactory());
+        this.executor = createExecutor();
         ServerBootstrap serverBootstrap = new ServerBootstrap();
         ChannelFuture channelFuture;
         try {
             channelFuture = serverBootstrap.group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new LocalS3ServerInitializer(executorGroup,
+                    .childHandler(new LocalS3ServerInitializer(executor,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
                             serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold,
                             idleConnectionTimeoutSeconds))
@@ -291,6 +299,20 @@ public class LocalS3 implements AutoCloseable {
         log.info("LocalS3 listens on {}:{}.", bindHost, port);
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
+    }
+
+    /**
+     * Create the pool that handles the requests of all connections. Its queue holds at most one request per
+     * connection, as a connection stops reading while its request is in flight.
+     */
+    private ExecutorService createExecutor() {
+        ThreadFactory threadFactory = new NamingThreadFactory("locals3-executor-group", daemonThreads);
+        return new ThreadPoolExecutor(s3ExecutorThreadNum, s3ExecutorThreadNum, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(), runnable -> {
+                    Thread thread = threadFactory.newThread(runnable);
+                    executorThreads.add(thread);
+                    return thread;
+                });
     }
 
     private void createBuckets() {
@@ -373,11 +395,16 @@ public class LocalS3 implements AutoCloseable {
             Thread.currentThread().interrupt();
             log.error("Close server socket channel failed.", e);
         } finally {
-            shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup, this.executorGroup);
+            boolean stopped = shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup);
+            // After the event loops, which no longer hand requests to the executor once the connections are closed.
+            stopped |= shutdownExecutorIfNeeded();
+            if (stopped) {
+                log.info("LocalS3 stopped.");
+            }
             this.serverSocketChannel = null;
             this.childGroup = null;
             this.parentGroup = null;
-            this.executorGroup = null;
+            this.executor = null;
         }
     }
 
@@ -398,7 +425,12 @@ public class LocalS3 implements AutoCloseable {
         }
     }
 
-    private void shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
+    /**
+     * Shut the event loops down and wait for them to terminate.
+     *
+     * @return whether any of them was shut down by this call.
+     */
+    private boolean shutdownEventExecutorsGroupIfNeeded(EventExecutorGroup... eventExecutorsList) {
         boolean shutdownPerformed = false;
         for (EventExecutorGroup eventExecutors : eventExecutorsList) {
             if (eventExecutors != null && !eventExecutors.isShuttingDown() && !eventExecutors.isShutdown()) {
@@ -417,9 +449,34 @@ public class LocalS3 implements AutoCloseable {
             }
         }
 
-        if (shutdownPerformed) {
-            log.info("LocalS3 stopped.");
+        return shutdownPerformed;
+    }
+
+    /**
+     * Shut the request executor down and wait for the requests in flight to finish.
+     *
+     * @return whether the executor was shut down by this call.
+     */
+    private boolean shutdownExecutorIfNeeded() {
+        ExecutorService executorService = this.executor;
+        if (executorService == null || executorService.isShutdown()) {
+            return false;
         }
+        executorService.shutdown();
+        if (executorThreads.contains(Thread.currentThread())) {
+            return true; // Waiting for our own thread to terminate would deadlock.
+        }
+        try {
+            if (!executorService.awaitTermination(SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn("Request executor did not terminate within {} seconds.", SHUTDOWN_TIMEOUT_SECONDS);
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            executorService.shutdownNow();
+        }
+        executorThreads.clear();
+        return true;
     }
 
     private static boolean isInEventLoop(EventExecutorGroup eventExecutors) {
@@ -551,7 +608,7 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
-     * Get the number of threads that handle the requests; a connection is bound to one of them.
+     * Get the number of threads that handle the requests; they are shared by all connections.
      *
      * @return local-s3 executor thread number.
      */
@@ -811,12 +868,10 @@ public class LocalS3 implements AutoCloseable {
          * Set the number of threads that handle the requests, where the S3 operations and their storage I/O
          * run.
          *
-         * <p>Netty binds a connection to one thread of this group for its whole life, rather than handing
-         * each request to a free thread, so this is the number of connections whose requests are handled at
-         * the same time. A request on a connection bound to a busy thread waits for the requests before it,
-         * even while other threads of the group are idle; a client that keeps more connections open than
-         * there are threads, e.g. a load test or a transfer manager, therefore wants this raised. Default
-         * value is {@linkplain LocalS3#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
+         * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
+         * this is the number of requests handled at the same time. The requests of one connection are still
+         * handled one after another, in the order they were received. Default value is
+         * {@linkplain LocalS3#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
          *
          * @param s3ExecutorThreadNum local-s3 executor thread number.
          * @return builder.

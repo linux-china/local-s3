@@ -7,17 +7,19 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
 import io.netty.handler.stream.ChunkedWriteHandler;
-import io.netty.util.concurrent.EventExecutorGroup;
+import java.util.concurrent.Executor;
 
 /**
  * Initializes the channel pipeline of the LocalS3 HTTP server.
  *
- * <p>HTTP parsing, encoding and chunked writing run on the channel's event loop; request aggregation,
- * routing and handling run on {@code executorGroup}.
+ * <p>HTTP parsing, request aggregation, encoding and chunked writing run on the channel's event loop, so that
+ * a connection stops reading, and its client sending, while a request is handled, instead of queuing the body
+ * of the next request for a busy thread. Routing and handling run on {@code executor}, which all connections
+ * share; see {@linkplain LocalS3HttpMessageHandler}.
  */
 public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> {
 
-    private final EventExecutorGroup executorGroup;
+    private final Executor executor;
 
     private final Router router;
 
@@ -32,17 +34,17 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     /**
      * Create a channel initializer.
      *
-     * @param executorGroup                executes request aggregation and handling.
+     * @param executor                     executes request handling, shared by all connections.
      * @param router                       routes requests to handlers.
      * @param xmlMapper                    renders S3 errors.
      * @param maxRequestBodySize           max request body size in bytes.
      * @param requestBodyFileThreshold     size in bytes above which a request body is buffered in a temporary file.
      * @param idleConnectionTimeoutSeconds seconds after which an idle connection is closed; {@code 0} never closes it.
      */
-    public LocalS3ServerInitializer(EventExecutorGroup executorGroup, Router router, XmlMapper xmlMapper,
+    public LocalS3ServerInitializer(Executor executor, Router router, XmlMapper xmlMapper,
                                     long maxRequestBodySize, long requestBodyFileThreshold,
                                     long idleConnectionTimeoutSeconds) {
-        this.executorGroup = executorGroup;
+        this.executor = executor;
         this.router = router;
         this.xmlMapper = xmlMapper;
         this.maxRequestBodySize = maxRequestBodySize;
@@ -62,10 +64,10 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         // The router of LocalS3 verifies the signature of a request before its body is received.
         RequestHeadVerifier headVerifier = router instanceof RequestHeadVerifier verifier ? verifier : RequestHeadVerifier.ACCEPT_ALL;
         ch.pipeline()
-                .addLast(executorGroup, "local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
+                .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
                         requestBodyFileThreshold, xmlMapper, headVerifier))
-                .addLast(executorGroup, "local-s3-response-encoder", new LocalS3HttpResponseEncoder())
-                .addLast(executorGroup, "local-s3-message-handler", new LocalS3HttpMessageHandler(router));
+                .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
+                .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor));
     }
 
 }
