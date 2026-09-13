@@ -12,7 +12,12 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import com.robothy.s3.core.util.IdUtils;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -44,7 +49,8 @@ class LocalFileSystemStorageTest {
 
     assertFalse(Files.exists(leftover));
     assertArrayEquals("complete".getBytes(), storage.getBytes(42L));
-    assertEquals(List.of(object), listFiles());
+    assertEquals(List.of(objectPath(storage, 42L)), listFiles(), "The object file of the flat layout is moved.");
+    assertFalse(Files.exists(object));
   }
 
   @Test
@@ -54,7 +60,7 @@ class LocalFileSystemStorageTest {
     storage.put(id, new ByteArrayInputStream("Hi".getBytes()));
 
     assertArrayEquals("Hi".getBytes(), storage.getBytes(id));
-    assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+    assertEquals(List.of(objectPath(storage, id)), listFiles());
   }
 
   @Test
@@ -94,7 +100,7 @@ class LocalFileSystemStorageTest {
     assertEquals("Connection reset.", thrown.getCause().getMessage());
 
     assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
-    assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+    assertEquals(List.of(objectPath(storage, id)), listFiles());
   }
 
   /**
@@ -134,7 +140,7 @@ class LocalFileSystemStorageTest {
     assertFalse(Files.exists(file), "The file is taken over.");
     assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
     assertEquals(5, storage.size(id));
-    assertEquals(List.of(directory.resolve(String.valueOf(id))), listFiles());
+    assertEquals(List.of(objectPath(storage, id)), listFiles());
   }
 
   @Test
@@ -151,9 +157,122 @@ class LocalFileSystemStorageTest {
     assertThrows(IllegalArgumentException.class, () -> storage.size(42L));
   }
 
+  /**
+   * The object files are spread over two levels of subdirectories, named by a hash of the ID. The layout decides where
+   * the objects that are already stored are found, so it must never change.
+   */
+  @Test
+  void storesObjectsInTwoLevelsOfSubdirectories() throws IOException {
+    LocalFileSystemStorage storage = new LocalFileSystemStorage(directory);
+    assertEquals(directory.resolve("b4").resolve("56").resolve("1"), storage.objectPath(1L));
+    assertEquals(directory.resolve("81").resolve("08").resolve("42"), storage.objectPath(42L));
+    assertEquals(directory.resolve("9c").resolve("49").resolve("1234567890123456789"),
+        storage.objectPath(1234567890123456789L));
+
+    storage.put(42L, "Hello".getBytes());
+    assertEquals(List.of(directory.resolve("81/08/42")), listFiles());
+  }
+
+  /**
+   * The IDs of the generator are time ordered, and those generated in a burst differ only in their low bits, which
+   * the subdirectories spread evenly.
+   */
+  @Test
+  void spreadsTheIdsOfTheGeneratorEvenly() {
+    LocalFileSystemStorage storage = new LocalFileSystemStorage(directory);
+    int count = 100_000;
+    Map<Path, Integer> perLeaf = new HashMap<>();
+    Set<Path> firstLevel = new HashSet<>();
+    for (int i = 0; i < count; i++) {
+      Path leaf = storage.objectPath(IdUtils.defaultGenerator().nextId()).getParent();
+      perLeaf.merge(leaf, 1, Integer::sum);
+      firstLevel.add(leaf.getParent());
+    }
+    assertEquals(256, firstLevel.size(), "Every first level subdirectory is used.");
+    int max = perLeaf.values().stream().mapToInt(Integer::intValue).max().orElseThrow();
+    // 65536 leaves share 100000 IDs, about 1.5 each: placed at random, about 51300 leaves are used, and none holds
+    // more than about 8. A hash of the time bits alone would put thousands of IDs in one.
+    assertTrue(max <= 16, "At most " + max + " IDs share a subdirectory.");
+    assertTrue(perLeaf.size() > 49_000, perLeaf.size() + " subdirectories are used.");
+  }
+
+  /**
+   * A writable storage moves the object files of the flat layout of a LocalS3 before 2.5 into their subdirectories,
+   * and leaves every other entry of the directory alone.
+   */
+  @Test
+  void movesTheObjectFilesOfTheFlatLayout() throws IOException {
+    Files.writeString(directory.resolve("42"), "flat");
+    Files.writeString(directory.resolve("notes.txt"), "not an object");
+    Files.writeString(directory.resolve("99999999999999999999"), "too large to be an ID");
+    Files.createDirectories(directory.resolve(".request-bodies"));
+
+    LocalFileSystemStorage storage = new LocalFileSystemStorage(directory);
+
+    assertArrayEquals("flat".getBytes(), storage.getBytes(42L));
+    assertTrue(Files.isRegularFile(storage.objectPath(42L)));
+    assertFalse(Files.exists(directory.resolve("42")));
+    assertTrue(Files.exists(directory.resolve("notes.txt")));
+    assertTrue(Files.exists(directory.resolve("99999999999999999999")));
+    assertTrue(Files.isDirectory(directory.resolve(".request-bodies")));
+  }
+
+  /**
+   * An object file of the flat layout that appears after the storage was created, e.g. one that a process which died
+   * during the move left, is still found, and replaced or deleted with the object.
+   */
+  @Test
+  void findsReplacesAndDeletesAnObjectFileOfTheFlatLayout() throws IOException {
+    LocalFileSystemStorage storage = new LocalFileSystemStorage(directory);
+    Path flat = Files.writeString(directory.resolve("42"), "flat");
+    assertTrue(storage.isExist(42L));
+    assertEquals(4, storage.size(42L));
+
+    storage.put(42L, "replaced".getBytes());
+    assertFalse(Files.exists(flat), "The object is kept once.");
+    assertArrayEquals("replaced".getBytes(), storage.getBytes(42L));
+
+    Files.writeString(directory.resolve("43"), "flat");
+    storage.delete(43L);
+    assertFalse(storage.isExist(43L));
+  }
+
+  /**
+   * A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, which may be files under version
+   * control, neither moves nor deletes anything.
+   */
+  @Test
+  void aReadOnlyStorageReadsBothLayoutsWithoutChangingTheDirectory() throws IOException {
+    new LocalFileSystemStorage(directory).put(1L, "sharded".getBytes());
+    Path flat = Files.writeString(directory.resolve("42"), "flat");
+    Path leftover = Files.writeString(directory.resolve(".7.0000.tmp"), "partial");
+
+    Storage readOnly = Storage.createReadOnlyPersistent(directory);
+
+    assertArrayEquals("sharded".getBytes(), readOnly.getBytes(1L));
+    assertArrayEquals("flat".getBytes(), readOnly.getBytes(42L));
+    try (InputStream in = readOnly.getInputStream(42L, 1, 2)) {
+      assertArrayEquals("la".getBytes(), in.readAllBytes());
+    }
+    assertTrue(Files.exists(flat), "The flat layout isn't changed.");
+    assertTrue(Files.exists(leftover), "The temporary files aren't deleted.");
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.put("new".getBytes()));
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.delete(42L));
+    assertThrows(IllegalArgumentException.class, () -> readOnly.delete(404L), "A missing object is reported as such.");
+
+    Path missing = directory.resolve("missing");
+    Storage overMissing = Storage.createReadOnlyPersistent(missing);
+    assertFalse(overMissing.isExist(1L));
+    assertFalse(Files.exists(missing));
+  }
+
+  private static Path objectPath(Storage storage, Long id) {
+    return ((LocalFileSystemStorage) storage).objectPath(id);
+  }
+
   private List<Path> listFiles() throws IOException {
-    try (Stream<Path> files = Files.list(directory)) {
-      return files.toList();
+    try (Stream<Path> files = Files.walk(directory)) {
+      return files.filter(Files::isRegularFile).toList();
     }
   }
 

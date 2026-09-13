@@ -296,7 +296,8 @@ class MultipartObjectContentTest {
   }
 
   private static long countFiles(Path directory) throws IOException {
-    try (Stream<Path> files = Files.list(directory)) {
+    // The object files are spread over subdirectories.
+    try (Stream<Path> files = Files.walk(directory)) {
       return files.filter(Files::isRegularFile).count();
     }
   }

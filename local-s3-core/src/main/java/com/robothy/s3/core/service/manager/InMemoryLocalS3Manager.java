@@ -62,7 +62,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
       if (enableInitialDataCache) {
         InitialDataCache.CacheValue cacheValue = cache.computeIfAbsent(absPath, key -> {
           LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
-          Storage persistent = Storage.createPersistent(storagePath);
+          Storage persistent = Storage.createReadOnlyPersistent(storagePath);
           // Copies of the objects of the persistent storage reduce disk I/O, within the byte budget of the cache.
           return new InitialDataCache.CacheValue(metadata, Storage.createCopyOnAccess(persistent, cache));
         });
@@ -70,7 +70,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
         this.s3Metadata = cacheValue.metadata();
 
       } else {
-        this.storage = Storage.createLayered(Storage.createInMemory(), Storage.createPersistent(storagePath));
+        this.storage = Storage.createLayered(Storage.createInMemory(), Storage.createReadOnlyPersistent(storagePath));
         this.s3Metadata = loadS3Metadata(initialDataPath);
       }
 

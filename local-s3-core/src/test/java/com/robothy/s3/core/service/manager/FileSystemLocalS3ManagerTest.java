@@ -172,8 +172,9 @@ class FileSystemLocalS3ManagerTest {
   }
 
   private Set<Path> storedObjects() throws IOException {
-    try (Stream<Path> files = Files.list(dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY))) {
-      return files.collect(Collectors.toSet());
+    // The object files are spread over subdirectories.
+    try (Stream<Path> files = Files.walk(dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY))) {
+      return files.filter(Files::isRegularFile).collect(Collectors.toSet());
     }
   }
 

@@ -11,13 +11,28 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * An implementation of {@linkplain Storage} based on a local directory.
  *
  * <p>Objects are written to a temporary file first, which then replaces the object file. If the
  * process dies while writing, the object file keeps its previous content or doesn't exist at all.
+ *
+ * <p>The object files are spread over two levels of subdirectories, {@code ab/cd/<id>}, so that no directory holds
+ * more than a small share of the objects: a directory with millions of entries is slow to list, and slow to look files
+ * up in on some file systems. The subdirectories are named by a hash of the ID rather than by its bits, since the high
+ * bits of the IDs of the generator are a timestamp, and the low bits a sequence that is mostly zero, so either would
+ * put the objects stored around the same time in the same directory.
+ *
+ * <p>A storage of a LocalS3 before 2.5 kept every object file directly in the directory. Such files are still found,
+ * and a writable storage moves them into their subdirectories when it is created, renaming one at a time, so that a
+ * process that dies meanwhile leaves every object readable in one place or the other.
+ *
+ * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
+ * anything in its directory: it reads objects in either layout, and rejects writes.
  */
+@Slf4j
 class LocalFileSystemStorage implements Storage {
 
   /**
@@ -25,18 +40,44 @@ class LocalFileSystemStorage implements Storage {
    */
   private static final String TEMP_FILE_SUFFIX = ".tmp";
 
+  private static final String[] SHARD_NAMES = new String[256];
+
+  static {
+    for (int i = 0; i < SHARD_NAMES.length; i++) {
+      SHARD_NAMES[i] = String.format("%02x", i);
+    }
+  }
+
   private final Path directory;
+
+  private final boolean readOnly;
+
+  /**
+   * Construct a writable {@linkplain LocalFileSystemStorage} instance. The directory is created if it doesn't exist,
+   * the temporary files that a process which died left behind are deleted, and the object files of the flat layout of
+   * a LocalS3 before 2.5 are moved into their subdirectories.
+   *
+   * @param dataPath the path is where data stores in.
+   */
+  public LocalFileSystemStorage(Path dataPath) {
+    this(dataPath, false);
+  }
 
   /**
    * Construct a {@linkplain LocalFileSystemStorage} instance.
    *
    * @param dataPath the path is where data stores in.
+   * @param readOnly whether the storage only reads the objects of the directory, which it then neither creates nor
+   *     changes.
    */
-  public LocalFileSystemStorage(Path dataPath) {
-    Objects.requireNonNull(dataPath);
-    this.directory = dataPath;
-    PathUtils.createDirectoryIfNotExit(directory);
-    deleteTempFiles();
+  LocalFileSystemStorage(Path dataPath, boolean readOnly) {
+    this.directory = Objects.requireNonNull(dataPath);
+    this.readOnly = readOnly;
+    if (!readOnly) {
+      PathUtils.createDirectoryIfNotExit(directory);
+      deleteTempFiles();
+      moveFlatObjectFilesIntoSubdirectories();
+    }
   }
 
   @Override
@@ -46,10 +87,13 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public Long put(Long id, InputStream data) {
+    ensureWritable();
     Path temp = directory.resolve("." + id + "." + UUID.randomUUID() + TEMP_FILE_SUFFIX);
     try (InputStream in = data) {
       Files.copy(in, temp);
-      PathUtils.moveAtomically(temp, objectPath(id));
+      Path target = createObjectDirectory(id);
+      PathUtils.moveAtomically(temp, target);
+      deleteFlatObjectFile(id);
     } catch (IOException e) {
       deleteQuietly(temp, e);
       throw new UncheckedIOException("Failed to store object " + id + ".", e);
@@ -67,8 +111,10 @@ class LocalFileSystemStorage implements Storage {
    */
   @Override
   public Long put(Long id, Path file) {
+    ensureWritable();
     try {
-      Files.move(file, objectPath(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(file, createObjectDirectory(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      deleteFlatObjectFile(id);
       return id;
     } catch (IOException | UnsupportedOperationException e) {
       // The file is left where it was; copy it.
@@ -82,9 +128,9 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public long size(Long id) {
-    ensureExists(id);
+    Path path = existingObjectPath(id);
     try {
-      return Files.size(objectPath(id));
+      return Files.size(path);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read the size of object " + id + ".", e);
     }
@@ -92,9 +138,9 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public byte[] getBytes(Long id) {
-    ensureExists(id);
+    Path path = existingObjectPath(id);
     try {
-      return Files.readAllBytes(objectPath(id));
+      return Files.readAllBytes(path);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read object " + id + ".", e);
     }
@@ -107,9 +153,9 @@ class LocalFileSystemStorage implements Storage {
    */
   @Override
   public InputStream getInputStream(Long id) {
-    ensureExists(id);
+    Path path = existingObjectPath(id);
     try {
-      return FileRegionInputStream.open(objectPath(id));
+      return FileRegionInputStream.open(path);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to open object " + id + ".", e);
     }
@@ -117,9 +163,9 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public InputStream getInputStream(Long id, long position, long length) {
-    ensureExists(id);
+    Path path = existingObjectPath(id);
     try {
-      return FileRegionInputStream.open(objectPath(id), position, length);
+      return FileRegionInputStream.open(path, position, length);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to open object " + id + ".", e);
     }
@@ -127,9 +173,14 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public Long delete(Long id) {
-    ensureExists(id);
+    existingObjectPath(id);
+    ensureWritable();
     try {
-      PathUtils.delete(objectPath(id));
+      // An emptied subdirectory is kept: another object may be stored in it at the same time.
+      if (Files.exists(objectPath(id))) {
+        PathUtils.delete(objectPath(id));
+      }
+      deleteFlatObjectFile(id);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to delete object " + id + ".", e);
     }
@@ -138,16 +189,125 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public boolean isExist(Long id) {
-    return Files.exists(objectPath(id));
+    return Files.exists(objectPath(id)) || Files.exists(flatObjectPath(id));
   }
 
-  private Path objectPath(Long id) {
+  /**
+   * The file of an object: {@code <directory>/ab/cd/<id>}, where {@code ab} and {@code cd} are the two highest bytes of
+   * {@linkplain #shardHash(long) the hash of the ID}, as two lowercase hex digits each.
+   */
+  Path objectPath(Long id) {
+    long hash = shardHash(id);
+    return directory.resolve(SHARD_NAMES[(int) (hash >>> 56)])
+        .resolve(SHARD_NAMES[(int) (hash >>> 48) & 0xff])
+        .resolve(String.valueOf(id));
+  }
+
+  /**
+   * The finalizer of MurmurHash3 ({@code fmix64}), whose every output bit depends on every input bit, so the
+   * subdirectories are used evenly whatever the IDs have in common, e.g. the IDs generated in a burst, which differ
+   * only in their low bits. Fibonacci hashing, i.e. a single multiplication, leaves about a fifth of the subdirectories
+   * unused for such IDs. The hash decides where the objects that are already stored are, so it must never change.
+   */
+  static long shardHash(long id) {
+    long hash = id;
+    hash ^= hash >>> 33;
+    hash *= 0xff51afd7ed558ccdL;
+    hash ^= hash >>> 33;
+    hash *= 0xc4ceb9fe1a85ec53L;
+    hash ^= hash >>> 33;
+    return hash;
+  }
+
+  /**
+   * The file of an object in the flat layout of a LocalS3 before 2.5.
+   */
+  private Path flatObjectPath(Long id) {
     return directory.resolve(String.valueOf(id));
   }
 
-  private void ensureExists(Long id) {
-    if (!isExist(id)) {
-      throw new IllegalArgumentException("Object id='" + id + "' not exist.");
+  /**
+   * The file that holds an object, in either layout.
+   *
+   * @throws IllegalArgumentException if the object doesn't exist.
+   */
+  private Path existingObjectPath(Long id) {
+    Path path = objectPath(id);
+    if (Files.exists(path)) {
+      return path;
+    }
+    Path flat = flatObjectPath(id);
+    if (Files.exists(flat)) {
+      return flat;
+    }
+    throw new IllegalArgumentException("Object id='" + id + "' not exist.");
+  }
+
+  /**
+   * Create the subdirectories of an object, if they don't exist.
+   *
+   * @return the file of the object.
+   */
+  private Path createObjectDirectory(Long id) throws IOException {
+    Path path = objectPath(id);
+    Files.createDirectories(path.getParent());
+    return path;
+  }
+
+  /**
+   * Delete the file of an object in the flat layout, which an object stored again replaces.
+   */
+  private void deleteFlatObjectFile(Long id) throws IOException {
+    Path flat = flatObjectPath(id);
+    if (Files.isRegularFile(flat)) {
+      PathUtils.delete(flat);
+    }
+  }
+
+  private void ensureWritable() {
+    if (readOnly) {
+      throw new UnsupportedOperationException("The storage of " + directory + " is read-only.");
+    }
+  }
+
+  /**
+   * Move the object files of the flat layout of a LocalS3 before 2.5 into their subdirectories. Each file is renamed
+   * atomically, so an object is always in one of the layouts, which both are read.
+   */
+  private void moveFlatObjectFilesIntoSubdirectories() {
+    long moved = 0;
+    long start = System.nanoTime();
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory, LocalFileSystemStorage::isFlatObjectFile)) {
+      for (Path file : entries) {
+        long id = Long.parseLong(file.getFileName().toString());
+        PathUtils.moveAtomically(file, createObjectDirectory(id));
+        moved++;
+      }
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to move the object files of " + directory + " into subdirectories.", e);
+    }
+    if (moved > 0) {
+      log.info("Moved {} object files of {} into subdirectories in {} ms.", moved, directory,
+          (System.nanoTime() - start) / 1_000_000);
+    }
+  }
+
+  private static boolean isFlatObjectFile(Path path) {
+    String name = path.getFileName().toString();
+    if (name.isEmpty() || name.length() > 19 || !Files.isRegularFile(path)) {
+      return false;
+    }
+    for (int i = 0; i < name.length(); i++) {
+      if (name.charAt(i) < '0' || name.charAt(i) > '9') {
+        return false;
+      }
+    }
+    try {
+      Long.parseLong(name);
+      return true;
+    } catch (NumberFormatException e) {
+      // Too large to be an ID.
+      return false;
     }
   }
 

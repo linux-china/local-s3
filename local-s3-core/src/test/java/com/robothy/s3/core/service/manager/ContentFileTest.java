@@ -114,7 +114,8 @@ class ContentFileTest {
   }
 
   private static long countObjects(Path storageDirectory) throws IOException {
-    try (Stream<Path> files = Files.list(storageDirectory)) {
+    // The object files are spread over subdirectories; the directory of the request bodies holds none.
+    try (Stream<Path> files = Files.walk(storageDirectory)) {
       return files.filter(Files::isRegularFile).count();
     }
   }

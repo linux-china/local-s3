@@ -204,8 +204,9 @@ class ConditionalPutObjectServiceTest extends LocalS3ServiceTestBase {
   }
 
   private static long storedObjects(Path storage) throws IOException {
-    try (var files = Files.list(storage)) {
-      return files.count();
+    // The object files are spread over subdirectories.
+    try (var files = Files.walk(storage)) {
+      return files.filter(Files::isRegularFile).count();
     }
   }
 

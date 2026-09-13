@@ -50,6 +50,17 @@ public interface Storage {
   }
 
   /**
+   * Create a persistent storage that only reads the objects of a directory, e.g. the initial data of an
+   * {@code IN_MEMORY} service: the directory is neither created nor changed, and storing or deleting an object fails.
+   *
+   * @param path where the data is stored.
+   * @return a {@linkplain Storage} instance.
+   */
+  static Storage createReadOnlyPersistent(Path path) {
+    return new LocalFileSystemStorage(path, true);
+  }
+
+  /**
    * Create a {@linkplain LayeredStorage} instance.
    *
    * @param frontend the fronted storage of the created instance.
