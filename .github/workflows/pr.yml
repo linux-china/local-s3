@@ -71,7 +71,7 @@ jobs:
       # below publishes the results of every module that ran.
       - name: Build and test the Docker image
         if: runner.os == 'Linux'
-        run: ./gradlew mergeReports :local-s3-docker:dockerImageTest --continue
+        run: ./gradlew mergeReports :local-s3-standalone:dockerImageTest --continue
 
       # The image tests are left to the Linux job. The rest of the suite runs, which is what covers the file
       # handling that Windows needs; `mergeReports` doesn't reach a Docker daemon.

@@ -21,7 +21,7 @@ allprojects {
 
 // The code of the container entry point is left out of the coverage report: the tests of that module
 // run the built images rather than the classes of the module.
-def modulesWithoutCoverage = ['local-s3-docker']
+def modulesWithoutCoverage = ['local-s3-standalone']
 
 /**
  * Aggregates the coverage that the `test` task of every module recorded.
@@ -29,7 +29,7 @@ def modulesWithoutCoverage = ['local-s3-docker']
  * The inputs are contributed below, from those tasks and their source sets, rather than globbed from the
  * project tree. A file tree rooted at the whole repository contains the output of every other task as
  * well, so Gradle rejects the build with an undeclared dependency as soon as one of them runs in the same
- * invocation, e.g. `./gradlew mergeReports :local-s3-docker:dockerImageTest`, which is what CI runs. That
+ * invocation, e.g. `./gradlew mergeReports :local-s3-standalone:dockerImageTest`, which is what CI runs. That
  * only surfaced once the build was configured to run in parallel: a serial build without the
  * configuration cache happened to order the two tasks the other way round, so the report was merged after
  * the other task had written its output rather than while it was writing it.
