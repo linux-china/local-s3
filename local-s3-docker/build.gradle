@@ -17,6 +17,13 @@ dependencies {
 
 jar {
     manifest.attributes["Main-Class"] = "com.robothy.s3.docker.App"
+    // Mapping the runtime classpath to the file trees that the fat jar is packed from turns it into plain
+    // files, which no longer carry the tasks that build the jars of the other modules, so the configuration
+    // is declared as a dependency of this task as well. Nothing else orders those tasks before this one:
+    // the other modules are java-library projects, so compiling this one consumes their class directories
+    // rather than their jars, and without this the fat jar is packed from whatever jars a previous build
+    // happened to leave behind.
+    dependsOn(configurations.runtimeClasspath)
     var runtimeClasses = configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     from runtimeClasses
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -195,3 +202,4 @@ tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
 
 
 rootProject.tasks.release.dependsOn(buildAndPushMultiPlatformDockerImage, pushGraalVMNativeBasedDockerImage)
+

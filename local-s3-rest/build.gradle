@@ -1,11 +1,15 @@
 plugins {
+    id 'java-library'
     id 'local-s3.java-conventions'
     id 'local-s3.publish'
 }
 
 dependencies {
-    implementation project(":local-s3-core")
-    implementation project(":local-s3-datatypes")
+    // Types of the public API: LocalS3.getS3Manager() returns LocalS3Manager, the controllers take and
+    // return the model types of both modules, and the exceptions of the core travel out of them.
+    api project(":local-s3-core")
+    api project(":local-s3-datatypes")
+
     // Keep every netty module on one version, including the ones that another library on the classpath
     // brings, e.g. the netty 4.1 modules of the AWS SDK's netty-nio-client. Mixing them fails at runtime:
     // netty 4.2 moved io.netty.handler.codec.DefaultHeaders to netty-codec-base, so a netty 4.1 netty-codec
@@ -14,22 +18,30 @@ dependencies {
     implementation(platform(libs.nettyBom))
 
     // Only the netty modules that LocalS3 uses: the HTTP codec, the handlers that write chunked responses,
-    // close idle connections and log, and the NIO transport.
-    implementation(libs.nettyCodecHttp)
-    implementation(libs.nettyHandler)
-    implementation(libs.nettyTransport)
-    implementation(libs.jacksonDataformatXml)
-    implementation(libs.jacksonDatabind)
+    // close idle connections and log, and the NIO transport. They are part of the public API: the channel
+    // handlers of the server extend netty's, and ByteBufUtils returns a ByteBuf.
+    api(libs.nettyCodecHttp)
+    api(libs.nettyHandler)
+    api(libs.nettyTransport)
+
+    // Types of the public API: the XmlMapper that the handler base classes hold, and the ObjectMapper that
+    // HttpRequestUtils takes.
+    api(libs.jacksonDataformatXml)
+    api(libs.jacksonDatabind)
+
+    // Types of the public API: the request handlers implement HttpRequestHandler, and the router factory
+    // returns a Router.
+    api(libs.nettyHttpRouter) {
+        exclude(group: "org.springframework", module: "spring-web")
+        // It depends on netty-all, which would bring every netty module back.
+        exclude(group: "io.netty", module: "netty-all")
+    }
+
     implementation(libs.jacksonDatatypeJdk8)
     implementation(libs.jacksonDatatypeJsr310)
     implementation(libs.commonsIo)
     implementation(libs.apacheCommonsLang3)
     implementation(libs.apacheCommonsCollections4)
     implementation(libs.jspecify)
-    implementation(libs.nettyHttpRouter) {
-        exclude(group: "org.springframework", module: "spring-web")
-        // It depends on netty-all, which would bring every netty module back.
-        exclude(group: "io.netty", module: "netty-all")
-    }
     testImplementation(libs.mockitoCore)
 }

@@ -1,12 +1,19 @@
 plugins {
+    id 'java-library'
     id 'local-s3.java-conventions'
     id 'local-s3.publish'
 }
 
 dependencies {
-    implementation project(":local-s3-datatypes")
+    // Types of the public API: BucketMetadata returns AccessControlPolicy and CORSConfiguration, and the
+    // S3 Vectors services take and return the request and response types of that module.
+    api project(":local-s3-datatypes")
+
+    // Types of the public API: JsonNode is the metadata of a vector and the filter of QueryVectors, and the
+    // metadata converters extend StdConverter.
+    api(libs.jacksonDatabind)
+
     implementation(libs.jacksonDatatypeJdk8)
-    implementation(libs.jacksonDatabind)
     implementation(libs.commonsIo)
     implementation(libs.apacheCommonsLang3)
     implementation(libs.apacheCommonsCodec)

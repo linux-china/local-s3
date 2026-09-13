@@ -1,11 +1,15 @@
 plugins {
+    id 'java-library'
     id 'local-s3.java-conventions'
     id 'local-s3.publish'
 }
 
 dependencies {
+    // Types of the public API: the serializers and deserializers of the model extend Jackson's
+    // StdSerializer, StdDeserializer and JsonSerializer, and take JsonGenerator and SerializerProvider.
+    api(libs.jacksonDatabind)
+
     implementation(libs.jacksonDatatypeJdk8)
-    implementation(libs.jacksonDatabind)
     implementation(libs.jacksonDataformatXml)
     implementation(libs.jacksonDatatypeJsr310)
     implementation(libs.commonsIo)
