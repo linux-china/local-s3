@@ -118,7 +118,8 @@ public class S3EventListenerIntegrationTest {
     assertEquals("CompleteMultipartUpload", multipart.getSource());
     assertEquals("big.bin", multipart.getObjectKey());
     assertEquals((long) firstPart.length + lastPart.length, multipart.getSize());
-    assertEquals(completed.eTag(), multipart.getEtag());
+    // An event reports the entity tag without its quotes, like the eTag of an Amazon S3 event notification.
+    assertEquals(Etags.unquoted(completed.eTag()), multipart.getEtag());
 
     s3.deleteObject(request -> request.bucket(BUCKET).key("a.txt"));
     ObjectEvent delete = lastObjectEvent();

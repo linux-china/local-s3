@@ -1,7 +1,6 @@
 package com.robothy.s3.test;
 
 import com.robothy.s3.jupiter.LocalS3;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -35,7 +34,7 @@ public class ListObjectsIntegrationTest {
     assertNull(objectListing.delimiter());
     S3Object keyObj = objectListing.contents().get(0);
     assertEquals("a.txt", keyObj.key());
-    assertEquals(DigestUtils.md5Hex("Hello"), keyObj.eTag().replace("\"", ""));
+    assertEquals(Etags.md5("Hello"), keyObj.eTag());
     assertEquals(5, keyObj.size());
     assertEquals("STANDARD", keyObj.storageClass().toString());
     assertNotNull(keyObj.lastModified());
@@ -53,11 +52,9 @@ public class ListObjectsIntegrationTest {
     assertEquals("my-bucket", objectListing.name());
     assertEquals(2, objectListing.contents().size());
     assertEquals("dir1/a.txt", objectListing.contents().get(0).key());
-    assertEquals(DigestUtils.md5Hex("Content A"), 
-                objectListing.contents().get(0).eTag().replace("\"", ""));
+    assertEquals(Etags.md5("Content A"), objectListing.contents().get(0).eTag());
     assertEquals("dir1/b.txt", objectListing.contents().get(1).key());
-    assertEquals(DigestUtils.md5Hex("Content B"), 
-                objectListing.contents().get(1).eTag().replace("\"", ""));
+    assertEquals(Etags.md5("Content B"), objectListing.contents().get(1).eTag());
     assertEquals(0, objectListing.commonPrefixes().size());
 
     // Test pagination

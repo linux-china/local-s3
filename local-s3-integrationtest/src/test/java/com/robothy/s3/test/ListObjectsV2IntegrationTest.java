@@ -2,7 +2,6 @@ package com.robothy.s3.test;
 
 import com.robothy.s3.jupiter.LocalS3;
 import java.util.List;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -45,7 +44,7 @@ public class ListObjectsV2IntegrationTest {
     assertNull(result1.startAfter());
 
     assertEquals("dir1/key1", result1.contents().get(0).key());
-    assertNotNull(DigestUtils.md5Hex("Content"), result1.contents().get(0).eTag());
+    assertEquals(Etags.md5("Content"), result1.contents().get(0).eTag());
     assertEquals(7, result1.contents().get(0).size());
     assertNotNull(result1.contents().get(0).lastModified());
     assertNotNull(result1.contents().get(0).storageClass());

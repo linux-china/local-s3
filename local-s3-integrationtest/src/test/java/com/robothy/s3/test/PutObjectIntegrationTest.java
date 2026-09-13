@@ -5,7 +5,6 @@ import static software.amazon.awssdk.http.SdkHttpConfigurationOption.TRUST_ALL_C
 import com.robothy.s3.jupiter.LocalS3;
 import com.robothy.s3.jupiter.LocalS3Endpoint;
 import java.net.URI;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -40,7 +39,7 @@ public class PutObjectIntegrationTest {
     assertTrue(s3.headObject(b -> b.bucket(bucketName).key("hello.txt")).hasMetadata());
     ResponseBytes<GetObjectResponse> object = s3.getObjectAsBytes(b -> b.bucket(bucketName).key("hello.txt"));
     assertArrayEquals("Hello".getBytes(), object.asByteArray());
-    assertEquals(DigestUtils.md5Hex("Hello"), object.response().eTag());
+    assertEquals(Etags.md5("Hello"), object.response().eTag());
 
     // test put object with tagging
     Map<String, String> metadata = Map.of("key1", "value1", "key2", "value2");

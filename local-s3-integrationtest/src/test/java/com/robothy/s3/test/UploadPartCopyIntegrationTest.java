@@ -68,8 +68,8 @@ public class UploadPartCopyIntegrationTest {
     // The ETag of a part is the one of the copied bytes, not the one of the whole source object.
     assertNotNull(first.copyPartResult().eTag());
     assertNotNull(first.copyPartResult().lastModified());
-    assertTrue(first.copyPartResult().eTag().contains(md5("0123456789")), first.copyPartResult().eTag());
-    assertTrue(second.copyPartResult().eTag().contains(md5("abcdefghij")), second.copyPartResult().eTag());
+    assertEquals(Etags.md5("0123456789"), first.copyPartResult().eTag());
+    assertEquals(Etags.md5("abcdefghij"), second.copyPartResult().eTag());
 
     s3.completeMultipartUpload(b -> b.bucket(BUCKET).key(TARGET_KEY).uploadId(uploadId)
         .multipartUpload(CompletedMultipartUpload.builder().parts(
@@ -219,10 +219,6 @@ public class UploadPartCopyIntegrationTest {
     assertEquals(416, thrown.statusCode());
     // The upload keeps the parts it had, so nothing was committed.
     assertEquals(List.of(), s3.listParts(b -> b.bucket(BUCKET).key(TARGET_KEY).uploadId(uploadId)).parts());
-  }
-
-  private static String md5(String content) {
-    return org.apache.commons.codec.digest.DigestUtils.md5Hex(content);
   }
 
 }

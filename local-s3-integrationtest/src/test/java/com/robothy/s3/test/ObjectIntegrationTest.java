@@ -28,7 +28,6 @@ import java.util.Random;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.commons.util.StringUtils;
 
@@ -48,7 +47,7 @@ public class ObjectIntegrationTest {
     // The bucket was never versioned, so the object has no version and no x-amz-version-id is sent.
     assertNull(objectBytes.response().versionId());
     assertEquals("Text1", objectBytes.asUtf8String());
-    assertEquals(DigestUtils.md5Hex("Text1"), objectBytes.response().eTag());
+    assertEquals(Etags.md5("Text1"), objectBytes.response().eTag());
 
     s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromString("Text2"));
     ResponseBytes<GetObjectResponse> objectBytes1 = s3.getObject(
@@ -151,7 +150,7 @@ public class ObjectIntegrationTest {
         .objectAttributes(ObjectAttributes.E_TAG, ObjectAttributes.OBJECT_SIZE, ObjectAttributes.STORAGE_CLASS)
         .build());
 
-    assertEquals(DigestUtils.md5Hex(content), attributes.eTag());
+    assertEquals(Etags.md5(content), attributes.eTag());
     assertEquals(content.length(), attributes.objectSize());
     assertEquals(StorageClass.STANDARD, attributes.storageClass());
     // The bucket was never versioned, so the object has no version.
@@ -163,7 +162,7 @@ public class ObjectIntegrationTest {
         .key(key)
         .objectAttributes(ObjectAttributes.E_TAG)
         .build());
-    assertEquals(DigestUtils.md5Hex(content), etagOnly.eTag());
+    assertEquals(Etags.md5(content), etagOnly.eTag());
   }
 
   @Test
@@ -185,7 +184,7 @@ public class ObjectIntegrationTest {
     assertEquals(3, versionListing1.versions().size());
     assertEquals(1, versionListing1.deleteMarkers().size());
 
-    assertEquals(DigestUtils.md5Hex("Text3"), versionListing1.versions().get(0).eTag());
+    assertEquals(Etags.md5("Text3"), versionListing1.versions().get(0).eTag());
     assertTrue(versionListing1.versions().get(0).isLatest());
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());
     assertEquals(5, versionListing1.versions().get(0).size());
@@ -195,13 +194,13 @@ public class ObjectIntegrationTest {
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());
     assertFalse(versionListing1.deleteMarkers().get(0).isLatest());
 
-    assertEquals(DigestUtils.md5Hex("Text2"), versionListing1.versions().get(1).eTag());
+    assertEquals(Etags.md5("Text2"), versionListing1.versions().get(1).eTag());
     assertFalse(versionListing1.versions().get(1).isLatest());
     assertEquals("dir1/key1", versionListing1.versions().get(1).key());
     assertEquals(5, versionListing1.versions().get(1).size());
     assertEquals(putObjectResult2.versionId(), versionListing1.versions().get(1).versionId());
 
-    assertEquals(DigestUtils.md5Hex("Text1"), versionListing1.versions().get(2).eTag());
+    assertEquals(Etags.md5("Text1"), versionListing1.versions().get(2).eTag());
     assertFalse(versionListing1.versions().get(2).isLatest());
     assertEquals("dir1/key1", versionListing1.versions().get(2).key());
     assertEquals(5, versionListing1.versions().get(2).size());
@@ -418,11 +417,11 @@ public class ObjectIntegrationTest {
 
     PutObjectResponse putResponse = s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(),
         RequestBody.fromBytes(data));
-    assertEquals(DigestUtils.md5Hex(data), putResponse.eTag());
+    assertEquals(Etags.md5(data), putResponse.eTag());
 
     ResponseBytes<GetObjectResponse> object = s3.getObject(
         GetObjectRequest.builder().bucket(bucket).key(key).build(), ResponseTransformer.toBytes());
-    assertEquals(DigestUtils.md5Hex(data), object.response().eTag());
+    assertEquals(Etags.md5(data), object.response().eTag());
     assertArrayEquals(data, object.asByteArray());
 
     int start = 10 * 1024 * 1024 + 7;
