@@ -2,6 +2,8 @@ package io.github.robothy.s3.extensions;
 
 import io.github.robothy.s3.RealS3;
 import java.util.Optional;
+
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
@@ -24,7 +26,7 @@ public abstract class AbstractRealS3ParameterResolver implements ParameterResolv
   public static final String AWS_SESSION_TOKEN_ENV = "AWS_SESSION_TOKEN";
 
   @Override
-  public final Object resolveParameter(ParameterContext parameterContext, ExtensionContext extensionContext)
+  public final Object resolveParameter(@NonNull ParameterContext parameterContext, @NonNull ExtensionContext extensionContext)
       throws ParameterResolutionException {
     RealS3 config = RealS3Extension.getRealS3Config(extensionContext);
     if (config == null) {
@@ -77,6 +79,6 @@ public abstract class AbstractRealS3ParameterResolver implements ParameterResolv
 
     // Fall back to default credentials provider chain
     // This will try environment variables, system properties, profile files, IAM roles, etc.
-    return DefaultCredentialsProvider.create();
+    return DefaultCredentialsProvider.builder().build();
   }
 }
