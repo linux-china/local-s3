@@ -16,8 +16,8 @@ import org.junit.jupiter.api.Test;
  */
 class AppTest {
 
-  private static final List<String> VARIABLES = List.of(App.LOCAL_S3_PORT, App.LOCAL_S3_MODE,
-      App.LOCAL_S3_DATA_PATH, App.LOCAL_S3_STRICT_BUCKET_NAMES, App.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
+  private static final List<String> VARIABLES = List.of(LocalS3.LOCAL_S3_PORT, LocalS3.LOCAL_S3_MODE,
+          LocalS3.LOCAL_S3_DATA_PATH, LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES, LocalS3.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
 
   @AfterEach
   void clearVariables() {
@@ -39,11 +39,11 @@ class AppTest {
 
   @Test
   void readsLocalS3Variables() {
-    System.setProperty(App.LOCAL_S3_PORT, "29500");
-    System.setProperty(App.LOCAL_S3_MODE, "in_memory");
-    System.setProperty(App.LOCAL_S3_DATA_PATH, "/var/lib/local-s3");
-    System.setProperty(App.LOCAL_S3_STRICT_BUCKET_NAMES, "true");
-    System.setProperty(App.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local");
+    System.setProperty(LocalS3.LOCAL_S3_PORT, "29500");
+    System.setProperty(LocalS3.LOCAL_S3_MODE, "in_memory");
+    System.setProperty(LocalS3.LOCAL_S3_DATA_PATH, "/var/lib/local-s3");
+    System.setProperty(LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES, "true");
+    System.setProperty(LocalS3.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local");
 
     LocalS3 localS3 = App.configure().build();
 
@@ -57,12 +57,12 @@ class AppTest {
 
   @Test
   void rejectsInvalidValues() {
-    System.setProperty(App.LOCAL_S3_MODE, "CLOUD");
+    System.setProperty(LocalS3.LOCAL_S3_MODE, "CLOUD");
     assertThrows(IllegalArgumentException.class, App::configure);
-    System.clearProperty(App.LOCAL_S3_MODE);
+    System.clearProperty(LocalS3.LOCAL_S3_MODE);
 
     for (String port : List.of("0", "65536", "http")) {
-      System.setProperty(App.LOCAL_S3_PORT, port);
+      System.setProperty(LocalS3.LOCAL_S3_PORT, port);
       assertThrows(IllegalArgumentException.class, App::configure, port);
     }
   }

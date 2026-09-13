@@ -11,20 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class App {
 
-    /*
-     * The variables that configure the service are defined by LocalS3, so that an embedded service or a test
-     * is configured with the same names and values as this image.
-     */
-
-    static final String LOCAL_S3_PORT = LocalS3.LOCAL_S3_PORT;
-    static final String LOCAL_S3_MODE = LocalS3.LOCAL_S3_MODE;
-    static final String LOCAL_S3_DATA_PATH = LocalS3.LOCAL_S3_DATA_PATH;
-    static final String LOCAL_S3_STRICT_BUCKET_NAMES = LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES;
-    static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = LocalS3.LOCAL_S3_VIRTUAL_HOST_DOMAINS;
-    static final String AWS_BUCKETS = LocalS3.AWS_BUCKETS;
-    static final String AWS_ACCESS_KEY_ID = LocalS3.AWS_ACCESS_KEY_ID;
-    static final String AWS_SECRET_ACCESS_KEY = LocalS3.AWS_SECRET_ACCESS_KEY;
-
     static final int DEFAULT_PORT = 29090;
     static final String DEFAULT_DATA_PATH = "/data";
 
