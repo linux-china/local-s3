@@ -24,6 +24,17 @@ public interface RequestHeadVerifier {
   Rejection verifyHead(HttpRequest head);
 
   /**
+   * Called once the body of a request whose head was accepted is received, with the complete request, before the
+   * request is handed on. A verifier that keeps what it verified in the head can hand it on to the request here, so
+   * that the verification of the complete request doesn't repeat it. The default does nothing.
+   *
+   * @param head the head that {@linkplain #verifyHead} accepted.
+   * @param request the complete request, with the headers, the parameters and the URI of the head, and its body.
+   */
+  default void requestReceived(HttpRequest head, HttpRequest request) {
+  }
+
+  /**
    * Why a request is rejected.
    *
    * @param errorCode the S3 error to respond with.

@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -55,6 +57,21 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   private final Map<Route, String> operations = new IdentityHashMap<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
+
+  /**
+   * The verified heads of the requests whose bodies are being received, by the head that the decoder verified.
+   * Weak, and compared by identity, since {@linkplain HttpRequest} doesn't override {@code equals}: an entry is dropped
+   * with a request that is abandoned, e.g. by a closed connection, and no request of a client can reach another's.
+   */
+  private final Map<HttpRequest, AwsSignatureV4Verifier.VerifiedHead> headsBeingReceived =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
+  /**
+   * The verified heads of the requests whose bodies are received, by the complete request, which
+   * {@linkplain #match} verifies only the body of.
+   */
+  private final Map<HttpRequest, AwsSignatureV4Verifier.VerifiedHead> receivedRequests =
+      Collections.synchronizedMap(new WeakHashMap<>());
 
   private final VirtualHostParser virtualHostParser;
 
@@ -119,7 +136,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   @Override
   public HttpRequestHandler match(HttpRequest request) {
     if (requiresAuthentication(request)) {
-      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      // A request whose head was verified before its body was received has only its body verified.
+      AwsSignatureV4Verifier.VerificationResult result =
+          signatureVerifier.verifyBody(request, receivedRequests.remove(request));
       if (!result.authenticated()) {
         return new AuthenticationFailureHandler(result);
       }
@@ -134,15 +153,30 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   /**
    * Verify the signature of a request before its body is received, so that a request with an invalid signature
-   * doesn't get to upload its body. {@linkplain #match} verifies the request again, including its body.
+   * doesn't get to upload its body. What was verified is kept, and handed to the complete request by
+   * {@linkplain #requestReceived}, so that {@linkplain #match} only verifies what depends on the body: the payload hash
+   * and the chunk signatures.
    */
   @Override
   public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
     if (!requiresAuthentication(head)) {
       return null;
     }
-    AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verifyHead(head);
-    return result.authenticated() ? null : new RequestHeadVerifier.Rejection(result.errorCode(), result.message());
+    AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);
+    AwsSignatureV4Verifier.VerificationResult result = verification.result();
+    if (!result.authenticated()) {
+      return new RequestHeadVerifier.Rejection(result.errorCode(), result.message());
+    }
+    headsBeingReceived.put(head, verification.verifiedHead());
+    return null;
+  }
+
+  @Override
+  public void requestReceived(HttpRequest head, HttpRequest request) {
+    AwsSignatureV4Verifier.VerifiedHead verifiedHead = headsBeingReceived.remove(head);
+    if (verifiedHead != null) {
+      receivedRequests.put(request, verifiedHead);
+    }
   }
 
   private boolean requiresAuthentication(HttpRequest request) {

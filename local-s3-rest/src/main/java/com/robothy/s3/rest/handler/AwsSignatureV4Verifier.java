@@ -47,6 +47,7 @@ final class AwsSignatureV4Verifier {
   private static final DateTimeFormatter AMZ_DATE_FORMAT =
       DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
   private static final Pattern WHITESPACE = Pattern.compile("[\\t\\n\\r ]+");
+  private static final Pattern HEX_SHA256 = Pattern.compile("[0-9a-fA-F]{64}");
 
   private final String accessKeyId;
   private final String secretAccessKey;
@@ -72,23 +73,55 @@ final class AwsSignatureV4Verifier {
    * Verify a request, including its body.
    */
   VerificationResult verify(HttpRequest request) {
-    return verify(request, true);
+    return verifyBody(request, null);
   }
 
   /**
    * Verify the head of a request before its body is received, so that a request with an invalid signature is
    * rejected before it uploads its body. Everything but the body is verified: the signature is calculated with the
-   * payload hash of {@code x-amz-content-sha256}, which {@linkplain #verify} checks against the body later, as well
+   * payload hash of {@code x-amz-content-sha256}, which {@linkplain #verifyBody} checks against the body later, as well
    * as the chunk signatures. Without {@code x-amz-content-sha256}, the signature covers the hash of the body, so
    * only the credential, the request time and the signed headers are verified.
    *
    * @param head the request; its body is ignored.
    */
   VerificationResult verifyHead(HttpRequest head) {
-    return verify(head, false);
+    return verifyHeadForBody(head).result();
   }
 
-  private VerificationResult verify(HttpRequest request, boolean bodyReceived) {
+  /**
+   * Verify the head of a request like {@linkplain #verifyHead}, and keep what verifying its body needs, so that
+   * {@linkplain #verifyBody} doesn't verify the head a second time once the body is received.
+   *
+   * @param head the request; its body is ignored.
+   * @return the result, and the verified head if the head is accepted.
+   */
+  HeadVerification verifyHeadForBody(HttpRequest head) {
+    return verifyRequest(head, false);
+  }
+
+  /**
+   * Verify a request whose body is received. With the {@linkplain VerifiedHead head} that
+   * {@linkplain #verifyHeadForBody} verified, only what depends on the body is verified: the payload hash and the chunk
+   * signatures. Without it, or if the signature of the head couldn't be verified without the body, the whole request is.
+   *
+   * @param request the request, with its body.
+   * @param verifiedHead the verified head of the request; {@code null} to verify the whole request.
+   * @return the result.
+   */
+  VerificationResult verifyBody(HttpRequest request, VerifiedHead verifiedHead) {
+    VerifiedHead head = verifiedHead;
+    if (head == null || !head.signatureVerified()) {
+      HeadVerification verification = verifyRequest(request, true);
+      if (!verification.result().authenticated()) {
+        return verification.result();
+      }
+      head = verification.verifiedHead();
+    }
+    return head.complete() ? VerificationResult.success() : verifyPayload(request.getBody(), head);
+  }
+
+  private HeadVerification verifyRequest(HttpRequest request, boolean bodyReceived) {
     try {
       Optional<String> authorization = request.header(HttpHeaderNames.AUTHORIZATION.toString());
       if (authorization.isPresent()) {
@@ -98,59 +131,64 @@ final class AwsSignatureV4Verifier {
       RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
       List<QueryParameter> queryParameters = parseQuery(target.rawQuery());
       if (queryParameter(queryParameters, "X-Amz-Algorithm").isPresent()) {
-        return verifyPresignedUrl(request, target, queryParameters);
+        // The signature of a presigned URL doesn't cover the body, so the head is all there is to verify.
+        VerificationResult result = verifyPresignedUrl(request, target, queryParameters);
+        return new HeadVerification(result, result.authenticated() ? VerifiedHead.COMPLETE : null);
       }
 
-      return VerificationResult.failure(S3ErrorCode.AccessDenied,
-          "Request must include either a valid Authorization header or SigV4 query parameters.");
+      return HeadVerification.failed(VerificationResult.failure(S3ErrorCode.AccessDenied,
+          "Request must include either a valid Authorization header or SigV4 query parameters."));
     } catch (IllegalArgumentException e) {
-      return VerificationResult.failure(S3ErrorCode.AuthorizationHeaderMalformed, e.getMessage());
+      return HeadVerification.failed(VerificationResult.failure(S3ErrorCode.AuthorizationHeaderMalformed,
+          e.getMessage()));
     }
   }
 
-  private VerificationResult verifyAuthorizationHeader(HttpRequest request, String authorization,
+  /**
+   * Verify the signature of the Authorization header of a request. Before the body is received, a request without
+   * {@code x-amz-content-sha256} can't have its signature verified, which covers the hash of the body.
+   */
+  private HeadVerification verifyAuthorizationHeader(HttpRequest request, String authorization,
       boolean bodyReceived) {
     ParsedAuthorization parsed = parseAuthorization(authorization);
     CredentialScope scope = parseCredential(parsed.credential());
     VerificationResult credentialResult = validateCredential(scope);
     if (!credentialResult.authenticated()) {
-      return credentialResult;
+      return HeadVerification.failed(credentialResult);
     }
 
     Map<String, String> headers = normalizedHeaders(request);
-    String amzDate = headers.get("x-amz-date");
-    if (amzDate == null) {
-      return malformed("The x-amz-date header is required.");
+    RequestTime time = requestTime(headers);
+    if (time == null) {
+      return HeadVerification.failed(malformed("The x-amz-date or Date header is required."));
     }
 
-    VerificationResult timeResult = validateRequestTime(amzDate, scope.date(), null);
+    VerificationResult timeResult = validateRequestTime(time.amzDate(), scope.date(), null);
     if (!timeResult.authenticated()) {
-      return timeResult;
+      return HeadVerification.failed(timeResult);
     }
 
     String signedHeaders = normalizeSignedHeaders(parsed.signedHeaders());
     VerificationResult signedHeaderResult = validateSignedHeaders(signedHeaders, headers);
     if (!signedHeaderResult.authenticated()) {
-      return signedHeaderResult;
+      return HeadVerification.failed(signedHeaderResult);
     }
-    if (!Arrays.asList(signedHeaders.split(";")).contains("x-amz-date")) {
-      return malformed("The x-amz-date header must be signed.");
+    if (!Arrays.asList(signedHeaders.split(";")).contains(time.header())) {
+      return HeadVerification.failed(malformed("The " + time.header() + " header must be signed."));
     }
 
-    ByteBuf body = request.getBody();
     String payloadHash = headers.get(AmzHeaderNames.X_AMZ_CONTENT_SHA256);
+    boolean payloadHashOfBody = false;
     if (payloadHash == null) {
       if (!bodyReceived) {
         // Without x-amz-content-sha256, the signature covers the hash of the body, which isn't received yet.
-        return VerificationResult.success();
+        return new HeadVerification(VerificationResult.success(), VerifiedHead.SIGNATURE_UNVERIFIED);
       }
       // Without x-amz-content-sha256, the signature covers the hash of the body as received.
-      payloadHash = sha256Hex(body);
-    } else {
-      VerificationResult payloadResult = validatePayloadHash(payloadHash, body, bodyReceived);
-      if (!payloadResult.authenticated()) {
-        return payloadResult;
-      }
+      payloadHash = sha256Hex(request.getBody());
+      payloadHashOfBody = true;
+    } else if (!isStreamingOrUnsigned(payloadHash) && !HEX_SHA256.matcher(payloadHash).matches()) {
+      return HeadVerification.failed(malformed("x-amz-content-sha256 is invalid."));
     }
 
     RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
@@ -158,27 +196,65 @@ final class AwsSignatureV4Verifier {
         headers, signedHeaders, payloadHash, false);
     byte[] signingKey = signingKey(scope);
     String expectedSignature = signature(signingKey,
-        stringToSign(amzDate, scope.value(), canonicalRequest));
+        stringToSign(time.amzDate(), scope.value(), canonicalRequest));
     if (!secureEquals(expectedSignature, parsed.signature())) {
-      return signatureMismatch();
+      return HeadVerification.failed(signatureMismatch());
     }
-    if (!bodyReceived) {
-      // The chunk signatures are verified once the body is received.
-      return VerificationResult.success();
-    }
+    return new HeadVerification(VerificationResult.success(), new VerifiedHead(false, true, signingKey,
+        time.amzDate(), scope.value(), parsed.signature(), payloadHash, payloadHashOfBody,
+        headers.get("x-amz-trailer")));
+  }
 
+  /**
+   * Verify what depends on the body of a request whose head signature is verified: that the body has the hash of
+   * {@code x-amz-content-sha256}, or that its chunks have the signatures they carry.
+   */
+  private static VerificationResult verifyPayload(ByteBuf body, VerifiedHead head) {
+    String payloadHash = head.payloadHash();
+    if (!head.payloadHashOfBody() && HEX_SHA256.matcher(payloadHash).matches()) {
+      return secureEquals(payloadHash, sha256Hex(body)) ? VerificationResult.success() : signatureMismatch();
+    }
     if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash)
-        && !verifyChunkSignatures(body, signingKey, amzDate, scope.value(),
-        parsed.signature(), false, null)) {
+        && !verifyChunkSignatures(body, head.signingKey(), head.amzDate(), head.scope(),
+        head.seedSignature(), false, null)) {
       return signatureMismatch();
     }
     if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash)
-        && !verifyChunkSignatures(body, signingKey, amzDate, scope.value(),
-        parsed.signature(), true, headers.get("x-amz-trailer"))) {
+        && !verifyChunkSignatures(body, head.signingKey(), head.amzDate(), head.scope(),
+        head.seedSignature(), true, head.trailerHeaderNames())) {
       return signatureMismatch();
     }
-
     return VerificationResult.success();
+  }
+
+  /**
+   * The time of a request, which {@code x-amz-date} carries in the basic ISO 8601 format of the string to sign, or,
+   * for the clients that don't send {@code x-amz-date}, the standard {@code Date} header, in the RFC 1123 format of
+   * HTTP or in the basic ISO 8601 format. {@code x-amz-date} takes precedence, like it does for Amazon S3.
+   *
+   * @return the time, and the header it was read from; {@code null} if the request has neither header.
+   * @throws IllegalArgumentException if the {@code Date} header has neither format.
+   */
+  private static RequestTime requestTime(Map<String, String> headers) {
+    String amzDate = headers.get("x-amz-date");
+    if (amzDate != null) {
+      return new RequestTime(amzDate, "x-amz-date");
+    }
+    String date = headers.get("date");
+    if (date == null) {
+      return null;
+    }
+    try {
+      AMZ_DATE_FORMAT.parse(date);
+      return new RequestTime(date, "date");
+    } catch (DateTimeParseException notBasic) {
+      try {
+        return new RequestTime(AMZ_DATE_FORMAT.format(DateTimeFormatter.RFC_1123_DATE_TIME.parse(date, Instant::from)),
+            "date");
+      } catch (DateTimeParseException e) {
+        throw new IllegalArgumentException("The Date header is neither an RFC 1123 date nor an ISO-8601 basic timestamp.");
+      }
+    }
   }
 
   private VerificationResult verifyPresignedUrl(HttpRequest request, RawRequestTarget target,
@@ -246,10 +322,10 @@ final class AwsSignatureV4Verifier {
     try {
       requestTime = Instant.from(AMZ_DATE_FORMAT.parse(amzDate));
     } catch (DateTimeParseException e) {
-      return malformed("The x-amz-date value is not a valid ISO-8601 basic timestamp.");
+      return malformed("The request time is not a valid ISO-8601 basic timestamp.");
     }
     if (!amzDate.startsWith(scopeDate)) {
-      return malformed("The credential scope date does not match x-amz-date.");
+      return malformed("The credential scope date does not match the request time.");
     }
 
     Instant now = clock.instant();
@@ -287,24 +363,12 @@ final class AwsSignatureV4Verifier {
     return VerificationResult.success();
   }
 
-  private VerificationResult validatePayloadHash(String payloadHash, ByteBuf body, boolean bodyReceived) {
-    if (UNSIGNED_PAYLOAD.equals(payloadHash)
+  private static boolean isStreamingOrUnsigned(String payloadHash) {
+    return UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD.equals(payloadHash)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payloadHash)
         || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash)
-        || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash)) {
-      return VerificationResult.success();
-    }
-    if (!payloadHash.matches("[0-9a-fA-F]{64}")) {
-      return malformed("x-amz-content-sha256 is invalid.");
-    }
-    if (!bodyReceived) {
-      // The body is checked against the hash once it is received.
-      return VerificationResult.success();
-    }
-    return secureEquals(payloadHash, sha256Hex(body))
-        ? VerificationResult.success()
-        : signatureMismatch();
+        || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash);
   }
 
   private String canonicalRequest(HttpRequest request, RawRequestTarget target,
@@ -680,6 +744,45 @@ final class AwsSignatureV4Verifier {
   private static VerificationResult signatureMismatch() {
     return VerificationResult.failure(S3ErrorCode.SignatureDoesNotMatch,
         S3ErrorCode.SignatureDoesNotMatch.description());
+  }
+
+  /**
+   * The result of verifying the head of a request.
+   *
+   * @param result whether the head is accepted.
+   * @param verifiedHead what verifying the body needs; {@code null} if the head is rejected.
+   */
+  record HeadVerification(VerificationResult result, VerifiedHead verifiedHead) {
+    static HeadVerification failed(VerificationResult result) {
+      return new HeadVerification(result, null);
+    }
+  }
+
+  /**
+   * A verified head of a request, with what verifying its body needs.
+   *
+   * @param complete whether nothing depends on the body, e.g. for a presigned URL.
+   * @param signatureVerified whether the signature was verified; it can't be before the body is received if the
+   *     request has no {@code x-amz-content-sha256}, whose signature covers the hash of the body.
+   * @param signingKey the key that the chunk signatures are calculated with.
+   * @param amzDate the time of the request, in the basic ISO 8601 format.
+   * @param scope the credential scope.
+   * @param seedSignature the signature of the head, which the signature of the first chunk is chained to.
+   * @param payloadHash the payload hash that the signature covers.
+   * @param payloadHashOfBody whether the payload hash was calculated from the body, so it needn't be checked again.
+   * @param trailerHeaderNames the value of {@code x-amz-trailer}.
+   */
+  record VerifiedHead(boolean complete, boolean signatureVerified, byte[] signingKey, String amzDate, String scope,
+                      String seedSignature, String payloadHash, boolean payloadHashOfBody,
+                      String trailerHeaderNames) {
+
+    static final VerifiedHead COMPLETE = new VerifiedHead(true, true, null, null, null, null, null, false, null);
+
+    static final VerifiedHead SIGNATURE_UNVERIFIED =
+        new VerifiedHead(false, false, null, null, null, null, null, false, null);
+  }
+
+  private record RequestTime(String amzDate, String header) {
   }
 
   record VerificationResult(boolean authenticated, S3ErrorCode errorCode, String message) {

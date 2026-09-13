@@ -15,9 +15,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.Map;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -210,6 +214,204 @@ class AwsSignatureV4VerifierTest {
     body.addComponent(true, Unpooled.wrappedBuffer(content, from, content.length - from));
     body.readerIndex(JUNK.length);
     return body;
+  }
+
+  /**
+   * The signer that the tests below sign their requests with, checked against the documented signature first.
+   */
+  @Test
+  void theReferenceSignerProducesTheDocumentedSignature() {
+    assertEquals("98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd",
+        sign("PUT", PUT_OBJECT_PATH, putObjectHeaders(), PUT_OBJECT_SIGNED_HEADERS, AMZ_DATE,
+            putObjectHeaders().get("x-amz-content-sha256")));
+  }
+
+  /**
+   * A client that sends the standard {@code Date} header instead of {@code x-amz-date}, in the RFC 1123 format of HTTP
+   * or in the basic ISO 8601 format, signs with the time of that header.
+   */
+  @Test
+  void acceptsTheDateHeaderInsteadOfXAmzDate() {
+    for (String date : new String[] {"Fri, 24 May 2013 00:00:00 GMT", AMZ_DATE}) {
+      Map<CharSequence, String> headers = dateSignedHeaders(date);
+      assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7);
+      assertRejected(headers, PUT_OBJECT_PATH, HttpMethod.PUT, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
+    }
+  }
+
+  @Test
+  void rejectsADateHeaderThatIsMissingUnsignedOrInvalid() {
+    Map<CharSequence, String> unsigned = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
+    unsigned.put("authorization", authorization("host;x-amz-content-sha256;x-amz-storage-class", "0".repeat(64)));
+    VerificationResult result = verifyHead(unsigned, PUT_OBJECT_PATH, HttpMethod.PUT);
+    assertEquals(S3ErrorCode.AuthorizationHeaderMalformed, result.errorCode());
+    assertEquals("The date header must be signed.", result.message());
+
+    Map<CharSequence, String> missing = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
+    missing.remove("date");
+    assertEquals("The x-amz-date or Date header is required.",
+        verifyHead(missing, PUT_OBJECT_PATH, HttpMethod.PUT).message());
+
+    Map<CharSequence, String> invalid = dateSignedHeaders("yesterday");
+    assertEquals(S3ErrorCode.AuthorizationHeaderMalformed,
+        verifyHead(invalid, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+
+    Map<CharSequence, String> skewed = dateSignedHeaders("Fri, 24 May 2013 01:00:00 GMT");
+    assertEquals(S3ErrorCode.RequestTimeTooSkewed, verifyHead(skewed, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+  }
+
+  /**
+   * Once the head is verified, only what depends on the body is: the head, e.g. its time or its signature, isn't
+   * verified again. An upload that takes longer than the allowed clock skew is accepted, since the time of the request
+   * was valid when the request started, like Amazon S3 does.
+   */
+  @Test
+  void verifiesOnlyTheBodyOfARequestWhoseHeadIsVerified() {
+    MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
+    AwsSignatureV4Verifier verifier = new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, clock);
+    Map<CharSequence, String> headers = putObjectHeaders();
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(request(headers, null));
+    assertTrue(head.result().authenticated());
+
+    clock.instant = Instant.parse("2013-05-24T00:30:00Z");
+    assertEquals(S3ErrorCode.RequestTimeTooSkewed,
+        verifier.verify(request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT))).errorCode(),
+        "Without the verified head, the whole request is verified again.");
+    assertTrue(verifier.verifyBody(request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT)),
+        head.verifiedHead()).authenticated());
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifier.verifyBody(
+        request(headers, Unpooled.wrappedBuffer("Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8))),
+        head.verifiedHead()).errorCode());
+  }
+
+  @Test
+  void verifiesTheChunkSignaturesWithTheVerifiedHead() {
+    Map<CharSequence, String> headers = chunkedHeaders();
+    String path = "/examplebucket/chunkObject.txt";
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
+        .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
+        .headers(new HashMap<>(headers)).params(new HashMap<>()).build());
+    assertTrue(head.result().authenticated());
+
+    byte[] encoded = chunkedBody();
+    assertTrue(verifier.verifyBody(chunkedRequest(headers, path, encoded), head.verifiedHead()).authenticated());
+    byte[] tampered = encoded.clone();
+    tampered[88 + 65_538 + 86 + 10] = 'b';
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch,
+        verifier.verifyBody(chunkedRequest(headers, path, tampered), head.verifiedHead()).errorCode());
+  }
+
+  /**
+   * Without {@code x-amz-content-sha256}, the signature of the head covers the hash of the body, so the body phase
+   * verifies the whole request.
+   */
+  @Test
+  void verifiesTheWholeRequestWhenTheHeadSignatureDependsOnTheBody() {
+    Map<CharSequence, String> headers = putObjectHeaders();
+    headers.remove("x-amz-content-sha256");
+    headers.put("authorization", authorization("date;host;x-amz-date;x-amz-storage-class", "0".repeat(64)));
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(request(headers, null));
+    assertTrue(head.result().authenticated());
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifier.verifyBody(
+        request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT)), head.verifiedHead()).errorCode());
+  }
+
+  private static Map<CharSequence, String> dateSignedHeaders(String date) {
+    Map<CharSequence, String> headers = putObjectHeaders();
+    headers.remove("x-amz-date");
+    headers.put("date", date);
+    String signedHeaders = "date;host;x-amz-content-sha256;x-amz-storage-class";
+    headers.put("authorization", authorization(signedHeaders, sign("PUT", PUT_OBJECT_PATH, headers, signedHeaders,
+        AMZ_DATE, headers.get("x-amz-content-sha256"))));
+    return headers;
+  }
+
+  private static Map<CharSequence, String> chunkedHeaders() {
+    Map<CharSequence, String> headers = new HashMap<>();
+    headers.put("content-encoding", "aws-chunked");
+    headers.put("content-length", "66824");
+    headers.put("host", "s3.amazonaws.com");
+    headers.put("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD");
+    headers.put("x-amz-date", AMZ_DATE);
+    headers.put("x-amz-decoded-content-length", "66560");
+    headers.put("x-amz-storage-class", "REDUCED_REDUNDANCY");
+    headers.put("authorization", authorization(
+        "content-encoding;content-length;host;x-amz-content-sha256;x-amz-date;x-amz-decoded-content-length;x-amz-storage-class",
+        "4f232c4386841ef735655705268965c44a0e4690baa4adea153f7db9fa80a0a9"));
+    return headers;
+  }
+
+  private static HttpRequest chunkedRequest(Map<CharSequence, String> headers, String path, byte[] body) {
+    return HttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
+        .headers(new HashMap<>(headers)).params(new HashMap<>()).body(Unpooled.wrappedBuffer(body)).build();
+  }
+
+  private static HttpRequest request(Map<CharSequence, String> headers, ByteBuf body) {
+    return HttpRequest.builder().method(HttpMethod.PUT).uri(PUT_OBJECT_PATH).path(PUT_OBJECT_PATH)
+        .httpVersion(HttpVersion.HTTP_1_1).headers(new HashMap<>(headers)).params(new HashMap<>()).body(body).build();
+  }
+
+  /**
+   * Sign a request without a query, following the steps of the AWS Signature Version 4 documentation.
+   */
+  private static String sign(String method, String path, Map<CharSequence, String> headers, String signedHeaders,
+                             String amzDate, String payloadHash) {
+    StringBuilder canonicalHeaders = new StringBuilder();
+    for (String name : signedHeaders.split(";")) {
+      canonicalHeaders.append(name).append(':').append(headers.get(name).trim()).append('\n');
+    }
+    String canonicalRequest = method + "\n" + path + "\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n"
+        + payloadHash;
+    String scope = amzDate.substring(0, 8) + "/us-east-1/s3/aws4_request";
+    String stringToSign = "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n"
+        + HexFormat.of().formatHex(sha256(canonicalRequest));
+    byte[] key = hmac(("AWS4" + SECRET_ACCESS_KEY).getBytes(StandardCharsets.UTF_8), amzDate.substring(0, 8));
+    key = hmac(key, "us-east-1");
+    key = hmac(key, "s3");
+    key = hmac(key, "aws4_request");
+    return HexFormat.of().formatHex(hmac(key, stringToSign));
+  }
+
+  private static byte[] sha256(String value) {
+    try {
+      return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static byte[] hmac(byte[] key, String value) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key, "HmacSHA256"));
+      return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static final class MutableClock extends Clock {
+
+    private Instant instant;
+
+    MutableClock(Instant instant) {
+      this.instant = instant;
+    }
+
+    @Override
+    public ZoneOffset getZone() {
+      return ZoneOffset.UTC;
+    }
+
+    @Override
+    public Clock withZone(java.time.ZoneId zone) {
+      return this;
+    }
+
+    @Override
+    public Instant instant() {
+      return instant;
+    }
   }
 
   private static String authorization(String signedHeaders, String signature) {

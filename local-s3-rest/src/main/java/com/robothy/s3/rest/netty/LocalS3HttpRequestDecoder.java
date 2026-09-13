@@ -88,6 +88,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private HttpRequest.HttpRequestBuilder builder;
 
   /**
+   * The head of the current request, if the verifier accepted it; handed to the verifier with the complete request.
+   */
+  private HttpRequest verifiedHead;
+
+  /**
    * Buffers the body on the heap until it is written to {@link #bodyFile}.
    */
   private CompositeByteBuf body;
@@ -222,6 +227,10 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
           // The body now belongs to the request; LocalS3HttpMessageHandler releases it.
           HttpRequest request = builder.body(takeBody()).build();
           builder = null;
+          if (verifiedHead != null) {
+            headVerifier.requestReceived(verifiedHead, request);
+            verifiedHead = null;
+          }
           out.add(request);
         }
       }
@@ -255,11 +264,13 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         .params(new HashMap<>(queryStringDecoder.parameters()));
 
     if (hasBody(request, contentLength)) {
-      RequestHeadVerifier.Rejection rejection = headVerifier.verifyHead(builder.build());
+      HttpRequest head = builder.build();
+      RequestHeadVerifier.Rejection rejection = headVerifier.verifyHead(head);
       if (rejection != null) {
         reject(ctx, rejection.errorCode(), rejection.message());
         return false;
       }
+      verifiedHead = head;
     }
 
     // No component limit: consolidating the components of a large body would copy it over and over.
@@ -377,6 +388,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
 
   private void releaseBody() {
     builder = null;
+    verifiedHead = null;
     if (body != null) {
       body.release();
       body = null;
