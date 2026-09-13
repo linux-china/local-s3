@@ -18,6 +18,7 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
  * An S3 client configured for the S3-compatible API of Alibaba Cloud OSS, which requires virtual-hosted-style
@@ -49,6 +50,10 @@ class AliyunOssVirtualHostIntegrationTest {
       s3.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello OSS"));
 
       assertEquals("Hello OSS", s3.getObjectAsBytes(b -> b.bucket("my-bucket").key("dir/a.txt")).asUtf8String());
+
+      assertEquals(List.of("dir/a.txt"),
+
+          s3.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
       assertEquals(List.of("my-bucket"), s3.listBuckets().buckets().stream().map(Bucket::name).toList());
       assertTrue(hosts.contains("my-bucket.oss-cn-hangzhou.aliyuncs.com"),
           "The SDK sent virtual-hosted-style requests: " + hosts);

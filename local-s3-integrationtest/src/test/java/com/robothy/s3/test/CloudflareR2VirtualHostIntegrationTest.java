@@ -18,6 +18,7 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
  * An S3 client configured for Cloudflare R2: the endpoint of an account, the region "auto", and requests signed
@@ -51,6 +52,10 @@ class CloudflareR2VirtualHostIntegrationTest {
       s3.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello R2"));
 
       assertEquals("Hello R2", s3.getObjectAsBytes(b -> b.bucket("my-bucket").key("dir/a.txt")).asUtf8String());
+
+      assertEquals(List.of("dir/a.txt"),
+
+          s3.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
       assertEquals(List.of("my-bucket"), s3.listBuckets().buckets().stream().map(Bucket::name).toList());
       assertTrue(hosts.contains("my-bucket." + ACCOUNT_ID + ".r2.cloudflarestorage.com"),
           "The SDK sent virtual-hosted-style requests: " + hosts);

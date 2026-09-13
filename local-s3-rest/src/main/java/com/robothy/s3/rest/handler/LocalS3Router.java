@@ -217,14 +217,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   List<Route> matchPath(Map<String, List<Route>> pathRules, HttpRequest request) {
     String path = request.getPath();
     String trimmedPath = trimPath(path);
-    if (pathRules.containsKey(trimmedPath)) {
+    Optional<BucketRegion> bucketRegion = virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
+    boolean bucketNameInPath = !bucketRegion.isPresent() || !bucketRegion.get().getBucketName().isPresent();
+    // A virtual-hosted request addresses the bucket of its Host, so its path is the bucket ("/") or an object key
+    // rather than a path of the service, e.g. "/" is ListObjects there instead of ListBuckets. The health check is
+    // the exception: it is answered without authentication wherever it is sent, see requiresAuthentication().
+    boolean exactPathApplies = bucketNameInPath || HEALTH_CHECK_PATH.equals(trimmedPath);
+    if (exactPathApplies && pathRules.containsKey(trimmedPath)) {
       return pathRules.get(trimmedPath);
     }
 
     Map<CharSequence, List<String>> params = request.getParams();
 
-    Optional<BucketRegion> bucketRegion = virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
-    boolean bucketNameInPath = !bucketRegion.isPresent() || !bucketRegion.get().getBucketName().isPresent();
     String bucketName;
     String objectKey = null;
     if (bucketNameInPath) {

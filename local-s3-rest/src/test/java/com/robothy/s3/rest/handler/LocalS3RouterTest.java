@@ -74,6 +74,11 @@ class LocalS3RouterTest {
     assertEquals("a", bucketOperation2.parameter("bucket").get());
     assertTrue(bucketOperation2.parameter("key").isEmpty());
 
+    List<Route> listBucketsRule = mock(List.class, "listBucketsRule");
+    rules.put("/", listBucketsRule);
+    assertSame(listBucketsRule, localS3Router.matchPath(rules, HttpRequest.builder().path("/")
+        .headers(new HashMap<>(Map.of(HttpHeaderNames.HOST.toString(), "localhost:29090"))).build()));
+
     HttpRequest bucketOperation3 = HttpRequest.builder().path("/").build();
     bucketOperation3.getHeaders().put(HttpHeaderNames.HOST.toString(), "images.example.com.s3.us-east-1.amazonaws.com");
     assertSame(bucketPathRule, localS3Router.matchPath(rules, bucketOperation3));
@@ -105,6 +110,25 @@ class LocalS3RouterTest {
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation5));
     assertEquals("bucket1.s3", objectOperation5.parameter("bucket").get());
     assertEquals("a/dir/sub-dir/", objectOperation5.parameter("key").get());
+
+    // A virtual-hosted request whose key happens to be a path of the service is an object operation.
+    HttpRequest objectOperation6 = HttpRequest.builder().path("/a/b")
+        .headers(Map.of(HttpHeaderNames.HOST.toString(), "bucket1.localhost")).build();
+    assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation6));
+    assertEquals("bucket1", objectOperation6.parameter("bucket").get());
+    assertEquals("a/b", objectOperation6.parameter("key").get());
+  }
+
+  @Test
+  void virtualHostedHealthCheckKeepsItsPath() {
+    LocalS3Router localS3Router = new LocalS3Router();
+    Map<String, List<Route>> rules = new HashMap<>();
+    List<Route> healthCheckRule = mock(List.class, "healthCheckRule");
+    rules.put(LocalS3Router.HEALTH_CHECK_PATH, healthCheckRule);
+    rules.put(LocalS3Router.BUCKET_KEY_PATH, mock(List.class, "objectPathRule"));
+
+    assertSame(healthCheckRule, localS3Router.matchPath(rules, HttpRequest.builder().path("/_health")
+        .headers(Map.of(HttpHeaderNames.HOST.toString(), "bucket1.localhost")).build()));
   }
 
   @Test

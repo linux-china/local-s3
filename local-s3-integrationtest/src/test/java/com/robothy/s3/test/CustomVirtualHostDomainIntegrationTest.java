@@ -18,6 +18,7 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
  * Virtual-hosted-style requests to a configured base domain, like a service name in docker-compose.
@@ -47,6 +48,10 @@ class CustomVirtualHostDomainIntegrationTest {
       s3.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello"));
 
       assertEquals("Hello", s3.getObjectAsBytes(b -> b.bucket("my-bucket").key("dir/a.txt")).asUtf8String());
+
+      assertEquals(List.of("dir/a.txt"),
+
+          s3.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
       assertEquals(List.of("my-bucket"), s3.listBuckets().buckets().stream().map(Bucket::name).toList());
       assertTrue(hosts.contains("my-bucket.s3.local"), "The SDK sent virtual-hosted-style requests: " + hosts);
       assertTrue(hosts.contains("s3.local"), "ListBuckets is sent to the base domain: " + hosts);

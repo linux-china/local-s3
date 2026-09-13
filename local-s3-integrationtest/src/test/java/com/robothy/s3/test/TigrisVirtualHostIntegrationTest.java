@@ -19,6 +19,7 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.Bucket;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
  * An S3 client configured for Tigris: its endpoint, the region "auto", virtual-hosted-style requests, and requests
@@ -51,6 +52,10 @@ class TigrisVirtualHostIntegrationTest {
       s3.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello Tigris"));
 
       assertEquals("Hello Tigris", s3.getObjectAsBytes(b -> b.bucket("my-bucket").key("dir/a.txt")).asUtf8String());
+
+      assertEquals(List.of("dir/a.txt"),
+
+          s3.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
       assertEquals(List.of("my-bucket"), s3.listBuckets().buckets().stream().map(Bucket::name).toList());
       assertTrue(hosts.contains("my-bucket." + endpoint), "The SDK sent virtual-hosted-style requests: " + hosts);
       assertTrue(hosts.contains(endpoint), "ListBuckets is sent to the endpoint: " + hosts);

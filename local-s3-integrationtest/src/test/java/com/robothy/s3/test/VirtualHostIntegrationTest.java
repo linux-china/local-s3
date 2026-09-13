@@ -8,13 +8,17 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;
+import java.util.List;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class VirtualHostIntegrationTest {
 
@@ -33,6 +37,9 @@ public class VirtualHostIntegrationTest {
         .build();
     s3Client.createBucket(b -> b.bucket("my-bucket"));
     assertDoesNotThrow(() -> s3Client.headBucket(b -> b.bucket("my-bucket")));
+    s3Client.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello"));
+    assertEquals(List.of("dir/a.txt"),
+        s3Client.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
   }
 
   @Test
@@ -50,6 +57,9 @@ public class VirtualHostIntegrationTest {
         .build();
     s3Client.createBucket(b -> b.bucket("my-bucket"));
     assertDoesNotThrow(() -> s3Client.headBucket(b -> b.bucket("my-bucket")));
+    s3Client.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello"));
+    assertEquals(List.of("dir/a.txt"),
+        s3Client.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
   }
 
   @Test
@@ -67,6 +77,9 @@ public class VirtualHostIntegrationTest {
         .build();
     s3Client.createBucket(b -> b.bucket("my-bucket"));
     assertDoesNotThrow(() -> s3Client.headBucket(b -> b.bucket("my-bucket")));
+    s3Client.putObject(b -> b.bucket("my-bucket").key("dir/a.txt"), RequestBody.fromString("Hello"));
+    assertEquals(List.of("dir/a.txt"),
+        s3Client.listObjectsV2(b -> b.bucket("my-bucket")).contents().stream().map(S3Object::key).toList());
   }
 
 }
