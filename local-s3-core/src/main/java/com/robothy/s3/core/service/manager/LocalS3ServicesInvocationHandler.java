@@ -150,6 +150,10 @@ public final class LocalS3ServicesInvocationHandler<T> implements InvocationHand
   }
 
   void lockIfNeeded(Object[] args, boolean isRead, boolean isWrite) {
+    if (isRead && isWrite) {
+      throw new IllegalStateException("Bucket read and write locks are mutually exclusive.");
+    }
+
     if (isRead || isWrite) {
       String bucketName = (String) args[0];
       BucketLock lock = this.bucketLock;
