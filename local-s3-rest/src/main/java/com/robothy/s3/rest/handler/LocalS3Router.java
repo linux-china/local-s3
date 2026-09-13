@@ -5,6 +5,8 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.AbstractRouter;
 import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.model.request.BucketRegion;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
 import com.robothy.s3.rest.utils.VirtualHostParser;
@@ -13,6 +15,7 @@ import io.netty.handler.codec.http.HttpMethod;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,6 +24,17 @@ import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * Routes the requests of LocalS3 to their handlers.
+ *
+ * <p>The routes of a method and a path are told apart by their conditions on the parameters and headers of a request.
+ * Of the routes that match a request, the one whose conditions are the most specific wins: a matched condition on the
+ * parameters counts more than a matched condition on the headers, and a matched condition more than none. The winner
+ * never depends on the order the routes were registered in. {@linkplain #verifyRoutes()} checks, once the routes are
+ * registered, that the smallest request that satisfies the conditions of every route is won by that route alone;
+ * a request that still matches several routes equally, e.g. one that combines two subresources such as
+ * {@code ?acl&tagging}, is answered with {@code InvalidRequest}.
+ */
 class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   static final String BUCKET_PATH = "/{bucket}";
@@ -34,6 +48,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   static final String HEALTH_CHECK_PATH = "/_health";
 
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
+
+  /**
+   * The operation that each route answers, which the problems of the routes are reported by.
+   */
+  private final Map<Route, String> operations = new IdentityHashMap<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
 
@@ -75,6 +94,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   @Override
   public Router route(Route rule) {
+    return route(null, rule);
+  }
+
+  /**
+   * Register a route of an operation.
+   *
+   * @param operation the name of the operation that the route answers, e.g. {@code GetBucketAcl}; {@code null} to name
+   *     the route by its method, path and conditions.
+   * @param rule the route.
+   * @return this router.
+   */
+  LocalS3Router route(String operation, Route rule) {
+    operations.put(rule, Objects.requireNonNullElseGet(operation,
+        () -> rule.getMethod() + " " + rule.getPath() + " " + conditions(rule)));
     this.rules.putIfAbsent(rule.getMethod(), new HashMap<>());
     Map<String, List<Route>> pathRules = this.rules.get(rule.getMethod());
     pathRules.putIfAbsent(rule.getPath(), new ArrayList<>());
@@ -209,26 +242,60 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
 
+  /**
+   * The handler of the route that matches a request best. If several routes match it equally, the request is answered
+   * with {@code InvalidRequest}, rather than by whichever of them was registered last.
+   *
+   * @return the handler; {@code null} if no route matches.
+   */
   HttpRequestHandler matchHandler(List<Route> candidates, HttpRequest request) {
-    HttpRequestHandler result = null;
-    int priority = 0;
-    for (Route candidate : candidates) {
-      int currentPriority = calculatePriority(candidate, request);
-      if (currentPriority >= priority) {
-        priority = currentPriority;
-        result = candidate.getHandler();
-      }
+    List<Route> best = bestRoutes(candidates, request.getHeaders(), request.getParams());
+    if (best.isEmpty()) {
+      return null;
     }
-    return result;
+    if (best.size() == 1) {
+      return best.get(0).getHandler();
+    }
+    String matched = String.join(", ", best.stream().map(operations::get).toList());
+    return (req, resp) -> {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
+          "The request matches more than one operation: " + matched + ".");
+    };
+  }
+
+  /**
+   * The routes that match the request with the highest priority.
+   */
+  private List<Route> bestRoutes(List<Route> candidates, Map<CharSequence, String> headers,
+                                 Map<CharSequence, List<String>> params) {
+    List<Route> best = new ArrayList<>();
+    int bestPriority = -1;
+    for (Route candidate : candidates) {
+      int priority = calculatePriority(candidate, headers, params);
+      if (priority < 0 || priority < bestPriority) {
+        continue;
+      }
+      if (priority > bestPriority) {
+        bestPriority = priority;
+        best.clear();
+      }
+      best.add(candidate);
+    }
+    return best;
   }
 
   int calculatePriority(Route route, HttpRequest request) {
+    return calculatePriority(route, request.getHeaders(), request.getParams());
+  }
+
+  private static int calculatePriority(Route route, Map<CharSequence, String> headers,
+                                       Map<CharSequence, List<String>> params) {
 
     int priority = 0;
 
     if (Objects.isNull(route.getHeaderMatcher())) {
       priority |= (1 << 1);
-    } else if (route.getHeaderMatcher().apply(request.getHeaders())) {
+    } else if (route.getHeaderMatcher().apply(headers)) {
       priority |= (1 << 3);
     } else {
       priority = -1;
@@ -236,13 +303,75 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
     if (Objects.isNull(route.getParamMatcher())) {
       priority |= (1 << 2);
-    } else if (route.getParamMatcher().apply(request.getParams())) {
+    } else if (route.getParamMatcher().apply(params)) {
       priority |= (1 << 4);
     } else {
       priority = -1;
     }
 
     return priority;
+  }
+
+  /**
+   * Check that no route depends on the order the routes were registered in: for every route, the smallest request that
+   * satisfies its conditions must be won by that route alone. Two routes that win such a request equally, e.g. two
+   * routes with the same conditions, are ambiguous; a route that another one wins such a request from is shadowed, and
+   * would never answer the requests it is meant for.
+   *
+   * <p>The conditions of the routes must be declared as {@linkplain ParamCondition} and {@linkplain HeaderCondition},
+   * which tell the requests they match, rather than as functions, which don't.
+   *
+   * @throws IllegalStateException if a route is ambiguous, shadowed, or has a condition that can't be checked.
+   */
+  void verifyRoutes() {
+    List<String> problems = new ArrayList<>();
+    rules.forEach((method, pathRules) -> pathRules.forEach((path, routes) -> {
+      if (routes.size() < 2) {
+        return;
+      }
+      for (int i = 0; i < routes.size(); i++) {
+        Route route = routes.get(i);
+        if (!isDeclarative(route)) {
+          problems.add(operations.get(route) + " has a condition that can't be checked; declare it with "
+              + "ParamCondition or HeaderCondition.");
+          continue;
+        }
+        Map<CharSequence, String> headers = route.getHeaderMatcher() instanceof HeaderCondition condition
+            ? condition.minimalHeaders() : Map.of();
+        Map<CharSequence, List<String>> params = route.getParamMatcher() instanceof ParamCondition condition
+            ? condition.minimalParams() : Map.of();
+        int own = calculatePriority(route, headers, params);
+        for (int j = 0; j < routes.size(); j++) {
+          Route other = routes.get(j);
+          if (i == j || !isDeclarative(other)) {
+            continue;
+          }
+          int priority = calculatePriority(other, headers, params);
+          if (priority == own && i < j) {
+            problems.add(operations.get(route) + " and " + operations.get(other) + " of " + method + " " + path
+                + " both match " + conditions(route) + " equally.");
+          } else if (priority > own) {
+            problems.add(operations.get(route) + " of " + method + " " + path + " is shadowed by "
+                + operations.get(other) + ", which wins " + conditions(route) + ".");
+          }
+        }
+      }
+    }));
+    if (!problems.isEmpty()) {
+      throw new IllegalStateException("The routes of LocalS3 are ambiguous:\n  " + String.join("\n  ", problems));
+    }
+  }
+
+  private static boolean isDeclarative(Route route) {
+    return (route.getHeaderMatcher() == null || route.getHeaderMatcher() instanceof HeaderCondition)
+        && (route.getParamMatcher() == null || route.getParamMatcher() instanceof ParamCondition);
+  }
+
+  private static String conditions(Route route) {
+    String params = route.getParamMatcher() == null ? "" : String.valueOf(route.getParamMatcher());
+    String headers = route.getHeaderMatcher() == null ? "" : " [" + route.getHeaderMatcher() + "]";
+    String conditions = (params + headers).strip();
+    return conditions.isEmpty() ? "(no condition)" : conditions;
   }
 
 }

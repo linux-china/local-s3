@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Route;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.HashMap;
@@ -115,5 +117,120 @@ class LocalS3RouterTest {
     localS3Router.trimPath("/a/b/ ").equals("/a/b");
   }
 
+
+  @Test
+  void verifyRoutesRejectsRoutesWithTheSameConditions() {
+    LocalS3Router router = new LocalS3Router();
+    router.route("GetBucketLifecycle", route(HttpMethod.GET, ParamCondition.has("lifecycle"), null));
+    router.route("GetBucketLifecycleConfiguration", route(HttpMethod.GET, ParamCondition.has("lifecycle"), null));
+
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, router::verifyRoutes);
+    assertTrue(thrown.getMessage().contains("GetBucketLifecycle and GetBucketLifecycleConfiguration"),
+        thrown.getMessage());
+  }
+
+  /**
+   * {@code GetBucketAnalyticsConfiguration} and {@code ListBucketAnalyticsConfigurations} differ by the {@code id}
+   * of the configuration, which conditions on the subresource alone don't tell apart.
+   */
+  @Test
+  void verifyRoutesAcceptsRoutesThatAParameterTellsApart() {
+    LocalS3Router ambiguous = new LocalS3Router();
+    ambiguous.route("GetBucketAnalyticsConfiguration", route(HttpMethod.GET, ParamCondition.has("analytics"), null));
+    ambiguous.route("ListBucketAnalyticsConfigurations", route(HttpMethod.GET, ParamCondition.has("analytics"), null));
+    assertThrows(IllegalStateException.class, ambiguous::verifyRoutes);
+
+    LocalS3Router router = new LocalS3Router();
+    HttpRequestHandler get = mock(HttpRequestHandler.class, "get");
+    HttpRequestHandler list = mock(HttpRequestHandler.class, "list");
+    router.route("GetBucketAnalyticsConfiguration", Route.builder().method(HttpMethod.GET).path("/a")
+        .paramMatcher(ParamCondition.has("analytics", "id")).handler(get).build());
+    router.route("ListBucketAnalyticsConfigurations", Route.builder().method(HttpMethod.GET).path("/a")
+        .paramMatcher(ParamCondition.has("analytics").andHasNot("id")).handler(list).build());
+    assertDoesNotThrow(router::verifyRoutes);
+
+    assertSame(get, router.match(request(Map.of("analytics", List.of(""), "id", List.of("1")), Map.of())));
+    assertSame(list, router.match(request(Map.of("analytics", List.of("")), Map.of())));
+  }
+
+  @Test
+  void verifyRoutesRejectsARouteThatAnotherOneShadows() {
+    LocalS3Router router = new LocalS3Router();
+    router.route("Broad", route(HttpMethod.GET, ParamCondition.has("a"), null));
+    router.route("Narrow", route(HttpMethod.GET, ParamCondition.has("a"), HeaderCondition.hasNot("x-header")));
+
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, router::verifyRoutes);
+    assertTrue(thrown.getMessage().contains("Broad of GET /a is shadowed by Narrow"), thrown.getMessage());
+  }
+
+  @Test
+  void verifyRoutesRejectsConditionsThatCantBeChecked() {
+    LocalS3Router router = new LocalS3Router();
+    router.route("Declared", route(HttpMethod.GET, ParamCondition.has("a"), null));
+    router.route("Coded", Route.builder().method(HttpMethod.GET).path("/a")
+        .paramMatcher(params -> params.containsKey("b")).handler(mock(HttpRequestHandler.class)).build());
+
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, router::verifyRoutes);
+    assertTrue(thrown.getMessage().contains("Coded has a condition that can't be checked"), thrown.getMessage());
+  }
+
+  /**
+   * A request that matches several routes equally, e.g. one that combines two subresources, is rejected, whichever
+   * order the routes were registered in.
+   */
+  @Test
+  void aRequestThatMatchesSeveralRoutesEquallyIsRejected() {
+    for (boolean aclFirst : new boolean[] {true, false}) {
+      LocalS3Router router = new LocalS3Router();
+      Route acl = route(HttpMethod.GET, ParamCondition.has("acl"), null);
+      Route tagging = route(HttpMethod.GET, ParamCondition.has("tagging"), null);
+      if (aclFirst) {
+        router.route("GetBucketAcl", acl).route("GetBucketTagging", tagging);
+      } else {
+        router.route("GetBucketTagging", tagging).route("GetBucketAcl", acl);
+      }
+      assertDoesNotThrow(router::verifyRoutes);
+      assertSame(acl.getHandler(), router.match(request(Map.of("acl", List.of("")), Map.of())));
+
+      HttpRequestHandler handler = router.match(request(Map.of("acl", List.of(""), "tagging", List.of("")), Map.of()));
+      LocalS3RequestException thrown = assertThrows(LocalS3RequestException.class,
+          () -> handler.handle(null, null));
+      assertEquals(S3ErrorCode.InvalidRequest, thrown.getS3ErrorCode());
+      assertTrue(thrown.getMessage().contains("GetBucketAcl") && thrown.getMessage().contains("GetBucketTagging"),
+          thrown.getMessage());
+    }
+  }
+
+  @Test
+  void conditionsMatchTheRequestsTheyDeclare() {
+    ParamCondition listV2 = ParamCondition.equalTo("list-type", "2");
+    assertTrue(listV2.apply(Map.of("list-type", List.of("2"))));
+    assertFalse(listV2.apply(Map.of("list-type", List.of("1"))));
+    assertFalse(listV2.apply(Map.of("list-type", List.of())));
+    assertFalse(listV2.apply(Map.of()));
+    assertThrows(IllegalArgumentException.class, () -> ParamCondition.has("id").andHasNot("id"));
+
+    HeaderCondition copy = HeaderCondition.has("X-Amz-Copy-Source");
+    assertTrue(copy.apply(Map.of("x-amz-copy-source", "/b/k")));
+    assertTrue(copy.apply(Map.of("X-AMZ-COPY-SOURCE", "/b/k")), "Header names are compared ignoring case.");
+    assertFalse(copy.apply(Map.of()));
+    assertTrue(HeaderCondition.hasNot("x-amz-object-attributes").apply(Map.of()));
+  }
+
+  private static Route route(HttpMethod method, ParamCondition params, HeaderCondition headers) {
+    Route.Builder builder = Route.builder().method(method).path("/a").handler(mock(HttpRequestHandler.class));
+    if (params != null) {
+      builder.paramMatcher(params);
+    }
+    if (headers != null) {
+      builder.headerMatcher(headers);
+    }
+    return builder.build();
+  }
+
+  private static HttpRequest request(Map<CharSequence, List<String>> params, Map<CharSequence, String> headers) {
+    return HttpRequest.builder().method(HttpMethod.GET).path("/a")
+        .params(new HashMap<>(params)).headers(new HashMap<>(headers)).build();
+  }
 
 }
