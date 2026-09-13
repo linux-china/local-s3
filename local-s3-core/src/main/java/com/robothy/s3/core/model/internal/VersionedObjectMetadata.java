@@ -2,6 +2,7 @@ package com.robothy.s3.core.model.internal;
 
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.Data;
@@ -37,6 +38,13 @@ public class VersionedObjectMetadata {
   private Map<String, String> userMetadata = Collections.emptyMap();
 
   /**
+   * The parts of the multipart upload that stored this version, in the order they were concatenated in;
+   * {@code null} when {@code PutObject} stored it, or when an upload that a LocalS3 before 2.5 completed
+   * did. {@code GetObjectAttributes} answers the part layout of the object from it.
+   */
+  private List<ObjectPartMetadata> parts;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {
@@ -48,6 +56,15 @@ public class VersionedObjectMetadata {
    */
   public Optional<AccessControlPolicy> getAcl() {
     return Optional.ofNullable(acl);
+  }
+
+  /**
+   * The parts that this version was uploaded in.
+   *
+   * @return the parts of the upload that stored this version; empty if it wasn't stored by one.
+   */
+  public Optional<List<ObjectPartMetadata>> getParts() {
+    return Optional.ofNullable(parts);
   }
 
 }

@@ -10,6 +10,7 @@ import com.robothy.s3.core.exception.InvalidPartOrderException;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
@@ -19,7 +20,7 @@ import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
-import java.security.DigestInputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -99,9 +100,11 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     // reported, which a request may have supplied instead of the digest of the data it sent, and the parts of
     // an upload that a LocalS3 version before 2.5 stored hold no digest at all. Digesting the data that is
     // concatenated costs no extra read, and makes the entity tag describe the bytes that were actually stored.
-    List<DigestInputStream> partStreams = completeParts.stream()
+    // Measured rather than only digested, so that the part layout below records the bytes that were actually
+    // concatenated, like the size of the object does.
+    List<MeasuredInputStream> partStreams = completeParts.stream()
         .map(completePart -> uploadedParts.get(completePart.getPartNumber()))
-        .map(uploadPartMetadata -> S3ObjectUtils.digestingStream(storage().getInputStream(uploadPartMetadata.getFileId())))
+        .map(uploadPartMetadata -> S3ObjectUtils.measuringStream(storage().getInputStream(uploadPartMetadata.getFileId())))
         .collect(Collectors.toList());
 
     Long fileId;
@@ -123,6 +126,9 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       // The parts were read to their end above, so their digests are complete.
       versionedObjectMetadata.setEtag(compositeEtag ? S3ObjectUtils.compositeEtag(partDigests(partStreams))
           : content.etag());
+      // Kept after the upload and its parts are removed, so that GetObjectAttributes can answer the part
+      // layout of the object.
+      versionedObjectMetadata.setParts(partLayout(completeParts, partStreams));
       uploadMetadata.getTagging().ifPresent(versionedObjectMetadata::setTagging);
       if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
         versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
@@ -136,12 +142,33 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
   }
 
   /**
+   * The layout of the object that the parts were concatenated into: the number that every part was uploaded
+   * with, which the parts of an upload don't have to be numbered consecutively with, and the number of bytes
+   * of it that were concatenated.
+   *
+   * @param completeParts the parts that complete the upload, in the order they were concatenated in.
+   * @param partStreams the streams that those parts were read through, read to their end.
+   * @return the parts of the object.
+   */
+  private static List<ObjectPartMetadata> partLayout(List<CompleteMultipartUploadPartOption> completeParts,
+                                                     List<MeasuredInputStream> partStreams) {
+    List<ObjectPartMetadata> parts = new ArrayList<>(completeParts.size());
+    for (int i = 0; i < completeParts.size(); i++) {
+      parts.add(ObjectPartMetadata.builder()
+          .partNumber(completeParts.get(i).getPartNumber())
+          .size(partStreams.get(i).getSize())
+          .build());
+    }
+    return parts;
+  }
+
+  /**
    * The MD5 digests of the parts that were concatenated, in the order they were concatenated in.
    *
    * @param partStreams the streams that the parts were read through, read to their end.
    * @return the digest of every part.
    */
-  private static List<byte[]> partDigests(List<DigestInputStream> partStreams) {
+  private static List<byte[]> partDigests(List<MeasuredInputStream> partStreams) {
     return partStreams.stream()
         .map(partStream -> partStream.getMessageDigest().digest())
         .collect(Collectors.toList());

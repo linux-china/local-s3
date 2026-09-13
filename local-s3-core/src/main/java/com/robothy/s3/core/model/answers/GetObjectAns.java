@@ -1,6 +1,8 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.Builder;
@@ -50,4 +52,10 @@ public class GetObjectAns {
    * {@code null} when the response is not a ranged result.
    */
   private String contentRange;
+
+  /**
+   * The parts of the multipart upload that stored this version, which {@code GetObjectAttributes} answers
+   * the part layout of the object from; {@code null} when it wasn't stored by one.
+   */
+  private List<ObjectPartMetadata> parts;
 }

@@ -23,6 +23,17 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_OBJECT_ATTRIBUTES = "x-amz-object-attributes";
 
+  /**
+   * The size of a page of the {@code ObjectParts} attribute that {@code GetObjectAttributes} answers.
+   */
+  public static final String X_AMZ_MAX_PARTS = "x-amz-max-parts";
+
+  /**
+   * The part number that a page of the {@code ObjectParts} attribute that {@code GetObjectAttributes}
+   * answers starts after.
+   */
+  public static final String X_AMZ_PART_NUMBER_MARKER = "x-amz-part-number-marker";
+
   public static final String X_AMZN_ERRORTYPE = "x-amzn-errortype";
 
   /**
