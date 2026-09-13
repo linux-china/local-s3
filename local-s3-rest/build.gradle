@@ -44,4 +44,6 @@ dependencies {
     implementation(libs.apacheCommonsCollections4)
     implementation(libs.jspecify)
     testImplementation(libs.mockitoCore)
+    // Tests assert the levels that LocalS3 logs at.
+    testImplementation(libs.logbackClassic)
 }

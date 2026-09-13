@@ -237,12 +237,18 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       try {
         handler.handle(request, response);
       } catch (Exception e) {
-        log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
         StreamingHttpResponse failed = response;
         failed.discard();
         response = new StreamingHttpResponse();
         copyCorsHeaders(failed, response);
-        router.findExceptionHandler(e.getClass()).handle(e, request, response);
+        try {
+          router.findExceptionHandler(e.getClass()).handle(e, request, response);
+        } catch (RuntimeException handlerFailure) {
+          // exceptionCaught() logs it, together with the exception it failed to handle.
+          handlerFailure.addSuppressed(e);
+          throw handlerFailure;
+        }
+        logFailure(request, response, e);
       }
     }
 
@@ -250,6 +256,26 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       response.status(HttpResponseStatus.OK);
     }
     return response;
+  }
+
+  /**
+   * Log a request that failed with an exception, by the status its exception handler answered. An error of the
+   * client, e.g. {@code NoSuchKey} of a {@code HEAD} request that checks whether an object exists, is part of normal
+   * operation and only logged at {@code DEBUG}, with the stack trace at {@code TRACE}. So is {@code NotImplemented},
+   * at {@code WARN} like a request that no route matches. Only a server error, e.g. an unexpected exception that
+   * the fallback handler answers with {@code InternalError}, is logged at {@code ERROR} with its stack trace.
+   */
+  static void logFailure(HttpRequest request, StreamingHttpResponse response, Exception e) {
+    int status = response.getStatus() == null ? HttpResponseStatus.OK.code() : response.getStatus().code();
+    if (status == HttpResponseStatus.NOT_IMPLEMENTED.code()) {
+      log.warn("{} {} is not implemented: {}", request.getMethod(), request.getPath(), e.toString());
+    } else if (status >= 500) {
+      log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
+    } else if (log.isTraceEnabled()) {
+      log.trace("{} {} answered {}.", request.getMethod(), request.getPath(), status, e);
+    } else {
+      log.debug("{} {} answered {}: {}", request.getMethod(), request.getPath(), status, e.toString());
+    }
   }
 
   /**

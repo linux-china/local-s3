@@ -10,6 +10,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.ExceptionHandler;
@@ -53,6 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.LoggerFactory;
 
 class LocalS3HttpPipelineTest {
 
@@ -496,6 +501,78 @@ class LocalS3HttpPipelineTest {
     channel.runPendingTasks();
     channel.finishAndReleaseAll();
     assertTrue(executor.isEmpty());
+  }
+
+  /**
+   * Run a request whose handler fails, and answer it with {@code status}; return what the handler logged.
+   */
+  private static List<ILoggingEvent> logsOfFailedRequest(HttpMethod method, HttpResponseStatus status, Level level) {
+    Router router = router((request, response) -> {
+      throw new IllegalStateException("boom");
+    });
+    ExceptionHandler<Throwable> exceptionHandler = (e, request, response) -> response.status(status);
+    when(router.findExceptionHandler(any())).thenReturn(exceptionHandler);
+    EmbeddedChannel channel = channel(router);
+
+    Logger logger = (Logger) LoggerFactory.getLogger(LocalS3HttpMessageHandler.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(level);
+    try {
+      channel.writeInbound(request(method, 0), LastHttpContent.EMPTY_LAST_CONTENT);
+      FullHttpResponse response = channel.readOutbound();
+      assertEquals(status, response.status());
+      response.release();
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+      channel.finishAndReleaseAll();
+    }
+    return appender.list;
+  }
+
+  @Test
+  void logsClientErrorsAtDebugWithoutStackTrace() {
+    List<ILoggingEvent> events = logsOfFailedRequest(HttpMethod.HEAD, HttpResponseStatus.NOT_FOUND, Level.DEBUG);
+
+    assertEquals(1, events.size());
+    assertEquals(Level.DEBUG, events.get(0).getLevel());
+    assertTrue(events.get(0).getFormattedMessage().contains("404"), events.get(0).getFormattedMessage());
+    assertNull(events.get(0).getThrowableProxy());
+  }
+
+  @Test
+  void logsStackTraceOfClientErrorsAtTrace() {
+    List<ILoggingEvent> events = logsOfFailedRequest(HttpMethod.GET, HttpResponseStatus.BAD_REQUEST, Level.TRACE);
+
+    assertEquals(1, events.size());
+    assertEquals(Level.TRACE, events.get(0).getLevel());
+    assertEquals("boom", events.get(0).getThrowableProxy().getMessage());
+  }
+
+  @Test
+  void logsNothingForClientErrorsAtInfo() {
+    assertTrue(logsOfFailedRequest(HttpMethod.GET, HttpResponseStatus.NOT_FOUND, Level.INFO).isEmpty());
+  }
+
+  @Test
+  void logsNotImplementedAtWarnWithoutStackTrace() {
+    List<ILoggingEvent> events = logsOfFailedRequest(HttpMethod.GET, HttpResponseStatus.NOT_IMPLEMENTED, Level.DEBUG);
+
+    assertEquals(1, events.size());
+    assertEquals(Level.WARN, events.get(0).getLevel());
+    assertNull(events.get(0).getThrowableProxy());
+  }
+
+  @Test
+  void logsServerErrorsAtErrorWithStackTrace() {
+    List<ILoggingEvent> events = logsOfFailedRequest(HttpMethod.GET, HttpResponseStatus.INTERNAL_SERVER_ERROR, Level.DEBUG);
+
+    assertEquals(1, events.size());
+    assertEquals(Level.ERROR, events.get(0).getLevel());
+    assertEquals("boom", events.get(0).getThrowableProxy().getMessage());
   }
 
 }
