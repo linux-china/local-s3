@@ -10,6 +10,7 @@ import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,6 +21,10 @@ import org.apache.commons.lang3.StringUtils;
  * HTTP Request related utils.
  */
 public class RequestUtils {
+
+  private static final int MAX_TAG_COUNT = 10;
+  private static final int MAX_TAG_KEY_LENGTH = 128;
+  private static final int MAX_TAG_VALUE_LENGTH = 256;
 
   /**
    * Get the decoded request body. Decode the request body if needed.
@@ -73,19 +78,43 @@ public class RequestUtils {
       return Optional.empty();
     }
 
-    String[] tags = tagging.split("&");
+    String[] tags = tagging.split("&", -1);
+    if (tags.length > MAX_TAG_COUNT) {
+      throw invalidTagging(tagging, "The number of tags must not exceed " + MAX_TAG_COUNT + ".");
+    }
+
     String[][] tagSet = new String[tags.length][2];
     for (int i = 0; i < tags.length; i++) {
-      String[] kv = tags[i].split("=");
-      if (kv.length != 2) {
-        throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_TAGGING, "Invalid tagging format.");
+      int separator = tags[i].indexOf('=');
+      if (separator <= 0) {
+        throw invalidTagging(tagging, "Invalid tagging format.");
       }
 
-      tagSet[i][0] = kv[0];
-      tagSet[i][1] = kv[1];
+      String key;
+      String value;
+      try {
+        key = QueryStringDecoder.decodeComponent(tags[i].substring(0, separator));
+        value = QueryStringDecoder.decodeComponent(tags[i].substring(separator + 1));
+      } catch (IllegalArgumentException exception) {
+        throw invalidTagging(tagging, "Invalid URL encoding in tagging header.");
+      }
+
+      if (key.codePointCount(0, key.length()) > MAX_TAG_KEY_LENGTH) {
+        throw invalidTagging(tagging, "Tag keys must not exceed " + MAX_TAG_KEY_LENGTH + " characters.");
+      }
+      if (value.codePointCount(0, value.length()) > MAX_TAG_VALUE_LENGTH) {
+        throw invalidTagging(tagging, "Tag values must not exceed " + MAX_TAG_VALUE_LENGTH + " characters.");
+      }
+
+      tagSet[i][0] = key;
+      tagSet[i][1] = value;
     }
 
     return Optional.of(tagSet);
+  }
+
+  private static LocalS3InvalidArgumentException invalidTagging(String tagging, String message) {
+    return new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_TAGGING, tagging, message);
   }
 
 
