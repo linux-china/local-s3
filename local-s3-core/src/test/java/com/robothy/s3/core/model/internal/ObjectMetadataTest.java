@@ -66,7 +66,8 @@ class ObjectMetadataTest {
     ObjectMetadata objectMetadata = new ObjectMetadata(versionId, versionedObjectMetadata);
     String json = JsonUtils.toJson(objectMetadata);
     ObjectMetadata serialized = JsonUtils.fromJson(json, ObjectMetadata.class);
-    assertEquals(objectMetadata, serialized);
+    // Asserted on the serialized document; the metadata carries no equals of its own.
+    assertEquals(json, JsonUtils.toJson(serialized));
   }
 
 }

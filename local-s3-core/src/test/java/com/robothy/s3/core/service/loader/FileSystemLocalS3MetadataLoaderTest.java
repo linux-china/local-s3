@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import com.robothy.s3.core.util.JsonUtils;
 
 class FileSystemLocalS3MetadataLoaderTest {
 
@@ -30,9 +31,10 @@ class FileSystemLocalS3MetadataLoaderTest {
     Optional<BucketMetadata> loadedBucket1 = s3Metadata.getBucketMetadata(bucket1.getBucketName());
     Optional<BucketMetadata> loadedBucket2 = s3Metadata.getBucketMetadata(bucket2.getBucketName());
     assertTrue(loadedBucket1.isPresent());
-    assertEquals(bucket1, loadedBucket1.get());
+    // The metadata carries no equals of its own; the documents it serializes to are compared instead.
+    assertEquals(JsonUtils.toJson(bucket1), JsonUtils.toJson(loadedBucket1.get()));
     assertTrue(loadedBucket2.isPresent());
-    assertEquals(bucket2, loadedBucket2.get());
+    assertEquals(JsonUtils.toJson(bucket2), JsonUtils.toJson(loadedBucket2.get()));
   }
 
 

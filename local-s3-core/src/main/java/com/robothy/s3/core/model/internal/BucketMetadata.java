@@ -12,9 +12,21 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
+/**
+ * The state that LocalS3 holds for a bucket, which grows with every object and multipart upload that the
+ * bucket receives.
+ *
+ * <p>It carries no {@code equals} and {@code hashCode} of its own, so two buckets are the same one only if
+ * they are the same instance. That is the semantics this class wants: it is mutable state that a request
+ * changes under the lock of its bucket, so a value that was derived from its contents, e.g. a hash code,
+ * stops describing it as soon as the next request runs, and looking it up by one would find nothing. A
+ * generated pair would also walk every object of the bucket on each call.
+ */
+@Getter
+@Setter
 public class BucketMetadata {
 
   /**
@@ -205,6 +217,18 @@ public class BucketMetadata {
    */
   public void setCors(CORSConfiguration cors) {
     this.cors = cors;
+  }
+
+  /**
+   * Names the bucket and the settings that identify it, and leaves out the objects and the multipart
+   * uploads it holds: a bucket under test holds an unbounded number of both, so a generated
+   * {@code toString} would turn a {@code log.debug("{}", bucketMetadata)} into a dump of the whole bucket.
+   * Read the contents through {@linkplain #getObjectMap()} and {@linkplain #getUploads()} instead.
+   */
+  @Override
+  public String toString() {
+    return "BucketMetadata(bucketName=" + bucketName + ", region=" + region
+        + ", creationDate=" + creationDate + ", versioningEnabled=" + versioningEnabled + ")";
   }
 
 }

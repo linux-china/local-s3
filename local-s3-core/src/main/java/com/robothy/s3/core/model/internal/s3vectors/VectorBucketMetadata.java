@@ -4,14 +4,18 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Internal metadata representation for S3 Vector Buckets.
  * This class follows the same patterns as {@link com.robothy.s3.core.model.internal.BucketMetadata}
- * for storage and persistence in LocalS3.
+ * for storage and persistence in LocalS3, including its treatment of {@code equals}, {@code hashCode}
+ * and {@code toString}: it holds an unbounded number of indexes and vectors, so it carries no generated
+ * pair that would walk them and no generated {@code toString} that would dump them.
  */
-@Data
+@Getter
+@Setter
 public class VectorBucketMetadata {
 
   /**
@@ -117,4 +121,15 @@ public class VectorBucketMetadata {
   public void setPolicy(String policy) {
     this.policy = policy;
   }
+
+  /**
+   * Names the vector bucket and leaves out the indexes and the vectors it holds; read those through
+   * {@linkplain #getIndexes()} and {@linkplain #getVectorData()}.
+   */
+  @Override
+  public String toString() {
+    return "VectorBucketMetadata(vectorBucketName=" + vectorBucketName
+        + ", creationDate=" + creationDate + ")";
+  }
+
 }

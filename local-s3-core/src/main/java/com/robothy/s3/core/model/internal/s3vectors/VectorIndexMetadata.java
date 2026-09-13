@@ -4,13 +4,17 @@ import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Internal metadata representation for S3 Vector Indexes.
- * This class stores the persistent configuration and state of a vector index.
+ * This class stores the persistent configuration and state of a vector index, including every vector
+ * that was put into it. Like {@link com.robothy.s3.core.model.internal.BucketMetadata} it carries no
+ * generated {@code equals}, {@code hashCode} and {@code toString}, which would walk and dump them.
  */
-@Data
+@Getter
+@Setter
 public class VectorIndexMetadata {
 
   /**
@@ -170,4 +174,15 @@ public class VectorIndexMetadata {
   public void clearVectorObjects() {
     vectorObjects.clear();
   }
+
+  /**
+   * Names the index and its configuration, and leaves out the vectors it holds; read those through
+   * {@linkplain #getVectorObjects()}, or count them with {@linkplain #getVectorObjectCount()}.
+   */
+  @Override
+  public String toString() {
+    return "VectorIndexMetadata(indexName=" + indexName + ", dimension=" + dimension
+        + ", dataType=" + dataType + ", distanceMetric=" + distanceMetric + ", status=" + status + ")";
+  }
+
 }

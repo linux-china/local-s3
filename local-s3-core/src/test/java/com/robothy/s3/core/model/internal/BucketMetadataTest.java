@@ -80,7 +80,9 @@ class BucketMetadataTest {
 
     String json = JsonUtils.toJson(bucketMetadata);
     BucketMetadata deserialized = JsonUtils.fromJson(json, BucketMetadata.class);
-    assertEquals(bucketMetadata, deserialized);
+    // The metadata carries no equals of its own, so the round trip is asserted on the document it
+    // serializes to, which is what the file system mode stores anyway.
+    assertEquals(json, JsonUtils.toJson(deserialized));
   }
 
 }

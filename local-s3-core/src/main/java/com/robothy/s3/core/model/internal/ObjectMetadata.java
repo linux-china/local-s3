@@ -6,12 +6,19 @@ import com.robothy.s3.core.converters.deserializer.VersionedObjectMetadataMapCon
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
- * Represents local-s3 Object metadata.
+ * Represents local-s3 Object metadata, which holds every version that the object key was ever stored
+ * with.
+ *
+ * <p>Like {@linkplain BucketMetadata}, it carries no {@code equals} and {@code hashCode} of its own, so
+ * two of them are the same object only if they are the same instance: the versions of a key are mutable
+ * state that a request adds to, and a generated pair would walk all of them on each call.
  */
-@Data
+@Getter
+@Setter
 public class ObjectMetadata {
 
   /**
@@ -132,4 +139,17 @@ public class ObjectMetadata {
   public Optional<String> getVirtualVersion() {
     return Optional.ofNullable(virtualVersion);
   }
+
+  /**
+   * Names the version the object is currently read as, and leaves out the versions it holds: a key under
+   * test holds an unbounded number of them, so a generated {@code toString} would dump every version of
+   * the object. Read them through {@linkplain #getVersionedObjectMap()} instead.
+   */
+  @Override
+  public String toString() {
+    var latest = versionedObjectMap.firstEntry();
+    return "ObjectMetadata(latestVersion=" + (latest == null ? null : latest.getKey())
+        + ", virtualVersion=" + virtualVersion + ")";
+  }
+
 }

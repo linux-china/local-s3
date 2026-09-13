@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import lombok.SneakyThrows;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
+import com.robothy.s3.core.util.JsonUtils;
 
 class FileSystemBucketMetadataStoreTest {
 
@@ -38,12 +39,14 @@ class FileSystemBucketMetadataStoreTest {
     bucketMetadata.setCreationDate(System.currentTimeMillis());
     bucketMetadata.getObjectMap().put("123", new ObjectMetadata());
     store.store(bucketMetadata.getBucketName(), bucketMetadata);
-    assertEquals(bucketMetadata, store.fetch("bucket"));
+    // The metadata carries no equals of its own, so what was fetched is compared as the document it
+    // serializes to, which is what the store wrote.
+    assertEquals(JsonUtils.toJson(bucketMetadata), JsonUtils.toJson(store.fetch("bucket")));
 
 
     bucketMetadata.setVersioningEnabled(true);
     store.store(bucketMetadata.getBucketName(), bucketMetadata);
-    assertEquals(bucketMetadata, store.fetch("bucket"));
+    assertEquals(JsonUtils.toJson(bucketMetadata), JsonUtils.toJson(store.fetch("bucket")));
 
     assertThrows(IllegalArgumentException.class, () -> store.store(bucketMetadata.getBucketName(), new BucketMetadata()));
 
