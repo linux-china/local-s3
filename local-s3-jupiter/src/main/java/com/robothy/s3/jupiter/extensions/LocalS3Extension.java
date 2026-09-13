@@ -6,6 +6,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import lombok.SneakyThrows;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
@@ -27,7 +28,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   public static final String AMAZON_S3_REGION_STORE_SUFFIX = ".AmazonS3.Region";
 
   @Override
-  public void beforeAll(ExtensionContext context) throws Exception {
+  public void beforeAll(ExtensionContext context) {
     LocalS3 s3Config = context.getRequiredTestClass().getAnnotation(LocalS3.class);
     if (s3Config != null) {
       com.robothy.s3.rest.LocalS3 localS3 = launch(s3Config);
@@ -39,7 +40,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   }
 
   @Override
-  public void beforeEach(ExtensionContext context) throws Exception {
+  public void beforeEach(ExtensionContext context) {
     Method testMethod = context.getRequiredTestMethod();
     LocalS3 s3Config = testMethod.getAnnotation(LocalS3.class);
     if (s3Config != null) {
@@ -52,7 +53,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   }
 
   @Override
-  public void afterEach(ExtensionContext context) throws Exception {
+  public void afterEach(@NonNull ExtensionContext context)  {
     if (Objects.nonNull(localS3ForEach.get())) {
       shutdown(localS3ForEach.get());
       localS3ForEach.remove();
@@ -62,7 +63,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   }
 
   @Override
-  public void afterAll(ExtensionContext context) throws Exception {
+  public void afterAll(@NonNull ExtensionContext context) {
     if (Objects.nonNull(localS3ForAll.get())) {
       shutdown(localS3ForAll.get());
       localS3ForAll.remove();
@@ -106,7 +107,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();
-    logger.debug("LocalS3 endpoint http://localhost:" + localS3.getPort());
+      logger.debug("LocalS3 endpoint http://localhost:{}", localS3.getPort());
     return localS3;
   }
 
