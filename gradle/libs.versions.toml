@@ -18,6 +18,7 @@ apacheCommonsCompress = "1.28.0"
 robothyCnRepo = "1.18"
 gradleLombok = "5.0.0"
 jspecify="1.0.1"
+caffeine="3.2.4"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -51,3 +52,4 @@ apacheCommonsCompress = { group = "org.apache.commons", name = "commons-compress
 robothyCnRepo = { group = "com.robothy", name = "cn-repo", version.ref = "robothyCnRepo" }
 gradleLombok = { group = "io.franzbecker", name = "gradle-lombok", version.ref = "gradleLombok" }
 jspecify = { group = "org.jspecify", name = "jspecify", version.ref = "jspecify" }
+caffeine = { group = "com.github.ben-manes.caffeine", name = "caffeine", version.ref = "caffeine" }
