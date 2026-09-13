@@ -477,6 +477,36 @@ directory on startup, so that bind-mounted directories stay writable. To run as 
 the ownership of a bind-mounted directory, start the container with `--user "$(id -u):$(id -g)"`. The images
 declare a Docker `HEALTHCHECK` that requests the health check below.
 
+### Run LocalS3 as an executable jar
+
+The same service runs without Docker. `local-s3-standalone` is published to Maven Central as an executable
+jar that carries everything it needs, so a JRE 21 is the only requirement:
+
+```shell
+curl -LO https://repo1.maven.org/maven2/io/github/robothy/local-s3-standalone/2.5/local-s3-standalone-2.5.jar
+java -jar local-s3-standalone-2.5.jar
+```
+
+It is configured by the variables of the table above, read from the environment or from the system
+properties of the same names, which is what a command line sets most easily:
+
+```shell
+java -DLOCAL_S3_PORT=29090 -DLOCAL_S3_MODE=IN_MEMORY -DAWS_BUCKETS=my-bucket \
+    -jar local-s3-standalone-2.5.jar
+```
+
+The defaults are the ones of the container, i.e. it binds every interface and persists to `/data`, so give
+it a `LOCAL_S3_DATA_PATH` of your own unless that directory suits you.
+
+A shell that a developer works in often exports `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` already, and
+the jar reads the environment it inherits, so it would require every request to be signed with those
+credentials. A container starts with a clean environment and doesn't run into this; clear them for the jar
+if you don't mean to sign:
+
+```shell
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-2.5.jar
+```
+
 ### Health check
 
 LocalS3 answers `GET /_health` (and `HEAD /_health`) with `200 OK` and `{"status":"UP"}` once it serves

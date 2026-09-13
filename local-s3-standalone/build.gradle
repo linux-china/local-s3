@@ -3,6 +3,7 @@ import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 plugins {
     id 'local-s3.java-conventions'
+    id 'local-s3.publish'
 }
 
 dependencies {
@@ -28,6 +29,22 @@ jar {
     from runtimeClasses
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     archiveFileName.set("s3.jar")
+}
+
+// The artifact of this module is the executable jar above, which carries the classes of every dependency
+// with it. A consumer that declares a dependency on it would get a second copy of each of those classes if
+// the published metadata listed them as well, so neither the POM nor the Gradle module metadata does: the
+// jar is self contained, and `java -jar` is what it is published for.
+publishing {
+    publications.withType(MavenPublication).configureEach {
+        pom.withXml {
+            asNode().dependencies.each { it.replaceNode {} }
+        }
+    }
+}
+
+tasks.withType(GenerateModuleMetadata).configureEach {
+    enabled = false
 }
 
 def os = DefaultNativePlatform.getCurrentOperatingSystem()
