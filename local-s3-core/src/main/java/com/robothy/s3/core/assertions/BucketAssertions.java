@@ -64,7 +64,7 @@ public class BucketAssertions {
   private static final List<String> RESERVED_NAMES = List.of("CreateVectorBucket", "GetVectorBucket", "DeleteVectorBucket",
           "ListVectorBuckets", "PutVectorBucketPolicy", "GetVectorBucketPolicy", "DeleteVectorBucketPolicy",
           "CreateIndex", "GetIndex", "ListIndexes", "DeleteIndex", "PutVectors", "QueryVectors", "GetVectors",
-          "DeleteVectors", "ListVectors", "_health");
+          "DeleteVectors", "ListVectors", "_health", "_admin");
   private static final List<String> RESERVED_PREFIXES = List.of("xn--", "sthree-", "amzn-s3-demo-");
 
   private static final List<String> RESERVED_SUFFIXES = List.of("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3");
