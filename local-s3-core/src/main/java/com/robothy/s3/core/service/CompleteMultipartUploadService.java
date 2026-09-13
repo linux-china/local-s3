@@ -1,5 +1,7 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.annotations.BucketChanged;
 import com.robothy.s3.core.annotations.BucketReadLock;
 import com.robothy.s3.core.annotations.BucketWriteLock;
@@ -232,7 +234,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
 
     if (completeParts.isEmpty()) {
-      throw new IllegalArgumentException("You must specify at least 1 multipart upload part.");
+      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
 
     int pre = -1;

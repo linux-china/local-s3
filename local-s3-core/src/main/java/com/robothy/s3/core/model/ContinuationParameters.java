@@ -70,8 +70,15 @@ public class ContinuationParameters {
 
     public static ContinuationParameters decode(String continuationToken) {
         String hashAppended = ensureContinuationTokenIsBase64Encoded(continuationToken);
-        String joined = verifyHash(hashAppended);
-        return decodeParameters(joined);
+        try {
+            String joined = verifyHash(hashAppended);
+            return decodeParameters(joined);
+        } catch (LocalS3InvalidArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            // A number or an escape of a tampered token that doesn't parse, e.g. a NumberFormatException.
+            throw new LocalS3InvalidArgumentException("continuation-token", continuationToken, "The continuation token provided is incorrect.");
+        }
     }
 
     private static String ensureContinuationTokenIsBase64Encoded(String continuationToken) {

@@ -1,6 +1,8 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.annotations.CallsThroughProxy;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
@@ -31,7 +33,8 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         GetObjectOptions.builder().versionId(srcVersion).build());
 
     if (srcObjectAns.isDeleteMarker()) {
-      throw new IllegalArgumentException("The source of a copy request may not specifically refer to a delete marker by version id.");
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
+          "The source of a copy request may not specifically refer to a delete marker by version id.");
     }
 
     // The metadata of the source object is copied, unless the directive replaces all of it, the content type and

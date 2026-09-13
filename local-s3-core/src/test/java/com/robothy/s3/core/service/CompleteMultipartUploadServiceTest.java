@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.InvalidPartException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
@@ -41,7 +42,7 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
         .contentType("plain/text")
         .build());
     assertThrows(UploadNotExistException.class, () -> objectService.completeMultipartUpload(bucket, key, "123", Collections.emptyList()));
-    assertThrows(IllegalArgumentException.class, () -> objectService.completeMultipartUpload(bucket, key, uploadId, Collections.emptyList()));
+    assertThrows(LocalS3RequestException.class, () -> objectService.completeMultipartUpload(bucket, key, uploadId, Collections.emptyList()));
 
     objectService.uploadPart(bucket, key, uploadId, 1, UploadPartOptions.builder()
             .data(new ByteArrayInputStream("Hello".getBytes()))

@@ -178,7 +178,7 @@ class CreateIndexServiceTest {
     VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
     service.mockMetadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
 
-    IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+    LocalS3VectorException exception = assertThrows(LocalS3VectorException.class, () ->
         service.createIndex("test-bucket", "test-index", VectorDataType.FLOAT32, 0, DistanceMetric.EUCLIDEAN, null));
 
     assertEquals("Vector dimension must be between 1 and 4096, got: 0", exception.getMessage());
@@ -190,7 +190,7 @@ class CreateIndexServiceTest {
     VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
     service.mockMetadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
 
-    IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+    LocalS3VectorException exception = assertThrows(LocalS3VectorException.class, () ->
         service.createIndex("test-bucket", "test-index", VectorDataType.FLOAT32, -1, DistanceMetric.EUCLIDEAN, null));
 
     assertEquals("Vector dimension must be between 1 and 4096, got: -1", exception.getMessage());
@@ -202,7 +202,7 @@ class CreateIndexServiceTest {
     VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
     service.mockMetadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
 
-    IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
+    LocalS3VectorException exception = assertThrows(LocalS3VectorException.class, () ->
         service.createIndex("test-bucket", "test-index", VectorDataType.FLOAT32, 4097, DistanceMetric.EUCLIDEAN, null));
 
     assertEquals("Vector dimension must be between 1 and 4096, got: 4097", exception.getMessage());

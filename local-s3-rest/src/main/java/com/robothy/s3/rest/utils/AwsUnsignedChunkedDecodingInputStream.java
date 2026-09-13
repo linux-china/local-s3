@@ -27,7 +27,7 @@ public class AwsUnsignedChunkedDecodingInputStream extends InputStream {
       if (chunkSizeHex == null) {
         return -1;
       }
-      remainingInChunk = Integer.parseInt(chunkSizeHex.trim(), 16);
+      remainingInChunk = AwsChunkedDecodingInputStream.parseChunkSize(chunkSizeHex);
       if (remainingInChunk == 0) {
         // Consume trailing CRLF
         readLine();

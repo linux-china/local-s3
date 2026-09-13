@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.utils;
 
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
@@ -40,25 +42,45 @@ public class RequestUtils {
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD:
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER:
         result.setDecodedBody(new AwsChunkedDecodingInputStream(new ByteBufInputStream(request.getBody())));
-        result.setDecodedContentLength(request.header(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH).map(Long::parseLong)
-            .orElseThrow(() -> new IllegalArgumentException(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH + "header not exist.")));
+        result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
       case AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER:
       case AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD:
         result.setDecodedBody(new AwsUnsignedChunkedDecodingInputStream(new ByteBufInputStream(request.getBody())));
-        result.setDecodedContentLength(request.header(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH).map(Long::parseLong)
-            .orElseThrow(() -> new IllegalArgumentException(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH + "header not exist.")));
+        result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
       case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD:
       case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER:
-        throw new UnsupportedOperationException("Unsupported payload encoding: " + amzContentSha256);
+        throw new LocalS3RequestException(S3ErrorCode.NotImplemented,
+            "The payload signing algorithm " + amzContentSha256 + " is not implemented.");
       default:
         result.setDecodedBody(new ByteBufInputStream(request.getBody()));
-        result.setDecodedContentLength(request.header(HttpHeaderNames.CONTENT_LENGTH.toString()).map(Long::parseLong)
-            .orElseThrow(() -> new IllegalArgumentException("Content-Length is required.")));
+        result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
     }
 
     return result;
+  }
+
+  /**
+   * Read the length of the content that a request stores, e.g. from {@code Content-Length}. Amazon S3 requires it,
+   * so a request that sends its body with {@code Transfer-Encoding: chunked} instead is rejected, like Amazon S3
+   * does.
+   *
+   * @throws LocalS3RequestException {@code MissingContentLength} if the request has no such header.
+   * @throws LocalS3InvalidArgumentException if the header isn't a length.
+   */
+  private static long contentLength(HttpRequest request, String headerName) {
+    String value = request.header(headerName)
+        .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.MissingContentLength));
+    try {
+      long length = Long.parseLong(value.trim());
+      if (length >= 0) {
+        return length;
+      }
+    } catch (NumberFormatException e) {
+      // Rejected below.
+    }
+    throw new LocalS3InvalidArgumentException(headerName, value, "The value of " + headerName + " is not valid.");
   }
 
   public static Optional<String> getETag(HttpRequest request) {

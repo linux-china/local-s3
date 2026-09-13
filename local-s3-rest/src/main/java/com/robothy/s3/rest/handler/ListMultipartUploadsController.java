@@ -36,7 +36,8 @@ public class ListMultipartUploadsController implements HttpRequestHandler {
     String keyMarker = httpRequest.parameter("key-marker").orElse(null);
     String prefix = httpRequest.parameter("prefix").orElse(null);
     String uploadIdMarker = httpRequest.parameter("upload-id-marker").orElse(null);
-    int maxUploads = httpRequest.parameter("max-uploads").map(Integer::parseInt).orElse(1000);
+    Integer maxUploadsParameter = RequestAssertions.assertIntegerParameterOrNull(httpRequest, "max-uploads");
+    int maxUploads = maxUploadsParameter == null ? 1000 : maxUploadsParameter;
 
     ListMultipartUploadsAns answer = objectService.listMultipartUploads(bucketName, delimiter, encodingType,
         keyMarker, maxUploads, prefix, uploadIdMarker);

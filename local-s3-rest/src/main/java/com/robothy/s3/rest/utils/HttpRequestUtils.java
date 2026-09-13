@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.utils;
 
+import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
+import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -64,7 +66,8 @@ public final class HttpRequestUtils {
     public static <T> T parseRequiredRequest(byte[] bodyBytes, Class<T> requestClass, 
                                              ObjectMapper objectMapper) throws Exception {
         if (bodyBytes.length == 0 || new String(bodyBytes).trim().isEmpty()) {
-            throw new IllegalArgumentException("Request body is required for " + requestClass.getSimpleName());
+            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
+                "Request body is required for " + requestClass.getSimpleName());
         }
         return objectMapper.readValue(bodyBytes, requestClass);
     }

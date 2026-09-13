@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.utils;
 
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -60,8 +62,7 @@ public class AwsChunkedDecodingInputStream extends InputStream {
         return -1;
       }
 
-      remainingInChunk =
-          Integer.parseInt(new String(hexLengthBytes, StandardCharsets.UTF_8).trim(), 16);
+      remainingInChunk = parseChunkSize(new String(hexLengthBytes, StandardCharsets.UTF_8));
 
       if (remainingInChunk == 0) {
         return -1;
@@ -73,6 +74,25 @@ public class AwsChunkedDecodingInputStream extends InputStream {
     remainingInChunk--;
 
     return source.read();
+  }
+
+  /**
+   * Parse the hexadecimal size of a chunk of an {@code aws-chunked} body.
+   *
+   * @param chunkSize the size as it precedes the chunk, possibly surrounded by whitespace.
+   * @return the size of the chunk.
+   * @throws LocalS3RequestException {@code IncompleteBody} if the size isn't a hexadecimal size.
+   */
+  static int parseChunkSize(String chunkSize) {
+    try {
+      int size = Integer.parseInt(chunkSize.trim(), 16);
+      if (size >= 0) {
+        return size;
+      }
+    } catch (NumberFormatException e) {
+      // Rejected below.
+    }
+    throw new LocalS3RequestException(S3ErrorCode.IncompleteBody, "The aws-chunked request body is malformed.");
   }
 
   @Override

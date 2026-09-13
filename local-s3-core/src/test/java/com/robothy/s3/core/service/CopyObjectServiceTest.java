@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
@@ -101,7 +102,7 @@ class CopyObjectServiceTest extends LocalS3ServiceTestBase {
 
     // Cannot copy a delete marker
     DeleteObjectAns deleteObjectAns = objectService.deleteObject(bucket1, key1, null);
-    assertThrows(IllegalArgumentException.class, () -> objectService.copyObject(bucket2, key2, CopyObjectOptions.builder()
+    assertThrows(LocalS3RequestException.class, () -> objectService.copyObject(bucket2, key2, CopyObjectOptions.builder()
         .sourceBucket(bucket1)
         .sourceKey(key1)
         .sourceVersion(deleteObjectAns.getVersionId())

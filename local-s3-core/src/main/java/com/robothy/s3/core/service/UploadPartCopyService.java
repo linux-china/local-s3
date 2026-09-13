@@ -1,5 +1,7 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.annotations.CallsThroughProxy;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
@@ -48,7 +50,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
             .build());
 
     if (source.isDeleteMarker()) {
-      throw new IllegalArgumentException(
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
           "The source of a copy request may not specifically refer to a delete marker by version id.");
     }
 

@@ -10,7 +10,6 @@ import com.robothy.s3.core.model.internal.s3vectors.VectorIndexMetadata;
 import com.robothy.s3.core.util.vectors.ValidationUtils;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
-import com.robothy.s3.datatypes.s3vectors.VectorIndex;
 import com.robothy.s3.datatypes.s3vectors.response.CreateIndexResponse;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +35,10 @@ public interface CreateIndexService extends S3VectorsMetadataAware {
 
   private void validateIndexParameters(String indexName, int dimension, VectorDataType dataType, DistanceMetric distanceMetric) {
     ValidationUtils.validateNotBlank(indexName, "Index name is required");
-    VectorIndex.validateDimension(dimension);
+    if (dimension < 1 || dimension > 4096) {
+      throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
+          "Vector dimension must be between 1 and 4096, got: " + dimension);
+    }
     validateDataType(dataType);
     validateDistanceMetric(distanceMetric);
   }

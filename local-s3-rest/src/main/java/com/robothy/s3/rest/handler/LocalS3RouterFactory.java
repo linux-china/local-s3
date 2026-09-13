@@ -64,7 +64,6 @@ public class LocalS3RouterFactory {
     return router
         .notFound(new NotFoundHandler())
         .exceptionHandler(LocalS3Exception.class, new LocalS3ExceptionHandler(serviceFactory))
-        .exceptionHandler(IllegalArgumentException.class, new IllegalArgumentExceptionHandler())
         .exceptionHandler(LocalS3InvalidArgumentException.class, new LocalS3InvalidArgumentExceptionHandler())
         .exceptionHandler(LocalS3VectorException.class, new LocalS3VectorExceptionHandler(serviceFactory))
         .exceptionHandler(Exception.class, new ExceptionHandler());

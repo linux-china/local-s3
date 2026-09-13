@@ -1,6 +1,8 @@
 package com.robothy.s3.rest.assertions;
 
 
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
@@ -21,7 +23,7 @@ public class RequestAssertions {
    */
   public static String assertBucketNameProvided(HttpRequest request) {
     return request.parameter("bucket")
-        .orElseThrow(() -> new IllegalArgumentException("Bucket name must be provided in request path. " +
+        .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.InvalidRequest, "Bucket name must be provided in request path. " +
             "You may need to make the Amazon S3 client using path style via 'AmazonS3ClientBuilder#withPathStyleAccessEnabled(true)' " +
             "or ClientConfiguration()#withDisableHostPrefixInjection(true)."));
   }
@@ -35,7 +37,7 @@ public class RequestAssertions {
   public static String assertObjectKeyProvided(HttpRequest request) {
     return request.parameter("key")
         .map(key -> key.startsWith("/") ? key.substring(1) : key)
-        .orElseThrow(() -> new IllegalArgumentException("The object key is required."));
+        .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.InvalidRequest, "The object key is required."));
   }
 
   /**
@@ -109,7 +111,7 @@ public class RequestAssertions {
    */
   public static int assertPartNumberIsValid(HttpRequest request) {
     String partNumber = request.parameter("partNumber").orElseThrow(
-        () -> new IllegalArgumentException("'partNumber' is required."));
+        () -> new LocalS3InvalidArgumentException("partNumber", null, "Part number is required."));
     int number;
     try {
       number = Integer.parseInt(partNumber.trim());
@@ -130,7 +132,7 @@ public class RequestAssertions {
    */
   public static String assertUploadIdIsProvided(HttpRequest request) {
     return request.parameter("uploadId").orElseThrow(
-        () -> new IllegalArgumentException("'uploadId' is required."));
+        () -> new LocalS3InvalidArgumentException("uploadId", null, "Upload ID is required."));
   }
 
   /**
@@ -142,7 +144,8 @@ public class RequestAssertions {
   public static String assertUserMetadataHeaderIsValid(String userMetaHeaderName) {
     if (!userMetaHeaderName.startsWith(AmzHeaderNames.X_AMZ_META_PREFIX)
         || userMetaHeaderName.length() == AmzHeaderNames.X_AMZ_META_PREFIX.length()) {
-      throw new IllegalArgumentException("Invalid user-defined object metadata key: " + userMetaHeaderName + ".");
+      throw new LocalS3InvalidArgumentException(userMetaHeaderName, null,
+          "Invalid user-defined object metadata key: " + userMetaHeaderName + ".");
     }
     return userMetaHeaderName.substring(AmzHeaderNames.X_AMZ_META_PREFIX.length()).toLowerCase();
   }
@@ -159,7 +162,8 @@ public class RequestAssertions {
     try {
       return Integer.parseInt(values.get(0));
     } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("The value of " + queryParam + " must be an integer.");
+      throw new LocalS3InvalidArgumentException(queryParam, values.get(0),
+          "Provided " + queryParam + " not an integer or within integer range");
     }
   }
 }

@@ -23,12 +23,12 @@ record CopySource(String bucket, String key, String versionId) {
    *
    * @param request the copy request.
    * @return the parsed source object.
-   * @throws IllegalArgumentException if the request has no {@code x-amz-copy-source} header.
+   * @throws LocalS3InvalidArgumentException if the request has no {@code x-amz-copy-source} header.
    * @throws LocalS3InvalidArgumentException if the header doesn't name a bucket and a key.
    */
   static CopySource of(HttpRequest request) {
     return parse(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE).orElseThrow(() ->
-        new IllegalArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE + " header is required.")));
+        new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, null, "Copy Source must mention the source bucket and key: sourcebucket/sourcekey")));
   }
 
   /**
@@ -52,7 +52,12 @@ record CopySource(String bucket, String key, String versionId) {
     String key = path.charAt(path.length() - 1) == '/' ? path.substring(delimiterIndex + 1, path.length() - 1)
         : path.substring(delimiterIndex + 1);
 
-    return new CopySource(urlDecode(bucket), urlDecode(key), urlDecode(versionId(slices)));
+    try {
+      return new CopySource(urlDecode(bucket), urlDecode(key), urlDecode(versionId(slices)));
+    } catch (IllegalArgumentException e) {
+      // A malformed percent escape.
+      throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource, "Invalid copy source encoding.");
+    }
   }
 
   /**
