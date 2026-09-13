@@ -429,7 +429,7 @@ final class AwsSignatureV4Verifier {
     String credential = requiredAttribute(attributes, "Credential");
     String signedHeaders = requiredAttribute(attributes, "SignedHeaders");
     String signature = requiredAttribute(attributes, "Signature");
-    if (!signature.matches("[0-9a-fA-F]{64}")) {
+    if (!HEX_SHA256.matcher(signature).matches()) {
       throw new IllegalArgumentException("The Authorization signature is malformed.");
     }
     return new ParsedAuthorization(credential, signedHeaders, signature);
@@ -577,7 +577,7 @@ final class AwsSignatureV4Verifier {
           chunkSignature = extension[1].trim();
         }
       }
-      if (chunkSignature == null || !chunkSignature.matches("[0-9a-fA-F]{64}")
+      if (chunkSignature == null || !HEX_SHA256.matcher(chunkSignature).matches()
           || chunkLength < 0 || chunkLength > end - offset) {
         return false;
       }
@@ -631,7 +631,7 @@ final class AwsSignatureV4Verifier {
     }
 
     String trailerSignature = trailerHeaders.remove("x-amz-trailer-signature");
-    if (trailerSignature == null || !trailerSignature.matches("[0-9a-fA-F]{64}")) {
+    if (trailerSignature == null || !HEX_SHA256.matcher(trailerSignature).matches()) {
       return false;
     }
     List<String> names = Arrays.stream(trailerHeaderNames.split(","))

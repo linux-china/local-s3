@@ -57,25 +57,29 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
         .build();
     }
 
-    List<S3Object> objects = new LinkedList<>();
+    List<S3Object> objects = new ArrayList<>();
     Set<String> commonPrefixes = new TreeSet<>();
 
     String nextMarker = null;
 
-    for (Iterator<String> keyIterator = filteredObjects.keySet().iterator(); keyIterator.hasNext(); ) {
-      String key = keyIterator.next();
-      if (filteredObjects.get(key).getLatest().isDeleted()) {
+    // The entries are iterated rather than the keys, so that each object is found once instead of looked up again.
+    Iterator<Map.Entry<String, ObjectMetadata>> entries = filteredObjects.entrySet().iterator();
+    while (entries.hasNext()) {
+      Map.Entry<String, ObjectMetadata> entry = entries.next();
+      String key = entry.getKey();
+      ObjectMetadata objectMetadata = entry.getValue();
+      if (objectMetadata.getLatest().isDeleted()) {
         continue;
       }
 
       ListItemUtils.commonPrefix(key, effectivePrefix, delimiter).ifPresentOrElse(
               commonPrefixes::add,
-              () -> objects.add(fetchLatestObject(key, filteredObjects.get(key))));
+              () -> objects.add(fetchLatestObject(key, objectMetadata)));
 
       int keyCount = commonPrefixes.size() + objects.size();
 
       if (keyCount == maxKeys) {
-        nextMarker = calculateNextMarker(filteredObjects, key, keyIterator, effectivePrefix, delimiter);
+        nextMarker = calculateNextMarker(key, entries, effectivePrefix, delimiter);
         break;
       }
 
@@ -91,18 +95,18 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       .build();
   }
 
-  static String calculateNextMarker(NavigableMap<String, ObjectMetadata> filteredObjects,
-          String currentKey, Iterator<String> keyIterator, String effectivePrefix, String delimiter) {
+  static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadata>> entries,
+          String effectivePrefix, String delimiter) {
 
     Optional<String> commonPrefixOpt = ListItemUtils.commonPrefix(currentKey, effectivePrefix, delimiter);
     if (commonPrefixOpt.isEmpty()) {
-      return keyIterator.hasNext() ? currentKey : null;
+      return entries.hasNext() ? currentKey : null;
     }
 
     String commonPrefix = commonPrefixOpt.get();
-    while (keyIterator.hasNext()) {
-      String key = keyIterator.next();
-      if (!key.startsWith(commonPrefix) && !filteredObjects.get(key).getLatest().isDeleted()) {
+    while (entries.hasNext()) {
+      Map.Entry<String, ObjectMetadata> entry = entries.next();
+      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().getLatest().isDeleted()) {
         return commonPrefix;
       }
     }
