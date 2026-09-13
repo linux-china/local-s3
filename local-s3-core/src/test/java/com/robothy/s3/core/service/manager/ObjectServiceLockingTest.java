@@ -1,14 +1,19 @@
 package com.robothy.s3.core.service.manager;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.fail;
+import com.robothy.s3.core.exception.InvalidPartException;
+import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
+import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.service.BlockingInputStream;
@@ -21,11 +26,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 
@@ -99,6 +106,80 @@ class ObjectServiceLockingTest {
     }
   }
 
+  /**
+   * A part uploaded again while the parts are concatenated isn't the part that was concatenated, so the upload
+   * isn't completed with the stale data; it can be completed again with the part as it is now.
+   */
+  @Test
+  void completeMultipartUploadRejectsAPartUploadedAgainWhileConcatenating() throws Exception {
+    BlockingStorage storage = new BlockingStorage();
+    InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
+    BucketService bucketService = manager.bucketService();
+    ObjectService objectService = manager.objectService();
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = objectService.createMultipartUpload(bucket, key,
+        CreateMultipartUploadOptions.builder().contentType("plain/text").build());
+    objectService.uploadPart(bucket, key, uploadId, 1, part("Robo"));
+    objectService.uploadPart(bucket, key, uploadId, 2, part("thy"));
+
+    storage.blockNextRead();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<CompleteMultipartUploadAns> completing = executor.submit(() ->
+          objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
+      BlockingInputStream blocked = storage.awaitBlockedRead();
+
+      objectService.uploadPart(bucket, key, uploadId, 1, part("Andy"));
+      blocked.release();
+
+      ExecutionException thrown = assertThrows(ExecutionException.class, () -> completing.get(5, TimeUnit.SECONDS));
+      assertInstanceOf(InvalidPartException.class, thrown.getCause());
+    } finally {
+      storage.releaseBlockedRead();
+      executor.shutdownNow();
+    }
+
+    assertThrows(ObjectNotExistException.class,
+        () -> objectService.getObject(bucket, key, GetObjectOptions.builder().build()));
+    objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2));
+    assertEquals("Andythy", new String(objectService.getObject(bucket, key, GetObjectOptions.builder().build())
+        .getContent().readAllBytes(), StandardCharsets.UTF_8));
+  }
+
+  /**
+   * A part uploaded again after the upload was validated, but before its data was opened, has its data
+   * deleted; that is an {@code InvalidPart} too, rather than an error of the storage.
+   */
+  @Test
+  void completeMultipartUploadRejectsAPartUploadedAgainBeforeItIsOpened() {
+    BlockingStorage storage = new BlockingStorage();
+    InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
+    BucketService bucketService = manager.bucketService();
+    ObjectService objectService = manager.objectService();
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = objectService.createMultipartUpload(bucket, key,
+        CreateMultipartUploadOptions.builder().contentType("plain/text").build());
+    objectService.uploadPart(bucket, key, uploadId, 1, part("Robo"));
+    objectService.uploadPart(bucket, key, uploadId, 2, part("thy"));
+
+    storage.beforeNextOpen(() -> objectService.uploadPart(bucket, key, uploadId, 1, part("Andy")));
+
+    assertThrows(InvalidPartException.class,
+        () -> objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
+    assertThrows(ObjectNotExistException.class,
+        () -> objectService.getObject(bucket, key, GetObjectOptions.builder().build()));
+  }
+
+  private static List<CompleteMultipartUploadPartOption> completeParts(int parts) {
+    return IntStream.rangeClosed(1, parts)
+        .mapToObj(partNumber -> CompleteMultipartUploadPartOption.builder().partNumber(partNumber).build())
+        .toList();
+  }
+
   private static void putText(ObjectService objectService, String bucket, String key, String text) {
     byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
     objectService.putObject(bucket, key, PutObjectOptions.builder()
@@ -125,6 +206,8 @@ class ObjectServiceLockingTest {
 
     private volatile boolean blockNextRead;
 
+    private final AtomicReference<Runnable> beforeNextOpen = new AtomicReference<>();
+
     void blockNextRead() {
       blockNextRead = true;
     }
@@ -145,6 +228,13 @@ class ObjectServiceLockingTest {
       return stream;
     }
 
+    /**
+     * Run an action right before the next stream of the storage is opened, e.g. to change the object it opens.
+     */
+    void beforeNextOpen(Runnable action) {
+      beforeNextOpen.set(action);
+    }
+
     void releaseBlockedRead() {
       BlockingInputStream stream = blocked.get();
       if (stream != null) {
@@ -154,6 +244,10 @@ class ObjectServiceLockingTest {
 
     @Override
     public InputStream getInputStream(Long id) {
+      Runnable action = beforeNextOpen.getAndSet(null);
+      if (action != null) {
+        action.run();
+      }
       if (blockNextRead && blocked.get() == null) {
         BlockingInputStream stream = new BlockingInputStream(delegate.getBytes(id));
         if (blocked.compareAndSet(null, stream)) {

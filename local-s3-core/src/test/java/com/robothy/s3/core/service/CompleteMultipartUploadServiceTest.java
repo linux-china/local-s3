@@ -2,7 +2,9 @@ package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.InvalidPartException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
@@ -152,6 +154,72 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
         completeParts(2), 0, false);
 
     assertEquals(DigestUtils.md5Hex("HelloWorld"), completeAns.getEtag());
+  }
+
+  /**
+   * The entity tags that complete an upload must be the ones that the uploads of its parts answered, with or
+   * without the quotes that Amazon S3 answers them with.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadAcceptsTheEtagsOfTheParts(BucketService bucketService, ObjectService objectService)
+      throws IOException {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello", "World");
+
+    objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
+        CompleteMultipartUploadPartOption.builder().partNumber(1).etag(DigestUtils.md5Hex("Hello")).build(),
+        CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"" + DigestUtils.md5Hex("World") + "\"").build()));
+
+    assertEquals("HelloWorld", new String(objectService.getObject(bucket, key, GetObjectOptions.builder().build())
+        .getContent().readAllBytes()));
+  }
+
+  /**
+   * An entity tag that isn't the one of the uploaded part is rejected with {@code InvalidPart}, like Amazon S3
+   * does, and leaves the upload as it was, so that it can be completed with the right entity tags.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadRejectsAnEtagThatDoesNotMatchThePart(BucketService bucketService,
+                                                                  ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello", "World");
+
+    InvalidPartException thrown = assertThrows(InvalidPartException.class, () ->
+        objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
+            CompleteMultipartUploadPartOption.builder().partNumber(1).etag(DigestUtils.md5Hex("Hello")).build(),
+            CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"00000000000000000000000000000000\"").build())));
+    assertEquals(S3ErrorCode.InvalidPart, thrown.getS3ErrorCode());
+    assertThrows(ObjectNotExistException.class,
+        () -> objectService.getObject(bucket, key, GetObjectOptions.builder().build()));
+
+    assertEquals(2, objectService.listParts(bucket, key, uploadId, null, null).getParts().size());
+    assertDoesNotThrow(() -> complete(objectService, bucket, key, uploadId, 2));
+  }
+
+  /**
+   * A part that was never uploaded is rejected with {@code InvalidPart}.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void completeMultipartUploadRejectsAPartThatWasNotUploaded(BucketService bucketService,
+                                                             ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello");
+
+    InvalidPartException thrown = assertThrows(InvalidPartException.class, () ->
+        objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
+            CompleteMultipartUploadPartOption.builder().partNumber(1).build(),
+            CompleteMultipartUploadPartOption.builder().partNumber(7).build())));
+    assertEquals(S3ErrorCode.InvalidPart, thrown.getS3ErrorCode());
+    assertTrue(thrown.getMessage().contains("Part 7"), thrown.getMessage());
   }
 
   /**

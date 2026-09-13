@@ -15,8 +15,9 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.UploadPartResponse;
 
 /**
- * What a multipart upload is validated against: the part number is always checked, while the minimum part
- * size is only checked when the service is configured to, so that tests that upload small parts keep working.
+ * What a multipart upload is validated against: the part number and the entity tags of the parts are always
+ * checked, while the minimum part size is only checked when the service is configured to, so that tests that
+ * upload small parts keep working.
  */
 public class MultipartUploadValidationIntegrationTest {
 
@@ -89,6 +90,43 @@ public class MultipartUploadValidationIntegrationTest {
         .multipartUpload(completed(first.eTag(), second.eTag())));
 
     assertEquals("smallparts", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key(KEY)).asUtf8String());
+  }
+
+  /**
+   * An entity tag that isn't the one that the upload of the part answered fails with {@code InvalidPart}, like
+   * Amazon S3, and the upload can still be completed with the right one.
+   */
+  @Test
+  @LocalS3
+  void rejectsAnEtagThatDoesNotMatchThePart(S3Client s3) {
+    String uploadId = startUpload(s3);
+    UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("hello"));
+
+    S3Exception thrown = assertThrows(S3Exception.class, () -> s3.completeMultipartUpload(b -> b.bucket(BUCKET)
+        .key(KEY).uploadId(uploadId).multipartUpload(completed("\"00000000000000000000000000000000\""))));
+    assertEquals(400, thrown.statusCode());
+    assertEquals("InvalidPart", thrown.awsErrorDetails().errorCode());
+
+    s3.completeMultipartUpload(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId)
+        .multipartUpload(completed(first.eTag())));
+    assertEquals("hello", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key(KEY)).asUtf8String());
+  }
+
+  /**
+   * A part that was never uploaded fails with {@code InvalidPart} as well.
+   */
+  @Test
+  @LocalS3
+  void rejectsAPartThatWasNotUploaded(S3Client s3) {
+    String uploadId = startUpload(s3);
+    UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("hello"));
+
+    S3Exception thrown = assertThrows(S3Exception.class, () -> s3.completeMultipartUpload(b -> b.bucket(BUCKET)
+        .key(KEY).uploadId(uploadId).multipartUpload(completed(first.eTag(), first.eTag()))));
+    assertEquals(400, thrown.statusCode());
+    assertEquals("InvalidPart", thrown.awsErrorDetails().errorCode());
   }
 
   private static CompletedMultipartUpload completed(String... etags) {

@@ -1,6 +1,7 @@
 package com.robothy.s3.core.assertions;
 
 import com.robothy.s3.core.exception.EntityTooSmallException;
+import com.robothy.s3.core.exception.InvalidPartException;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
@@ -105,17 +106,31 @@ public class UploadAssertions {
   }
 
   /**
-   * Assert that the specified part number is exists in the {@code uploadMetadata}.
+   * Assert that a part that completes an upload identifies a part of the upload: the part was uploaded, and
+   * the entity tag that completes the upload, if any, is the one that the upload of the part answered. The
+   * quotes that a client sends the entity tag with, like Amazon S3 answers it, don't tell two tags apart.
    *
-   * @param uploadMetadata the upload metadata.
-   * @param partNumber part number to verify.
-   * @return the {@linkplain UploadPartMetadata} of the specified part number.
+   * @param uploadMetadata the upload to complete.
+   * @param completePart the part that completes the upload.
+   * @return the {@linkplain UploadPartMetadata} of the part.
+   * @throws InvalidPartException if the part wasn't uploaded, or was uploaded with another entity tag.
    */
-  public static UploadPartMetadata assertPartNumberExists(UploadMetadata uploadMetadata, Integer partNumber) {
-    if (!uploadMetadata.getParts().containsKey(partNumber)) {
-      throw new IllegalArgumentException("Part number " + partNumber + " not exists.");
+  public static UploadPartMetadata assertPartMatches(UploadMetadata uploadMetadata,
+                                                     CompleteMultipartUploadPartOption completePart) {
+    int partNumber = completePart.getPartNumber();
+    UploadPartMetadata part = uploadMetadata.getParts().get(partNumber);
+    if (part == null) {
+      throw InvalidPartException.notUploaded(partNumber);
     }
-    return uploadMetadata.getParts().get(partNumber);
+
+    // A caller of the Java API may leave the entity tag out, while a request of the S3 API always carries one;
+    // a part without an entity tag of its own, which no upload stores today, can't be checked.
+    String etag = completePart.getEtag();
+    if (etag != null && part.getEtag() != null
+        && !PreconditionAssertions.normalizeEtag(etag).equals(PreconditionAssertions.normalizeEtag(part.getEtag()))) {
+      throw InvalidPartException.etagMismatch(partNumber, part.getEtag(), etag);
+    }
+    return part;
   }
 
 }
