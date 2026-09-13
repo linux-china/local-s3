@@ -79,7 +79,6 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .build();
   }
 
-  // Using static to make the target compatible with Java8
   static GetObjectAns getObject(BucketMetadata bucketMetadata, Storage storage,
                                 String bucketName, String key, boolean metadataOnly, GetObjectOptions options) {
 

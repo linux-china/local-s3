@@ -130,7 +130,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
    * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
    * @return result of the put object operation.
    */
-  // Using static to make the target compatible with Java8
   static PutObjectAns addVersion(BucketMetadata bucketMetadata, Storage storage, String key,
                                  VersionedObjectMetadata versionedObjectMetadata) {
     String versionId = IdUtils.defaultGenerator().nextStrId();

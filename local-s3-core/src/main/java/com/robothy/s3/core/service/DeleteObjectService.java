@@ -65,7 +65,6 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
    *
    * </ul>
    */
-  // Using static to make the target compatible with Java8
    static DeleteObjectAns deleteWithoutVersionId(Storage storage, BucketMetadata bucketMetadata, String key) {
     Optional<ObjectMetadata> objectMetadataOpt = bucketMetadata.getObjectMetadata(key);
     String returnedVersionId;
@@ -105,7 +104,6 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
         .build();
   }
 
-  // Java8 doesn't support private method in interfaces. Using static to make the target compatible with Java8
   static VersionedObjectMetadata createDeleteMarker() {
     VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
     versionedObjectMetadata.setDeleted(true);
@@ -122,7 +120,6 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
    *    <li>If the version ID is not exists, do nothing and return the given version ID.</li>
    * </ul>
    */
-  // Java8 doesn't support private method in interfaces. Using static to make the target compatible with Java8
   static DeleteObjectAns deleteWithVersionId(Storage storage, BucketMetadata bucketMetadata, String key, String versionId) {
     ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
     boolean isDeleteMarker = false;
