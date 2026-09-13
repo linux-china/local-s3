@@ -57,7 +57,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(deleteObjectAns.getVersionId(), ((DeleteMarkerEntry)listObjectVersionsAns.getVersions().get(0)).getVersionId());
     ObjectVersion key1Version2 = (ObjectVersion) listObjectVersionsAns.getVersions().get(1);
     assertEquals(putObjectAns2.getVersionId(), key1Version2.getVersionId());
-    assertEquals(DigestUtils.md5Hex("Robothy"), key1Version2.getEtag());
+    assertEquals("\"" + DigestUtils.md5Hex("Robothy") + "\"", key1Version2.getEtag());
     assertTrue(listObjectVersionsAns.getNextKeyMarker().isPresent());
     assertEquals(key1, listObjectVersionsAns.getNextKeyMarker().get());
     assertTrue(listObjectVersionsAns.getNextVersionIdMarker().isPresent());

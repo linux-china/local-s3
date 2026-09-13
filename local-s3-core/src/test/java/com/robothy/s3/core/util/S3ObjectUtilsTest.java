@@ -14,6 +14,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 class S3ObjectUtilsTest {
 
+  @Test
+  void quoteEtagForResponses() {
+    assertEquals("\"etag\"", S3ObjectUtils.quoteEtag("etag"));
+    assertEquals("\"etag\"", S3ObjectUtils.quoteEtag(" \"etag\" "));
+    assertEquals("W/\"etag\"", S3ObjectUtils.quoteEtag("W/\"etag\""));
+    assertNull(S3ObjectUtils.quoteEtag(null));
+  }
+
   @CsvSource({
       "a,a",
       "a/b,a/b",

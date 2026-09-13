@@ -137,10 +137,10 @@ public class PreconditionAssertions {
   }
 
   /**
-   * Drop the quotes and the weak validator prefix of an entity tag, so that a client that quotes a tag it
-   * received, which is how Amazon S3 sends one, matches the unquoted tag that LocalS3 answers with. LocalS3
-   * only ever derives an entity tag from the content of an object, i.e. a strong one, so {@code W/} never
-   * tells two of them apart.
+   * Drop the quotes and the weak validator prefix of an entity tag, so that both the quoted form sent by
+   * Amazon S3 and current LocalS3 and the unquoted form sent by older LocalS3 versions match. LocalS3 only
+   * ever derives an entity tag from the content of an object, i.e. a strong one, so {@code W/} never tells
+   * two of them apart.
    */
   static String normalizeEtag(String etag) {
     String value = etag.trim();

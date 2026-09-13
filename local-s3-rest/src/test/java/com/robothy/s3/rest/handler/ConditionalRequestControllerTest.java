@@ -65,6 +65,11 @@ class ConditionalRequestControllerTest {
     return response.headers().firstValue(name).orElse(null);
   }
 
+  private static String unquote(String etag) {
+    assertTrue(etag.startsWith("\"") && etag.endsWith("\""), etag);
+    return etag.substring(1, etag.length() - 1);
+  }
+
   /**
    * A read that the client already holds the object of answers 304 with no content, but with the ETag and
    * the Last-Modified that identify the version it holds, like RFC 9110 requires of a response that leaves
@@ -75,9 +80,10 @@ class ConditionalRequestControllerTest {
     assertEquals(200, put("hello", request -> { }).statusCode());
     HttpResponse<String> stored = send(HttpRequest.Builder::GET);
     String etag = header(stored, "etag");
+    String unquotedEtag = unquote(etag);
     String lastModified = header(stored, "last-modified");
 
-    for (String ifNoneMatch : new String[] {"*", etag, "\"" + etag + "\"", "\"other\", \"" + etag + "\""}) {
+    for (String ifNoneMatch : new String[] {"*", etag, unquotedEtag, "\"other\", " + etag}) {
       HttpResponse<String> notModified = send(request -> request.header("If-None-Match", ifNoneMatch).GET());
       assertEquals(304, notModified.statusCode(), ifNoneMatch);
       assertTrue(notModified.body().isEmpty(), notModified.body());
@@ -179,15 +185,14 @@ class ConditionalRequestControllerTest {
     String firstEtag = header(send(HttpRequest.Builder::GET), "etag");
 
     // The entity tag is matched whether the client quotes it, like Amazon S3 sends it, or not.
-    assertEquals(200, put("version-1", request -> request.header("If-Match", "\"" + firstEtag + "\""))
-        .statusCode());
-    HttpResponse<String> stale = put("version-2", request -> request.header("If-Match", firstEtag));
+    assertEquals(200, put("version-1", request -> request.header("If-Match", firstEtag)).statusCode());
+    HttpResponse<String> stale = put("version-2", request -> request.header("If-Match", unquote(firstEtag)));
     assertEquals(412, stale.statusCode());
     assertTrue(stale.body().contains("<Condition>If-Match</Condition>"), stale.body());
     assertEquals("version-1", send(HttpRequest.Builder::GET).body());
 
     String secondEtag = header(send(HttpRequest.Builder::GET), "etag");
-    assertEquals(200, put("version-2", request -> request.header("If-Match", secondEtag)).statusCode());
+    assertEquals(200, put("version-2", request -> request.header("If-Match", unquote(secondEtag))).statusCode());
     assertEquals("version-2", send(HttpRequest.Builder::GET).body());
   }
 

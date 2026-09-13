@@ -8,6 +8,7 @@ import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
@@ -155,7 +156,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
             .key(key)
             .lastModified(Instant.ofEpochMilli(versionedObjectMetadata.getCreationDate()))
             .size(versionedObjectMetadata.getSize())
-            .etag(versionedObjectMetadata.getEtag())
+            .etag(S3ObjectUtils.quoteEtag(versionedObjectMetadata.getEtag()))
             .storageClass(StorageClass.STANDARD)
             .owner(Owner.DEFAULT_OWNER)
             .build());

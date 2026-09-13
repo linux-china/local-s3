@@ -2,6 +2,7 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.util.IdUtils;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -112,6 +113,16 @@ public class ResponseUtils {
   }
 
   /**
+   * Quote an entity tag for an S3 response.
+   *
+   * @param etag the entity tag to quote.
+   * @return the quoted entity tag, or {@code null} if {@code etag} is {@code null}.
+   */
+  public static String quoteEtag(String etag) {
+    return S3ObjectUtils.quoteEtag(etag);
+  }
+
+  /**
    * Add 'ETag' header.
    *
    * @param response the response to add 'ETag' header.
@@ -119,7 +130,7 @@ public class ResponseUtils {
    */
   public static void addETag(HttpResponse response, String etag) {
     if (Objects.nonNull(etag)) {
-      response.putHeader(HttpHeaderNames.ETAG.toString(), etag);
+      response.putHeader(HttpHeaderNames.ETAG.toString(), quoteEtag(etag));
     }
   }
 

@@ -52,7 +52,7 @@ class UploadPartCopyController implements HttpRequestHandler {
 
     CopyPartResult result = CopyPartResult.builder()
         .lastModified(Instant.ofEpochMilli(ans.getLastModified()))
-        .etag(ans.getEtag())
+        .etag(ResponseUtils.quoteEtag(ans.getEtag()))
         .build();
 
     // The Content-Length is set from the bytes of the body by LocalS3HttpMessageHandler.

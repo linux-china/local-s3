@@ -60,7 +60,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()
         .bucket(bucket)
         .key(key)
-        .etag(completeMultipartUploadAns.getEtag())
+        .etag(ResponseUtils.quoteEtag(completeMultipartUploadAns.getEtag()))
         .location(completeMultipartUploadAns.getLocation())
         .build();
     response.status(HttpResponseStatus.OK)

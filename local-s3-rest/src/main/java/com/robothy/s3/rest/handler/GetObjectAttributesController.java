@@ -95,7 +95,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
                                            GetObjectAns object) {
     GetObjectAttributesResult.GetObjectAttributesResultBuilder result = GetObjectAttributesResult.builder();
     if (attributes.contains(ObjectAttribute.ETAG)) {
-      result.etag(object.getEtag());
+      result.etag(ResponseUtils.quoteEtag(object.getEtag()));
     }
     if (attributes.contains(ObjectAttribute.OBJECT_SIZE)) {
       result.objectSize(object.getSize());

@@ -43,7 +43,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     CopyObjectAns copyObjectAns = objectService.copyObject(destinationBucket, destinationKey, copyObjectOptions);
     CopyObjectResult result = CopyObjectResult.builder()
         .lastModified(Instant.ofEpochMilli(copyObjectAns.getLastModified()))
-        .etag(copyObjectAns.getEtag())
+        .etag(ResponseUtils.quoteEtag(copyObjectAns.getEtag()))
         .build();
 
     response.status(HttpResponseStatus.OK)

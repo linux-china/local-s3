@@ -33,6 +33,23 @@ public class S3ObjectUtils {
   }
 
   /**
+   * Quote an entity tag for an S3 HTTP or XML response. Internally entity tags remain unquoted, while S3
+   * represents them as quoted strings on the wire.
+   *
+   * @param etag the entity tag to quote.
+   * @return the quoted entity tag, or {@code null} if {@code etag} is {@code null}.
+   */
+  public static String quoteEtag(String etag) {
+    if (etag == null) {
+      return null;
+    }
+    String value = etag.trim();
+    boolean quoted = value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"");
+    boolean weaklyQuoted = value.length() >= 4 && value.startsWith("W/\"") && value.endsWith("\"");
+    return quoted || weaklyQuoted ? value : "\"" + value + "\"";
+  }
+
+  /**
    * The entity tag that Amazon S3 gives an object that was uploaded in parts: the MD5 digest of the
    * concatenated MD5 digests of its parts, followed by {@code -} and the number of parts, e.g.
    * {@code 3858f62230ac3c915f300c664312c11f-9}.

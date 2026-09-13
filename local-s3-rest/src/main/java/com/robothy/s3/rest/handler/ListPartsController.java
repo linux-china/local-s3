@@ -44,7 +44,7 @@ public class ListPartsController implements HttpRequestHandler {
           .partNumber(part.getPartNumber())
           .lastModified(Instant.ofEpochSecond(part.getLastModified()))
           .size(part.getSize())
-          .etag(part.getETag())
+          .etag(ResponseUtils.quoteEtag(part.getETag()))
           .build();
       parts.add(p);
     }

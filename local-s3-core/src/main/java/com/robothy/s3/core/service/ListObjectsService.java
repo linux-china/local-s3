@@ -119,7 +119,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     object.setKey(key);
     object.setSize(latest.getSize());
     object.setLastModified(Instant.ofEpochMilli(latest.getCreationDate()));
-    object.setEtag(latest.getEtag());
+    object.setEtag(S3ObjectUtils.quoteEtag(latest.getEtag()));
     object.setOwner(Owner.DEFAULT_OWNER);
     object.setStorageClass(StorageClass.STANDARD);
     return object;

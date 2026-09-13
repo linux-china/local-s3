@@ -42,12 +42,12 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(2, listObjectsAns.getObjects().size());
 
     S3Object dir1Key1 = listObjectsAns.getObjects().get(0);
-    assertEquals(DigestUtils.md5Hex("Hello"), dir1Key1.getEtag());
+    assertEquals("\"" + DigestUtils.md5Hex("Hello") + "\"", dir1Key1.getEtag());
     assertEquals("dir1/key1", dir1Key1.getKey());
     assertEquals(5, dir1Key1.getSize());
 
     S3Object dir1Key2 = listObjectsAns.getObjects().get(1);
-    assertEquals(DigestUtils.md5Hex("Hello"), dir1Key2.getEtag());
+    assertEquals("\"" + DigestUtils.md5Hex("Hello") + "\"", dir1Key2.getEtag());
     assertEquals("dir1/key2", dir1Key2.getKey());
     assertEquals(5, dir1Key2.getSize());
 
