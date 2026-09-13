@@ -12,6 +12,7 @@ import com.robothy.s3.datatypes.s3vectors.response.QueryVectorsResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
 import lombok.extern.slf4j.Slf4j;
+import com.robothy.s3.core.service.s3vectors.MetadataFilterExpression;
 
 @Slf4j
 public class QueryVectorsController implements HttpRequestHandler {
@@ -50,7 +51,8 @@ public class QueryVectorsController implements HttpRequestHandler {
         request.getTopK(),
         request.getReturnDistance(),
         request.getReturnMetadata(),
-        request.getFilter()
+        // The boundary the JSON representation of the condition is left behind at.
+        MetadataFilterExpression.fromJson(request.getFilter())
     );
   }
 }

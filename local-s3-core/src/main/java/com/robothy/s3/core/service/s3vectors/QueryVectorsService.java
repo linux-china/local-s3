@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.robothy.s3.core.assertions.vectors.VectorBucketAssertions;
 import com.robothy.s3.core.assertions.vectors.VectorIndexAssertions;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
@@ -19,8 +18,8 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
 
     default QueryVectorsResponse queryVectors(String vectorBucketName, String indexName,
                                              PutInputVector.VectorData queryVector, Integer topK,
-                                             Boolean returnDistance, Boolean returnMetadata, 
-                                             JsonNode filter) {
+                                             Boolean returnDistance, Boolean returnMetadata,
+                                             MetadataFilterExpression filter) {
         VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
         VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
         float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension());
@@ -79,7 +78,7 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
 
     private List<VectorSearchEngine.VectorSearchResult> performVectorSearch(
             float[] queryVectorData, List<VectorObjectMetadata> candidateVectors,
-            VectorIndexMetadata indexMetadata, int topK, JsonNode filter) {
+            VectorIndexMetadata indexMetadata, int topK, MetadataFilterExpression filter) {
         VectorSearchEngine searchEngine = VectorSearchEngine.createBasic();
         return searchEngine.findNearestVectors(
             queryVectorData,

@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
@@ -44,7 +43,8 @@ public interface VectorSearchEngine {
    * @param vectorDataLookup function to retrieve vector data by storage ID
    * @param distanceMetric   the distance metric to use for calculations
    * @param k                the number of nearest neighbors to return
-   * @param metadataFilter   optional metadata filter to apply before distance calculation (JSON format)
+   * @param metadataFilter   condition that the metadata of a vector must satisfy to be searched at all;
+   *                         {@linkplain MetadataFilterExpression#none()} to search every candidate
    * @return list of search results ordered by distance (closest first)
    * @throws IllegalArgumentException if k is invalid or query vector is null
    */
@@ -54,7 +54,7 @@ public interface VectorSearchEngine {
       Function<Long, float[]> vectorDataLookup,
       DistanceMetric distanceMetric,
       int k,
-      JsonNode metadataFilter
+      MetadataFilterExpression metadataFilter
   );
 
   /**
@@ -65,7 +65,8 @@ public interface VectorSearchEngine {
    * @param vectorStorage    the vector storage instance for data retrieval
    * @param distanceMetric   the distance metric to use for calculations
    * @param k                the number of nearest neighbors to return
-   * @param metadataFilter   optional metadata filter to apply before distance calculation (JSON format)
+   * @param metadataFilter   condition that the metadata of a vector must satisfy to be searched at all;
+   *                         {@linkplain MetadataFilterExpression#none()} to search every candidate
    * @return list of search results ordered by distance (closest first)
    */
   default List<VectorSearchResult> findNearestVectors(
@@ -74,7 +75,7 @@ public interface VectorSearchEngine {
       VectorStorage vectorStorage,
       DistanceMetric distanceMetric,
       int k,
-      JsonNode metadataFilter) {
+      MetadataFilterExpression metadataFilter) {
     return findNearestVectors(queryVector, candidateVectors, vectorStorage::getVectorData,
         distanceMetric, k, metadataFilter);
   }

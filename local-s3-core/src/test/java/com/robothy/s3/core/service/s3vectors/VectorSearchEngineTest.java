@@ -138,7 +138,8 @@ class VectorSearchEngineTest {
     Function<Long, float[]> dataLookup = id -> new float[]{1.0f, 0.0f, 0.0f};
 
     List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, Arrays.asList(vector1, vector2), dataLookup, DistanceMetric.EUCLIDEAN, 5, filter);
+        queryVector, Arrays.asList(vector1, vector2), dataLookup, DistanceMetric.EUCLIDEAN, 5,
+        MetadataFilterExpression.fromJson(filter));
 
     assertEquals(1, results.size());
     assertEquals("vector1", results.get(0).vectorMetadata().getVectorId());

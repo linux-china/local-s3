@@ -64,12 +64,12 @@ class MetadataFilterTest {
     @Test
     void testNullOrEmptyFilter() {
         // Null filter should return all vectors
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, null);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(null));
         assertEquals(4, result.size());
 
         // Empty object filter should return all vectors
         ObjectNode emptyFilter = objectMapper.createObjectNode();
-        result = MetadataFilter.applyFilter(testVectors, emptyFilter);
+        result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(emptyFilter));
         assertEquals(4, result.size());
     }
 
@@ -79,7 +79,7 @@ class MetadataFilterTest {
         ObjectNode filter = objectMapper.createObjectNode();
         filter.put("genre", "documentary");
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector1", result.get(0).getVectorId());
     }
@@ -92,7 +92,7 @@ class MetadataFilterTest {
         genreFilter.put("$eq", "drama");
         filter.set("genre", genreFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector2", result.get(0).getVectorId());
     }
@@ -105,7 +105,7 @@ class MetadataFilterTest {
         genreFilter.put("$ne", "documentary");
         filter.set("genre", genreFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // drama and comedy, but not the one with null metadata
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector2")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
@@ -119,7 +119,7 @@ class MetadataFilterTest {
         yearFilter.put("$gt", 2019);
         filter.set("year", yearFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // 2020 and 2021
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector1")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
@@ -130,7 +130,7 @@ class MetadataFilterTest {
         ratingFilter.put("$lte", 7.8);
         filter.set("rating", ratingFilter);
 
-        result = MetadataFilter.applyFilter(testVectors, filter);
+        result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // drama (7.8) and comedy (6.2)
     }
 
@@ -145,7 +145,7 @@ class MetadataFilterTest {
         genreFilter.set("$in", genreArray);
         filter.set("genre", genreFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size());
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector1")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
@@ -162,7 +162,7 @@ class MetadataFilterTest {
         genreFilter.set("$nin", genreArray);
         filter.set("genre", genreFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector2", result.get(0).getVectorId()); // only drama
     }
@@ -175,14 +175,14 @@ class MetadataFilterTest {
         categoriesFilter.put("$exists", true);
         filter.set("categories", categoriesFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // vector1 and vector3 have categories
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector1")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
 
         // Test $exists false
         categoriesFilter.put("$exists", false);
-        result = MetadataFilter.applyFilter(testVectors, filter);
+        result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // vector2 and vector4 don't have categories
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector2")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector4")));
@@ -194,7 +194,7 @@ class MetadataFilterTest {
         ObjectNode filter = objectMapper.createObjectNode();
         filter.put("categories", "documentary");
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector3", result.get(0).getVectorId()); // has documentary in categories array
     }
@@ -217,7 +217,7 @@ class MetadataFilterTest {
 
         filter.set("$and", andArray);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector1", result.get(0).getVectorId());
     }
@@ -238,7 +238,7 @@ class MetadataFilterTest {
 
         filter.set("$or", orArray);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size()); // vector1 (documentary) and vector3 (2021)
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector1")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
@@ -253,7 +253,7 @@ class MetadataFilterTest {
         ratingFilter.put("$lte", 8.0);
         filter.set("rating", ratingFilter);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(1, result.size());
         assertEquals("vector2", result.get(0).getVectorId()); // rating 7.8
     }
@@ -264,7 +264,7 @@ class MetadataFilterTest {
         ObjectNode filter = objectMapper.createObjectNode();
         filter.put("available", true);
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         assertEquals(2, result.size());
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector1")));
         assertTrue(result.stream().anyMatch(v -> v.getVectorId().equals("vector3")));
@@ -277,14 +277,14 @@ class MetadataFilterTest {
         filter1.put("$and", "invalid");
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter1));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter1)));
 
         // Test invalid $or (empty array)
         ObjectNode filter2 = objectMapper.createObjectNode();
         filter2.set("$or", objectMapper.createArrayNode());
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter2));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter2)));
 
         // Test invalid $in (not an array)
         ObjectNode filter3 = objectMapper.createObjectNode();
@@ -293,7 +293,7 @@ class MetadataFilterTest {
         filter3.set("genre", genreFilter);
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter3));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter3)));
 
         // Test invalid $exists (not boolean)
         ObjectNode filter4 = objectMapper.createObjectNode();
@@ -302,7 +302,7 @@ class MetadataFilterTest {
         filter4.set("genre", existsFilter);
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter4));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter4)));
 
         // Test unsupported operator
         ObjectNode filter5 = objectMapper.createObjectNode();
@@ -311,7 +311,7 @@ class MetadataFilterTest {
         filter5.set("genre", invalidFilter);
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter5));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter5)));
     }
 
     @Test
@@ -323,7 +323,7 @@ class MetadataFilterTest {
         filter.set("genre", genreFilter);
 
         assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, filter));
+            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter)));
     }
 
     @Test
@@ -332,7 +332,7 @@ class MetadataFilterTest {
         ObjectNode filter = objectMapper.createObjectNode();
         filter.put("genre", "documentary");
 
-        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, filter);
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
         // Should not include vector4 which has null metadata
         assertFalse(result.stream().anyMatch(v -> v.getVectorId().equals("vector4")));
     }

@@ -250,7 +250,7 @@ class QueryVectorsServiceTest {
     JsonNode filter = mapper.createObjectNode().put("category", "A");
 
     QueryVectorsResponse response = service.queryVectors("test-bucket", "test-index", 
-        queryVector, 2, false, true, filter);
+        queryVector, 2, false, true, MetadataFilterExpression.fromJson(filter));
 
     assertNotNull(response);
     assertEquals(1, response.getVectors().size()); // Only vector1 should match filter

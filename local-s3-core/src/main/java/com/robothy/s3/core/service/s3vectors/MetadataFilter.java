@@ -24,25 +24,38 @@ import lombok.extern.slf4j.Slf4j;
 public class MetadataFilter {
 
     /**
-     * Apply metadata filters to a list of vector candidates.
-     * 
+     * Apply a metadata condition to a list of vector candidates.
+     *
      * @param candidateVectors List of vectors to filter
-     * @param filter JsonNode representing the filter criteria (can be null)
+     * @param filter the condition to keep a vector by; {@linkplain MetadataFilterExpression#none()} keeps
+     *     every one of them
      * @return Filtered list of vectors that match the criteria
      */
-    public static List<VectorObjectMetadata> applyFilter(List<VectorObjectMetadata> candidateVectors, JsonNode filter) {
-        if (filter == null || filter.isNull() || filter.isEmpty()) {
+    public static List<VectorObjectMetadata> applyFilter(List<VectorObjectMetadata> candidateVectors,
+                                                         MetadataFilterExpression filter) {
+        if (filter == null || filter.isEmpty()) {
             return candidateVectors;
         }
 
         List<VectorObjectMetadata> result = new ArrayList<>();
         for (VectorObjectMetadata vector : candidateVectors) {
-            if (matchesFilter(vector, filter)) {
+            if (matchesFilter(vector, filter.json())) {
                 result.add(vector);
             }
         }
 
         return result;
+    }
+
+    /**
+     * Whether one vector satisfies a condition, which {@linkplain MetadataFilterExpression#matches} calls.
+     *
+     * @param vector the vector to evaluate the condition against
+     * @param filter the condition, as the document it arrived as
+     * @return true if the metadata of the vector satisfies the condition
+     */
+    static boolean matches(VectorObjectMetadata vector, JsonNode filter) {
+        return matchesFilter(vector, filter);
     }
 
     /**

@@ -45,7 +45,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
       Function<Long, float[]> vectorDataLookup,
       DistanceMetric distanceMetric,
       int k,
-      com.fasterxml.jackson.databind.JsonNode metadataFilter) {
+      MetadataFilterExpression metadataFilter) {
 
     if (queryVector == null) {
       throw new IllegalArgumentException("Query vector cannot be null");
