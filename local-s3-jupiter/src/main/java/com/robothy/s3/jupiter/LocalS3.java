@@ -25,34 +25,6 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
  *   <li>{@linkplain LocalS3Endpoint}</li>
  * </ul>
  *
- * <p>Below example injects an {@code AmazonS3} instance to the parameter:
- *
- * <pre>{@code
- *  @LocalS3
- *  class AppTest {
- *    @Test
- *    void test(AmazonS3 s3) {
- *      s3.createBucket("my-bucket");
- *    }
- *  }
- * }</pre>
- *
- *  Or resolve a {@linkplain LocalS3Endpoint}.
- *
- * <pre>{@code
- *  class AppTest {
- *    @Test
- *    @LocalS3
- *    void test1(LocalS3Endpoint endpoint) {
- *      AmazonS3 client = AmazonS3ClientBuilder.standard()
- *        .enablePathStyleAccess()
- *        .withEndpointConfiguration(endpoint.toAmazonS3EndpointConfiguration())
- *        .build();
- *      assertDoesNotThrow(() -> client.createBucket("my-bucket"));
- *    }
- *  }
- * }</pre>
- *
  * <p>Signature verification is off unless {@linkplain #accessKey()} and {@linkplain #secretKey()} are set,
  * which makes the service reject a request that isn't signed with them and gives the injected clients those
  * credentials:
