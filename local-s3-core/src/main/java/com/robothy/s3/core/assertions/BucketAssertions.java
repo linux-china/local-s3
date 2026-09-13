@@ -34,6 +34,9 @@ public class BucketAssertions {
     if (StringUtils.isBlank(bucketName) || escapesDataDirectory(bucketName)) {
       throw new InvalidBucketNameException(bucketName);
     }
+    if(RESERVED_NAMES.contains(bucketName)){
+      throw new InvalidBucketNameException(bucketName);
+    }
     return bucketName;
   }
 
@@ -58,6 +61,10 @@ public class BucketAssertions {
 
   private static final Pattern IP_ADDRESS = Pattern.compile("\\d{1,3}(\\.\\d{1,3}){3}");
 
+  private static final List<String> RESERVED_NAMES = List.of("CreateVectorBucket", "GetVectorBucket", "DeleteVectorBucket",
+          "ListVectorBuckets", "PutVectorBucketPolicy", "GetVectorBucketPolicy", "DeleteVectorBucketPolicy",
+          "CreateIndex", "GetIndex", "ListIndexes", "DeleteIndex", "PutVectors", "QueryVectors", "GetVectors",
+          "DeleteVectors", "ListVectors", "_health");
   private static final List<String> RESERVED_PREFIXES = List.of("xn--", "sthree-", "amzn-s3-demo-");
 
   private static final List<String> RESERVED_SUFFIXES = List.of("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3");
