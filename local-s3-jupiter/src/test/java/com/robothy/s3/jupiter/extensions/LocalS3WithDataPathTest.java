@@ -48,7 +48,7 @@ public class LocalS3WithDataPathTest {
 
   @Order(3)
   @Test
-  @LocalS3(mode = LocalS3Mode.PERSISTENCE, dataPathSupplier = DataPathSupplierImpl.class)
+  @LocalS3(mode = LocalS3Mode.IN_MEMORY, dataPathSupplier = DataPathSupplierImpl.class)
   @DisplayName("Changes in IN_MEMORY mode won't affect data in the disk.")
   void test3(S3Client client) throws IOException {
     assertDoesNotThrow(() -> client.headBucket(b -> b.bucket("my-bucket")));
@@ -62,7 +62,7 @@ public class LocalS3WithDataPathTest {
 
   @Order(4)
   @Test
-  @LocalS3(mode = LocalS3Mode.IN_MEMORY, dataPathSupplier = DataPathSupplierImpl.class, initialDataCacheEnabled = false)
+  @LocalS3(mode = LocalS3Mode.PERSISTENCE, dataPathSupplier = DataPathSupplierImpl.class, initialDataCacheEnabled = false)
   @DisplayName("Change in PERSISTENCE mode will be persisted.")
   void test4(S3Client client) throws IOException {
     assertDoesNotThrow(() -> client.headBucket(b -> b.bucket("my-bucket")));
