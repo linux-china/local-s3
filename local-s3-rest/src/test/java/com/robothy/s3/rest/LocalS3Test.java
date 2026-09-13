@@ -85,6 +85,9 @@ class LocalS3Test {
     assertEquals(LocalS3.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS, localS3.getIdleConnectionTimeoutSeconds());
     assertEquals(0, LocalS3.builder().idleConnectionTimeoutSeconds(0).build().getIdleConnectionTimeoutSeconds());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().idleConnectionTimeoutSeconds(-1));
+    assertEquals(LocalS3.DEFAULT_MAX_REQUEST_HEADER_SIZE, localS3.getMaxRequestHeaderSize());
+    assertEquals(4096, LocalS3.builder().maxRequestHeaderSize(4096).build().getMaxRequestHeaderSize());
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestHeaderSize(0));
   }
 
   @Test

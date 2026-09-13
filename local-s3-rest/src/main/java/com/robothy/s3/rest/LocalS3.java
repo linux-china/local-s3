@@ -67,6 +67,13 @@ public class LocalS3 implements AutoCloseable {
     public static final long DEFAULT_REQUEST_BODY_FILE_THRESHOLD = 4 * 1024 * 1024;
 
     /**
+     * Default max size(16K) of the header section of a request. Amazon S3 limits the headers of a PUT request to
+     * 8 KB, but counts them differently than the HTTP codec does, so the default leaves room for a request that
+     * Amazon S3 accepts, e.g. one whose signature and user-defined metadata take most of the 8 KB.
+     */
+    public static final int DEFAULT_MAX_REQUEST_HEADER_SIZE = 16 * 1024;
+
+    /**
      * Default seconds(120) after which an idle keep-alive connection is closed. It is longer than the max
      * idle time of common S3 clients' connection pools, so clients usually close idle connections first.
      */
@@ -158,6 +165,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final long requestBodyFileThreshold;
 
+    private final int maxRequestHeaderSize;
+
     private final long idleConnectionTimeoutSeconds;
 
     private final boolean strictBucketNames;
@@ -214,6 +223,7 @@ public class LocalS3 implements AutoCloseable {
         this.secretAccessKey = builder.secretAccessKey;
         this.maxRequestBodySize = builder.maxRequestBodySize;
         this.requestBodyFileThreshold = builder.requestBodyFileThreshold;
+        this.maxRequestHeaderSize = builder.maxRequestHeaderSize;
         this.idleConnectionTimeoutSeconds = builder.idleConnectionTimeoutSeconds;
         this.strictBucketNames = builder.strictBucketNames;
         this.strictPartSizes = builder.strictPartSizes;
@@ -286,7 +296,7 @@ public class LocalS3 implements AutoCloseable {
                     .childHandler(new LocalS3ServerInitializer(executor,
                             LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
                             serviceFactory.getInstance(XmlMapper.class), maxRequestBodySize, requestBodyFileThreshold,
-                            idleConnectionTimeoutSeconds))
+                            idleConnectionTimeoutSeconds, maxRequestHeaderSize))
                     .bind(bindHost, configuredPort)
                     .sync();
         } catch (InterruptedException e) {
@@ -544,6 +554,15 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Get the max size in bytes of the header section of a request.
+     *
+     * @return max request header size.
+     */
+    public int getMaxRequestHeaderSize() {
+        return maxRequestHeaderSize;
+    }
+
+    /**
      * Get the seconds after which an idle connection is closed; {@code 0} means never.
      *
      * @return idle connection timeout in seconds.
@@ -673,6 +692,8 @@ public class LocalS3 implements AutoCloseable {
         private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
 
         private long requestBodyFileThreshold = DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+
+        private int maxRequestHeaderSize = DEFAULT_MAX_REQUEST_HEADER_SIZE;
 
         private long idleConnectionTimeoutSeconds = DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
 
@@ -914,6 +935,22 @@ public class LocalS3 implements AutoCloseable {
                 throw new IllegalArgumentException("requestBodyFileThreshold must not be negative.");
             }
             this.requestBodyFileThreshold = requestBodyFileThreshold;
+            return this;
+        }
+
+        /**
+         * Set the max size in bytes of the header section of a request, i.e. of all its header lines. A request
+         * whose headers exceed it is answered with {@code 400 RequestHeaderSectionTooLarge}, and its connection is
+         * closed. Default value is {@linkplain LocalS3#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
+         *
+         * @param maxRequestHeaderSize max request header size in bytes, positive.
+         * @return builder.
+         */
+        public Builder maxRequestHeaderSize(int maxRequestHeaderSize) {
+            if (maxRequestHeaderSize <= 0) {
+                throw new IllegalArgumentException("maxRequestHeaderSize must be positive.");
+            }
+            this.maxRequestHeaderSize = maxRequestHeaderSize;
             return this;
         }
 

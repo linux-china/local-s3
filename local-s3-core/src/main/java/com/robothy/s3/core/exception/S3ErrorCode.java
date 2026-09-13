@@ -75,6 +75,7 @@ public enum S3ErrorCode {
   //RestoreAlreadyInProgress("RestoreAlreadyInProgress", 409, "Object restore is already in progress."),
   RequestIsNotMultiPartContent("RequestIsNotMultiPartContent", 400, "Bucket POST must be of the enclosure-type multipart/form-data."),
   RequestTimeout("RequestTimeout", 400, "Your socket connection to the server was not read from or written to within the timeout period."),
+  RequestHeaderSectionTooLarge("RequestHeaderSectionTooLarge", 400, "Your request header section exceeds the maximum allowed size."),
   RequestTimeTooSkewed("RequestTimeTooSkewed", 403, "The difference between the request time and the server's time is too large."),
   RequestTorrentOfBucketError("RequestTorrentOfBucketError", 400, "Requesting the torrent file of a bucket is not permitted."),
   ReplicationConfigurationNotFoundError("ReplicationConfigurationNotFoundError", 404, "The replication configuration was not found"),

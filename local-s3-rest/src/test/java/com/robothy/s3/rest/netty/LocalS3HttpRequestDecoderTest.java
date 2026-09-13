@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -16,10 +17,15 @@ import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpDecoderConfig;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
@@ -189,6 +195,76 @@ class LocalS3HttpRequestDecoderTest {
 
   private static boolean isWindows() {
     return System.getProperty("os.name").startsWith("Windows");
+  }
+
+
+  /**
+   * A channel that decodes raw bytes with the HTTP codec in front of the decoder, like the server does.
+   */
+  private static EmbeddedChannel codecChannel(int maxHeaderSize) {
+    return new EmbeddedChannel(new HttpRequestDecoder(new HttpDecoderConfig().setMaxHeaderSize(maxHeaderSize)),
+        new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD, new XmlMapper()));
+  }
+
+  private static void assertRejected(EmbeddedChannel channel, S3ErrorCode errorCode) {
+    assertNull(channel.readInbound(), "The malformed request isn't handed to the router.");
+    FullHttpResponse response = channel.readOutbound();
+    try {
+      assertEquals(HttpResponseStatus.valueOf(errorCode.httpStatus()), response.status());
+      assertEquals(HttpHeaderValues.CLOSE.toString(), response.headers().get(HttpHeaderNames.CONNECTION));
+      String body = response.content().toString(StandardCharsets.UTF_8);
+      assertTrue(body.contains("<Code>" + errorCode.code() + "</Code>"), body);
+    } finally {
+      response.release();
+    }
+    assertFalse(channel.isOpen());
+    channel.finishAndReleaseAll();
+  }
+
+  private static ByteBuf ascii(String text) {
+    return Unpooled.copiedBuffer(text, StandardCharsets.ISO_8859_1);
+  }
+
+  @Test
+  void rejectsRequestWhoseHeaderSectionIsTooLarge() {
+    EmbeddedChannel codec = codecChannel(256);
+
+    codec.writeInbound(ascii("GET /bucket/key HTTP/1.1\r\nHost: localhost\r\nx-amz-meta-large: "
+        + "a".repeat(300) + "\r\n\r\n"));
+
+    assertRejected(codec, S3ErrorCode.RequestHeaderSectionTooLarge);
+  }
+
+  @Test
+  void acceptsRequestWhoseHeaderSectionFits() {
+    EmbeddedChannel codec = codecChannel(512);
+
+    codec.writeInbound(ascii("GET /bucket/key HTTP/1.1\r\nHost: localhost\r\nx-amz-meta-large: "
+        + "a".repeat(300) + "\r\n\r\n"));
+
+    HttpRequest request = codec.readInbound();
+    assertEquals("a".repeat(300), request.header("x-amz-meta-large").orElse(null));
+    request.getBody().release();
+    assertFalse(codec.finishAndReleaseAll());
+  }
+
+  @Test
+  void rejectsRequestThatCannotBeParsed() {
+    EmbeddedChannel codec = codecChannel(256);
+
+    codec.writeInbound(ascii("GET /bucket/key HTTP/9.x\r\nHost: localhost\r\n\r\n"));
+
+    assertRejected(codec, S3ErrorCode.BadRequest);
+  }
+
+  @Test
+  void rejectsRequestWithMalformedChunkAndReleasesItsBody() {
+    EmbeddedChannel codec = codecChannel(256);
+
+    codec.writeInbound(ascii("PUT /bucket/key HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n"
+        + "5\r\nHello\r\nzz\r\n"));
+
+    assertRejected(codec, S3ErrorCode.BadRequest);
   }
 
 }

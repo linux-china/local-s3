@@ -12,6 +12,7 @@ import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.DecoderResult;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -24,6 +25,8 @@ import io.netty.handler.codec.http.HttpUtil;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.TooLongHttpHeaderException;
+import io.netty.handler.codec.http.TooLongHttpLineException;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -49,6 +52,11 @@ import org.slf4j.LoggerFactory;
  * before the body is received. A rejected request is answered with the S3 error of the rejection and the connection
  * is closed, again before {@code 100 Continue} is sent, so that the body of a request that fails anyway is neither
  * uploaded nor buffered. Requests without a body are left to the router, which keeps the connection alive.
+ *
+ * <p>A request that the HTTP codec fails to decode, e.g. one whose header section exceeds the max header size, is
+ * answered with an S3 error, {@code RequestHeaderSectionTooLarge} for a header section that is too large and
+ * {@code BadRequest} otherwise, and the connection is closed: the codec discards the rest of the connection's
+ * input after a failure, so the request would otherwise never be answered.
  *
  * <p>A body of up to {@code requestBodyFileThreshold} bytes is buffered on the Java heap. A larger body
  * is written to a temporary file, which is memory-mapped as the body of the request, so that large
@@ -130,6 +138,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   protected void decode(ChannelHandlerContext ctx, HttpObject msg, List<Object> out) throws Exception {
     if (rejected) {
       // The connection is closing after a rejected request; drop whatever is still arriving.
+      return;
+    }
+
+    DecoderResult decoderResult = msg.decoderResult();
+    if (decoderResult.isFailure()) {
+      rejectMalformed(ctx, decoderResult.cause());
       return;
     }
 
@@ -254,6 +268,20 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // The mapping outlives the channel, and the mapped buffer owns the file now.
     closeBodyFile(false);
     return mapped;
+  }
+
+  /**
+   * Answer a request that the HTTP codec failed to decode. The cause is logged, but not revealed to the client.
+   */
+  private void rejectMalformed(ChannelHandlerContext ctx, Throwable cause) {
+    log.debug("Rejecting a malformed request on connection {}: {}", ctx.channel().id(), String.valueOf(cause));
+    if (cause instanceof TooLongHttpHeaderException) {
+      reject(ctx, S3ErrorCode.RequestHeaderSectionTooLarge, S3ErrorCode.RequestHeaderSectionTooLarge.description());
+    } else if (cause instanceof TooLongHttpLineException) {
+      reject(ctx, S3ErrorCode.BadRequest, "The request line exceeds the maximum allowed length.");
+    } else {
+      reject(ctx, S3ErrorCode.BadRequest, "An error occurred when parsing the HTTP request.");
+    }
   }
 
   private void rejectTooLarge(ChannelHandlerContext ctx) {
