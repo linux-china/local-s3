@@ -14,6 +14,8 @@ dependencies {
     compileOnly(libs.junit5JupiterApi)
 
     testImplementation(libs.commonsIo)
+    // Runs fixture test classes, e.g. with @Nested classes or in parallel, to check how services are shut down.
+    testImplementation(libs.junitPlatformLauncher)
     // A logging backend for the tests of this module only; users choose their own.
     testRuntimeOnly(libs.logbackClassic)
 }

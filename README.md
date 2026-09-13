@@ -431,10 +431,13 @@ class AppTest {
 
 #### Difference between `@LocalS3` on test classes and test methods
 
-If `@LocalS3` is on a test class, the Junit5 extension will create a shared service for all test methods in the class
-and shut it down in the "after all" callback.
+If `@LocalS3` is on a test class, the Junit5 extension will create a shared service for all test methods in the class,
+including the test methods of its `@Nested` classes, and shut it down in the "after all" callback.
 If `@LocalS3` is on a test method, the extension creates an exclusive service for the method and shut down the
 service in the "after each" callback.
+A `@Nested` class that is annotated itself gets a service of its own, and a test is always given the innermost service:
+the one of its method, then the one of its class, then the one of an enclosing class. Services are kept per test class
+and method rather than per thread, so they work the same when tests run in parallel.
 
 ### Run LocalS3 in Docker
 
