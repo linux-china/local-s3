@@ -17,4 +17,5 @@ dependencies {
     implementation(libs.commonsIo)
     implementation(libs.apacheCommonsLang3)
     implementation(libs.apacheCommonsCodec)
+    implementation(libs.caffeine)
 }
