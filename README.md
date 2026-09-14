@@ -42,7 +42,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + GetBucketLocation
 + HeadBucket
 + HeadObject
-+ ListBuckets (paginated with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, e.g. `listBucketsPaginator`)
++ ListBuckets
 + ListObjects
 + ListObjectsV2
 + ListObjectVersions
@@ -190,6 +190,7 @@ also unrouted and answers the same way.
 + Support S3 object versioning.
 + Support S3 Vectors for vector storage and similarity search.
 + Support conditional requests and conditional writes (see below).
++ Support paginated `ListBuckets` with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, e.g. `listBucketsPaginator`.
 + In memory and persistence mode.
 
 ### Conditional requests
