@@ -251,12 +251,10 @@ Developers could integrate LocalS3 into their own Java applications or testing f
 ```
 #### Run LocalS3 in In-Memory mode
 
-By default, LocalS3 runs in In-Memory mode; all data and metadata retain in the memory.
+By default, LocalS3 runs in In-Memory mode and listens on `29090` port; all data and metadata retain in the memory.
 
 ```java
-LocalS3 localS3 = LocalS3.builder()
-    .port(29090)
-    .build();
+LocalS3 localS3 = LocalS3.builder().build();
 
 localS3.start();
 ```
@@ -275,7 +273,6 @@ the specified path.
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .port(29090)
     .mode(LocalS3Mode.PERSISTENCE)
     .dataPath("C://local-s3")
     .build();
@@ -305,7 +302,6 @@ signature doesn't match are rejected. Configure your S3 client with the same pai
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .port(29090)
     .credentials("access-key-id", "secret-access-key")
     .build();
 
@@ -338,7 +334,6 @@ bucket or an object changes, e.g. to trigger an indexer or to assert in a test t
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .port(29090)
     .bucketEventListener(event ->
         System.out.println(event.getEventType() + " " + event.getBucketName()))
     .objectEventListener(event ->
@@ -374,13 +369,6 @@ doesn't notify of.
 All but the bucket events are delivered to `objectEventListener`. `getVersionId()` is `null` if the bucket has never
 been versioned.
 
-Code that uses `local-s3-core` without the HTTP server subscribes to the same changes on the manager, as
-`S3Change`s:
-
-```java
-LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
-manager.addChangeListener(change -> System.out.println(change.s3EventName() + " " + change.key()));
-```
 
 By default, the listeners run **synchronously on the thread that made the change**, so the event of a request is
 delivered before the S3 response is sent. Pass an executor to deliver events asynchronously, so that slow listeners don't
@@ -390,7 +378,6 @@ hold up request handling; a single-threaded executor keeps the events in order.
 ExecutorService executor = Executors.newSingleThreadExecutor();
 
 LocalS3 localS3 = LocalS3.builder()
-    .port(29090)
     .eventListenerExecutor(executor)
     .objectEventListener(event -> index(event.getObjectUrl()))
     .build();
@@ -535,8 +522,8 @@ The same service runs without Docker. `local-s3-standalone` is published to Mave
 jar that carries everything it needs, so a JRE 21 is the only requirement:
 
 ```shell
-curl -LO https://repo1.maven.org/maven2/io/github/robothy/local-s3-standalone/2.5/local-s3-standalone-2.5.jar
-java -jar local-s3-standalone-2.5.jar
+curl -LO https://repo1.maven.org/maven2/io/github/robothy/local-s3-standalone/2.5.0/local-s3-standalone-2.5.0.jar
+java -jar local-s3-standalone-2.5.0.jar
 ```
 
 It is configured by the variables of the table above, read from the environment or from the system
@@ -544,7 +531,7 @@ properties of the same names, which is what a command line sets most easily:
 
 ```shell
 java -DLOCAL_S3_PORT=29090 -DLOCAL_S3_MODE=IN_MEMORY -DAWS_BUCKETS=my-bucket \
-    -jar local-s3-standalone-2.5.jar
+    -jar local-s3-standalone-2.5.0.jar
 ```
 
 The defaults are the ones of the container, i.e. it binds every interface and persists to `/data`, so give
@@ -605,29 +592,6 @@ The latency of a request is measured from when its body is received until its re
 and the admin endpoints aren't recorded. Unlike the health check, the admin endpoints must be signed if credentials
 are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" http://localhost:29090/_admin/stats`.
 
-### Use LocalS3 with DuckDB
-
-[DuckDB](https://duckdb.org/docs/stable/core_extensions/httpfs/s3api) reads and writes Parquet files on LocalS3
-through its `httpfs` extension. Create a secret that points at LocalS3 with path-style URLs and without TLS; the key
-pair is any one unless LocalS3 [requires signed requests](#require-signed-requests):
-
-```sql
-CREATE SECRET local_s3 (TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false,
-    KEY_ID 'admin', SECRET 'admin', REGION 'us-east-1');
-
-COPY (SELECT * FROM 'family.csv') TO 's3://demo/family.parquet' (FORMAT parquet);
-SELECT * FROM read_parquet('s3://demo/family.parquet');
-
-COPY events TO 's3://demo/events' (FORMAT parquet, PARTITION_BY (year, month));
-SELECT * FROM read_parquet('s3://demo/events/**/*.parquet', hive_partitioning = true) WHERE year = 2026;
-```
-
-`DuckDbParquetIntegrationTest` of `local-s3-integration-test` runs these through the DuckDB JDBC driver: multipart
-uploads of large files, range reads, globs over more partitions than a `ListObjectsV2` page holds, the Parquet
-types of DuckDB with each compression, `OVERWRITE` of partitions, and signed requests. DuckDB uploads a file that fits
-in a single part, i.e. below `s3_uploader_max_filesize / s3_uploader_max_parts_per_file` (80 MB by default), with one
-`PutObject`.
-
 ### LocalS3 test container
 
 LocalS3 provides a [testcontainers](https://www.testcontainers.org/) implementation. You can run LocalS3 in your tests 
@@ -639,6 +603,7 @@ with testcontainers API.
 <dependency>
     <groupId>io.github.robothy</groupId>
     <artifactId>local-s3-testcontainers</artifactId>
+    <version>last_version</version>
 </dependency>
 ```
 
