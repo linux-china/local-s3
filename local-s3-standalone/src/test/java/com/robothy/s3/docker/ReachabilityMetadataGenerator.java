@@ -86,7 +86,7 @@ public class ReachabilityMetadataGenerator {
           .withFileSystemBind("build/libs", "/app", BindMode.READ_WRITE)
           .withFileSystemBind(dataPath.getAbsolutePath(), "/data", BindMode.READ_WRITE)
           .withCreateContainerCmdModifier(cmd -> cmd.withEntrypoint(""))
-          .withCommand("java -DMODE=IN_MEMORY -agentlib:native-image-agent=config-merge-dir=/metadata -jar /app/s3.jar")
+          .withCommand("java -DLOCAL_S3_MODE=IN_MEMORY -DLOCAL_S3_HOST=0.0.0.0 -agentlib:native-image-agent=config-merge-dir=/metadata -jar /app/s3.jar")
           .start();
 
       // Stop the container.
