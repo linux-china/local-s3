@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 public class App {
 
     static final int DEFAULT_PORT = 29090;
+    static final String DEFAULT_HOST = "127.0.0.1";
     static final String DEFAULT_DATA_PATH = "/data";
 
     public static void main(String[] args) {
@@ -33,9 +34,9 @@ public class App {
                 // The defaults of the container, which differ from the defaults of an embedded service: it
                 // serves every interface and persists to a directory that is usually bind-mounted.
                 .port(DEFAULT_PORT)
-                .bindHost("0.0.0.0")
+                .bindHost(DEFAULT_HOST)
                 .dataPath(DEFAULT_DATA_PATH)
-                .mode(LocalS3Mode.PERSISTENCE)
+                .mode(LocalS3Mode.IN_MEMORY)
                 // Applies the variables that are set, leaving the defaults above for the ones that aren't.
                 .fromEnvironment()
                 // main() returns once the service is started, so only non-daemon threads keep the container

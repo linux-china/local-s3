@@ -175,8 +175,8 @@ public record LocalS3Config(
    */
 
   static void requireMaxRequestBodySize(long maxRequestBodySize) {
-    requireThat(maxRequestBodySize > 0 && maxRequestBodySize <= Integer.MAX_VALUE,
-        "maxRequestBodySize must be between 1 and " + Integer.MAX_VALUE + ".");
+    requireThat(maxRequestBodySize > 0 && maxRequestBodySize <= DEFAULT_MAX_REQUEST_BODY_SIZE,
+        "maxRequestBodySize must be between 1 and " + DEFAULT_MAX_REQUEST_BODY_SIZE + ".");
   }
 
   static void requireRequestBodyFileThreshold(long requestBodyFileThreshold) {
