@@ -396,6 +396,37 @@ public class ObjectIntegrationTest {
     assertEquals(0, versionListing4.versions().size());
   }
 
+  /**
+   * Like Amazon S3, DeleteObjects deletes at most 1000 objects per request; a larger request is rejected with
+   * {@code MalformedXML}, and deletes nothing.
+   */
+  @LocalS3
+  @Test
+  void testDeleteObjectsWithMoreThan1000Objects(S3Client s3) {
+    String bucketName = "my-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+    s3.putObject(PutObjectRequest.builder().bucket(bucketName).key("key-0").build(), RequestBody.fromString("Hello"));
+
+    List<ObjectIdentifier> objects = new ArrayList<>();
+    for (int i = 0; i <= 1000; i++) {
+      objects.add(ObjectIdentifier.builder().key("key-" + i).build());
+    }
+    S3Exception rejected = assertThrows(S3Exception.class, () -> s3.deleteObjects(DeleteObjectsRequest.builder()
+        .bucket(bucketName)
+        .delete(Delete.builder().objects(objects).build())
+        .build()));
+    assertEquals(400, rejected.statusCode());
+    assertEquals("MalformedXML", rejected.awsErrorDetails().errorCode());
+    assertNotNull(s3.headObject(HeadObjectRequest.builder().bucket(bucketName).key("key-0").build()));
+
+    DeleteObjectsResponse deleted = s3.deleteObjects(DeleteObjectsRequest.builder()
+        .bucket(bucketName)
+        .delete(Delete.builder().objects(objects.subList(0, 1000)).build())
+        .build());
+    assertEquals(1000, deleted.deleted().size());
+    assertTrue(deleted.errors().isEmpty());
+  }
+
   @Test
   @LocalS3
   void testPutAndGetLargeObjectInMemory(S3Client s3) {

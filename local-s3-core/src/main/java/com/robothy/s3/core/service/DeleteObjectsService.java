@@ -1,6 +1,8 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.datatypes.ObjectIdentifier;
 import com.robothy.s3.datatypes.request.DeleteObjectsRequest;
@@ -8,20 +10,40 @@ import com.robothy.s3.datatypes.response.DeleteResult;
 import com.robothy.s3.datatypes.response.S3Error;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.LoggerFactory;
 
 public interface DeleteObjectsService extends DeleteObjectService {
 
   /**
+   * The max number of objects that a request deletes, like Amazon S3.
+   */
+  int MAX_OBJECTS = 1000;
+
+  /**
    * Delete objects from a specified bucket.
+   *
+   * <p>A request must name between 1 and {@value #MAX_OBJECTS} objects, otherwise it is rejected with
+   * {@code MalformedXML} before the bucket is locked, like Amazon S3 does.
+   *
+   * <p>An object that can't be deleted is reported as an error of its own, and the other objects are still deleted:
+   * with the S3 error of a {@linkplain LocalS3Exception}, or with {@code InternalError} for any other exception, which
+   * is logged, and whose message isn't revealed to the client. An {@linkplain Error}, e.g. an
+   * {@linkplain OutOfMemoryError}, isn't caught, and fails the whole request.
    *
    * @param bucketName bucket name.
    * @param request    delete objects request.
    * @return delete results.
+   * @throws LocalS3RequestException of {@code MalformedXML} if the request names no object or more than
+   *     {@value #MAX_OBJECTS}.
    */
   default List<Object> deleteObjects(String bucketName, DeleteObjectsRequest request) {
+    List<ObjectIdentifier> objects = request.getObjects();
+    if (objects == null || objects.isEmpty() || objects.size() > MAX_OBJECTS) {
+      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
+    }
     return changeBucket(bucketName, () -> {
-      List<Object> results = new ArrayList<>(request.getObjects().size());
-      for (ObjectIdentifier id : request.getObjects()) {
+      List<Object> results = new ArrayList<>(objects.size());
+      for (ObjectIdentifier id : objects) {
         String key = id.getKey();
         String versionId = id.getVersionId().orElse(null);
         try {
@@ -38,20 +60,28 @@ public interface DeleteObjectsService extends DeleteObjectService {
             deleted.setDeleteMarkerVersionId(deleteObjectAns.getVersionId());
           }
           results.add(deleted);
-        } catch (Throwable e) {
-          S3Error.S3ErrorBuilder builder = S3Error.builder()
-              .bucketName(bucketName)
-              .message(e.getMessage())
-              .key(key)
-              .versionId(versionId);
-          if (e instanceof LocalS3Exception) {
-            builder.code(((LocalS3Exception) e).getS3ErrorCode().code());
-          }
-          results.add(builder.build());
+        } catch (LocalS3Exception e) {
+          results.add(deleteError(bucketName, key, versionId, e.getS3ErrorCode(), e.getMessage()));
+        } catch (RuntimeException e) {
+          LoggerFactory.getLogger(DeleteObjectsService.class)
+              .error("Failed to delete the object {} (version {}) of bucket {}.", key, versionId, bucketName, e);
+          results.add(deleteError(bucketName, key, versionId, S3ErrorCode.InternalError,
+              S3ErrorCode.InternalError.description()));
         }
       }
       return results;
     });
+  }
+
+  private static S3Error deleteError(String bucketName, String key, String versionId, S3ErrorCode errorCode,
+                                     String message) {
+    return S3Error.builder()
+        .bucketName(bucketName)
+        .code(errorCode.code())
+        .message(message)
+        .key(key)
+        .versionId(versionId)
+        .build();
   }
 
 }
