@@ -19,5 +19,6 @@ dependencies {
     testImplementation(libs.awssdkS3vectors)
     testImplementation(libs.awss3ApacheClient)
     testImplementation(libs.mockitoCore)
+    testImplementation(libs.duckdb)
     testRuntimeOnly(libs.logbackClassic)
 }
