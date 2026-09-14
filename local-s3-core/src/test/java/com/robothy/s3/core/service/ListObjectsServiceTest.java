@@ -6,9 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
+import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.datatypes.response.S3Object;
 import java.io.ByteArrayInputStream;
+import java.util.List;
+import java.util.NavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -110,5 +115,58 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
   }
 
 
+
+  /**
+   * The keys that a common prefix rolls up aren't visited: listing the root of a bucket with a million keys under
+   * {@code logs/} takes a few steps per page, not a million.
+   */
+  @org.junit.jupiter.api.Test
+  void skipsTheKeysOfACommonPrefix() {
+    int[] visits = new int[1];
+    NavigableMap<String, ObjectMetadata> objects = new ConcurrentSkipListMap<>();
+    objects.put("a.txt", countingObject(visits, false));
+    // Only deleted objects: the prefix isn't listed.
+    objects.put("empty/1", countingObject(visits, true));
+    objects.put("empty/2", countingObject(visits, true));
+    for (int i = 0; i < 100_000; i++) {
+      objects.put("logs/" + i, countingObject(visits, false));
+    }
+    objects.put("logs/\uFFFF\uFFFF", countingObject(visits, false));
+    objects.put("logs0", countingObject(visits, false));
+    objects.put("z/1", countingObject(visits, false));
+    objects.put("z/2", countingObject(visits, false));
+
+    ListObjectsAns all = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 10);
+    assertEquals(List.of("a.txt", "logs0"), all.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("logs/", "z/"), all.getCommonPrefixes());
+    assertTrue(all.getNextMarker().isEmpty());
+    assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
+
+    visits[0] = 0;
+    ListObjectsAns firstPage = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 2);
+    assertEquals(List.of("logs/"), firstPage.getCommonPrefixes());
+    assertEquals("logs/", firstPage.getNextMarker().orElseThrow());
+    assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
+
+    visits[0] = 0;
+    ListObjectsAns secondPage = ListObjectsService.listObjectsAndCommonPrefixes(
+        ListItemUtils.filterByKeyMarkerAndDelimiterForListObjects(objects, "logs/", "", "/"), "", "/", 2);
+    assertEquals(List.of("logs0"), secondPage.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("z/"), secondPage.getCommonPrefixes());
+    assertTrue(secondPage.getNextMarker().isEmpty());
+    assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
+  }
+
+  private static ObjectMetadata countingObject(int[] visits, boolean deleted) {
+    VersionedObjectMetadata version = new VersionedObjectMetadata();
+    version.setDeleted(deleted);
+    return new ObjectMetadata(ObjectMetadata.NULL_VERSION, version) {
+      @Override
+      public VersionedObjectMetadata getLatest() {
+        visits[0]++;
+        return super.getLatest();
+      }
+    };
+  }
 
 }

@@ -13,6 +13,7 @@ import java.util.Map;
 import com.robothy.s3.core.model.answers.ListMultipartUploadsAns.UploadItem;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import java.util.Arrays;
+import java.util.List;
 
 class ListMultipartUploadsServiceTest {
 
@@ -201,6 +202,50 @@ class ListMultipartUploadsServiceTest {
     assertEquals(S3ObjectUtils.urlEncodeEscapeSlash("nextKeyMarker"), encodedResult.getNextKeyMarker());
     assertEquals(S3ObjectUtils.urlEncodeEscapeSlash("uploadIdMarker"), encodedResult.getUploadIdMarker());
     assertEquals(S3ObjectUtils.urlEncodeEscapeSlash("nextUploadIdMarker"), encodedResult.getNextUploadIdMarker());
+  }
+
+  /**
+   * The keys that a common prefix rolls up are skipped rather than visited, and the prefix is listed once.
+   */
+  @Test
+  void testListMultipartUploadsSkipsTheKeysOfACommonPrefix() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    int[] visits = new int[1];
+    uploads.put("a", uploadsOf("uploadA"));
+    for (int i = 0; i < 10_000; i++) {
+      uploads.put("logs/" + i, new TreeMap<>(uploadsOf("upload" + i)) {
+        @Override
+        public boolean isEmpty() {
+          visits[0]++;
+          return super.isEmpty();
+        }
+      });
+    }
+    uploads.put("logs/\uFFFF\uFFFF", uploadsOf("uploadMax"));
+    uploads.put("z", uploadsOf("uploadZ"));
+
+    ListMultipartUploadsAns all = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 10, null);
+    assertEquals(List.of("a", "z"), all.getUploads().stream().map(UploadItem::getKey).toList());
+    assertEquals(List.of("logs/"), all.getCommonPrefixes());
+    assertFalse(all.isTruncated());
+
+    ListMultipartUploadsAns firstPage = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 2, null);
+    assertEquals(List.of("logs/"), firstPage.getCommonPrefixes());
+    assertTrue(firstPage.isTruncated());
+    assertEquals("logs/", firstPage.getNextKeyMarker());
+
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> afterMarker =
+        ListItemUtils.filterByKeyMarkerAndDelimiter(uploads, "logs/", "/");
+    ListMultipartUploadsAns secondPage = ListMultipartUploadsService.listMultipartUploads(afterMarker, "/", 2, null);
+    assertEquals(List.of("z"), secondPage.getUploads().stream().map(UploadItem::getKey).toList());
+    assertTrue(secondPage.getCommonPrefixes().isEmpty());
+    assertEquals(0, visits[0], "The uploads of the keys under the common prefix aren't visited.");
+  }
+
+  private static NavigableMap<String, UploadMetadata> uploadsOf(String uploadId) {
+    NavigableMap<String, UploadMetadata> uploads = new TreeMap<>();
+    uploads.put(uploadId, UploadMetadata.builder().createDate(1L).build());
+    return uploads;
   }
 
 }

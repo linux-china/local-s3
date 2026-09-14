@@ -49,6 +49,14 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     });
   }
 
+  /**
+   * List the objects and common prefixes of a page, in the order of their keys.
+   *
+   * <p>Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, see
+   * {@linkplain ListItemUtils#skipPrefix}, so that a page takes O(page size &times; log N) steps however many keys its
+   * common prefixes roll up, rather than a step per key. Only the objects whose latest version is a delete marker are
+   * stepped over one by one, as a common prefix is only listed if it rolls up an object that isn't deleted.
+   */
   static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadata> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {
     if (filteredObjects.isEmpty() || 0 == maxKeys) {
       return ListObjectsAns.builder()
@@ -58,7 +66,8 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     }
 
     List<S3Object> objects = new ArrayList<>();
-    Set<String> commonPrefixes = new TreeSet<>();
+    // Distinct and in order: the keys of a common prefix are skipped once it is listed.
+    List<String> commonPrefixes = new ArrayList<>();
 
     String nextMarker = null;
 
@@ -72,9 +81,13 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
         continue;
       }
 
-      ListItemUtils.commonPrefix(key, effectivePrefix, delimiter).ifPresentOrElse(
-              commonPrefixes::add,
-              () -> objects.add(fetchLatestObject(key, objectMetadata)));
+      Optional<String> commonPrefix = ListItemUtils.commonPrefix(key, effectivePrefix, delimiter);
+      if (commonPrefix.isPresent()) {
+        commonPrefixes.add(commonPrefix.get());
+        entries = ListItemUtils.skipPrefix(filteredObjects, commonPrefix.get()).entrySet().iterator();
+      } else {
+        objects.add(fetchLatestObject(key, objectMetadata));
+      }
 
       int keyCount = commonPrefixes.size() + objects.size();
 
@@ -91,10 +104,17 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       .nextMarker(nextMarker)
       .isTruncated(Objects.nonNull(nextMarker))
       .objects(objects)
-      .commonPrefixes(new ArrayList<>(commonPrefixes))
+      .commonPrefixes(commonPrefixes)
       .build();
   }
 
+  /**
+   * The marker of the next page, after the last item of a full page.
+   *
+   * @param currentKey the key of the last item.
+   * @param entries the entries after the last item; after its common prefix, if the last item is one.
+   * @return the key of the last item, or its common prefix; {@code null} if nothing is left to list.
+   */
   static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadata>> entries,
           String effectivePrefix, String delimiter) {
 

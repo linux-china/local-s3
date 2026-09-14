@@ -15,12 +15,12 @@ import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.datatypes.response.VersionItem;
 import java.time.Instant;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.Set;
 
 public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
 
@@ -38,7 +38,8 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
       List<String> commonPrefixes = new LinkedList<>();
 
       int prefixLen = Objects.isNull(prefix) ? 0 : prefix.length();
-      Set<String> candidateKeys;
+      NavigableMap<String, ObjectMetadata> candidates;
+      String commonPrefixOfKeyMarker = null;
       String nextVersionIdMarker;
       String nextKeyMarker;
       int delimiterIndex;
@@ -69,16 +70,21 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
           } else {
             nextVersionIdMarker = versions.lastKey();
           }
-        } else { // The keyMarker has a common prefix
-          commonPrefixes.add(keyMarker.substring(0, delimiterIndex + 1));
-          nextVersionIdMarker = objectMetadata.getVersionedObjectMap().lastKey();
+        } else { // The keyMarker has a common prefix, which the previous page listed.
+          commonPrefixOfKeyMarker = keyMarker.substring(0, delimiterIndex + delimiter.length());
+          nextVersionIdMarker = null;
         }
 
         nextKeyMarker = keyMarker;
-        candidateKeys = bucketMetadata.getObjectMap().tailMap(keyMarker, false).keySet();
+        candidates = bucketMetadata.getObjectMap().tailMap(keyMarker, false);
       } else {
         nextVersionIdMarker = nextKeyMarker = null;
-        candidateKeys = bucketMetadata.getObjectMap().keySet();
+        candidates = bucketMetadata.getObjectMap();
+      }
+      // Only the keys with the prefix are visited, rather than every key after the marker.
+      candidates = ListItemUtils.filterByPrefix(candidates, prefix);
+      if (Objects.nonNull(commonPrefixOfKeyMarker)) {
+        candidates = ListItemUtils.skipPrefix(candidates, commonPrefixOfKeyMarker);
       }
 
       int keyCount = versionItems.size() + commonPrefixes.size();
@@ -93,15 +99,18 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
 
       /*-- Process remaining keys. --*/
 
-      for (String key : candidateKeys) {
-        if (Objects.nonNull(prefix) && !key.startsWith(prefix)) {
-          continue;
-        }
-
-        ObjectMetadata objectMetadata = bucketMetadata.getObjectMetadata(key).get();
+      // Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, so that
+      // each common prefix is listed once, and a page takes O(page size * log N) steps however many keys it rolls up.
+      Iterator<Map.Entry<String, ObjectMetadata>> entries = candidates.entrySet().iterator();
+      while (entries.hasNext()) {
+        Map.Entry<String, ObjectMetadata> entry = entries.next();
+        String key = entry.getKey();
+        ObjectMetadata objectMetadata = entry.getValue();
         if (Objects.nonNull(delimiter) && -1 != (delimiterIndex = key.indexOf(delimiter, prefixLen))) {
-          commonPrefixes.add(key.substring(0, delimiterIndex + 1));
+          String commonPrefix = key.substring(0, delimiterIndex + delimiter.length());
+          commonPrefixes.add(commonPrefix);
           nextVersionIdMarker = null;
+          entries = ListItemUtils.skipPrefix(candidates, commonPrefix).entrySet().iterator();
         } else {
           nextVersionIdMarker = fetchVersions(versionItems, commonPrefixes, key, objectMetadata.getVersionedObjectMap(), true, maxKeys, objectMetadata.getVirtualVersion().orElse(null));
         }

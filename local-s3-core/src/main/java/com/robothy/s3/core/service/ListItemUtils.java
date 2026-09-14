@@ -38,11 +38,7 @@ public class ListItemUtils {
       return filteredByMarker;
     }
 
-    String fromKey = filteredByMarker.ceilingKey(commonPrefix + Character.MAX_VALUE);
-    if (Objects.isNull(fromKey)) {
-      return emptyItemMap();
-    }
-    return filteredByMarker.tailMap(fromKey, true);
+    return skipPrefix(filteredByMarker, commonPrefix);
   }
 
   public static <T> NavigableMap<String, T> filterByKeyMarkerAndDelimiter(NavigableMap<String, T> keyToItems, String keyMarker, String delimiter) {
@@ -61,11 +57,7 @@ public class ListItemUtils {
       return filteredByMarker;
     }
 
-    String fromKey = filteredByMarker.ceilingKey(firstKeyCommonPrefix + Character.MAX_VALUE);
-    if (Objects.isNull(fromKey)) {
-      return emptyItemMap();
-    }
-    return filteredByMarker.tailMap(fromKey, true);
+    return skipPrefix(filteredByMarker, firstKeyCommonPrefix);
   }
 
 
@@ -87,6 +79,43 @@ public class ListItemUtils {
 
     boolean fromKeyInclusive = fromKey.startsWith(prefix);
     return filteredByKeyMarker.subMap(fromKey, fromKeyInclusive, toKey, true);
+  }
+
+  /**
+   * The items after all keys that start with {@code prefix}, e.g. to go on listing after a common prefix without
+   * visiting the keys that it rolls up, which takes a single lookup instead of one step per key.
+   *
+   * @param items the items, e.g. a view of the items that are listed.
+   * @param prefix the prefix, e.g. a common prefix.
+   * @return a view of the items whose keys are greater than every key that starts with {@code prefix}.
+   */
+  public static <T> NavigableMap<String, T> skipPrefix(NavigableMap<String, T> items, String prefix) {
+    String successor = prefixSuccessor(prefix);
+    // The lookup of the successor, unlike a view from it, tolerates a successor beyond the bounds of a view.
+    String fromKey = Objects.isNull(successor) ? null : items.ceilingKey(successor);
+    if (Objects.isNull(fromKey)) {
+      return emptyItemMap();
+    }
+    return items.tailMap(fromKey, true);
+  }
+
+  /**
+   * The least string that is greater than every string starting with {@code prefix}: the prefix with its last
+   * character that isn't {@code Character.MAX_VALUE} incremented, and the characters after it dropped. Appending
+   * {@code Character.MAX_VALUE} to the prefix instead would miss the keys that continue the prefix with that character.
+   *
+   * @param prefix the prefix.
+   * @return the successor, or {@code null} if the prefix is empty or only {@code Character.MAX_VALUE}s, so that no
+   *     string is greater than all strings starting with it.
+   */
+  static String prefixSuccessor(String prefix) {
+    for (int i = prefix.length() - 1; i >= 0; i--) {
+      char c = prefix.charAt(i);
+      if (c != Character.MAX_VALUE) {
+        return prefix.substring(0, i) + (char) (c + 1);
+      }
+    }
+    return null;
   }
 
   public static String calculateCommonPrefix(String key, String delimiter) {

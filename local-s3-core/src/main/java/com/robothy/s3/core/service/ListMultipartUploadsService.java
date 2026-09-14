@@ -12,8 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
-import java.util.Set;
-import java.util.TreeSet;
 
 public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
 
@@ -45,7 +43,8 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
   ) {
 
     List<ListMultipartUploadsAns.UploadItem> listedUploads = new ArrayList<>();
-    Set<String> listedCommonPrefixes = new TreeSet<>();
+    // Distinct and in order: the keys of a common prefix are skipped once it is listed.
+    List<String> listedCommonPrefixes = new ArrayList<>();
     ListMultipartUploadsAns result = ListMultipartUploadsAns.builder()
         .delimiter(delimiter)
         .maxUploads(maxUploads)
@@ -54,12 +53,15 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
     String nextKeyMarker = null;
     String nextUploadIdMarker = null;
     String lastKey = null;
-    for (Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = uploads.entrySet().iterator();
-         iterator.hasNext(); ) {
+    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = uploads.entrySet().iterator();
+    while (iterator.hasNext()) {
       Map.Entry<String, NavigableMap<String, UploadMetadata>> entry = iterator.next();
       String key = entry.getKey();
       if (Objects.nonNull(delimiter) && key.contains(delimiter)) {
-        listedCommonPrefixes.add(ListItemUtils.calculateCommonPrefix(key, delimiter));
+        String commonPrefix = ListItemUtils.calculateCommonPrefix(key, delimiter);
+        listedCommonPrefixes.add(commonPrefix);
+        // The other keys of the common prefix are skipped with a single lookup rather than visited one by one.
+        iterator = ListItemUtils.skipPrefix(uploads, commonPrefix).entrySet().iterator();
       } else {
         NavigableMap<String, UploadMetadata> uploadMetadataMap = entry.getValue();
         if (uploadMetadataMap == null || uploadMetadataMap.isEmpty()) {
@@ -87,6 +89,7 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
       }
 
       if (listedUploads.size() + listedCommonPrefixes.size() >= maxUploads) {
+        // After a common prefix, the iterator is past its keys already.
         boolean isCalculatedNextMarkers = Objects.nonNull(nextKeyMarker);
         if (!isCalculatedNextMarkers) {
           nextKeyMarker = calculateNextKeyMarker(iterator, key, delimiter);

@@ -9,6 +9,8 @@ import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 
 import org.apache.commons.codec.digest.DigestUtils;
@@ -118,6 +120,57 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertTrue(listObjectVersionsAns5.getNextKeyMarker().isPresent());
     assertEquals(key1, listObjectVersionsAns5.getNextKeyMarker().get());
     assertTrue(listObjectVersionsAns5.getNextVersionIdMarker().isEmpty());
+  }
+
+  /**
+   * Paging through the versions with a delimiter lists each common prefix once, on one page, and the keys it rolls up
+   * are skipped rather than listed again as further common prefixes. A delimiter may be longer than one character.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void listsEachCommonPrefixOnce(BucketService bucketService, ObjectService objectService) {
+    String bucket = "my-bucket";
+    bucketService.createBucket(bucket);
+    for (String key : List.of("a.txt", "dir1/k1", "dir1/k2", "dir1/k3", "dir2/k1", "dir3--k1", "dir3--k2", "z.txt")) {
+      objectService.putObject(bucket, key, PutObjectOptions.builder()
+          .content(new ByteArrayInputStream("Robothy".getBytes()))
+          .size(7)
+          .build());
+    }
+
+    ListObjectVersionsAns all = objectService.listObjectVersions(bucket, "/", null, 100, null, null);
+    assertEquals(List.of("dir1/", "dir2/"), all.getCommonPrefixes());
+    assertEquals(List.of("a.txt", "dir3--k1", "dir3--k2", "z.txt"), keys(all));
+    assertTrue(all.getNextKeyMarker().isEmpty());
+
+    ListObjectVersionsAns longDelimiter = objectService.listObjectVersions(bucket, "--", null, 100, "dir3", null);
+    assertEquals(List.of("dir3--"), longDelimiter.getCommonPrefixes());
+    assertTrue(longDelimiter.getVersions().isEmpty());
+
+    ListObjectVersionsAns withPrefix = objectService.listObjectVersions(bucket, "/", null, 100, "dir1/", null);
+    assertEquals(List.of("dir1/k1", "dir1/k2", "dir1/k3"), keys(withPrefix));
+    assertTrue(withPrefix.getCommonPrefixes().isEmpty());
+
+    List<String> listed = new ArrayList<>();
+    String keyMarker = null;
+    String versionIdMarker = null;
+    for (int page = 0; page < 20; page++) {
+      ListObjectVersionsAns ans = objectService.listObjectVersions(bucket, "/", keyMarker, 1, null, versionIdMarker);
+      listed.addAll(ans.getCommonPrefixes());
+      listed.addAll(keys(ans));
+      if (ans.getNextKeyMarker().isEmpty()) {
+        break;
+      }
+      keyMarker = ans.getNextKeyMarker().get();
+      versionIdMarker = ans.getNextVersionIdMarker().orElse(null);
+    }
+    assertEquals(List.of("a.txt", "dir1/", "dir2/", "dir3--k1", "dir3--k2", "z.txt"), listed);
+  }
+
+  private static List<String> keys(ListObjectVersionsAns ans) {
+    return ans.getVersions().stream()
+        .map(item -> item instanceof ObjectVersion version ? version.getKey() : ((DeleteMarkerEntry) item).getKey())
+        .toList();
   }
 
 }
