@@ -11,6 +11,8 @@ import com.robothy.s3.rest.listener.S3EventType;
 import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -52,7 +54,7 @@ class LocalS3EventsTest {
 
       assertEquals(List.of("by-client.txt", "embedded.txt"),
           listeners.objects.stream().map(ObjectEvent::getObjectKey).toList());
-      ObjectEvent event = listeners.objects.get(0);
+      ObjectEvent event = listeners.objects.getFirst();
       assertEquals(S3EventType.OBJECT_CREATED, event.getEventType());
       assertEquals("PutObject", event.getSource());
       assertEquals("s3:ObjectCreated:Put", event.getS3EventName());
@@ -182,15 +184,15 @@ class LocalS3EventsTest {
     }
 
     @Override
-    protected void doBegin(Object transaction, TransactionDefinition definition) {
+    protected void doBegin(@NonNull Object transaction, @NonNull TransactionDefinition definition) {
     }
 
     @Override
-    protected void doCommit(DefaultTransactionStatus status) {
+    protected void doCommit(@NonNull DefaultTransactionStatus status) {
     }
 
     @Override
-    protected void doRollback(DefaultTransactionStatus status) {
+    protected void doRollback(@NonNull DefaultTransactionStatus status) {
     }
 
   }
