@@ -12,6 +12,7 @@ import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
+import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
 
@@ -58,7 +59,11 @@ public class LocalS3 implements AutoCloseable {
     private volatile LocalS3Manager s3Manager;
     private volatile LocalS3VectorsManager localS3VectorsManager;
 
-    private boolean running;
+    /**
+     * Whether the service is started and not shut down yet. Written under the lock of start() and shutdown(), and
+     * volatile, so that isRunning() doesn't wait for a shutdown in progress.
+     */
+    private volatile boolean running;
 
     private volatile NettyServer server;
 
@@ -162,12 +167,26 @@ public class LocalS3 implements AutoCloseable {
         Path requestBodyFileDirectory = prepareRequestBodyFileDirectory();
         this.server = NettyServer.start(config,
                 LocalS3RouterFactory.create(serviceFactory, config.accessKeyId(), config.secretAccessKey()),
-                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, requestStatistics);
+                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics));
         // The actual port, in case a random one was requested.
         this.port = server.port();
         log.info("LocalS3 listens on {}:{}.", config.bindHost(), port);
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
+    }
+
+    /**
+     * The recorder of the server: the statistics of the service, followed by the recorder of the configuration.
+     */
+    private RequestRecorder recorder(RequestStatistics statistics) {
+        RequestRecorder configured = config.requestRecorder();
+        if (configured == RequestRecorder.NONE) {
+            return statistics;
+        }
+        return (request, operation, status, requestId, durationNanos) -> {
+            statistics.record(request, operation, status, requestId, durationNanos);
+            configured.record(request, operation, status, requestId, durationNanos);
+        };
     }
 
     /**
@@ -320,6 +339,16 @@ public class LocalS3 implements AutoCloseable {
             log.info("Created file system LocalS3 Vectors manager.");
             return LocalS3VectorsManager.createFileSystem(vectorsDataPath);
         }
+    }
+
+    /**
+     * Whether the service is started, i.e. {@linkplain #start()} returned and {@linkplain #shutdown()} wasn't called
+     * since, e.g. for a host that manages the lifecycle of the service.
+     *
+     * @return {@code true} if the service is running.
+     */
+    public boolean isRunning() {
+        return running;
     }
 
     /**

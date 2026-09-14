@@ -3,6 +3,7 @@ package com.robothy.s3.rest;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
+import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -78,6 +79,8 @@ public class LocalS3Builder {
     private boolean compositeMultipartEtags = true;
 
     private final List<String> virtualHostDomains = new ArrayList<>();
+
+    private RequestRecorder requestRecorder = RequestRecorder.NONE;
 
     /**
      * Set the host that local-s3 service listens on.
@@ -455,6 +458,20 @@ public class LocalS3Builder {
     }
 
     /**
+     * Set a recorder that receives every request that the service answered, once its response is written, e.g. to
+     * record metrics of the requests. It receives the requests that {@code GET /_admin/stats} counts, and the health
+     * checks and administration requests that it doesn't. It is called on the event loop of the connection, so it
+     * must be quick and thread-safe; an exception that it throws is logged.
+     *
+     * @param requestRecorder the recorder.
+     * @return builder.
+     */
+    public LocalS3Builder requestRecorder(@NonNull RequestRecorder requestRecorder) {
+        this.requestRecorder = Objects.requireNonNull(requestRecorder);
+        return this;
+    }
+
+    /**
      * Enable AWS Signature Version 4 authentication with a static access key pair.
      *
      * @param accessKeyId     access key ID accepted by the server.
@@ -523,7 +540,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, strictBucketNames, strictPartSizes, compositeMultipartEtags,
-                virtualHostDomains);
+                virtualHostDomains, requestRecorder);
     }
 
     /**

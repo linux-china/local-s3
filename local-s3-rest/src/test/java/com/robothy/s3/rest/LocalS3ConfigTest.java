@@ -73,7 +73,7 @@ class LocalS3ConfigTest {
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
         valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(), valid.strictBucketNames(),
-        valid.strictPartSizes(), valid.compositeMultipartEtags(), valid.virtualHostDomains()));
+        valid.strictPartSizes(), valid.compositeMultipartEtags(), valid.virtualHostDomains(), null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), buckets,
@@ -82,7 +82,7 @@ class LocalS3ConfigTest {
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
         valid.strictBucketNames(), valid.strictPartSizes(), valid.compositeMultipartEtags(),
-        valid.virtualHostDomains());
+        valid.virtualHostDomains(), null);
     buckets.add("b");
     assertEquals(List.of("a"), copied.buckets());
   }
@@ -96,6 +96,33 @@ class LocalS3ConfigTest {
     assertFalse(config.toString().contains("secret-access-key"), config.toString());
   }
 
+  @Test
+  void theRequestRecorderReceivesEveryAnsweredRequest() throws Exception {
+    java.util.List<String> recorded = new java.util.concurrent.CopyOnWriteArrayList<>();
+    LocalS3 localS3 = LocalS3.builder().port(-1)
+        .requestRecorder((request, operation, status, requestId, durationNanos) -> recorded.add(operation + " " + status))
+        .build();
+    assertSame(com.robothy.s3.rest.netty.RequestRecorder.NONE, LocalS3.builder().buildConfig().requestRecorder());
+    localS3.start();
+    try {
+      java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+      for (String path : List.of("/_health", "/")) {
+        client.send(java.net.http.HttpRequest.newBuilder(
+            java.net.URI.create("http://127.0.0.1:" + localS3.getPort() + path)).build(),
+            java.net.http.HttpResponse.BodyHandlers.discarding());
+      }
+      // A request is recorded once its response is written, which the client may have read before.
+      for (int attempt = 0; attempt < 50 && recorded.size() < 2; attempt++) {
+        Thread.sleep(20);
+      }
+      assertEquals(List.of("HealthCheck 200", "ListBuckets 200"), recorded,
+          "The recorder receives the health checks that the statistics leave out.");
+      assertEquals(1, localS3.statistics().totalRequests(), "The statistics of the service still count the requests.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
   private static LocalS3Config withPort(LocalS3Config config, int port) {
     return new LocalS3Config(config.bindHost(), port, config.dataPath(), config.mode(), config.buckets(),
         config.bucketEventListener(), config.objectEventListener(), config.eventListenerExecutor(),
@@ -104,7 +131,7 @@ class LocalS3ConfigTest {
         config.virtualThreads(), config.accessKeyId(), config.secretAccessKey(), config.maxRequestBodySize(),
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),
         config.strictBucketNames(), config.strictPartSizes(), config.compositeMultipartEtags(),
-        config.virtualHostDomains());
+        config.virtualHostDomains(), config.requestRecorder());
   }
 
 }

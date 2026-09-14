@@ -3,6 +3,7 @@ package com.robothy.s3.rest;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.listener.ObjectEventListener;
+import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -42,6 +43,8 @@ import org.jspecify.annotations.Nullable;
  * @param strictPartSizes whether the parts of a multipart upload but the last one must be at least 5 MiB.
  * @param compositeMultipartEtags whether a completed multipart upload gets the entity tag of Amazon S3.
  * @param virtualHostDomains the base domains of virtual-hosted-style requests, besides the default ones.
+ * @param requestRecorder receives every request once its response is written, besides the statistics of the service,
+ *     e.g. to record metrics; {@code null} is {@linkplain RequestRecorder#NONE}.
  */
 public record LocalS3Config(
     String bindHost,
@@ -68,7 +71,8 @@ public record LocalS3Config(
     boolean strictBucketNames,
     boolean strictPartSizes,
     boolean compositeMultipartEtags,
-    List<String> virtualHostDomains) {
+    List<String> virtualHostDomains,
+    RequestRecorder requestRecorder) {
 
   /**
    * Default max request body size(2G), the largest body the in-memory request aggregation can hold.
@@ -135,6 +139,7 @@ public record LocalS3Config(
     requireMaxRequestHeaderSize(maxRequestHeaderSize);
     requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
     virtualHostDomains = List.copyOf(virtualHostDomains);
+    requestRecorder = requestRecorder == null ? RequestRecorder.NONE : requestRecorder;
   }
 
   /**

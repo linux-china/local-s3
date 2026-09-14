@@ -19,6 +19,8 @@ robothyCnRepo = "1.18"
 gradleLombok = "5.0.0"
 jspecify="1.0.1"
 caffeine="3.2.4"
+springBoot = "4.1.1"
+micrometer = "1.17.1"
 duckdb="1.5.5.1"
 
 [libraries]
@@ -55,3 +57,10 @@ gradleLombok = { group = "io.franzbecker", name = "gradle-lombok", version.ref =
 jspecify = { group = "org.jspecify", name = "jspecify", version.ref = "jspecify" }
 caffeine = { group = "com.github.ben-manes.caffeine", name = "caffeine", version.ref = "caffeine" }
 duckdb = { group = "org.duckdb", name = "duckdb_jdbc", version.ref = "duckdb" }
+springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
+springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
+springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }
+springBootConfigurationProcessor = { group = "org.springframework.boot", name = "spring-boot-configuration-processor", version.ref = "springBoot" }
+springBootTest = { group = "org.springframework.boot", name = "spring-boot-test", version.ref = "springBoot" }
+micrometerCore = { group = "io.micrometer", name = "micrometer-core", version.ref = "micrometer" }
+awssdkNettyNioClient = { group = "software.amazon.awssdk", name = "netty-nio-client", version.ref = "awssdkS3" }

@@ -401,6 +401,10 @@ LocalS3 does not shut the executor down; that stays with the code that created i
 thrown by a listener is logged and never fails the S3 request, and an event that the executor rejects is
 dropped with a log entry.
 
+### LocalS3 for Spring Boot
+
+Please refer [local-s3-spring-boot-starter/README.md](local-s3-spring-boot-starter/README.md)
+
 ### LocalS3 for Junit5
 
 LocalS3 for Junit5 provides a Java annotation `@LocalS3` helps you easily launch S3 services for your tests.

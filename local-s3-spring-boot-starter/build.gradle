@@ -1,0 +1,33 @@
+plugins {
+    id 'java-library'
+    id 'local-s3.java-conventions'
+    id 'local-s3.publish'
+}
+
+dependencies {
+    // Types of the public API: the auto-configured LocalS3, the events that are published to the application context,
+    // and the clients that point at the embedded service.
+    api project(":local-s3-rest")
+    api(libs.awssdkS3)
+    api(libs.springBootAutoconfigure)
+
+    // The async client of the AWS SDK needs an async HTTP client; the S3AsyncClient bean backs off without it.
+    implementation(libs.awssdkNettyNioClient)
+
+    // Optional integrations, which the application brings: Actuator health and Micrometer metrics.
+    compileOnly(libs.springBootHealth)
+    compileOnly(libs.micrometerCore)
+
+    annotationProcessor(libs.springBootConfigurationProcessor)
+
+    // The tests run against the versions that a Spring Boot application gets, e.g. its Jackson and Netty.
+    testImplementation(platform(libs.springBootBom))
+    testImplementation(libs.springBootTest)
+    // The contexts of ApplicationContextRunner are AssertJ assert providers.
+    testImplementation("org.assertj:assertj-core")
+    testImplementation(libs.springBootHealth)
+    testImplementation(libs.micrometerCore)
+    testImplementation("org.springframework.boot:spring-boot-micrometer-metrics")
+    testImplementation("org.springframework:spring-tx")
+    testRuntimeOnly(libs.logbackClassic)
+}
