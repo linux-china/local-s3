@@ -31,9 +31,9 @@ class AppTest {
 
     assertEquals(App.DEFAULT_PORT, localS3.getPort());
     assertEquals(Path.of(App.DEFAULT_DATA_PATH), localS3.getDataPath());
-    assertEquals("0.0.0.0", localS3.getBindHost());
+    assertEquals("127.0.0.1", localS3.getBindHost());
     assertFalse(localS3.isStrictBucketNames());
-    assertEquals(LocalS3Mode.PERSISTENCE, localS3.getMode());
+    assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
     // main() returns once the service is started, so daemon threads would let the container exit at once.
     assertFalse(localS3.isDaemonThreads(), "The threads of the service keep the container running.");
   }
