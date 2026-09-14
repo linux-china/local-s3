@@ -63,7 +63,7 @@ public class ReachabilityMetadataGenerator {
           .withFileSystemBind("build/libs", "/app", BindMode.READ_WRITE)
           .withFileSystemBind(dataPath.getAbsolutePath(), "/data", BindMode.READ_WRITE)
           .withCreateContainerCmdModifier(cmd -> cmd.withEntrypoint(""))
-          .withCommand("java -DMODE=PERSISTENCE -agentlib:native-image-agent=config-output-dir=/metadata -jar /app/s3.jar")
+          .withCommand("java -DLOCAL_S3_MODE=PERSISTENCE -DLOCAL_S3_HOST=0.0.0.0 -agentlib:native-image-agent=config-output-dir=/metadata -jar /app/s3.jar")
           .start();
 
       // Hit all LocalS3 APIs, cover as many classes as possible to generate reachability metadata.
