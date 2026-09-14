@@ -2,6 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.MethodNotAllowedException;
 import com.robothy.s3.core.model.answers.GetObjectAclAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -37,7 +39,10 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
       }
 
       versionedObjectMetadata.setAcl(acl);
-      return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_ACL_PUT, "PutObjectAcl", bucketName, key,
+          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+      return returnedVersion;
     });
   }
 

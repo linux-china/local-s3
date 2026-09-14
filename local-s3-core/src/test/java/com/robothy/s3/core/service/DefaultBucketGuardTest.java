@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangePublisher;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.MetadataStore;
@@ -183,6 +186,113 @@ class DefaultBucketGuardTest {
     BucketGuard lockOnly = BucketGuard.inMemory();
     Object result = new Object();
     assertSame(result, lockOnly.change("bucket", BucketGuard.Change.CREATE, () -> result));
+  }
+
+  /**
+   * A change is delivered once it is persisted and the lock of its bucket is released, so that a listener can change
+   * the bucket again, even from another thread.
+   */
+  @Test
+  void deliversAChangeOnceTheBucketIsPersistedAndUnlocked() throws Exception {
+    List<String> delivered = new ArrayList<>();
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      guard.changePublisher().addListener(change -> {
+        // The publisher logs what a listener throws, so the outcome is recorded rather than asserted here.
+        Future<?> otherWriter = executor.submit(() -> guard.write("bucket", () -> null));
+        try {
+          otherWriter.get(5, TimeUnit.SECONDS);
+          delivered.add(change.key() + " after " + store.operations + ", unlocked");
+        } catch (Exception e) {
+          delivered.add(change.key() + " while locked");
+        }
+      });
+
+      guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+        guard.changePublisher().publish(objectCreated("PutObject", "a.txt"));
+        assertEquals(List.of(), delivered, "Nothing is delivered while the change runs.");
+        return null;
+      });
+
+      assertEquals(List.of("a.txt after [store bucket], unlocked"), delivered);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void dropsTheChangesOfAFailedChange() {
+    List<S3Change> delivered = new ArrayList<>();
+    guard.changePublisher().addListener(delivered::add);
+
+    assertThrows(BucketNotExistException.class, () -> guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+      guard.changePublisher().publish(objectCreated("PutObject", "rejected.txt"));
+      throw new BucketNotExistException("bucket");
+    }));
+    store.failing = true;
+    assertThrows(IllegalStateException.class, () -> guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+      guard.changePublisher().publish(objectCreated("PutObject", "unpersisted.txt"));
+      return null;
+    }));
+
+    assertEquals(List.of(), delivered);
+  }
+
+  /**
+   * A change of another bucket nested in a change has been persisted on its own, so it is delivered even if the outer
+   * change fails, but only once the outer change has released its lock.
+   */
+  @Test
+  void deliversANestedChangeOfAnotherBucketThatSucceeded() {
+    List<String> delivered = new ArrayList<>();
+    guard.changePublisher().addListener(change -> delivered.add(change.bucketName()));
+
+    assertThrows(IllegalStateException.class, () -> guard.change("outer", BucketGuard.Change.UPDATE, () -> {
+      guard.change("inner", BucketGuard.Change.UPDATE, () -> {
+        guard.changePublisher().publish(S3Change.bucketCreated("CreateBucket", "inner", null));
+        return null;
+      });
+      assertEquals(List.of(), delivered);
+      guard.changePublisher().publish(S3Change.bucketCreated("CreateBucket", "outer", null));
+      throw new IllegalStateException("broken");
+    }));
+
+    assertEquals(List.of("inner"), delivered);
+  }
+
+  @Test
+  void namesTheOutermostOperation() {
+    List<String> delivered = new ArrayList<>();
+    guard.changePublisher().addListener(change -> delivered.add(change.operation()));
+    S3ChangePublisher publisher = guard.changePublisher();
+
+    publisher.asOperation("DeleteObjects", () -> publisher.asOperation("DeleteObject",
+        () -> guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+          publisher.publish(objectCreated("DeleteObject", "a.txt"));
+          return null;
+        })));
+    publisher.publish(objectCreated("PutObject", "b.txt"));
+
+    assertEquals(List.of("DeleteObjects", "PutObject"), delivered, "Outside a change, a change is delivered at once.");
+  }
+
+  @Test
+  void aFailingListenerDoesntFailTheChangeNorTheOtherListeners() {
+    List<S3Change> delivered = new ArrayList<>();
+    guard.changePublisher().addListener(change -> {
+      throw new IllegalStateException("listener failed");
+    });
+    guard.changePublisher().addListener(delivered::add);
+
+    assertEquals("done", guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+      guard.changePublisher().publish(objectCreated("PutObject", "a.txt"));
+      return "done";
+    }));
+    assertEquals(1, delivered.size());
+  }
+
+  private static S3Change objectCreated(String operation, String key) {
+    return S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, operation, "bucket", key, null, 0, "etag");
   }
 
   private static void await(CountDownLatch latch) {

@@ -9,8 +9,6 @@ import com.robothy.s3.core.service.CopyObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
-import com.robothy.s3.rest.listener.ObjectEvent;
-import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.model.response.CopyObjectResult;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
@@ -56,8 +54,6 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
-    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED, "CopyObject", destinationBucket, destinationKey,
-        copyObjectAns.getVersionId(), copyObjectAns.getSize(), copyObjectAns.getEtag(), false));
   }
 
   /**

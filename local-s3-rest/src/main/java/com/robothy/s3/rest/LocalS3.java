@@ -350,15 +350,20 @@ public class LocalS3 implements AutoCloseable {
     private ServiceFactory createServiceFactory() {
         // Keep the managers across a restart, so that a service that is started again serves the data it held.
         if (s3Manager == null) {
-            s3Manager = createLocalS3Manager();
+            LocalS3Manager manager = createLocalS3Manager();
+            // The services publish their changes however they are called, so the listeners also hear of the changes
+            // made through getS3Manager(). Subscribed once, together with the manager that is kept across restarts.
+            if (bucketEventListener != null || objectEventListener != null) {
+                manager.addChangeListener(
+                        new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor));
+            }
+            s3Manager = manager;
         }
         if (localS3VectorsManager == null) {
             localS3VectorsManager = createLocalS3VectorsManager();
         }
 
-        S3EventDispatcher eventDispatcher = bucketEventListener == null && objectEventListener == null ? null
-                : new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor);
-        return LocalS3Services.create(this, s3Manager, localS3VectorsManager, eventDispatcher, new Admin());
+        return LocalS3Services.create(this, s3Manager, localS3VectorsManager, new Admin());
     }
 
     /**

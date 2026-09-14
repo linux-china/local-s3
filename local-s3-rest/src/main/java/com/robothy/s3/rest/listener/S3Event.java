@@ -49,4 +49,15 @@ public abstract class S3Event {
         return metadata;
     }
 
+    /**
+     * The name of the event type that an Amazon S3 event notification of this event carries, e.g.
+     * {@code s3:ObjectCreated:Put}.
+     *
+     * @return the name of the event type; {@code null} if Amazon S3 doesn't notify of such an event, e.g. of a created
+     *     bucket.
+     */
+    public String getS3EventName() {
+        return null;
+    }
+
 }

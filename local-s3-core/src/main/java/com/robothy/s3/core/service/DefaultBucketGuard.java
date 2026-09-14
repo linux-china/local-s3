@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.event.S3ChangePublisher;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.locks.BucketLock;
@@ -46,6 +47,8 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
    */
   private final ThreadLocal<Set<String>> changingBuckets = ThreadLocal.withInitial(HashSet::new);
 
+  private final S3ChangePublisher changePublisher = new S3ChangePublisher();
+
   /**
    * Create a guard.
    *
@@ -87,7 +90,8 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
       // The outer change holds the write lock, and persists the bucket once it is done.
       return operation.get();
     }
-    return write(bucketName, () -> {
+    // The changes that the operation publishes are delivered once the write lock is released.
+    return changePublisher.withinChange(() -> write(bucketName, () -> {
       changing.add(bucketName);
       try {
         return Objects.isNull(bucketMetaStore) ? operation.get() : invokeAndPersist(bucketName, change, operation);
@@ -97,7 +101,12 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
           changingBuckets.remove();
         }
       }
-    });
+    }));
+  }
+
+  @Override
+  public S3ChangePublisher changePublisher() {
+    return changePublisher;
   }
 
   @Override

@@ -1,5 +1,7 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.assertions.BucketAssertions;
@@ -288,6 +290,8 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
         uploads.remove(key);
       }
 
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "CompleteMultipartUpload", bucket, key,
+          putObjectAns.getVersionId(), putObjectAns.getSize(), putObjectAns.getEtag()));
       return CompleteMultipartUploadAns.builder()
           .location("/" + bucket + "/" + key)
           .versionId(putObjectAns.getVersionId())

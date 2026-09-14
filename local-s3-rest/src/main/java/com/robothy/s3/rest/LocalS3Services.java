@@ -16,7 +16,6 @@ import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.rest.admin.LocalS3Admin;
-import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
@@ -45,29 +44,25 @@ final class LocalS3Services {
    * @param config the service being started, which carries the options its policies are built from.
    * @param s3Manager the manager of the Amazon S3 data of the service.
    * @param vectorsManager the manager of the S3 Vectors data of the service.
-   * @param eventDispatcher dispatches the bucket and object events to the listeners of the service;
-   *     {@code null} if it has no listener, which registers no dispatcher at all.
    * @return the assembled factory.
    */
-  static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager,
-                               LocalS3VectorsManager vectorsManager, S3EventDispatcher eventDispatcher) {
-    return create(config, s3Manager, vectorsManager, eventDispatcher, null);
+  static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager) {
+    return create(config, s3Manager, vectorsManager, null);
   }
 
   /**
-   * Assemble the services of a service that is starting.
+   * Assemble the services of a service that is starting. The events of the service aren't among them: the manager
+   * delivers them to its change listeners, however its services are called.
    *
    * @param config the service being started, which carries the options its policies are built from.
    * @param s3Manager the manager of the Amazon S3 data of the service.
    * @param vectorsManager the manager of the S3 Vectors data of the service.
-   * @param eventDispatcher dispatches the bucket and object events to the listeners of the service;
-   *     {@code null} if it has no listener, which registers no dispatcher at all.
    * @param admin the administration of the service, which the {@code /_admin} endpoints answer through;
    *     {@code null} for none, which leaves the endpoints out.
    * @return the assembled factory.
    */
   static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
-                               S3EventDispatcher eventDispatcher, LocalS3Admin admin) {
+                               LocalS3Admin admin) {
     ServiceFactory serviceFactory = new DefaultServiceFactory();
 
     BucketService bucketService = s3Manager.bucketService();
@@ -91,9 +86,6 @@ final class LocalS3Services {
     S3VectorsService s3VectorsService = vectorsManager.s3VectorsService();
     serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
 
-    if (Objects.nonNull(eventDispatcher)) {
-      serviceFactory.register(S3EventDispatcher.class, () -> eventDispatcher);
-    }
     if (Objects.nonNull(admin)) {
       serviceFactory.register(LocalS3Admin.class, () -> admin);
     }

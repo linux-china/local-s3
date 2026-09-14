@@ -41,7 +41,8 @@ public interface DeleteObjectsService extends DeleteObjectService {
     if (objects == null || objects.isEmpty() || objects.size() > MAX_OBJECTS) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
-    return changeBucket(bucketName, () -> {
+    // The objects that deleteObject deletes are deleted by DeleteObjects.
+    return asOperation("DeleteObjects", () -> changeBucket(bucketName, () -> {
       List<Object> results = new ArrayList<>(objects.size());
       for (ObjectIdentifier id : objects) {
         String key = id.getKey();
@@ -70,7 +71,7 @@ public interface DeleteObjectsService extends DeleteObjectService {
         }
       }
       return results;
-    });
+    }));
   }
 
   private static S3Error deleteError(String bucketName, String key, String versionId, S3ErrorCode errorCode,

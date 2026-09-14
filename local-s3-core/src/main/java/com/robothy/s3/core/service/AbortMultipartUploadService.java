@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
@@ -42,6 +43,7 @@ public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, 
 
       // help GC.
       uploadMetadata.getParts().clear();
+      publishChange(S3Change.multipartUploadAborted("AbortMultipartUpload", bucketName, objectKey, uploadId));
     });
   }
 

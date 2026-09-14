@@ -7,8 +7,6 @@ import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.service.CompleteMultipartUploadService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
-import com.robothy.s3.rest.listener.ObjectEvent;
-import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.CompleteMultipartUpload;
 import com.robothy.s3.rest.model.response.CompleteMultipartUploadResult;
@@ -71,9 +69,6 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
-    fireObjectEvent(new ObjectEvent(S3EventType.OBJECT_CREATED, "CompleteMultipartUpload", bucket, key,
-        completeMultipartUploadAns.getVersionId(), completeMultipartUploadAns.getSize(),
-        completeMultipartUploadAns.getEtag(), false));
   }
 
 }

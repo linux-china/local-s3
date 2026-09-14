@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.event.S3Change;
 import java.util.function.Supplier;
 
 /**
@@ -82,6 +83,25 @@ public interface BucketGuardApplicable {
       operation.run();
       return null;
     });
+  }
+
+  /**
+   * Publish a change that the operation made, which is delivered once the change of the bucket that it runs in is
+   * committed.
+   *
+   * @see com.robothy.s3.core.event.S3ChangePublisher#publish
+   */
+  default void publishChange(S3Change change) {
+    bucketGuard().changePublisher().publish(change);
+  }
+
+  /**
+   * Run an operation as a part of another one, which the changes that it publishes name, e.g. {@code CopyObject}.
+   *
+   * @see com.robothy.s3.core.event.S3ChangePublisher#asOperation
+   */
+  default <T> T asOperation(String operationName, Supplier<T> action) {
+    return bucketGuard().changePublisher().asOperation(operationName, action);
   }
 
 }

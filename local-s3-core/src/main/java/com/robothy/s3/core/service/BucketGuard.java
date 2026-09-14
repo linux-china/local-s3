@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.event.S3ChangePublisher;
 import com.robothy.s3.core.service.locks.BucketLock;
 import java.util.function.Supplier;
 
@@ -87,5 +88,14 @@ public interface BucketGuard {
    *     itself.
    */
   <T> T exclusive(Supplier<T> operation);
+
+  /**
+   * The publisher of the changes that the operations of the buckets commit. A change that an operation publishes within
+   * {@linkplain #change} is delivered once the change is persisted and the lock of the bucket is released, and dropped
+   * if the change fails.
+   *
+   * @return the publisher.
+   */
+  S3ChangePublisher changePublisher();
 
 }

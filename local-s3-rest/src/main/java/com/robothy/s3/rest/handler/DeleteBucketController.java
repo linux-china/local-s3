@@ -5,8 +5,6 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
-import com.robothy.s3.rest.listener.BucketEvent;
-import com.robothy.s3.rest.listener.S3EventType;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -29,7 +27,6 @@ class DeleteBucketController extends BucketHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);
-    fireBucketEvent(new BucketEvent(S3EventType.BUCKET_DELETED, "DeleteBucket", bucketName, "local"));
   }
 
 }

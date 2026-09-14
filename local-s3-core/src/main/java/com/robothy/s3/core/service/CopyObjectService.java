@@ -25,6 +25,11 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
    * @return copy result.
    */
   default CopyObjectAns copyObject(String bucket, String key, CopyObjectOptions options) {
+    // The object that putObject stores is created by CopyObject.
+    return asOperation("CopyObject", () -> copy(bucket, key, options));
+  }
+
+  private CopyObjectAns copy(String bucket, String key, CopyObjectOptions options) {
     String srcVersion = options.getSourceVersion().orElse(null);
     // getObject read locks the source bucket while the source object is resolved; the content is read without it.
     GetObjectAns srcObjectAns = getObject(options.getSourceBucket(), options.getSourceKey(),

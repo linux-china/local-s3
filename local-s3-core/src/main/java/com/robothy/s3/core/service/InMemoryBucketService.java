@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -73,6 +74,7 @@ public class InMemoryBucketService implements BucketService {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       BucketAssertions.assertBucketIsEmpty(bucketMetadata);
       localS3Metadata().getBucketMetadataMap().remove(bucketName);
+      publishChange(S3Change.bucketDeleted("DeleteBucket", bucketName, bucketMetadata.getRegion()));
       return Bucket.fromBucketMetadata(bucketMetadata);
     });
   }

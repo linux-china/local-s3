@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.listener.BucketEvent;
 import com.robothy.s3.rest.listener.ObjectEvent;
 import com.robothy.s3.rest.listener.S3EventType;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -129,6 +131,80 @@ public class S3EventListenerIntegrationTest {
     assertFalse(delete.isDeleteMarker());
     assertNull(delete.getSize());
     assertNull(delete.getEtag());
+  }
+
+  /**
+   * An application that embeds LocalS3 and changes its data through the services, rather than through HTTP, is
+   * notified like a client of the HTTP API.
+   */
+  @Test
+  void firesEventsForChangesMadeThroughTheServices() {
+    localS3.getS3Manager().bucketService().createBucket(BUCKET);
+    assertEquals(1, bucketEvents.size());
+    assertEquals("CreateBucket", bucketEvents.get(0).getSource());
+
+    localS3.getS3Manager().objectService().putObject(BUCKET, "embedded.txt", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("Hello".getBytes()))
+        .build());
+    ObjectEvent put = lastObjectEvent();
+    assertEquals(S3EventType.OBJECT_CREATED, put.getEventType());
+    assertEquals("PutObject", put.getSource());
+    assertEquals("embedded.txt", put.getObjectKey());
+    assertEquals(5L, put.getSize());
+    assertEquals("s3:ObjectCreated:Put", put.getS3EventName());
+
+    // The object is visible to clients by the time its event is delivered, and a client's delete is delivered too.
+    s3.deleteObject(request -> request.bucket(BUCKET).key("embedded.txt"));
+    assertEquals(S3EventType.OBJECT_DELETED, lastObjectEvent().getEventType());
+    assertEquals(2, objectEvents.size());
+  }
+
+  @Test
+  void firesEventsForTaggingAclAndAbortedUploads() {
+    s3.createBucket(request -> request.bucket(BUCKET));
+    s3.putBucketVersioning(request -> request.bucket(BUCKET)
+        .versioningConfiguration(config -> config.status(BucketVersioningStatus.ENABLED)));
+    String versionId = s3.putObject(request -> request.bucket(BUCKET).key("a.txt"), RequestBody.fromString("Hello"))
+        .versionId();
+
+    objectEvents.clear();
+    s3.putObjectTagging(request -> request.bucket(BUCKET).key("a.txt")
+        .tagging(tagging -> tagging.tagSet(tag -> tag.key("k").value("v"))));
+    s3.deleteObjectTagging(request -> request.bucket(BUCKET).key("a.txt"));
+    s3.putObjectAcl(request -> request.bucket(BUCKET).key("a.txt")
+        .accessControlPolicy(policy -> policy.owner(owner -> owner.id("001").displayName("LocalS3"))
+            .grants(grant -> grant.permission("FULL_CONTROL")
+                .grantee(grantee -> grantee.type("CanonicalUser").id("001")))));
+    assertEquals(List.of(S3EventType.OBJECT_TAGGING_PUT, S3EventType.OBJECT_TAGGING_DELETED, S3EventType.OBJECT_ACL_PUT),
+        objectEvents.stream().map(ObjectEvent::getEventType).toList());
+    assertEquals(List.of("PutObjectTagging", "DeleteObjectTagging", "PutObjectAcl"),
+        objectEvents.stream().map(ObjectEvent::getSource).toList());
+    assertEquals(List.of("s3:ObjectTagging:Put", "s3:ObjectTagging:Delete", "s3:ObjectAcl:Put"),
+        objectEvents.stream().map(ObjectEvent::getS3EventName).toList());
+    assertTrue(objectEvents.stream().allMatch(event -> versionId.equals(event.getVersionId())));
+
+    objectEvents.clear();
+    String uploadId = s3.createMultipartUpload(request -> request.bucket(BUCKET).key("big.bin")).uploadId();
+    s3.uploadPart(request -> request.bucket(BUCKET).key("big.bin").uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("part"));
+    assertTrue(objectEvents.isEmpty(), "Neither creating an upload nor uploading a part fires an event.");
+    s3.abortMultipartUpload(request -> request.bucket(BUCKET).key("big.bin").uploadId(uploadId));
+    assertEquals(1, objectEvents.size());
+    assertEquals(S3EventType.MULTIPART_UPLOAD_ABORTED, lastObjectEvent().getEventType());
+    assertEquals(uploadId, lastObjectEvent().getUploadId());
+  }
+
+  @Test
+  void firesEventsForTheDefaultBuckets() {
+    List<BucketEvent> events = new CopyOnWriteArrayList<>();
+    LocalS3 withBuckets = LocalS3.builder().port(-1).buckets("first", "second").bucketEventListener(events::add).build();
+    withBuckets.start();
+    try {
+      assertEquals(List.of("first", "second"), events.stream().map(BucketEvent::getBucketName).toList());
+      assertTrue(events.stream().allMatch(event -> "CreateBucket".equals(event.getSource())));
+    } finally {
+      withBuckets.shutdown();
+    }
   }
 
   @Test

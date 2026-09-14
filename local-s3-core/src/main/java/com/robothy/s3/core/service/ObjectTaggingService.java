@@ -2,6 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.MethodNotAllowedException;
 import com.robothy.s3.core.model.answers.GetObjectTaggingAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -32,7 +34,10 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
         throw new MethodNotAllowedException("Cannot put object tagging to a delete marker.");
       }
       versionedObjectMetadata.setTagging(tagging);
-      return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_TAGGING_PUT, "PutObjectTagging", bucketName, key,
+          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+      return returnedVersion;
     });
   }
 
@@ -77,7 +82,10 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
         throw new MethodNotAllowedException("Cannot delete object tagging from a delete marker.");
       }
       versionedObjectMetadata.setTagging(null);
-      return VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_TAGGING_DELETED, "DeleteObjectTagging", bucketName,
+          key, returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+      return returnedVersion;
     });
   }
 

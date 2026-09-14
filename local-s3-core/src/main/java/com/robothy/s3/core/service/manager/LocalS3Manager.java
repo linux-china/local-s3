@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service.manager;
 
+import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import java.nio.file.Path;
@@ -75,6 +76,28 @@ public interface LocalS3Manager {
    * @return an object service.
    */
   ObjectService objectService();
+
+  /**
+   * Subscribe to the changes that the services of this manager commit: buckets created and deleted, objects created
+   * and deleted, object tagging and ACLs changed, and multipart uploads aborted. The changes are delivered however the
+   * services are called, e.g. by the HTTP requests of a running LocalS3 or directly through {@linkplain #objectService()},
+   * once each change is persisted and the lock of its bucket is released. A {@linkplain #reset()} doesn't publish the
+   * deletion of the data it drops.
+   *
+   * @param listener receives the changes on the thread that made them.
+   */
+  default void addChangeListener(S3ChangeListener listener) {
+    bucketService().bucketGuard().changePublisher().addListener(listener);
+  }
+
+  /**
+   * Unsubscribe a listener that {@linkplain #addChangeListener} subscribed.
+   *
+   * @param listener the listener.
+   */
+  default void removeChangeListener(S3ChangeListener listener) {
+    bucketService().bucketGuard().changePublisher().removeListener(listener);
+  }
 
   /**
    * Count the data of the service.

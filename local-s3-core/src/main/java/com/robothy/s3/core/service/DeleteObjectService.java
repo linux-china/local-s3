@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -27,12 +28,15 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
   default DeleteObjectAns deleteObject(String bucketName, String key, String versionId) {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      DeleteObjectAns ans;
       if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
-        return deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
+        ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
+      } else {
+        ans = Objects.isNull(versionId) ? deleteWithoutVersionId(storage(), bucketMetadata, key)
+            : deleteWithVersionId(storage(), bucketMetadata, key, versionId);
       }
-
-      return Objects.isNull(versionId) ? deleteWithoutVersionId(storage(), bucketMetadata, key)
-          : deleteWithVersionId(storage(), bucketMetadata, key, versionId);
+      publishChange(S3Change.objectDeleted("DeleteObject", bucketName, key, ans.getVersionId(), ans.isDeleteMarker()));
+      return ans;
     });
   }
 

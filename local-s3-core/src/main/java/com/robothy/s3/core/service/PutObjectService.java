@@ -2,6 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -110,7 +112,10 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
           bucketMetadata.getObjectMetadata(key).orElse(null));
-      return addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+      PutObjectAns ans = addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "PutObject", bucketName, key,
+          ans.getVersionId(), ans.getSize(), ans.getEtag()));
+      return ans;
     });
   }
 

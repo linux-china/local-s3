@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 
@@ -32,6 +33,7 @@ public interface CreateBucketService extends LocalS3MetadataApplicable {
       bucketMetadata.setCreationDate(System.currentTimeMillis());
       bucketMetadata.setRegion(region);
       localS3Metadata().addBucketMetadata(bucketMetadata);
+      publishChange(S3Change.bucketCreated("CreateBucket", bucketName, region));
       return Bucket.fromBucketMetadata(bucketMetadata);
     });
   }
