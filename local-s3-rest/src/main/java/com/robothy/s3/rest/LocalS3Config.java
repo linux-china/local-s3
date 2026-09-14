@@ -75,9 +75,9 @@ public record LocalS3Config(
     RequestRecorder requestRecorder) {
 
   /**
-   * Default max request body size(2G), the largest body the in-memory request aggregation can hold.
+   * Default max request body size(5G), the largest body the in-memory request aggregation can hold.
    */
-  public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = Integer.MAX_VALUE;
+  public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 5L * 1024 * 1024 * 1024;
 
   /**
    * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap.
