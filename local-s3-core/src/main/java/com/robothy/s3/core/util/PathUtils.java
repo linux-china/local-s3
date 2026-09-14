@@ -178,7 +178,7 @@ public class PathUtils {
     return resolved;
   }
 
-  public static void createDirectoryIfNotExit(Path path) {
+  public static void createDirectoryIfNotExist(Path path) {
     File directory = path.toFile();
     if (!directory.exists() || !directory.isDirectory()) {
       if (!directory.mkdirs()) {

@@ -19,7 +19,7 @@ public class S3VectorsMetadataLoader implements MetadataLoader<LocalS3VectorsMet
   @Override
   public LocalS3VectorsMetadata load(Path s3DataPath) {
     Objects.requireNonNull(s3DataPath);
-    PathUtils.createDirectoryIfNotExit(s3DataPath);
+    PathUtils.createDirectoryIfNotExist(s3DataPath);
     File versionFile = new File(s3DataPath.toFile(), VERSION_FILE_NAME);
     LocalS3VectorsMetadata s3Metadata = new LocalS3VectorsMetadata();
     if (!versionFile.exists()) {

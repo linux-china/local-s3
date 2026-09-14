@@ -63,7 +63,7 @@ class LocalFileSystemStorage implements Storage {
     this.directory = Objects.requireNonNull(dataPath);
     this.readOnly = readOnly;
     if (!readOnly) {
-      PathUtils.createDirectoryIfNotExit(directory);
+      PathUtils.createDirectoryIfNotExist(directory);
       deleteTempFiles();
       moveFlatObjectFilesIntoSubdirectories();
     }

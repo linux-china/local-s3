@@ -32,7 +32,7 @@ public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLo
   @Override
   public LocalS3Metadata load(Path s3DataPath) {
     Objects.requireNonNull(s3DataPath);
-    PathUtils.createDirectoryIfNotExit(s3DataPath);
+    PathUtils.createDirectoryIfNotExist(s3DataPath);
     File versionFile = new File(s3DataPath.toFile(), VERSION_FILE_NAME);
     LocalS3Metadata s3Metadata = new LocalS3Metadata();
     if (!versionFile.exists()) {
