@@ -4,6 +4,8 @@ LABEL org.opencontainers.image.authors="Fuxiang Luo <robothyluo@gmail.com>"
 
 RUN groupadd -r locals3 && useradd -r -g locals3 locals3
 
+RUN apt-get update && apt-get install --no-install-recommends --yes curl && rm -rf /var/lib/apt/lists/*
+
 COPY --chown=locals3:locals3 build/libs/s3.jar /app/s3.jar
 
 WORKDIR /app
