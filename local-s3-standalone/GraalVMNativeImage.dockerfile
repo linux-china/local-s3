@@ -15,4 +15,6 @@ EXPOSE 29090
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl --fail --silent --show-error http://localhost:29090/_health || exit 1
 
+ENV LOCAL_S3_HOST="0.0.0.0"
+
 CMD exec ./s3

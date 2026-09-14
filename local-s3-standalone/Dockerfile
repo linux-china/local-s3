@@ -19,6 +19,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 USER locals3
 
+ENV LOCAL_S3_HOST="0.0.0.0"
+
 # Size the heap by the memory limit of the container. Override JAVA_OPTS to tune the JVM.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
