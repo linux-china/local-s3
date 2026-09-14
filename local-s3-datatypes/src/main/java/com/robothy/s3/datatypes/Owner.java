@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class Owner {
 
-  public static Owner DEFAULT_OWNER = new Owner("LocalS3", "001");
+  public static final Owner DEFAULT_OWNER = new Owner("LocalS3", "001");
 
   @JsonProperty("DisplayName")
   private String displayName;
