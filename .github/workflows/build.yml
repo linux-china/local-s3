@@ -35,4 +35,4 @@ jobs:
       # The image tests are left to the Linux job. The rest of the suite runs, which is what covers the file
       # handling that Windows needs; `mergeReports` doesn't reach a Docker daemon.
       - name: Build
-        run: ./gradlew -x :local-s3-integrationtest:build build
+        run: ./gradlew -x :local-s3-integration-test:build build

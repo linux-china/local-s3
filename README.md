@@ -622,7 +622,7 @@ COPY events TO 's3://demo/events' (FORMAT parquet, PARTITION_BY (year, month));
 SELECT * FROM read_parquet('s3://demo/events/**/*.parquet', hive_partitioning = true) WHERE year = 2026;
 ```
 
-`DuckDbParquetIntegrationTest` of `local-s3-integrationtest` runs these through the DuckDB JDBC driver: multipart
+`DuckDbParquetIntegrationTest` of `local-s3-integration-test` runs these through the DuckDB JDBC driver: multipart
 uploads of large files, range reads, globs over more partitions than a `ListObjectsV2` page holds, the Parquet
 types of DuckDB with each compression, `OVERWRITE` of partitions, and signed requests. DuckDB uploads a file that fits
 in a single part, i.e. below `s3_uploader_max_filesize / s3_uploader_max_parts_per_file` (80 MB by default), with one

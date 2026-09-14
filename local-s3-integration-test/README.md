@@ -4,8 +4,8 @@ Local S3 integration test
 End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, and DuckDB.
 
 ```shell
-./gradlew :local-s3-integrationtest:test
-./gradlew :local-s3-integrationtest:test --tests '*DuckDbParquetIntegrationTest'
+./gradlew :local-s3-integration-test:test
+./gradlew :local-s3-integration-test:test --tests '*DuckDbParquetIntegrationTest'
 ```
 
 # DuckDB
@@ -48,7 +48,7 @@ SECRET (TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false, KE
 COPY
 (
 SELECT *
-FROM 'local-s3-integrationtest/src/test/resources/family.csv')
+FROM 'local-s3-integration-test/src/test/resources/family.csv')
     TO 's3://demo1/family.parquet'
     (FORMAT parquet);
 SELECT *
