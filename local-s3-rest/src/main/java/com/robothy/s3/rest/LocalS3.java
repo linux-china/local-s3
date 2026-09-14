@@ -106,7 +106,7 @@ public class LocalS3 implements AutoCloseable {
 
     public static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
 
-    public static final String LOCAL_S3_HOST = "127.0.0.1";
+    public static final String LOCAL_S3_HOST = "LOCAL_S3_HOST";
 
     public static final String LOCAL_S3_MODE = "LOCAL_S3_MODE";
 
