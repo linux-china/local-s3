@@ -33,10 +33,14 @@ public interface ListObjectsV2Service extends ListObjectsService {
           // The continuation token is opaque to the client; it carries the key that the listing continues at.
           String marker = StringUtils.isNotBlank(continuationToken)
               ? ContinuationTokenUtils.decode(continuationToken) : startAfter;
-          ListObjectsAns listObjectsAns = listObjects(bucket, delimiter, encodingType, marker, maxKeys, prefix);
-
+          // The listing is encoded only once the continuation token is computed: the token must carry the key that
+          // the listing continues at, not its URL encoding, which sorts differently. E.g. "a%3D1/" sorts before
+          // "a=1/", so a token computed from the encoded marker of "a=1/..." resumed the listing before its first
+          // page, and a client that follows the tokens, e.g. the glob of DuckDB, never got to the end.
+          ListObjectsAns listObjectsAns = listObjects(bucket, delimiter, null, marker, maxKeys, prefix);
           String nextContinuationToken = ContinuationTokenUtils.encode(
               calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata));
+          ListObjectsService.encodeIfNeeded(listObjectsAns, encodingType);
           ListObjectsV2Ans listObjectsV2Ans = ListObjectsV2Ans.builder()
               .continuationToken(continuationToken)
               .delimiter(listObjectsAns.getDelimiter())

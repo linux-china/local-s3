@@ -51,6 +51,37 @@ class ListObjectsV2ServiceTest extends LocalS3ServiceTestBase {
         assertFalse(listObjectsV2Ans.getNextContinuationToken().isPresent());
     }
 
+    /**
+     * The continuation token of a URL encoded listing continues after the last key of the page, whose URL encoding
+     * sorts differently, e.g. {@code =} is encoded as {@code %3D}, which sorts before it. A client that follows the
+     * tokens of a listing of Hive partitions, e.g. the glob of DuckDB, must get to the end of it.
+     */
+    @MethodSource("localS3Services")
+    @ParameterizedTest
+    void listObjectsV2WithEncodingTypeUrlFollowsTheTokensToTheEnd(BucketService bucketService,
+                                                                  ObjectService objectService) {
+        String bucket = prepareKeys(bucketService, objectService,
+            "a-before-the-prefix.parquet",
+            "events/part=0/data_0.parquet",
+            "events/part=1/data_0.parquet",
+            "events/part=2/data_0.parquet",
+            "events/part=3/data_0.parquet",
+            "events/part=4/data_0.parquet");
+
+        List<String> keys = new java.util.ArrayList<>();
+        String token = null;
+        int pages = 0;
+        do {
+            ListObjectsV2Ans page = objectService.listObjectsV2(bucket, token, null, "url", false, 2, "events/", null);
+            page.getObjects().forEach(object -> keys.add(object.getKey()));
+            token = page.getNextContinuationToken().orElse(null);
+            assertTrue(++pages <= 3, "The listing must end after 3 pages, but got to page " + pages + ": " + keys);
+        } while (token != null);
+
+        assertEquals(List.of("events/part%3D0/data_0.parquet", "events/part%3D1/data_0.parquet",
+            "events/part%3D2/data_0.parquet", "events/part%3D3/data_0.parquet", "events/part%3D4/data_0.parquet"), keys);
+    }
+
     @MethodSource("localS3Services")
     @ParameterizedTest
     void listObjectsV2WithDelimiter(BucketService bucketService, ObjectService objectService) {

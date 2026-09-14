@@ -600,6 +600,29 @@ The latency of a request is measured from when its body is received until its re
 and the admin endpoints aren't recorded. Unlike the health check, the admin endpoints must be signed if credentials
 are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" http://localhost:29090/_admin/stats`.
 
+### Use LocalS3 with DuckDB
+
+[DuckDB](https://duckdb.org/docs/stable/core_extensions/httpfs/s3api) reads and writes Parquet files on LocalS3
+through its `httpfs` extension. Create a secret that points at LocalS3 with path-style URLs and without TLS; the key
+pair is any one unless LocalS3 [requires signed requests](#require-signed-requests):
+
+```sql
+CREATE SECRET local_s3 (TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false,
+    KEY_ID 'admin', SECRET 'admin', REGION 'us-east-1');
+
+COPY (SELECT * FROM 'family.csv') TO 's3://demo/family.parquet' (FORMAT parquet);
+SELECT * FROM read_parquet('s3://demo/family.parquet');
+
+COPY events TO 's3://demo/events' (FORMAT parquet, PARTITION_BY (year, month));
+SELECT * FROM read_parquet('s3://demo/events/**/*.parquet', hive_partitioning = true) WHERE year = 2026;
+```
+
+`DuckDbParquetIntegrationTest` of `local-s3-integrationtest` runs these through the DuckDB JDBC driver: multipart
+uploads of large files, range reads, globs over more partitions than a `ListObjectsV2` page holds, the Parquet
+types of DuckDB with each compression, `OVERWRITE` of partitions, and signed requests. DuckDB uploads a file that fits
+in a single part, i.e. below `s3_uploader_max_filesize / s3_uploader_max_parts_per_file` (80 MB by default), with one
+`PutObject`.
+
 ### LocalS3 test container
 
 LocalS3 provides a [testcontainers](https://www.testcontainers.org/) implementation. You can run LocalS3 in your tests 
