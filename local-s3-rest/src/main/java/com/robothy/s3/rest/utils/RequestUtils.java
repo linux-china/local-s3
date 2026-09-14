@@ -14,6 +14,8 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -160,6 +162,73 @@ public class RequestUtils {
         .ifModifiedSince(httpDate(request, HttpHeaderNames.IF_MODIFIED_SINCE))
         .ifUnmodifiedSince(httpDate(request, HttpHeaderNames.IF_UNMODIFIED_SINCE))
         .build();
+  }
+
+  /**
+   * Extract the conditions of the source object of a copy from the {@code x-amz-copy-source-if-match},
+   * {@code x-amz-copy-source-if-none-match}, {@code x-amz-copy-source-if-modified-since} and
+   * {@code x-amz-copy-source-if-unmodified-since} headers of {@code CopyObject} or {@code UploadPartCopy}. Like the
+   * conditions of a read, a date that isn't an HTTP date is left out.
+   *
+   * @param request HTTP request.
+   * @return the conditions of the source object.
+   */
+  public static ObjectPreconditions extractCopySourcePreconditions(HttpRequest request) {
+    return ObjectPreconditions.builder()
+        .ifMatch(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_MATCH).orElse(null))
+        .ifNoneMatch(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_NONE_MATCH).orElse(null))
+        .ifModifiedSince(httpDate(request, AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_MODIFIED_SINCE))
+        .ifUnmodifiedSince(httpDate(request, AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_UNMODIFIED_SINCE))
+        .build();
+  }
+
+  /**
+   * Extract the conditions of a
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html">conditional delete</a>
+   * from the {@code If-Match}, {@code x-amz-if-match-last-modified-time} and {@code x-amz-if-match-size} headers of
+   * {@code DeleteObject}. Unlike a date of a read, a malformed value is rejected rather than left out, which would
+   * delete the object unconditionally.
+   *
+   * @param request HTTP request.
+   * @return the conditions of the delete.
+   * @throws LocalS3InvalidArgumentException if the time isn't an HTTP or ISO 8601 date, or the size isn't a number.
+   */
+  public static ObjectPreconditions extractDeletePreconditions(HttpRequest request) {
+    Long lastModifiedTime = request.header(AmzHeaderNames.X_AMZ_IF_MATCH_LAST_MODIFIED_TIME)
+        .map(value -> parseTimestamp(AmzHeaderNames.X_AMZ_IF_MATCH_LAST_MODIFIED_TIME, value))
+        .orElse(null);
+    Long size = request.header(AmzHeaderNames.X_AMZ_IF_MATCH_SIZE)
+        .map(value -> parseSize(AmzHeaderNames.X_AMZ_IF_MATCH_SIZE, value))
+        .orElse(null);
+    return ObjectPreconditions.builder()
+        .ifMatch(request.header(HttpHeaderNames.IF_MATCH).orElse(null))
+        .ifMatchLastModifiedTime(lastModifiedTime)
+        .ifMatchSize(size)
+        .build();
+  }
+
+  private static long parseTimestamp(String headerName, String value) {
+    Date httpDate = DateFormatter.parseHttpDate(value);
+    if (httpDate != null) {
+      return httpDate.getTime();
+    }
+    try {
+      return Instant.parse(value.trim()).toEpochMilli();
+    } catch (DateTimeParseException e) {
+      throw new LocalS3InvalidArgumentException(headerName, value, "The timestamp must be an HTTP date.");
+    }
+  }
+
+  private static long parseSize(String headerName, String value) {
+    try {
+      long size = Long.parseLong(value.trim());
+      if (size >= 0) {
+        return size;
+      }
+    } catch (NumberFormatException e) {
+      // Reported below.
+    }
+    throw new LocalS3InvalidArgumentException(headerName, value, "The size must be a non-negative number of bytes.");
   }
 
   /**

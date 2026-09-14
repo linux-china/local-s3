@@ -24,6 +24,13 @@ public class UploadPartCopyOptions {
   private Range copySourceRange;
 
   /**
+   * The {@code x-amz-copy-source-if-*} conditions that the source object must satisfy; {@code null} if the request
+   * carries none.
+   */
+  @Builder.Default
+  private ObjectPreconditions sourcePreconditions = ObjectPreconditions.none();
+
+  /**
    * Get the version of the source object to copy.
    *
    * @return the requested version; empty to copy the latest one.
@@ -39,6 +46,15 @@ public class UploadPartCopyOptions {
    */
   public Optional<Range> getCopySourceRange() {
     return Optional.ofNullable(copySourceRange);
+  }
+
+  /**
+   * Get the conditions of the source object of the copy.
+   *
+   * @return the conditions; {@linkplain ObjectPreconditions#none()} if the request carries none.
+   */
+  public ObjectPreconditions getSourcePreconditions() {
+    return sourcePreconditions != null ? sourcePreconditions : ObjectPreconditions.none();
   }
 
 }

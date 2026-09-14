@@ -2,12 +2,16 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.exception.ObjectNotExistException;
+import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
@@ -26,8 +30,29 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
   }
 
   default DeleteObjectAns deleteObject(String bucketName, String key, String versionId) {
+    return deleteObject(bucketName, key, versionId, ObjectPreconditions.none());
+  }
+
+  /**
+   * Delete an object, or a version of it, if the current version of the object satisfies the conditions of the
+   * request, which are evaluated under the write lock of the bucket; see
+   * {@linkplain PreconditionAssertions#assertDeletePreconditionsHold} for how.
+   *
+   * @param bucketName the bucket name.
+   * @param key the object key.
+   * @param versionId the version to delete; {@code null} to delete the object.
+   * @param preconditions the {@code If-Match}, {@code x-amz-if-match-last-modified-time} and
+   *     {@code x-amz-if-match-size} conditions; {@linkplain ObjectPreconditions#none()} for none.
+   * @return result of the delete.
+   * @throws PreconditionFailedException if a condition didn't hold.
+   * @throws ObjectNotExistException if {@code If-Match} was given and the key holds no version.
+   */
+  default DeleteObjectAns deleteObject(String bucketName, String key, String versionId,
+                                       ObjectPreconditions preconditions) {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      PreconditionAssertions.assertDeletePreconditionsHold(preconditions, key,
+          bucketMetadata.getObjectMetadata(key).orElse(null));
       DeleteObjectAns ans;
       if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
         ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);

@@ -20,6 +20,10 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.BucketVersioningStatus;
+import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
+import software.amazon.awssdk.services.s3.model.CompletedPart;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
@@ -240,6 +244,126 @@ public class ConditionalRequestIntegrationTest {
     assertEquals("application/json", s3.headObject(b -> b.bucket(bucket).key(KEY)).contentType());
     assertEquals("42", s3.headObject(b -> b.bucket(bucket).key(KEY)).metadata().get("commit"));
     assertEquals(1, s3.getObjectTagging(b -> b.bucket(bucket).key(KEY)).tagSet().size());
+  }
+
+  /**
+   * A copy evaluates {@code If-Match} and {@code If-None-Match} against the destination, like a put, and the
+   * {@code x-amz-copy-source-if-*} conditions against the source, e.g. to promote a staged metadata file only if it
+   * is still the one that was validated, and only if no other writer has committed that version yet.
+   */
+  @Test
+  @LocalS3
+  void aCopyEvaluatesTheConditionsOfItsDestinationAndItsSource(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-copy");
+    String staged = s3.putObject(b -> b.bucket(bucket).key("staged.json"), RequestBody.fromString("new")).eTag();
+    String current = put(s3, bucket, "old");
+
+    S3Exception destination = assertFails(412, () -> s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json")
+        .destinationBucket(bucket).destinationKey(KEY).ifNoneMatch("*")));
+    assertEquals("PreconditionFailed", destination.awsErrorDetails().errorCode());
+    assertFails(412, () -> s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json")
+        .destinationBucket(bucket).destinationKey(KEY).copySourceIfMatch("\"not-the-staged-one\"")));
+    assertFails(412, () -> s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json")
+        .destinationBucket(bucket).destinationKey(KEY).copySourceIfNoneMatch(staged)));
+    assertFails(412, () -> s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json")
+        .destinationBucket(bucket).destinationKey(KEY)
+        .copySourceIfUnmodifiedSince(Instant.now().minus(Duration.ofHours(1)))));
+    assertFails(404, () -> s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json")
+        .destinationBucket(bucket).destinationKey("absent.json").ifMatch("*")));
+    assertEquals("old", content(s3, bucket));
+
+    s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("staged.json").destinationBucket(bucket).destinationKey(KEY)
+        .ifMatch(current).copySourceIfMatch(staged));
+    assertEquals("new", content(s3, bucket));
+  }
+
+  @Test
+  @LocalS3
+  void aPartCopyEvaluatesTheConditionsOfItsSource(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-part-copy");
+    String etag = put(s3, bucket, "content");
+    String uploadId = s3.createMultipartUpload(b -> b.bucket(bucket).key("copy.bin")).uploadId();
+
+    assertFails(412, () -> s3.uploadPartCopy(b -> b.sourceBucket(bucket).sourceKey(KEY).destinationBucket(bucket)
+        .destinationKey("copy.bin").uploadId(uploadId).partNumber(1).copySourceIfMatch("\"other\"")));
+    s3.uploadPartCopy(b -> b.sourceBucket(bucket).sourceKey(KEY).destinationBucket(bucket)
+        .destinationKey("copy.bin").uploadId(uploadId).partNumber(1).copySourceIfMatch(etag));
+    assertEquals(1, s3.listParts(b -> b.bucket(bucket).key("copy.bin").uploadId(uploadId)).parts().size());
+  }
+
+  /**
+   * A large commit file uploaded in parts takes the same lock as a put: the upload that loses keeps its parts, so
+   * it can be aborted.
+   */
+  @Test
+  @LocalS3
+  void aCompletedUploadEvaluatesTheConditionsOfTheKey(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-complete");
+    String current = put(s3, bucket, "old");
+    String uploadId = s3.createMultipartUpload(b -> b.bucket(bucket).key(KEY)).uploadId();
+    String part = s3.uploadPart(b -> b.bucket(bucket).key(KEY).uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("new")).eTag();
+    CompletedMultipartUpload parts = CompletedMultipartUpload.builder()
+        .parts(CompletedPart.builder().partNumber(1).eTag(part).build()).build();
+
+    assertFails(412, () -> s3.completeMultipartUpload(b -> b.bucket(bucket).key(KEY).uploadId(uploadId)
+        .multipartUpload(parts).ifNoneMatch("*")));
+    assertFails(412, () -> s3.completeMultipartUpload(b -> b.bucket(bucket).key(KEY).uploadId(uploadId)
+        .multipartUpload(parts).ifMatch("\"stale\"")));
+    assertEquals("old", content(s3, bucket));
+    assertEquals(1, s3.listParts(b -> b.bucket(bucket).key(KEY).uploadId(uploadId)).parts().size());
+
+    s3.completeMultipartUpload(b -> b.bucket(bucket).key(KEY).uploadId(uploadId).multipartUpload(parts)
+        .ifMatch(current));
+    assertEquals("new", content(s3, bucket));
+  }
+
+  /**
+   * The clean-up of a table deletes a file only if it is still the one that was planned for deletion.
+   */
+  @Test
+  @LocalS3
+  void aConditionalDeleteOnlyDeletesTheObjectItWasGiven(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-delete");
+    String etag = put(s3, bucket, "12345");
+
+    assertFails(412, () -> s3.deleteObject(b -> b.bucket(bucket).key(KEY).ifMatch("\"stale\"")));
+    assertFails(412, () -> s3.deleteObject(b -> b.bucket(bucket).key(KEY).ifMatchSize(4L)));
+    assertFails(404, () -> s3.deleteObject(b -> b.bucket(bucket).key("absent.json").ifMatch("*")));
+    assertEquals("12345", content(s3, bucket));
+
+    s3.deleteObject(b -> b.bucket(bucket).key(KEY).ifMatch(etag).ifMatchSize(5L));
+    assertFails(404, () -> s3.headObject(b -> b.bucket(bucket).key(KEY)));
+  }
+
+  @Test
+  @LocalS3
+  void aDeleteIfMatchInAVersionedBucketTreatsADeleteMarkerAsNoObject(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-versioned-delete");
+    s3.putBucketVersioning(b -> b.bucket(bucket)
+        .versioningConfiguration(v -> v.status(BucketVersioningStatus.ENABLED)));
+    put(s3, bucket, "content");
+
+    assertTrue(s3.deleteObject(b -> b.bucket(bucket).key(KEY).ifMatch("*")).deleteMarker());
+    assertFails(412, () -> s3.deleteObject(b -> b.bucket(bucket).key(KEY).ifMatch("*")));
+  }
+
+  @Test
+  @LocalS3
+  void deleteObjectsEvaluatesTheEntityTagOfEachObject(S3Client s3) {
+    String bucket = createBucket(s3, "conditional-delete-objects");
+    String etag = s3.putObject(b -> b.bucket(bucket).key("a.json"), RequestBody.fromString("a")).eTag();
+    s3.putObject(b -> b.bucket(bucket).key("b.json"), RequestBody.fromString("b"));
+
+    DeleteObjectsResponse response = s3.deleteObjects(b -> b.bucket(bucket).delete(d -> d.objects(
+        ObjectIdentifier.builder().key("a.json").eTag(etag).build(),
+        ObjectIdentifier.builder().key("b.json").eTag("\"stale\"").build())));
+
+    assertEquals(List.of("a.json"), response.deleted().stream().map(deleted -> deleted.key()).toList());
+    assertEquals(1, response.errors().size());
+    assertEquals("b.json", response.errors().get(0).key());
+    assertEquals("PreconditionFailed", response.errors().get(0).code());
+    assertEquals("b", s3.getObjectAsBytes(b -> b.bucket(bucket).key("b.json")).asUtf8String());
   }
 
 }

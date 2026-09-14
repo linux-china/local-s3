@@ -9,6 +9,7 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -29,7 +30,8 @@ class DeleteObjectController extends ObjectHttpRequestHandler {
     String bucketName = RequestAssertions.assertBucketNameProvided(httpRequest);
     String key = RequestAssertions.assertObjectKeyProvided(httpRequest);
     String versionId = httpRequest.parameter("versionId").orElse(null);
-    DeleteObjectAns deleteObjectAns = deleteObjectService.deleteObject(bucketName, key, versionId);
+    DeleteObjectAns deleteObjectAns = deleteObjectService.deleteObject(bucketName, key, versionId,
+        RequestUtils.extractDeletePreconditions(httpRequest));
     httpResponse.status(HttpResponseStatus.NO_CONTENT)
         .putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, deleteObjectAns.isDeleteMarker());
     ResponseUtils.putHeaderIfPresent(httpResponse, AmzHeaderNames.X_AMZ_VERSION_ID, deleteObjectAns.getVersionId());

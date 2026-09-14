@@ -4,6 +4,7 @@ import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.datatypes.ObjectIdentifier;
 import com.robothy.s3.datatypes.request.DeleteObjectsRequest;
 import com.robothy.s3.datatypes.response.DeleteResult;
@@ -48,7 +49,9 @@ public interface DeleteObjectsService extends DeleteObjectService {
         String key = id.getKey();
         String versionId = id.getVersionId().orElse(null);
         try {
-          DeleteObjectAns deleteObjectAns = deleteObject(bucketName, key, versionId);
+          ObjectPreconditions preconditions = preconditions(id);
+          DeleteObjectAns deleteObjectAns = preconditions.isEmpty() ? deleteObject(bucketName, key, versionId)
+              : deleteObject(bucketName, key, versionId, preconditions);
           if (request.isQuiet()) {
             continue;
           }
@@ -72,6 +75,22 @@ public interface DeleteObjectsService extends DeleteObjectService {
       }
       return results;
     }));
+  }
+
+  /**
+   * The conditions of an object to delete: its {@code ETag}, {@code LastModifiedTime} and {@code Size}, which are
+   * evaluated like the {@code If-Match}, {@code x-amz-if-match-last-modified-time} and {@code x-amz-if-match-size}
+   * headers of {@code DeleteObject}. An object whose condition fails is reported as an error of its own.
+   */
+  private static ObjectPreconditions preconditions(ObjectIdentifier id) {
+    if (id.getETag() == null && id.getLastModifiedTime() == null && id.getSize() == null) {
+      return ObjectPreconditions.none();
+    }
+    return ObjectPreconditions.builder()
+        .ifMatch(id.getETag())
+        .ifMatchLastModifiedTime(id.getLastModifiedTime() == null ? null : id.getLastModifiedTime().toEpochMilli())
+        .ifMatchSize(id.getSize())
+        .build();
   }
 
   private static S3Error deleteError(String bucketName, String key, String versionId, S3ErrorCode errorCode,

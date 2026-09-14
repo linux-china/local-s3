@@ -52,6 +52,28 @@ public class AmzHeaderNames {
   public static final String X_AMZ_COPY_SOURCE_VERSION_ID = "x-amz-copy-source-version-id";
 
   /**
+   * The conditions of the source object of CopyObject and UploadPartCopy, which are evaluated like the
+   * {@code If-Match}, {@code If-None-Match}, {@code If-Modified-Since} and {@code If-Unmodified-Since} of a read.
+   */
+  public static final String X_AMZ_COPY_SOURCE_IF_MATCH = "x-amz-copy-source-if-match";
+
+  public static final String X_AMZ_COPY_SOURCE_IF_NONE_MATCH = "x-amz-copy-source-if-none-match";
+
+  public static final String X_AMZ_COPY_SOURCE_IF_MODIFIED_SINCE = "x-amz-copy-source-if-modified-since";
+
+  public static final String X_AMZ_COPY_SOURCE_IF_UNMODIFIED_SINCE = "x-amz-copy-source-if-unmodified-since";
+
+  /**
+   * Deletes the object of DeleteObject only if it was last modified at this HTTP date.
+   */
+  public static final String X_AMZ_IF_MATCH_LAST_MODIFIED_TIME = "x-amz-if-match-last-modified-time";
+
+  /**
+   * Deletes the object of DeleteObject only if it has this many bytes.
+   */
+  public static final String X_AMZ_IF_MATCH_SIZE = "x-amz-if-match-size";
+
+  /**
    * Specifies whether the metadata is copied from the source object or replaced with metadata
    * provided in the request. Valid values: COPY, REPLACE. Default: COPY.
    */

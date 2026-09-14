@@ -7,7 +7,6 @@ import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.answers.UploadPartCopyAns;
-import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.UploadPartCopyOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import java.io.IOException;
@@ -40,12 +39,11 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
     UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadAssertions.assertUploadExists(BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
 
-    // getObject read locks the source bucket while the source object is resolved; the content is read without it.
-    GetObjectAns source = getObject(options.getSourceBucket(), options.getSourceKey(),
-        GetObjectOptions.builder()
-            .versionId(options.getSourceVersion().orElse(null))
-            .range(options.getCopySourceRange().orElse(null))
-            .build());
+    // getCopySource read locks the source bucket while the source object is resolved and its conditions are
+    // evaluated; the content is read without the lock.
+    GetObjectAns source = getCopySource(options.getSourceBucket(), options.getSourceKey(),
+        options.getSourceVersion().orElse(null), options.getCopySourceRange().orElse(null),
+        options.getSourcePreconditions());
 
     if (source.isDeleteMarker()) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,

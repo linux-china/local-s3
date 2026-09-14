@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -25,6 +26,18 @@ public class PreconditionAssertions {
   public static final String IF_NONE_MATCH = "If-None-Match";
 
   public static final String IF_UNMODIFIED_SINCE = "If-Unmodified-Since";
+
+  public static final String IF_MODIFIED_SINCE = "If-Modified-Since";
+
+  public static final String IF_MATCH_LAST_MODIFIED_TIME = "x-amz-if-match-last-modified-time";
+
+  public static final String IF_MATCH_SIZE = "x-amz-if-match-size";
+
+  /**
+   * The prefix of the headers that carry the conditions of the source object of {@code CopyObject} and
+   * {@code UploadPartCopy}, e.g. {@code x-amz-copy-source-if-match}.
+   */
+  public static final String COPY_SOURCE_PREFIX = "x-amz-copy-source-";
 
   /**
    * Evaluate the preconditions of a conditional read, i.e. of {@code GetObject} or {@code HeadObject},
@@ -67,13 +80,14 @@ public class PreconditionAssertions {
   }
 
   /**
-   * Evaluate the preconditions of a conditional write, i.e. of {@code PutObject}, against the object that
+   * Evaluate the preconditions of a conditional write, i.e. of {@code PutObject}, of the destination of
+   * {@code CopyObject}, or of {@code CompleteMultipartUpload}, against the object that
    * the key holds. The caller must hold the write lock of the bucket, so that the object is stored in the
    * same locked section that the condition was evaluated in; otherwise the compare-and-swap that
    * {@code If-Match} implements wouldn't protect anything.
    *
-   * <p>Only the entity tag conditions are evaluated, which are the ones that Amazon S3 documents for
-   * {@code PutObject}; a date condition of a write is ignored, like it is there.
+   * <p>Only the entity tag conditions are evaluated, which are the ones that Amazon S3 documents for these
+   * operations; a date condition of a write is ignored, like it is there.
    *
    * @param preconditions the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it
    *     carries none.
@@ -106,6 +120,82 @@ public class PreconditionAssertions {
     if (Objects.nonNull(preconditions.getIfNoneMatch()) && Objects.nonNull(current)
         && anyEtagMatches(preconditions.getIfNoneMatch(), current.getEtag())) {
       throw new PreconditionFailedException(IF_NONE_MATCH);
+    }
+  }
+
+  /**
+   * The failure of a condition of the source object of a copy, i.e. of an {@code x-amz-copy-source-if-*} header of
+   * {@code CopyObject} or {@code UploadPartCopy}. The conditions of a source object are evaluated like the ones of a
+   * read, see {@linkplain #assertReadPreconditionsHold}, except that a source object that the client already holds
+   * isn't answered with {@code 304 Not Modified}: nothing is copied, and the copy answers
+   * {@code 412 Precondition Failed}, like Amazon S3 does. So a copy whose {@code x-amz-copy-source-if-match} holds
+   * is made even if its {@code x-amz-copy-source-if-unmodified-since} doesn't, and one whose
+   * {@code x-amz-copy-source-if-none-match} doesn't hold fails even if its
+   * {@code x-amz-copy-source-if-modified-since} does.
+   *
+   * @param readCondition the name of the read condition that didn't hold, e.g. {@code If-Match}.
+   * @return the failure, named by the copy source header of the condition, e.g. {@code x-amz-copy-source-if-match}.
+   */
+  public static PreconditionFailedException copySourceConditionFailed(String readCondition) {
+    return new PreconditionFailedException(COPY_SOURCE_PREFIX + readCondition.toLowerCase(Locale.ROOT));
+  }
+
+  /**
+   * Evaluate the preconditions of a
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html">conditional delete</a>,
+   * i.e. of {@code DeleteObject} or of an object of {@code DeleteObjects}, against the current version of the object,
+   * whatever version the request deletes. The caller must hold the write lock of the bucket, so that the object
+   * that the condition was evaluated against is the one deleted.
+   *
+   * <ul>
+   *   <li>{@code If-Match} deletes the object only if its current version has one of the given entity tags, or
+   *   exists at all for {@code *}: a mismatch, or a current version that is a delete marker, answers
+   *   {@code 412 Precondition Failed}, and a key that holds no version answers {@code 404 NoSuchKey}.</li>
+   *   <li>{@code x-amz-if-match-last-modified-time} and {@code x-amz-if-match-size} delete the object only if it
+   *   was last modified in that second, or has that size. A mismatch answers {@code 412 Precondition Failed}; if
+   *   the key holds no object, they hold, and the delete goes on like an unconditional one.</li>
+   * </ul>
+   *
+   * @param preconditions the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it carries
+   *     none. The conditions of a read are ignored.
+   * @param key the object key that is deleted, which an error reports.
+   * @param objectMetadata the metadata of the object that the key holds; {@code null} if it holds none.
+   * @throws PreconditionFailedException if a condition didn't hold.
+   * @throws ObjectNotExistException if {@code If-Match} was given and the key holds no version at all.
+   */
+  public static void assertDeletePreconditionsHold(ObjectPreconditions preconditions, String key,
+                                                   ObjectMetadata objectMetadata) {
+    String ifMatch = preconditions.getIfMatch();
+    if (Objects.isNull(ifMatch) && Objects.isNull(preconditions.getIfMatchLastModifiedTime())
+        && Objects.isNull(preconditions.getIfMatchSize())) {
+      return;
+    }
+
+    if (Objects.isNull(objectMetadata)) {
+      if (Objects.nonNull(ifMatch)) {
+        throw new ObjectNotExistException(key);
+      }
+      return;
+    }
+
+    VersionedObjectMetadata current = objectMetadata.getLatest();
+    if (current.isDeleted()) {
+      // A delete marker hides the object, which doesn't exist for If-Match: *.
+      if (Objects.nonNull(ifMatch)) {
+        throw new PreconditionFailedException(IF_MATCH);
+      }
+      return;
+    }
+
+    if (Objects.nonNull(ifMatch) && !anyEtagMatches(ifMatch, current.getEtag())) {
+      throw new PreconditionFailedException(IF_MATCH);
+    }
+    if (Objects.nonNull(preconditions.getIfMatchLastModifiedTime())
+        && toSeconds(current.getCreationDate()) != toSeconds(preconditions.getIfMatchLastModifiedTime())) {
+      throw new PreconditionFailedException(IF_MATCH_LAST_MODIFIED_TIME);
+    }
+    if (Objects.nonNull(preconditions.getIfMatchSize()) && current.getSize() != preconditions.getIfMatchSize()) {
+      throw new PreconditionFailedException(IF_MATCH_SIZE);
     }
   }
 

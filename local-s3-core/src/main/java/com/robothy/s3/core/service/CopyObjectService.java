@@ -7,7 +7,6 @@ import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
-import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import java.util.Map;
 
@@ -31,9 +30,10 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
 
   private CopyObjectAns copy(String bucket, String key, CopyObjectOptions options) {
     String srcVersion = options.getSourceVersion().orElse(null);
-    // getObject read locks the source bucket while the source object is resolved; the content is read without it.
-    GetObjectAns srcObjectAns = getObject(options.getSourceBucket(), options.getSourceKey(),
-        GetObjectOptions.builder().versionId(srcVersion).build());
+    // getCopySource read locks the source bucket while the source object is resolved and its conditions are
+    // evaluated; the content is read without the lock.
+    GetObjectAns srcObjectAns = getCopySource(options.getSourceBucket(), options.getSourceKey(), srcVersion, null,
+        options.getSourcePreconditions());
 
     if (srcObjectAns.isDeleteMarker()) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
@@ -61,6 +61,8 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .size(srcObjectAns.getSize())
         .userMetadata(metadataToUse)
         .tagging(taggingToUse)
+        // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
+        .preconditions(options.getPreconditions())
         .build());
 
     return CopyObjectAns.builder()

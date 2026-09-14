@@ -1,7 +1,10 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.event.S3ChangeType;
+import com.robothy.s3.core.exception.ObjectNotExistException;
+import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.assertions.BucketAssertions;
@@ -16,6 +19,7 @@ import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import java.io.IOException;
 import java.io.InputStream;
@@ -90,6 +94,34 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
   default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
                                                              List<CompleteMultipartUploadPartOption> completeParts,
                                                              long minimumPartSize, boolean compositeEtag) {
+    return completeMultipartUpload(bucket, key, uploadId, completeParts, minimumPartSize, compositeEtag,
+        ObjectPreconditions.none());
+  }
+
+  /**
+   * Complete a multipart upload if the object that the key holds satisfies the {@code If-Match} and
+   * {@code If-None-Match} conditions of the request, which are evaluated like the ones of {@code PutObject}, under
+   * the write lock of the bucket that the object is added under: of the uploads that race to complete the same key
+   * with {@code If-None-Match: *}, exactly one succeeds. An upload whose condition fails is kept, with its parts, so
+   * that it can be completed again or aborted.
+   *
+   * @param bucket the bucket name.
+   * @param key the object key.
+   * @param uploadId multipart upload ID.
+   * @param completeParts multipart upload parts to complete.
+   * @param minimumPartSize the smallest size of a part that isn't the last one; {@code 0} to check nothing.
+   * @param compositeEtag whether the object gets the entity tag of Amazon S3, see
+   *     {@linkplain #completeMultipartUpload(String, String, String, List, long, boolean)}.
+   * @param preconditions the conditions of the object that the key holds; {@linkplain ObjectPreconditions#none()}
+   *     for none.
+   * @return result of the complete multipart operation.
+   * @throws PreconditionFailedException if a condition didn't hold.
+   * @throws ObjectNotExistException if {@code If-Match} was given and the key holds no object.
+   */
+  default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
+                                                             List<CompleteMultipartUploadPartOption> completeParts,
+                                                             long minimumPartSize, boolean compositeEtag,
+                                                             ObjectPreconditions preconditions) {
     // prepareCompleteMultipartUpload read locks the bucket while the upload is validated. The parts of the returned
     // upload are a snapshot of the ones that complete it, so a part uploaded again from here on isn't mixed in.
     UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
@@ -125,7 +157,8 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
     }
 
-    return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete);
+    return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete,
+        preconditions);
   }
 
   /**
@@ -266,9 +299,29 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
   default CompleteMultipartUploadAns commitCompleteMultipartUpload(String bucket, String key, String uploadId,
                                                                    VersionedObjectMetadata versionedObjectMetadata,
                                                                    NavigableMap<Integer, UploadPartMetadata> partsToComplete) {
+    return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete,
+        ObjectPreconditions.none());
+  }
+
+  /**
+   * Add the object of a completed upload like
+   * {@linkplain #commitCompleteMultipartUpload(String, String, String, VersionedObjectMetadata, NavigableMap)}, if the
+   * object that the key holds satisfies the conditions of the request. They are evaluated before anything changes, so
+   * an upload whose condition fails is kept.
+   *
+   * @param preconditions the {@code If-Match} and {@code If-None-Match} conditions of the object that the key holds;
+   *     {@linkplain ObjectPreconditions#none()} for none.
+   * @return result of the complete multipart operation.
+   */
+  default CompleteMultipartUploadAns commitCompleteMultipartUpload(String bucket, String key, String uploadId,
+                                                                   VersionedObjectMetadata versionedObjectMetadata,
+                                                                   NavigableMap<Integer, UploadPartMetadata> partsToComplete,
+                                                                   ObjectPreconditions preconditions) {
     return changeBucket(bucket, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
       UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+      PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
+          bucketMetadata.getObjectMetadata(key).orElse(null));
       // The data of a part is stored under a new ID whenever the part is uploaded, so an unchanged ID is an unchanged part.
       partsToComplete.forEach((partNumber, completing) -> {
         UploadPartMetadata current = uploadMetadata.getParts().get(partNumber);

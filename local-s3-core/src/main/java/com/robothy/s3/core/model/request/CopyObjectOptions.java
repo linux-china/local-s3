@@ -69,6 +69,20 @@ public class CopyObjectOptions {
 
   private String[][] tagging;
 
+  /**
+   * The {@code If-Match} and {@code If-None-Match} conditions that the object the destination key holds must satisfy;
+   * {@code null} if the request carries none.
+   */
+  @Builder.Default
+  private ObjectPreconditions preconditions = ObjectPreconditions.none();
+
+  /**
+   * The {@code x-amz-copy-source-if-*} conditions that the source object must satisfy; {@code null} if the request
+   * carries none.
+   */
+  @Builder.Default
+  private ObjectPreconditions sourcePreconditions = ObjectPreconditions.none();
+
   public Optional<String> getSourceVersion() {
     return Optional.ofNullable(sourceVersion);
   }
@@ -92,5 +106,23 @@ public class CopyObjectOptions {
    */
   public Optional<String[][]> getTagging() {
     return Optional.ofNullable(tagging);
+  }
+
+  /**
+   * Get the conditions of the destination of the copy, which are evaluated like the ones of {@code PutObject}.
+   *
+   * @return the conditions; {@linkplain ObjectPreconditions#none()} if the request carries none.
+   */
+  public ObjectPreconditions getPreconditions() {
+    return preconditions != null ? preconditions : ObjectPreconditions.none();
+  }
+
+  /**
+   * Get the conditions of the source object of the copy.
+   *
+   * @return the conditions; {@linkplain ObjectPreconditions#none()} if the request carries none.
+   */
+  public ObjectPreconditions getSourcePreconditions() {
+    return sourcePreconditions != null ? sourcePreconditions : ObjectPreconditions.none();
   }
 }

@@ -200,20 +200,38 @@ also unrouted and answers the same way.
 client already holds answers `304 Not Modified`, and one whose `If-Match` or `If-Unmodified-Since` doesn't
 hold answers `412 Precondition Failed`.
 
-`PutObject` evaluates the two entity tag headers as a
-[conditional write](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-requests.html), the
-way Amazon S3 does:
+`PutObject`, `CopyObject` and `CompleteMultipartUpload` evaluate the two entity tag headers as a
+[conditional write](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html), the
+way Amazon S3 does, against the current version of the destination key:
 
 + `If-None-Match: *` stores the object only if the key holds none, otherwise `412 Precondition Failed`;
 + `If-Match: "<etag>"` stores it only if the key holds the object with that entity tag, otherwise
   `412 Precondition Failed`, or `404 NoSuchKey` if the key holds no object at all.
 
-The condition is evaluated under the write lock of the bucket that the object is stored under, so a put is
-atomic: of the requests that race for a key, exactly one wins. Code that builds a lock or an optimistic
-update on that, e.g. the S3 commit protocols of Delta Lake and Iceberg, is exercised rather than silently
-losing its protection.
+A key whose current version is a delete marker holds no object. A `CompleteMultipartUpload` whose condition fails
+keeps the upload and its parts, so it can be completed again or aborted.
 
-`CopyObject`, `CompleteMultipartUpload` and `DeleteObject` don't evaluate conditions yet.
+`DeleteObject` and `DeleteObjects` evaluate a
+[conditional delete](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html) against the
+current version of the object, whatever version the request deletes:
+
++ `If-Match: "<etag>"`, or the `ETag` of an object of `DeleteObjects`, deletes only the object with that entity tag,
+  and `If-Match: *` only an object that exists: otherwise `412 Precondition Failed` (also if the current version is
+  a delete marker), or `404 NoSuchKey` if the key holds no version at all;
++ `x-amz-if-match-size` and `x-amz-if-match-last-modified-time`, or the `Size` and `LastModifiedTime` of an object of
+  `DeleteObjects`, delete only an object of that size, or last modified in that second: otherwise
+  `412 Precondition Failed`. A key that holds no object satisfies them.
+
+`DeleteObjects` reports an object whose condition fails as an `<Error>` of its own and deletes the others.
+
+`CopyObject` and `UploadPartCopy` also evaluate `x-amz-copy-source-if-match`, `x-amz-copy-source-if-none-match`,
+`x-amz-copy-source-if-modified-since` and `x-amz-copy-source-if-unmodified-since` against the source object, in the
+order of a read; a condition that doesn't hold answers `412 Precondition Failed`, never `304 Not Modified`.
+
+Every write and delete condition is evaluated under the write lock of the bucket that the object is changed in, so
+the request is atomic: of the requests that race for a key, exactly one wins. Code that builds a lock or an
+optimistic update on that, e.g. the S3 commit protocols of Delta Lake and Iceberg, is exercised rather than silently
+losing its protection.
 
 ## Usages
 

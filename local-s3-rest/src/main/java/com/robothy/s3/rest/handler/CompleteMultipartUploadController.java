@@ -12,6 +12,7 @@ import com.robothy.s3.rest.model.request.CompleteMultipartUpload;
 import com.robothy.s3.rest.model.response.CompleteMultipartUploadResult;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -52,7 +53,8 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
                   .build())
               .collect(Collectors.toList());
       completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
-          multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags());
+          multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags(),
+          RequestUtils.extractPreconditions(request));
     }
 
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()

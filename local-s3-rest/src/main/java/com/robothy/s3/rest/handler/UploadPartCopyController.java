@@ -12,6 +12,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.response.CopyPartResult;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -48,6 +49,7 @@ class UploadPartCopyController implements HttpRequestHandler {
             .sourceKey(copySource.key())
             .sourceVersion(copySource.versionId())
             .copySourceRange(copySourceRange)
+            .sourcePreconditions(RequestUtils.extractCopySourcePreconditions(request))
             .build());
 
     CopyPartResult result = CopyPartResult.builder()

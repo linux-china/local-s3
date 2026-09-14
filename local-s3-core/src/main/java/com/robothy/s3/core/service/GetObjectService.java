@@ -6,12 +6,15 @@ import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
+import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.VersionedObjectNotExistException;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
+import com.robothy.s3.core.model.request.ObjectPreconditions;
+import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.ObjectContentUtils;
 import java.io.InputStream;
@@ -31,6 +34,42 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       }
       return getObject(bucketMetadata, storage(), bucketName, key, false, options);
     });
+  }
+
+  /**
+   * Resolve the source object of a copy, i.e. of {@code CopyObject} or {@code UploadPartCopy}, under the read lock of
+   * its bucket, and open its content, which the caller reads without the lock. The conditions of the source object
+   * are evaluated before its content is opened; see
+   * {@linkplain PreconditionAssertions#copySourceConditionFailed(String)} for how they differ from the ones of a read.
+   *
+   * @param bucketName the bucket of the source object.
+   * @param key the key of the source object.
+   * @param versionId the version to copy; {@code null} for the current one.
+   * @param range the range of the source object to copy; {@code null} for all of it.
+   * @param preconditions the {@code x-amz-copy-source-if-*} conditions; {@code null} or
+   *     {@linkplain ObjectPreconditions#none()} for none.
+   * @return the source object, with its content open unless it is a delete marker.
+   * @throws PreconditionFailedException if a condition of the source object didn't hold.
+   */
+  default GetObjectAns getCopySource(String bucketName, String key, String versionId, Range range,
+                                     ObjectPreconditions preconditions) {
+    ObjectPreconditions conditions = Objects.requireNonNullElseGet(preconditions, ObjectPreconditions::none);
+    GetObjectAns source;
+    try {
+      source = getObject(bucketName, key, GetObjectOptions.builder()
+          .versionId(versionId)
+          .range(range)
+          .preconditions(conditions)
+          .build());
+    } catch (PreconditionFailedException e) {
+      throw PreconditionAssertions.copySourceConditionFailed(e.getCondition());
+    }
+    if (source.isNotModified()) {
+      // A not modified source has no content open.
+      throw PreconditionAssertions.copySourceConditionFailed(Objects.nonNull(conditions.getIfNoneMatch())
+          ? PreconditionAssertions.IF_NONE_MATCH : PreconditionAssertions.IF_MODIFIED_SINCE);
+    }
+    return source;
   }
 
   static GetObjectAns getObjectFromUnVersionedBucket(BucketMetadata bucketMetadata, Storage storage,

@@ -2,6 +2,7 @@ package com.robothy.s3.core.model.request;
 
 import java.util.Objects;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
 /**
@@ -21,6 +22,7 @@ import lombok.Getter;
  */
 @Builder
 @Getter
+@EqualsAndHashCode
 public class ObjectPreconditions {
 
   /**
@@ -52,6 +54,20 @@ public class ObjectPreconditions {
   private Long ifUnmodifiedSince;
 
   /**
+   * Value of the {@code x-amz-if-match-last-modified-time} header of {@code DeleteObject}, or of the
+   * {@code LastModifiedTime} of an object of {@code DeleteObjects}, in epoch milliseconds: the object is only
+   * deleted if it was last modified in that second. {@code null} if the request doesn't carry it.
+   */
+  private Long ifMatchLastModifiedTime;
+
+  /**
+   * Value of the {@code x-amz-if-match-size} header of {@code DeleteObject}, or of the {@code Size} of an object
+   * of {@code DeleteObjects}: the object is only deleted if it has that many bytes. {@code null} if the request
+   * doesn't carry it.
+   */
+  private Long ifMatchSize;
+
+  /**
    * The preconditions of an unconditional request, which every object satisfies.
    *
    * @return preconditions that hold for every object.
@@ -67,7 +83,8 @@ public class ObjectPreconditions {
    */
   public boolean isEmpty() {
     return Objects.isNull(ifMatch) && Objects.isNull(ifNoneMatch)
-        && Objects.isNull(ifModifiedSince) && Objects.isNull(ifUnmodifiedSince);
+        && Objects.isNull(ifModifiedSince) && Objects.isNull(ifUnmodifiedSince)
+        && Objects.isNull(ifMatchLastModifiedTime) && Objects.isNull(ifMatchSize);
   }
 
 }
