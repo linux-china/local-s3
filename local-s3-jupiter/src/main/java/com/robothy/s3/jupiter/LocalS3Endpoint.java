@@ -20,7 +20,7 @@ public class LocalS3Endpoint {
     public LocalS3Endpoint(int port) {
         this.port = port;
         this.region = "local";
-        this.endpoint = "http://localhost:" + port;
+        this.endpoint = "http://127.0.0.1:" + port;
     }
 
     public int port() {
