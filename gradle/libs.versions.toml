@@ -18,7 +18,6 @@ apacheCommonsCompress = "1.28.0"
 robothyCnRepo = "1.18"
 gradleLombok = "5.0.0"
 jspecify="1.0.1"
-caffeine="3.2.4"
 springBoot = "4.1.1"
 micrometer = "1.17.1"
 duckdb="1.5.5.1"
@@ -55,7 +54,6 @@ apacheCommonsCompress = { group = "org.apache.commons", name = "commons-compress
 robothyCnRepo = { group = "com.robothy", name = "cn-repo", version.ref = "robothyCnRepo" }
 gradleLombok = { group = "io.franzbecker", name = "gradle-lombok", version.ref = "gradleLombok" }
 jspecify = { group = "org.jspecify", name = "jspecify", version.ref = "jspecify" }
-caffeine = { group = "com.github.ben-manes.caffeine", name = "caffeine", version.ref = "caffeine" }
 duckdb = { group = "org.duckdb", name = "duckdb_jdbc", version.ref = "duckdb" }
 springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
 springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
