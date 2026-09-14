@@ -2,13 +2,20 @@ FROM eclipse-temurin:21-jre-noble
 
 LABEL org.opencontainers.image.authors="Fuxiang Luo <robothyluo@gmail.com>"
 
-COPY build/libs/s3.jar /app/s3.jar
+RUN groupadd -r locals3 && useradd -r -g locals3 locals3
+
+COPY --chown=locals3:locals3 build/libs/s3.jar /app/s3.jar
 
 WORKDIR /app
 
 VOLUME /data
 
 EXPOSE 29090
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl --fail --silent --show-error http://localhost:29090/_health || exit 1
+
+USER locals3
 
 # Size the heap by the memory limit of the container. Override JAVA_OPTS to tune the JVM.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
