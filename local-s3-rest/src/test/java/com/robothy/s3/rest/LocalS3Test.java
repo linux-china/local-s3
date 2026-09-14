@@ -129,6 +129,20 @@ class LocalS3Test {
   }
 
   @Test
+  void canDisableShutdownHookRegistration() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .registerShutdownHook(false)
+        .build();
+    localS3.start();
+    try {
+      assertNull(FieldUtils.readField(localS3, "shutdownHook", true));
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
   void handlesRequestsOnExecutorThreads() throws Exception {
     AtomicReference<String> handlerThread = new AtomicReference<>();
     LocalS3 localS3 = LocalS3.builder()

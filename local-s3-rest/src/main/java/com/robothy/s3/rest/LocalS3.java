@@ -152,6 +152,8 @@ public class LocalS3 implements AutoCloseable {
 
     private final boolean daemonThreads;
 
+    private final boolean registerShutdownHook;
+
     private final int nettyParentEventGroupThreadNum;
 
     private final int nettyChildEventGroupThreadNum;
@@ -215,6 +217,7 @@ public class LocalS3 implements AutoCloseable {
         this.eventListenerExecutor = builder.eventListenerExecutor;
         this.initialDataCacheEnabled = builder.initialDataCacheEnabled;
         this.daemonThreads = builder.daemonThreads;
+        this.registerShutdownHook = builder.registerShutdownHook;
         this.nettyParentEventGroupThreadNum = builder.nettyParentEventGroupThreadNum;
         this.nettyChildEventGroupThreadNum = builder.nettyChildEventGroupThreadNum;
         this.s3ExecutorThreadNum = builder.s3ExecutorThreadNum;
@@ -270,7 +273,8 @@ public class LocalS3 implements AutoCloseable {
      * Startup the local-s3 service.
      *
      * <p>If the service fails to start, the resources created so far are released and the original
-     * exception is thrown. A stopped service can be started again.
+     * exception is thrown. A stopped service can be started again. By default, starting registers a JVM
+     * shutdown hook; {@linkplain Builder#registerShutdownHook(boolean)} can disable it for host-managed lifecycles.
      *
      * @throws IllegalStateException if the service is already started.
      */
@@ -286,8 +290,10 @@ public class LocalS3 implements AutoCloseable {
             throw e;
         }
         running = true;
-        this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
-        Runtime.getRuntime().addShutdownHook(this.shutdownHook);
+        if (registerShutdownHook) {
+            this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
+            Runtime.getRuntime().addShutdownHook(this.shutdownHook);
+        }
     }
 
     private void startServer() {
@@ -700,6 +706,8 @@ public class LocalS3 implements AutoCloseable {
 
         private boolean daemonThreads = true;
 
+        private boolean registerShutdownHook = true;
+
         private int nettyParentEventGroupThreadNum = DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM;
 
         private int nettyChildEventGroupThreadNum = DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM;
@@ -877,6 +885,19 @@ public class LocalS3 implements AutoCloseable {
          */
         public Builder daemonThreads(boolean daemonThreads) {
             this.daemonThreads = daemonThreads;
+            return this;
+        }
+
+        /**
+         * Set whether {@linkplain LocalS3#start()} registers a JVM shutdown hook. The default is {@code true}.
+         * Disable it when the LocalS3 lifecycle is managed by a host such as an IDE plugin or Spring container,
+         * and ensure that the host calls {@linkplain LocalS3#shutdown()} or {@linkplain LocalS3#close()}.
+         *
+         * @param registerShutdownHook whether to register a JVM shutdown hook when the service starts.
+         * @return builder.
+         */
+        public Builder registerShutdownHook(boolean registerShutdownHook) {
+            this.registerShutdownHook = registerShutdownHook;
             return this;
         }
 
