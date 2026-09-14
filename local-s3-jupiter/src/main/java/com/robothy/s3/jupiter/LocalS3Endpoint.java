@@ -7,44 +7,64 @@ import java.util.Objects;
  */
 public class LocalS3Endpoint {
 
-  private final int port;
+    private final int port;
 
-  private final String endpoint;
+    private final String endpoint;
 
-  private final String region;
+    private final String region;
 
-  public LocalS3Endpoint(int port) {
-    this.port = port;
-    this.region = "local";
-    this.endpoint = "http://localhost:" + port;
-  }
+    private String accessKey;
 
-  public int port() {
-    return port;
-  }
+    private String secretKey;
 
-  public String endpoint() {
-    return endpoint;
-  }
-
-  public String region() {
-    return region;
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
+    public LocalS3Endpoint(int port) {
+        this.port = port;
+        this.region = "local";
+        this.endpoint = "http://localhost:" + port;
     }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-    LocalS3Endpoint that = (LocalS3Endpoint) o;
-    return port == that.port && Objects.equals(endpoint, that.endpoint) && Objects.equals(region, that.region);
-  }
 
-  @Override
-  public int hashCode() {
-    return Objects.hash(port, endpoint, region);
-  }
+    public int port() {
+        return port;
+    }
+
+    public String endpoint() {
+        return endpoint;
+    }
+
+    public String region() {
+        return region;
+    }
+
+    public String accessKey() {
+        return accessKey;
+    }
+
+    public String secretKey() {
+        return secretKey;
+    }
+
+    public void setAccessKey(String accessKey) {
+        this.accessKey = accessKey;
+    }
+
+    public void setSecretKey(String secretKey) {
+        this.secretKey = secretKey;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        LocalS3Endpoint that = (LocalS3Endpoint) o;
+        return port == that.port && Objects.equals(endpoint, that.endpoint) && Objects.equals(region, that.region);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(port, endpoint, region);
+    }
 }
