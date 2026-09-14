@@ -42,7 +42,7 @@ and without heavy dependencies, it starts up quickly and handles requests effici
 + GetBucketLocation
 + HeadBucket
 + HeadObject
-+ ListBuckets
++ ListBuckets (paginated with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, e.g. `listBucketsPaginator`)
 + ListObjects
 + ListObjectsV2
 + ListObjectVersions

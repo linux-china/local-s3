@@ -7,6 +7,6 @@ public class LocalS3Constants {
 
   public static final String SERVER_NAME = "LocalS3";
 
-  public static final String DEFAULT_LOCATION_CONSTRAINT = "local";
+  public static final String DEFAULT_LOCATION_CONSTRAINT = com.robothy.s3.core.constants.ServiceConstants.DEFAULT_REGION;
 
 }

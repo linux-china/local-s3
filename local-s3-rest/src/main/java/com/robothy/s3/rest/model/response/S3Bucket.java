@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.model.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
@@ -8,9 +9,13 @@ import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Setter;
 
+/**
+ * A bucket of {@linkplain ListAllMyBucketsResult}.
+ */
 @JacksonXmlRootElement(localName = "Bucket")
 @Setter
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class S3Bucket {
 
   @JacksonXmlProperty(localName = "Name")
@@ -19,5 +24,15 @@ public class S3Bucket {
   @JacksonXmlProperty(localName = "CreationDate")
   @JsonSerialize(converter = AmazonInstantConverter.class)
   private Instant creationDate;
+
+  /**
+   * The region of the bucket; {@code null} to leave it out.
+   */
+  @JacksonXmlProperty(localName = "BucketRegion")
+  private String bucketRegion;
+
+  public S3Bucket(String name, Instant creationDate) {
+    this(name, creationDate, null);
+  }
 
 }

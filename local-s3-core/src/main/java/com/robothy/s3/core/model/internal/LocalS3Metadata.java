@@ -21,8 +21,13 @@ public class LocalS3Metadata {
    */
   public static final long VERSION = 1L;
 
+  /**
+   * Orders the buckets by the time they were created, and buckets created in the same millisecond by name, so that the
+   * order, which the pages of a listing continue in, is total.
+   */
   private static final Comparator<BucketMetadata> DEFAULT_BUCKET_METADATA_COMPARATOR = Comparator
-      .comparing(BucketMetadata::getCreationDate);
+      .comparing(BucketMetadata::getCreationDate)
+      .thenComparing(BucketMetadata::getBucketName);
   
   private final Map<String, BucketMetadata> bucketMetadataMap = new ConcurrentHashMap<>();
   private final LocalS3VectorsMetadata vectorsMetadata = new LocalS3VectorsMetadata();
