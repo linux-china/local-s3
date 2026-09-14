@@ -1,7 +1,6 @@
 pluginManagement {
 
     repositories {
-        mavenLocal()
         mavenCentral()
 
 //        maven {
