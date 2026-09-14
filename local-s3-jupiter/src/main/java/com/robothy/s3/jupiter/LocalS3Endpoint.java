@@ -1,5 +1,7 @@
 package com.robothy.s3.jupiter;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Objects;
 
 /**
@@ -35,10 +37,12 @@ public class LocalS3Endpoint {
         return region;
     }
 
+    @Nullable
     public String accessKey() {
         return accessKey;
     }
 
+    @Nullable
     public String secretKey() {
         return secretKey;
     }
