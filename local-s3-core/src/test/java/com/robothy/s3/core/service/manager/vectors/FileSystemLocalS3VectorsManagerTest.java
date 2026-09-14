@@ -10,6 +10,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
+import com.robothy.s3.core.storage.s3vectors.VectorStorage;
+import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
+import com.robothy.s3.datatypes.s3vectors.VectorDataType;
+import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
+import com.robothy.s3.datatypes.s3vectors.response.QueryOutputVector;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import com.robothy.s3.datatypes.s3vectors.VectorBucket;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
@@ -18,6 +23,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -190,5 +197,35 @@ class FileSystemLocalS3VectorsManagerTest {
 
     assertTrue(service.listVectorBuckets(null, null, null).getVectorBuckets().isEmpty(),
         "The in-memory metadata is reloaded from the store, which doesn't have the bucket.");
+  }
+
+  /**
+   * A query compares every vector of the index, also when the index has more vectors than a former storage kept in
+   * memory, and after a restart. Deleting the index deletes the data of its vectors.
+   */
+  @Test
+  void queriesManyVectorsAndDeletesThemWithTheirIndex(@TempDir Path dataPath) {
+    S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
+    service.createVectorBucket("bucket", null);
+    service.createIndex("bucket", "index", VectorDataType.FLOAT32, 3, DistanceMetric.EUCLIDEAN, null);
+    List<PutInputVector> batch = new ArrayList<>();
+    for (int i = 0; i < 5000; i++) {
+      batch.add(PutInputVector.builder().key("v" + i)
+          .data(PutInputVector.VectorData.builder().values(new float[] {i, 0.0f, 1.0f}).build()).build());
+      if (batch.size() == 500) {
+        service.putVectors("bucket", "index", batch);
+        batch = new ArrayList<>();
+      }
+    }
+
+    S3VectorsService restarted = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
+    List<QueryOutputVector> nearest = restarted.queryVectors("bucket", "index",
+        PutInputVector.VectorData.builder().values(new float[] {4321.2f, 0.0f, 1.0f}).build(), 3, true, false, null)
+        .getVectors();
+    assertEquals(List.of("v4321", "v4322", "v4320"), nearest.stream().map(QueryOutputVector::getKey).toList());
+
+    restarted.deleteIndex("bucket", "index");
+    assertEquals(0, VectorStorage.createReadOnlyFileSystem(
+        dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY)).getStoredVectorCount());
   }
 }

@@ -37,7 +37,7 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
     // The vectors that a change deletes are deleted once the vector bucket is persisted, and the vectors that it
     // writes are deleted if it fails.
     TransactionalVectorStorage vectorStorage = new TransactionalVectorStorage(VectorStorage.createFileSystem(
-        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT));
+        s3VectorsDataPath.resolve(VECTOR_STORAGE_DIRECTORY)));
     this.metadataStore = FileSystemVectorBucketMetadataStore.create(s3VectorsDataPath);
     BucketGuard bucketGuard = new DefaultBucketGuard<>(BucketLock.create(),
         bucketName -> vectorsMetadata.getVectorBucketMetadata(bucketName).get(), metadataStore, vectorStorage,

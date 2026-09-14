@@ -2,7 +2,7 @@ package com.robothy.s3.core.storage.s3vectors;
 
 import com.robothy.s3.core.exception.TotalSizeExceedException;
 import com.robothy.s3.core.util.IdUtils;
-import java.util.ArrayList;
+import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +81,16 @@ class InMemoryVectorStorage implements VectorStorage {
     float[] vectorData = vectorStore.get(storageId);
     // Return defensive copy to prevent external modifications
     return vectorData != null ? Arrays.copyOf(vectorData, vectorData.length) : null;
+  }
+
+  @Override
+  public FloatBuffer getVectorDataView(Long storageId) {
+    if (storageId == null) {
+      return null;
+    }
+    // A stored array is never changed, so the view needs no copy.
+    float[] vectorData = vectorStore.get(storageId);
+    return vectorData != null ? FloatBuffer.wrap(vectorData).asReadOnlyBuffer() : null;
   }
 
   @Override

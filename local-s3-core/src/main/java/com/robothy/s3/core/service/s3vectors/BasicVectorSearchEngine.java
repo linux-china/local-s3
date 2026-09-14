@@ -1,19 +1,21 @@
 package com.robothy.s3.core.service.s3vectors;
 
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
+import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
+import java.nio.FloatBuffer;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 /**
  * Basic implementation of {@linkplain VectorSearchEngine} using brute-force search.
  * This implementation calculates distances between the query vector and all candidate vectors,
- * then returns the K nearest neighbors using a heap-based approach for efficiency.
+ * then returns the K nearest neighbors using a heap-based approach for efficiency. The candidates are
+ * read through {@linkplain VectorStorage#getVectorDataView(Long)}, so that they aren't copied.
  */
 @Slf4j
 class BasicVectorSearchEngine implements VectorSearchEngine {
@@ -32,9 +34,10 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
       throw new IllegalArgumentException("Vectors cannot be empty");
     }
 
+    FloatBuffer vector2View = FloatBuffer.wrap(vector2);
     return switch (metric) {
-      case EUCLIDEAN -> calculateEuclideanDistance(vector1, vector2);
-      case COSINE -> calculateCosineDistance(vector1, vector2);
+      case EUCLIDEAN -> calculateEuclideanDistance(vector1, vector2View);
+      case COSINE -> calculateCosineDistance(vector1, norm(vector1), vector2View);
     };
   }
 
@@ -42,7 +45,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
   public List<VectorSearchResult> findNearestVectors(
       float[] queryVector,
       List<VectorObjectMetadata> candidateVectors,
-      Function<Long, float[]> vectorDataLookup,
+      VectorStorage vectorStorage,
       DistanceMetric distanceMetric,
       int k,
       MetadataFilterExpression metadataFilter) {
@@ -50,8 +53,8 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     if (queryVector == null) {
       throw new IllegalArgumentException("Query vector cannot be null");
     }
-    if (vectorDataLookup == null) {
-      throw new IllegalArgumentException("Vector data lookup function cannot be null");
+    if (vectorStorage == null) {
+      throw new IllegalArgumentException("Vector storage cannot be null");
     }
     if (k <= 0) {
       throw new IllegalArgumentException("k must be positive, got: " + k);
@@ -75,40 +78,20 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
         Comparator.comparing(VectorSearchResult::distance).reversed()
     );
 
+    double queryNorm = distanceMetric == DistanceMetric.COSINE ? norm(queryVector) : 0.0;
     for (VectorObjectMetadata vectorMetadata : filteredVectors) {
-      try {
-        // Look up vector data using the storage ID
-        Long storageId = vectorMetadata.getStorageId();
-        if (storageId == null) {
-          log.warn("Skipping vector {} due to missing storage ID", vectorMetadata.getVectorId());
-          continue;
-        }
+      // The stored data is compared in place, without copying it.
+      FloatBuffer candidateVector = candidateData(vectorMetadata, queryVector.length, vectorStorage);
+      double distance = switch (distanceMetric) {
+        case EUCLIDEAN -> calculateEuclideanDistance(queryVector, candidateVector);
+        case COSINE -> calculateCosineDistance(queryVector, queryNorm, candidateVector);
+      };
 
-        float[] candidateVector = vectorDataLookup.apply(storageId);
-        if (candidateVector == null) {
-          log.warn("Skipping vector {} due to missing vector data for storage ID {}",
-              vectorMetadata.getVectorId(), storageId);
-          continue;
-        }
-
-        // Validate dimensions
-        if (candidateVector.length != queryVector.length) {
-          log.warn("Skipping vector {} due to dimension mismatch: expected {}, got {}",
-              vectorMetadata.getVectorId(), queryVector.length, candidateVector.length);
-          continue;
-        }
-
-        double distance = calculateDistance(queryVector, candidateVector, distanceMetric);
-        VectorSearchResult result = new VectorSearchResult(vectorMetadata, distance);
-
-        if (maxHeap.size() < k) {
-          maxHeap.offer(result);
-        } else if (distance < maxHeap.peek().distance()) {
-          maxHeap.poll();
-          maxHeap.offer(result);
-        }
-      } catch (Exception e) {
-        log.warn("Error processing vector {}: {}", vectorMetadata.getVectorId(), e.getMessage());
+      if (maxHeap.size() < k) {
+        maxHeap.offer(new VectorSearchResult(vectorMetadata, distance));
+      } else if (distance < maxHeap.peek().distance()) {
+        maxHeap.poll();
+        maxHeap.offer(new VectorSearchResult(vectorMetadata, distance));
       }
     }
 
@@ -122,13 +105,36 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
   }
 
   /**
+   * The stored data of a candidate, which must exist and have the dimension of the query vector: the metadata of a
+   * vector is only stored with its data, so anything else means that the data is lost or corrupt.
+   */
+  private static FloatBuffer candidateData(VectorObjectMetadata vectorMetadata, int dimension,
+                                           VectorStorage vectorStorage) {
+    Long storageId = vectorMetadata.getStorageId();
+    if (storageId == null) {
+      throw new IllegalStateException("The vector '" + vectorMetadata.getVectorId() + "' has no storage ID.");
+    }
+    FloatBuffer data = vectorStorage.getVectorDataView(storageId);
+    if (data == null) {
+      throw new IllegalStateException(String.format("The data of the vector '%s' (storage ID %d) is missing.",
+          vectorMetadata.getVectorId(), storageId));
+    }
+    if (data.limit() != dimension) {
+      throw new IllegalStateException(String.format(
+          "The data of the vector '%s' (storage ID %d) has %d dimensions, but the query vector has %d.",
+          vectorMetadata.getVectorId(), storageId, data.limit(), dimension));
+    }
+    return data;
+  }
+
+  /**
    * Calculate Euclidean distance: √(∑(ai - bi)²)
    */
-  private double calculateEuclideanDistance(float[] vector1, float[] vector2) {
+  private static double calculateEuclideanDistance(float[] vector1, FloatBuffer vector2) {
     double sumSquaredDiffs = 0.0;
 
     for (int i = 0; i < vector1.length; i++) {
-      double diff = vector1[i] - vector2[i];
+      double diff = vector1[i] - vector2.get(i);
       sumSquaredDiffs += diff * diff;
     }
 
@@ -138,19 +144,19 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
   /**
    * Calculate Cosine distance: 1 - (A·B)/(||A|| × ||B||)
    * Returns a value between 0 and 2, where 0 means identical direction.
+   *
+   * @param normA the norm of {@code vector1}, see {@linkplain #norm(float[])}, which is the same for every candidate
    */
-  private double calculateCosineDistance(float[] vector1, float[] vector2) {
+  private static double calculateCosineDistance(float[] vector1, double normA, FloatBuffer vector2) {
     double dotProduct = 0.0;
-    double normA = 0.0;
     double normB = 0.0;
 
     for (int i = 0; i < vector1.length; i++) {
-      dotProduct += vector1[i] * vector2[i];
-      normA += vector1[i] * vector1[i];
-      normB += vector2[i] * vector2[i];
+      float b = vector2.get(i);
+      dotProduct += vector1[i] * b;
+      normB += b * b;
     }
 
-    normA = Math.sqrt(normA);
     normB = Math.sqrt(normB);
 
     // Handle zero vectors (avoid division by zero)
@@ -163,6 +169,14 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     cosineSimilarity = Math.max(-1.0, Math.min(1.0, cosineSimilarity));
 
     return 1.0 - cosineSimilarity;
+  }
+
+  private static double norm(float[] vector) {
+    double sum = 0.0;
+    for (float value : vector) {
+      sum += value * value;
+    }
+    return Math.sqrt(sum);
   }
 
 }

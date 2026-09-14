@@ -4,7 +4,6 @@ import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import java.util.List;
-import java.util.function.Function;
 
 /**
  * Vector search engine interface for S3 Vectors similarity search operations.
@@ -38,47 +37,29 @@ public interface VectorSearchEngine {
   /**
    * Find the K nearest vectors to the query vector from a collection of vectors.
    *
-   * @param queryVector      the query vector to search for
-   * @param candidateVectors the collection of vector metadata to search in
-   * @param vectorDataLookup function to retrieve vector data by storage ID
-   * @param distanceMetric   the distance metric to use for calculations
-   * @param k                the number of nearest neighbors to return
-   * @param metadataFilter   condition that the metadata of a vector must satisfy to be searched at all;
-   *                         {@linkplain MetadataFilterExpression#none()} to search every candidate
-   * @return list of search results ordered by distance (closest first)
-   * @throws IllegalArgumentException if k is invalid or query vector is null
-   */
-  List<VectorSearchResult> findNearestVectors(
-      float[] queryVector,
-      List<VectorObjectMetadata> candidateVectors,
-      Function<Long, float[]> vectorDataLookup,
-      DistanceMetric distanceMetric,
-      int k,
-      MetadataFilterExpression metadataFilter
-  );
-
-  /**
-   * Convenience method that uses VectorStorage for data lookup.
+   * <p>Every candidate that satisfies the filter is compared with the query vector. A candidate whose data is missing,
+   * or whose dimension differs from the query vector, means that the stored vectors are inconsistent with their
+   * metadata, which fails the search rather than silently returning fewer vectors.
    *
    * @param queryVector      the query vector to search for
    * @param candidateVectors the collection of vector metadata to search in
-   * @param vectorStorage    the vector storage instance for data retrieval
+   * @param vectorStorage    the storage of the data of the candidates, which must not be deleted during the search
    * @param distanceMetric   the distance metric to use for calculations
    * @param k                the number of nearest neighbors to return
    * @param metadataFilter   condition that the metadata of a vector must satisfy to be searched at all;
    *                         {@linkplain MetadataFilterExpression#none()} to search every candidate
    * @return list of search results ordered by distance (closest first)
+   * @throws IllegalArgumentException if k is invalid, or the query vector or the storage is null
+   * @throws IllegalStateException    if the data of a candidate is missing or has another dimension
    */
-  default List<VectorSearchResult> findNearestVectors(
+  List<VectorSearchResult> findNearestVectors(
       float[] queryVector,
       List<VectorObjectMetadata> candidateVectors,
       VectorStorage vectorStorage,
       DistanceMetric distanceMetric,
       int k,
-      MetadataFilterExpression metadataFilter) {
-    return findNearestVectors(queryVector, candidateVectors, vectorStorage::getVectorData,
-        distanceMetric, k, metadataFilter);
-  }
+      MetadataFilterExpression metadataFilter
+  );
 
   /**
    * Represents a vector search result with distance information.

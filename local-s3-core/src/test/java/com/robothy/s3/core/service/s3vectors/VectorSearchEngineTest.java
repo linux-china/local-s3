@@ -8,10 +8,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
+import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,20 +52,21 @@ class VectorSearchEngineTest {
   // ========== Default Method Tests ==========
 
   @Test
-  void findNearestVectors_defaultMethod_delegatesToMainMethod() throws Exception {
+  void findNearestVectors_readsTheCandidatesWithoutCopyingThem() throws Exception {
     VectorStorage mockStorage = mock(VectorStorage.class);
     float[] queryVector = {1.0f, 2.0f, 3.0f};
     float[] storedVector = {1.0f, 2.0f, 3.0f};
     
     VectorObjectMetadata vectorMetadata = new VectorObjectMetadata("vector1", 3, 1L, null);
-    when(mockStorage.getVectorData(1L)).thenReturn(storedVector);
+    when(mockStorage.getVectorDataView(1L)).thenReturn(FloatBuffer.wrap(storedVector).asReadOnlyBuffer());
 
     List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
         queryVector, List.of(vectorMetadata), mockStorage, DistanceMetric.EUCLIDEAN, 5, null);
 
     assertEquals(1, results.size());
     assertEquals("vector1", results.get(0).vectorMetadata().getVectorId());
-    verify(mockStorage).getVectorData(1L);
+    verify(mockStorage).getVectorDataView(1L);
+    verify(mockStorage, never()).getVectorData(any());
   }
 
   // ========== VectorSearchResult Record Tests ==========
@@ -116,10 +117,9 @@ class VectorSearchEngineTest {
   @Test
   void findNearestVectors_withEmptyCollection_returnsEmptyList() throws Exception {
     float[] queryVector = {1.0f, 2.0f, 3.0f};
-    Function<Long, float[]> dataLookup = id -> new float[]{1.0f, 2.0f, 3.0f};
 
     List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, Collections.emptyList(), dataLookup, DistanceMetric.EUCLIDEAN, 5, null);
+        queryVector, Collections.emptyList(), vectorStorage, DistanceMetric.EUCLIDEAN, 5, null);
 
     assertTrue(results.isEmpty());
   }
@@ -132,13 +132,13 @@ class VectorSearchEngineTest {
     JsonNode metadata2 = objectMapper.readTree("{\"category\": \"B\"}");
     JsonNode filter = objectMapper.readTree("{\"category\": \"A\"}");
     
-    VectorObjectMetadata vector1 = new VectorObjectMetadata("vector1", 3, 1L, metadata1);
-    VectorObjectMetadata vector2 = new VectorObjectMetadata("vector2", 3, 2L, metadata2);
-    
-    Function<Long, float[]> dataLookup = id -> new float[]{1.0f, 0.0f, 0.0f};
+    VectorObjectMetadata vector1 = new VectorObjectMetadata("vector1", 3,
+        vectorStorage.putVectorData(new float[]{1.0f, 0.0f, 0.0f}), metadata1);
+    VectorObjectMetadata vector2 = new VectorObjectMetadata("vector2", 3,
+        vectorStorage.putVectorData(new float[]{1.0f, 0.0f, 0.0f}), metadata2);
 
     List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, Arrays.asList(vector1, vector2), dataLookup, DistanceMetric.EUCLIDEAN, 5,
+        queryVector, Arrays.asList(vector1, vector2), vectorStorage, DistanceMetric.EUCLIDEAN, 5,
         MetadataFilterExpression.fromJson(filter));
 
     assertEquals(1, results.size());
@@ -149,13 +149,13 @@ class VectorSearchEngineTest {
   void findNearestVectors_withKLargerThanAvailable_returnsAllResults() throws Exception {
     float[] queryVector = {0.0f, 0.0f, 0.0f};
     
-    VectorObjectMetadata vector1 = new VectorObjectMetadata("vector1", 3, 1L, null);
-    VectorObjectMetadata vector2 = new VectorObjectMetadata("vector2", 3, 2L, null);
-    
-    Function<Long, float[]> dataLookup = id -> new float[]{(float) id, 0.0f, 0.0f};
+    VectorObjectMetadata vector1 = new VectorObjectMetadata("vector1", 3,
+        vectorStorage.putVectorData(new float[]{1.0f, 0.0f, 0.0f}), null);
+    VectorObjectMetadata vector2 = new VectorObjectMetadata("vector2", 3,
+        vectorStorage.putVectorData(new float[]{2.0f, 0.0f, 0.0f}), null);
 
     List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, Arrays.asList(vector1, vector2), dataLookup, DistanceMetric.EUCLIDEAN, 10, null);
+        queryVector, Arrays.asList(vector1, vector2), vectorStorage, DistanceMetric.EUCLIDEAN, 10, null);
 
     assertEquals(2, results.size());
   }
@@ -291,10 +291,9 @@ class VectorSearchEngineTest {
     assertThrows(IllegalArgumentException.class, () ->
         searchEngine.findNearestVectors(new float[] {1.0f}, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, -1, null));
 
-    // Null vector lookup function
+    // Null vector storage
     assertThrows(IllegalArgumentException.class, () ->
-        searchEngine.findNearestVectors(new float[] {1.0f}, candidates, (Function<Long, float[]>) null, DistanceMetric.EUCLIDEAN,
-            1, null));
+        searchEngine.findNearestVectors(new float[] {1.0f}, candidates, null, DistanceMetric.EUCLIDEAN, 1, null));
   }
 
   @Test
@@ -320,13 +319,31 @@ class VectorSearchEngineTest {
     List<VectorObjectMetadata> candidates = List.of(vec1, vec2);
     float[] queryVector = {1.0f, 0.0f};
 
-    List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null
-    );
+    // The data of a vector of the index doesn't have the dimension of the index: it is corrupt.
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> searchEngine.findNearestVectors(
+        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null));
+    assertTrue(thrown.getMessage().contains("vec2"), thrown.getMessage());
+  }
 
-    // Should only include vectors with matching dimensions
-    assertEquals(1, results.size());
-    assertEquals("vec1", results.get(0).vectorMetadata().getVectorId());
+  @Test
+  void testFindNearestVectorsCosineMatchesCalculateDistance() {
+    float[] queryVector = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    float[][] data = {
+        {1.1f, 1.2f, 1.0f, 1.2f, 1.3f}, {-2.1f, 2.2f, 2.0f, 2.2f, 2.3f}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f}};
+    List<VectorObjectMetadata> candidates = new java.util.ArrayList<>();
+    for (int i = 0; i < data.length; i++) {
+      candidates.add(new VectorObjectMetadata("vec" + i, 5, vectorStorage.putVectorData(data[i]), null));
+    }
+
+    List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
+        queryVector, candidates, vectorStorage, DistanceMetric.COSINE, 3, null);
+
+    assertEquals(List.of("vec0", "vec1", "vec2"),
+        results.stream().map(result -> result.vectorMetadata().getVectorId()).toList());
+    for (VectorSearchEngine.VectorSearchResult result : results) {
+      int i = Integer.parseInt(result.vectorMetadata().getVectorId().substring(3));
+      assertEquals(searchEngine.calculateDistance(queryVector, data[i], DistanceMetric.COSINE), result.distance());
+    }
   }
 
   @Test
@@ -370,12 +387,10 @@ class VectorSearchEngineTest {
     List<VectorObjectMetadata> candidates = List.of(vec1);
     float[] queryVector = {1.0f, 0.0f};
 
-    List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null
-    );
-
-    // Should skip vectors with missing data
-    assertTrue(results.isEmpty());
+    // Missing data isn't skipped, which would silently return fewer vectors.
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> searchEngine.findNearestVectors(
+        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null));
+    assertTrue(thrown.getMessage().contains("vec1"), thrown.getMessage());
   }
 
   @Test
@@ -386,11 +401,7 @@ class VectorSearchEngineTest {
     List<VectorObjectMetadata> candidates = List.of(vec1);
     float[] queryVector = {1.0f, 0.0f};
 
-    List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
-        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null
-    );
-
-    // Should skip vectors with null storage ID
-    assertTrue(results.isEmpty());
+    assertThrows(IllegalStateException.class, () -> searchEngine.findNearestVectors(
+        queryVector, candidates, vectorStorage, DistanceMetric.EUCLIDEAN, 5, null));
   }
 }

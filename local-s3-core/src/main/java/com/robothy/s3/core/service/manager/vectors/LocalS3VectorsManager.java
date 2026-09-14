@@ -10,11 +10,6 @@ public interface LocalS3VectorsManager {
    */
   String VECTOR_STORAGE_DIRECTORY = ".storage";
 
-  /**
-   * The number of vectors that a file system vector storage keeps in memory.
-   */
-  int MAX_CACHED_VECTOR_COUNT = 2000;
-
   static LocalS3VectorsManager createInMemory() {
     return new InMemoryLocalS3VectorsManager(null);
   }

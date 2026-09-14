@@ -16,27 +16,36 @@ import java.util.List;
 
 public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsStorageAware {
 
+    /**
+     * Query the nearest vectors of an index, under the read lock of the vector bucket, so that the vectors that are
+     * compared aren't deleted meanwhile.
+     *
+     * @throws LocalS3VectorException of {@linkplain LocalS3VectorErrorType#INTERNAL_SERVER_ERROR} if the data of a
+     *     vector of the index is missing or corrupt.
+     */
     default QueryVectorsResponse queryVectors(String vectorBucketName, String indexName,
                                              PutInputVector.VectorData queryVector, Integer topK,
                                              Boolean returnDistance, Boolean returnMetadata,
                                              MetadataFilterExpression filter) {
-        VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
-        VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
-        float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension());
-        int validatedTopK = validateTopK(topK);
+        return withBucketReadLock(vectorBucketName, () -> {
+            VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
+            VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
+            float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension());
+            int validatedTopK = validateTopK(topK);
 
-        List<VectorObjectMetadata> candidateVectors = getCandidateVectors(indexMetadata);
-        
-        if (candidateVectors.isEmpty()) {
-            return buildEmptyResponse(indexMetadata.getDistanceMetric());
-        }
+            List<VectorObjectMetadata> candidateVectors = getCandidateVectors(indexMetadata);
 
-        List<VectorSearchEngine.VectorSearchResult> searchResults = performVectorSearch(
-            queryVectorData, candidateVectors, indexMetadata, validatedTopK, filter);
-        
-        List<QueryOutputVector> outputVectors = buildOutputVectors(searchResults, returnDistance, returnMetadata);
-        
-        return buildResponse(outputVectors, indexMetadata.getDistanceMetric());
+            if (candidateVectors.isEmpty()) {
+                return buildEmptyResponse(indexMetadata.getDistanceMetric());
+            }
+
+            List<VectorSearchEngine.VectorSearchResult> searchResults = performVectorSearch(
+                queryVectorData, candidateVectors, indexMetadata, validatedTopK, filter);
+
+            List<QueryOutputVector> outputVectors = buildOutputVectors(searchResults, returnDistance, returnMetadata);
+
+            return buildResponse(outputVectors, indexMetadata.getDistanceMetric());
+        });
     }
 
     private float[] validateQueryVector(PutInputVector.VectorData queryVector, int indexDimension) {
@@ -80,14 +89,19 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
             float[] queryVectorData, List<VectorObjectMetadata> candidateVectors,
             VectorIndexMetadata indexMetadata, int topK, MetadataFilterExpression filter) {
         VectorSearchEngine searchEngine = VectorSearchEngine.createBasic();
-        return searchEngine.findNearestVectors(
-            queryVectorData,
-            candidateVectors,
-            vectorStorage(),
-            indexMetadata.getDistanceMetric(),
-            Math.min(topK, candidateVectors.size()),
-            filter
-        );
+        try {
+            return searchEngine.findNearestVectors(
+                queryVectorData,
+                candidateVectors,
+                vectorStorage(),
+                indexMetadata.getDistanceMetric(),
+                Math.min(topK, candidateVectors.size()),
+                filter
+            );
+        } catch (IllegalStateException e) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR,
+                "Failed to query the index '" + indexMetadata.getIndexName() + "': " + e.getMessage(), e);
+        }
     }
 
     private List<QueryOutputVector> buildOutputVectors(List<VectorSearchEngine.VectorSearchResult> searchResults,

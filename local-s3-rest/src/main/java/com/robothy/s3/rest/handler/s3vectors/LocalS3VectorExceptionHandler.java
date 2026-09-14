@@ -11,7 +11,9 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3VectorException> {
 
   private final ServiceFactory serviceFactory;
@@ -22,6 +24,10 @@ public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3Ve
 
   @Override
   public void handle(LocalS3VectorException e, HttpRequest httpRequest, HttpResponse httpResponse) {
+    if (e.getErrorType().getStatus() >= 500) {
+      // Not a rejected request but a failure of the service, e.g. lost vector data, which must not go unnoticed.
+      log.error("Failed to handle {} {}.", httpRequest.getMethod(), httpRequest.getUri(), e);
+    }
     httpResponse.status(HttpResponseStatus.valueOf(e.getErrorType().getStatus()))
         .putHeader(AmzHeaderNames.X_AMZN_ERRORTYPE, e.getErrorType().getCode())
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "application/json");

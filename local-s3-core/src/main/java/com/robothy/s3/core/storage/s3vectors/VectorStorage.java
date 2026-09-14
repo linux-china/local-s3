@@ -1,5 +1,7 @@
 package com.robothy.s3.core.storage.s3vectors;
 
+import java.nio.FloatBuffer;
+
 /**
  * Vector data storage abstraction for S3 Vectors operations.
  * This interface only handles the storage of vector data (float arrays) 
@@ -27,14 +29,14 @@ public interface VectorStorage {
   }
 
   /**
-   * Create a file system {@linkplain VectorStorage} implementation.
-   * 
+   * Create a file system {@linkplain VectorStorage} implementation, which keeps the vectors of each dimension in one
+   * file of fixed-length records, and every vector in memory, see {@linkplain FileSystemVectorStorage}.
+   *
    * @param storageDirectory the directory to store vector files
-   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
    * @return a new file system vector storage instance
    */
-  static VectorStorage createFileSystem(java.nio.file.Path storageDirectory, int maxCachedVectorCount) {
-    return new FileSystemVectorStorage(storageDirectory, maxCachedVectorCount);
+  static VectorStorage createFileSystem(java.nio.file.Path storageDirectory) {
+    return new FileSystemVectorStorage(storageDirectory, false);
   }
 
   /**
@@ -42,11 +44,10 @@ public interface VectorStorage {
    * nor changes, and which may not exist. Storing or deleting a vector fails.
    *
    * @param storageDirectory the directory of the vector files
-   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
    * @return a new read-only file system vector storage instance
    */
-  static VectorStorage createReadOnlyFileSystem(java.nio.file.Path storageDirectory, int maxCachedVectorCount) {
-    return new FileSystemVectorStorage(storageDirectory, maxCachedVectorCount, true);
+  static VectorStorage createReadOnlyFileSystem(java.nio.file.Path storageDirectory) {
+    return new FileSystemVectorStorage(storageDirectory, true);
   }
 
   /**
@@ -78,6 +79,22 @@ public interface VectorStorage {
    * @return the vector data as float32 array, or null if not found
    */
   float[] getVectorData(Long storageId);
+
+  /**
+   * Retrieve vector data by storage ID without copying it, e.g. to compare many vectors with a query vector.
+   *
+   * <p>The view is read-only, its position is 0 and its limit is the dimension of the vector. It reflects the stored
+   * data as long as the vector isn't deleted; afterwards its content is undefined, since the space of a deleted vector
+   * is reused. So the caller must keep the vector from being deleted while it uses the view, e.g. by holding the read
+   * lock of its bucket.
+   *
+   * @param storageId the storage ID returned by putVectorData
+   * @return a read-only view of the vector data, or null if not found
+   */
+  default FloatBuffer getVectorDataView(Long storageId) {
+    float[] vectorData = getVectorData(storageId);
+    return vectorData == null ? null : FloatBuffer.wrap(vectorData).asReadOnlyBuffer();
+  }
 
   /**
    * Delete vector data by storage ID.

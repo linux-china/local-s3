@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage.s3vectors;
 
 import com.robothy.s3.core.storage.StorageTransactions;
+import java.nio.FloatBuffer;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -66,6 +67,11 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
   @Override
   public float[] getVectorData(Long storageId) {
     return delegate.getVectorData(storageId);
+  }
+
+  @Override
+  public FloatBuffer getVectorDataView(Long storageId) {
+    return delegate.getVectorDataView(storageId);
   }
 
   @Override

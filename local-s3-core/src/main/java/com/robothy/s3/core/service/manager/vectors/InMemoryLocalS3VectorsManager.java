@@ -38,7 +38,7 @@ final class InMemoryLocalS3VectorsManager implements LocalS3VectorsManager {
           .forEach(vectorsMetadata::addVectorBucketMetadata);
       VectorStorageIds.seedGenerator(vectorsMetadata);
       storage = VectorStorage.createLayered(storage, VectorStorage.createReadOnlyFileSystem(
-          initialDataDirectory.resolve(VECTOR_STORAGE_DIRECTORY), MAX_CACHED_VECTOR_COUNT));
+          initialDataDirectory.resolve(VECTOR_STORAGE_DIRECTORY)));
       log.info("Loaded {} vector buckets from {}.", vectorsMetadata.getVectorBucketMetadataMap().size(),
           initialDataDirectory);
     }

@@ -4,106 +4,139 @@ import com.robothy.s3.core.storage.ShardedFileLayout;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.PathUtils;
 import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.UUID;
-import java.util.LinkedHashMap;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * File system implementation of {@linkplain VectorStorage} with LRU memory caching.
- * Stores vector data as individual files in the specified directory.
- * Uses least recently used (LRU) eviction strategy for memory cache.
+ * File system implementation of {@linkplain VectorStorage}, which keeps the vectors of each dimension in one file of
+ * fixed-length records, and every vector in memory, in contiguous {@code float} arrays.
  *
- * <p>The vector files are spread over two levels of subdirectories, {@code ab/cd/<id>}, like the object files of a
- * storage, see {@linkplain ShardedFileLayout}, so that a storage of millions of vectors doesn't keep millions of files in
- * one directory. A storage of a LocalS3 before 2.5 kept every vector file directly in the directory. Such files are
- * still found, and a writable storage moves them into their subdirectories when it is created.
+ * <p>The file of the vectors of dimension {@code d} is {@code vectors-<d>.vec}: a header of {@value #HEADER_BYTES}
+ * bytes, the magic {@code LS3VECTS}, the version of the format and the dimension, followed by records of
+ * {@code 8 + 4 * d} bytes each, the storage ID of the vector and its values as {@code float32}, all little-endian. The
+ * record of a vector is found by its offset, and a record whose storage ID is {@code 0} is free: deleting a vector
+ * overwrites its storage ID, and a new vector of the same dimension reuses the record. A query thus reads its vectors
+ * from memory, without a file or an object per vector, and without copying them, see
+ * {@linkplain #getVectorDataView(Long)}.
  *
- * <p>A vector is written to a temporary file first, which is then moved to the vector file, so that a process that
- * dies while writing leaves either the whole vector or no vector file at all, never a partial one. The temporary files
- * left behind by such a process are deleted when the storage is created.
+ * <p>The vectors are read into memory when the storage is created, rather than memory-mapped: a mapped file can't be
+ * deleted on Windows until the mapping is garbage collected, and the storage is never closed, so the data directory of
+ * a stopped service couldn't be deleted. The memory used is about the size of the files.
+ *
+ * <p>A vector is written as a free record first, and then its storage ID is written, so that a process that dies while
+ * writing leaves either the whole vector or a free record, never a partial vector. The files are written one record
+ * at a time and are never rewritten as a whole.
+ *
+ * <p>A LocalS3 before 2.5 kept every vector in a file of its own, {@code <id>} or {@code ab/cd/<id>}, see
+ * {@linkplain ShardedFileLayout}. A writable storage imports such files into the files of their dimensions and deletes
+ * them when it is created, so that a process that dies meanwhile leaves every vector in one place or both, and the next
+ * storage finishes the import. The temporary files left behind by a process are deleted too.
  *
  * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
- * anything in its directory, which may not even exist: it reads vectors in either layout, and rejects writes.
+ * anything in its directory, which may not even exist: it reads the vectors of either layout, and rejects writes.
  */
 @Slf4j
 class FileSystemVectorStorage implements VectorStorage {
 
   /**
-   * Suffix of the temporary files that vectors are written to.
+   * Suffix of the temporary files that files are written to.
    */
   private static final String TEMP_FILE_SUFFIX = ".tmp";
 
+  private static final Pattern VECTOR_FILE_NAME = Pattern.compile("vectors-([1-9][0-9]{0,8})\\.vec");
+
+  static final int HEADER_BYTES = 16;
+
+  private static final byte[] MAGIC = "LS3VECTS".getBytes(StandardCharsets.US_ASCII);
+
+  private static final int FORMAT_VERSION = 1;
+
+  /**
+   * The storage ID of a free record. The generated IDs are timestamps, never 0.
+   */
+  private static final long FREE = 0L;
+
+  /**
+   * The vectors are kept in arrays of at most this many values, or of one vector if it is larger, so that no array
+   * needs to be copied to grow, and a storage of a few small vectors takes little memory.
+   */
+  private static final int MAX_CHUNK_VALUES = 1 << 20;
+
+  private static final int MAX_CHUNK_VECTORS = 1024;
+
+  /**
+   * The number of bytes that are read from a file at once when it is loaded.
+   */
+  private static final int READ_BUFFER_BYTES = 1 << 20;
+
   private final Path storageDirectory;
-  private final int maxCachedVectorCount;
+
   private final boolean readOnly;
-  private final ReadWriteLock cacheLock = new ReentrantReadWriteLock();
-
-  // LRU cache using LinkedHashMap with access order
-  private final Map<Long, float[]> memoryCache;
 
   /**
-   * Create a {@linkplain FileSystemVectorStorage} with specified directory and cache size.
-   *
-   * @param storageDirectory     the directory to store vector files
-   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
+   * Guards {@linkplain #slots} and {@linkplain #columns}. Reads share the lock; the files are written without it.
    */
-  FileSystemVectorStorage(Path storageDirectory, int maxCachedVectorCount) {
-    this(storageDirectory, maxCachedVectorCount, false);
-  }
+  private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+  private final Map<Long, Slot> slots = new HashMap<>();
+
+  private final Map<Integer, Column> columns = new HashMap<>();
 
   /**
-   * Create a {@linkplain FileSystemVectorStorage} with specified directory and cache size.
+   * Create a {@linkplain FileSystemVectorStorage} and load the vectors of its directory.
    *
-   * @param storageDirectory     the directory to store vector files
-   * @param maxCachedVectorCount maximum number of vectors to keep in memory cache
-   * @param readOnly             whether the storage only reads the vectors of the directory, which is then neither
-   *                             created nor cleaned
+   * @param storageDirectory the directory to store vector files
+   * @param readOnly         whether the storage only reads the vectors of the directory, which is then neither
+   *                         created nor cleaned
+   * @throws UncheckedIOException  if the directory can't be read, or a writable one can't be prepared.
+   * @throws IllegalStateException if a file of the directory isn't a valid vector file.
    */
-  FileSystemVectorStorage(Path storageDirectory, int maxCachedVectorCount, boolean readOnly) {
+  FileSystemVectorStorage(Path storageDirectory, boolean readOnly) {
     this.storageDirectory = storageDirectory;
-    this.maxCachedVectorCount = Math.max(0, maxCachedVectorCount);
     this.readOnly = readOnly;
 
-    // Create LRU cache with access order
-    this.memoryCache = new LinkedHashMap<>(16, 0.75f, true) {
-      @Override
-      protected boolean removeEldestEntry(Map.Entry<Long, float[]> eldest) {
-        return size() > FileSystemVectorStorage.this.maxCachedVectorCount;
-      }
-    };
-
-    if (readOnly) {
-      log.info("Read-only FileSystemVectorStorage initialized with directory: {}, max cache size: {}",
-          storageDirectory, maxCachedVectorCount);
-      return;
-    }
+    long start = System.nanoTime();
     try {
-      // Create storage directory if it doesn't exist
-      Files.createDirectories(storageDirectory);
-      deleteTempFiles();
-      long start = System.nanoTime();
-      long moved = ShardedFileLayout.moveFlatFilesIntoSubdirectories(storageDirectory);
-      if (moved > 0) {
-        log.info("Moved {} vector files of {} into subdirectories in {} ms.", moved, storageDirectory,
-            (System.nanoTime() - start) / 1_000_000);
+      if (readOnly) {
+        if (Files.isDirectory(storageDirectory)) {
+          loadVectorFiles();
+          loadLegacyVectorFiles();
+        }
+      } else {
+        Files.createDirectories(storageDirectory);
+        deleteTempFiles();
+        loadVectorFiles();
+        importLegacyVectorFiles();
       }
-
-      log.info("FileSystemVectorStorage initialized with directory: {}, max cache size: {}",
-          storageDirectory, maxCachedVectorCount);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to initialize storage directory: " + storageDirectory, e);
+      throw new UncheckedIOException("Failed to load the vectors of " + storageDirectory, e);
     }
+    log.info("{}FileSystemVectorStorage initialized with directory: {}, {} vectors loaded in {} ms.",
+        readOnly ? "Read-only " : "", storageDirectory, slots.size(), (System.nanoTime() - start) / 1_000_000);
   }
 
   @Override
@@ -122,28 +155,17 @@ class FileSystemVectorStorage implements VectorStorage {
     }
 
     Long storageId = IdUtils.defaultGenerator().nextId();
-    Path vectorFile = vectorFile(storageId);
-
+    Slot slot = allocate(vectorData.length);
     try {
-      // Write vector data to file
-      writeVectorToFile(vectorFile, vectorData);
-
-      // Add to cache
-      cacheLock.writeLock().lock();
-      try {
-        memoryCache.put(storageId, vectorData.clone());
-      } finally {
-        cacheLock.writeLock().unlock();
-      }
-
-      log.debug("Stored vector data with storage ID: {}, dimensions: {}, file: {}",
-          storageId, vectorData.length, vectorFile);
-      return storageId;
-
+      store(slot, storageId, vectorData);
     } catch (IOException e) {
-      log.error("Failed to write vector data to file: {}", vectorFile, e);
-      throw new RuntimeException("Failed to store vector data", e);
+      release(slot);
+      throw new UncheckedIOException("Failed to store vector data in " + slot.column().file, e);
     }
+    publish(storageId, slot);
+
+    log.debug("Stored vector data with storage ID: {}, dimensions: {}", storageId, vectorData.length);
+    return storageId;
   }
 
   @Override
@@ -151,40 +173,28 @@ class FileSystemVectorStorage implements VectorStorage {
     if (storageId == null) {
       return null;
     }
-
-    // Try to get from cache first
-    cacheLock.writeLock().lock();
+    lock.readLock().lock();
     try {
-      float[] cachedData = memoryCache.get(storageId);
-      if (cachedData != null) {
-        return cachedData.clone(); // Return defensive copy
-      }
+      Slot slot = slots.get(storageId);
+      return slot == null ? null
+          : Arrays.copyOfRange(slot.values(), slot.offset(), slot.offset() + slot.column().dimension);
     } finally {
-      cacheLock.writeLock().unlock();
+      lock.readLock().unlock();
     }
+  }
 
-    // Load from file if not in cache
-    Path vectorFile = existingVectorFile(storageId);
-    if (vectorFile == null) {
+  @Override
+  public FloatBuffer getVectorDataView(Long storageId) {
+    if (storageId == null) {
       return null;
     }
-
+    lock.readLock().lock();
     try {
-      float[] vectorData = readVectorFromFile(vectorFile);
-
-      // Add to cache
-      cacheLock.writeLock().lock();
-      try {
-        memoryCache.put(storageId, vectorData.clone());
-      } finally {
-        cacheLock.writeLock().unlock();
-      }
-
-      return vectorData;
-
-    } catch (IOException e) {
-      log.error("Failed to read vector data from file: {}", vectorFile, e);
-      return null;
+      Slot slot = slots.get(storageId);
+      return slot == null ? null
+          : FloatBuffer.wrap(slot.values(), slot.offset(), slot.column().dimension).slice().asReadOnlyBuffer();
+    } finally {
+      lock.readLock().unlock();
     }
   }
 
@@ -195,30 +205,27 @@ class FileSystemVectorStorage implements VectorStorage {
       return false;
     }
 
-    Path vectorFile = vectorFile(storageId);
-    boolean deleted;
-
+    Slot slot;
+    lock.writeLock().lock();
     try {
-      // Remove from file system, in either layout.
-      deleted = Files.deleteIfExists(vectorFile) | Files.deleteIfExists(flatVectorFile(storageId));
-      if (deleted) {
-        log.debug("Deleted vector file: {}", vectorFile);
-      }
-
-      // Remove from cache
-      cacheLock.writeLock().lock();
-      try {
-        memoryCache.remove(storageId);
-      } finally {
-        cacheLock.writeLock().unlock();
-      }
-
-      return deleted;
-
-    } catch (IOException e) {
-      log.error("Failed to delete vector file: {}", vectorFile, e);
+      slot = slots.remove(storageId);
+    } finally {
+      lock.writeLock().unlock();
+    }
+    if (slot == null) {
       return false;
     }
+
+    // The record is only reused once it is free in the file too, so that a vector stored in it isn't freed again.
+    try {
+      writeStorageId(slot, FREE);
+    } catch (IOException e) {
+      publish(storageId, slot);
+      throw new UncheckedIOException("Failed to delete vector " + storageId + " from " + slot.column().file, e);
+    }
+    release(slot);
+    log.debug("Deleted vector data with storage ID: {}", storageId);
+    return true;
   }
 
   @Override
@@ -226,32 +233,21 @@ class FileSystemVectorStorage implements VectorStorage {
     if (storageId == null) {
       return false;
     }
-
-    // Check memory cache
-    cacheLock.readLock().lock();
+    lock.readLock().lock();
     try {
-      if (memoryCache.containsKey(storageId)) {
-        return true;
-      }
+      return slots.containsKey(storageId);
     } finally {
-      cacheLock.readLock().unlock();
+      lock.readLock().unlock();
     }
-
-    // Check file system
-    return existingVectorFile(storageId) != null;
   }
 
   @Override
   public long getStoredVectorCount() {
-    if (!Files.isDirectory(storageDirectory)) {
-      return 0;
-    }
-    // The vector files of both layouts: in the subdirectories, and directly in the directory.
-    try (var files = Files.walk(storageDirectory, 3)) {
-      return files.filter(ShardedFileLayout::isIdFile).count();
-    } catch (IOException e) {
-      log.error("Failed to count vector files in directory: {}", storageDirectory, e);
-      return 0;
+    lock.readLock().lock();
+    try {
+      return slots.size();
+    } finally {
+      lock.readLock().unlock();
     }
   }
 
@@ -260,81 +256,98 @@ class FileSystemVectorStorage implements VectorStorage {
     if (storageId == null) {
       return -1;
     }
-
-    // Try cache first
-    cacheLock.readLock().lock();
+    lock.readLock().lock();
     try {
-      float[] cachedData = memoryCache.get(storageId);
-      if (cachedData != null) {
-        return cachedData.length * 4L;
-      }
+      Slot slot = slots.get(storageId);
+      return slot == null ? -1 : slot.column().dimension * (long) Float.BYTES;
     } finally {
-      cacheLock.readLock().unlock();
+      lock.readLock().unlock();
     }
+  }
 
-    // Check file system
-    Path vectorFile = existingVectorFile(storageId);
-    if (vectorFile == null) {
-      return -1;
-    }
+  /**
+   * The file of the vectors of a dimension: {@code <directory>/vectors-<dimension>.vec}.
+   */
+  Path vectorFile(int dimension) {
+    return storageDirectory.resolve("vectors-" + dimension + ".vec");
+  }
+
+  /**
+   * Reserve a record for a vector of a dimension, which no other vector gets until it is released.
+   */
+  private Slot allocate(int dimension) {
+    lock.writeLock().lock();
     try {
-      // Read just the dimension count to calculate size
-      try (DataInputStream dis = new DataInputStream(Files.newInputStream(vectorFile))) {
-        int dimensions = dis.readInt();
-        return dimensions * 4L;
+      Column column = columns.get(dimension);
+      if (column == null) {
+        column = new Column(dimension, vectorFile(dimension));
+        createVectorFile(column);
+        columns.put(dimension, column);
       }
-
+      Integer free = column.freeRecords.poll();
+      return free != null ? column.slot(free) : column.append();
     } catch (IOException e) {
-      log.error("Failed to get vector data size for storage ID: {}", storageId, e);
-      return -1;
-    }
-  }
-
-  /**
-   * Get the current number of vectors in memory cache.
-   *
-   * @return the number of cached vectors
-   */
-  public int getCachedVectorCount() {
-    cacheLock.readLock().lock();
-    try {
-      return memoryCache.size();
+      throw new UncheckedIOException("Failed to create the vector file " + vectorFile(dimension), e);
     } finally {
-      cacheLock.readLock().unlock();
+      lock.writeLock().unlock();
     }
   }
 
-  /**
-   * Clear the memory cache.
-   */
-  public void clearCache() {
-    cacheLock.writeLock().lock();
+  private void release(Slot slot) {
+    lock.writeLock().lock();
     try {
-      memoryCache.clear();
-      log.debug("Cleared vector memory cache");
+      slot.column().freeRecords.push(slot.record());
     } finally {
-      cacheLock.writeLock().unlock();
+      lock.writeLock().unlock();
+    }
+  }
+
+  private void publish(Long storageId, Slot slot) {
+    lock.writeLock().lock();
+    try {
+      slots.put(storageId, slot);
+    } finally {
+      lock.writeLock().unlock();
     }
   }
 
   /**
-   * Write a vector to a temporary file of the storage directory, and move it to its file once it is complete.
+   * Write a vector to its reserved record, in the file and in memory. The record isn't visible until it is published,
+   * so neither needs the lock.
    */
-  private void writeVectorToFile(Path file, float[] vectorData) throws IOException {
-    Path temp = storageDirectory.resolve("." + file.getFileName() + "." + UUID.randomUUID() + TEMP_FILE_SUFFIX);
-    try {
-      try (DataOutputStream dos = new DataOutputStream(
-          new BufferedOutputStream(Files.newOutputStream(temp, StandardOpenOption.CREATE_NEW)))) {
-        // Write dimensions first
-        dos.writeInt(vectorData.length);
+  private void store(Slot slot, long storageId, float[] vectorData) throws IOException {
+    Column column = slot.column();
+    ByteBuffer record = ByteBuffer.allocate(column.recordBytes()).order(ByteOrder.LITTLE_ENDIAN);
+    record.putLong(FREE);
+    record.asFloatBuffer().put(vectorData);
+    try (FileChannel channel = FileChannel.open(column.file, StandardOpenOption.WRITE)) {
+      writeFully(channel, record.clear(), column.offset(slot.record()));
+      writeFully(channel, storageIdBuffer(storageId), column.offset(slot.record()));
+    }
+    System.arraycopy(vectorData, 0, slot.values(), slot.offset(), vectorData.length);
+  }
 
-        // Write vector data
-        for (float value : vectorData) {
-          dos.writeFloat(value);
-        }
+  private void writeStorageId(Slot slot, long storageId) throws IOException {
+    try (FileChannel channel = FileChannel.open(slot.column().file, StandardOpenOption.WRITE)) {
+      writeFully(channel, storageIdBuffer(storageId), slot.column().offset(slot.record()));
+    }
+  }
+
+  /**
+   * Write the header of a new vector file to a temporary file, and move it to the vector file once it is complete.
+   */
+  private void createVectorFile(Column column) throws IOException {
+    if (Files.exists(column.file)) {
+      throw new IOException("The vector file " + column.file + " was created by another storage.");
+    }
+    ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        .put(MAGIC).putInt(FORMAT_VERSION).putInt(column.dimension).flip();
+    Path temp = tempFile(column.file);
+    try {
+      try (FileChannel channel = FileChannel.open(temp, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+        writeFully(channel, header, 0);
       }
-      Files.createDirectories(file.getParent());
-      PathUtils.moveAtomically(temp, file);
+      PathUtils.moveAtomically(temp, column.file);
     } catch (IOException | RuntimeException e) {
       try {
         Files.deleteIfExists(temp);
@@ -345,8 +358,171 @@ class FileSystemVectorStorage implements VectorStorage {
     }
   }
 
+  private void loadVectorFiles() throws IOException {
+    try (DirectoryStream<Path> files = Files.newDirectoryStream(storageDirectory,
+        path -> VECTOR_FILE_NAME.matcher(path.getFileName().toString()).matches() && Files.isRegularFile(path))) {
+      for (Path file : files) {
+        Matcher matcher = VECTOR_FILE_NAME.matcher(file.getFileName().toString());
+        if (matcher.matches()) {
+          loadVectorFile(file, Integer.parseInt(matcher.group(1)));
+        }
+      }
+    }
+  }
+
+  private void loadVectorFile(Path file, int dimension) throws IOException {
+    Column column = new Column(dimension, file);
+    columns.put(dimension, column);
+    int recordBytes = column.recordBytes();
+    try (FileChannel channel = readOnly ? FileChannel.open(file, StandardOpenOption.READ)
+        : FileChannel.open(file, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+      ByteBuffer header = ByteBuffer.allocate(HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+      try {
+        readFully(channel, header, 0);
+      } catch (EOFException e) {
+        throw new IllegalStateException("The vector file " + file + " has no complete header.", e);
+      }
+      header.flip();
+      byte[] magic = new byte[MAGIC.length];
+      header.get(magic);
+      int version = header.getInt();
+      int headerDimension = header.getInt();
+      if (!Arrays.equals(MAGIC, magic) || version != FORMAT_VERSION || headerDimension != dimension) {
+        throw new IllegalStateException(String.format(
+            "%s is not a vector file of %d dimensions of format version %d.", file, dimension, FORMAT_VERSION));
+      }
+
+      long recordsBytes = channel.size() - HEADER_BYTES;
+      long records = recordsBytes / recordBytes;
+      if (recordsBytes % recordBytes != 0) {
+        // Only a system crash while a vector was appended leaves a partial record, which is free.
+        log.warn("Ignoring the partial record at the end of the vector file {}.", file);
+        if (!readOnly) {
+          channel.truncate(HEADER_BYTES + records * recordBytes);
+        }
+      }
+
+      ByteBuffer buffer = ByteBuffer.allocate(Math.max(recordBytes, READ_BUFFER_BYTES / recordBytes * recordBytes))
+          .order(ByteOrder.LITTLE_ENDIAN);
+      long position = HEADER_BYTES;
+      long remaining = records * recordBytes;
+      while (remaining > 0) {
+        buffer.clear().limit((int) Math.min(buffer.capacity(), remaining));
+        readFully(channel, buffer, position);
+        position += buffer.limit();
+        remaining -= buffer.limit();
+        buffer.flip();
+        while (buffer.hasRemaining()) {
+          long storageId = buffer.getLong();
+          Slot slot = column.append();
+          if (storageId == FREE) {
+            buffer.position(buffer.position() + dimension * Float.BYTES);
+            column.freeRecords.add(slot.record());
+            continue;
+          }
+          buffer.asFloatBuffer().get(slot.values(), slot.offset(), dimension);
+          buffer.position(buffer.position() + dimension * Float.BYTES);
+          if (slots.putIfAbsent(storageId, slot) != null) {
+            throw new IllegalStateException("The vector " + storageId + " is stored twice, the second time in " + file);
+          }
+        }
+      }
+    }
+  }
+
   /**
-   * Delete the temporary files left behind by a process that died while writing vectors.
+   * Load the vector files of a LocalS3 before 2.5 into memory, without changing them.
+   */
+  private void loadLegacyVectorFiles() throws IOException {
+    for (Path file : legacyVectorFiles()) {
+      long storageId = Long.parseLong(file.getFileName().toString());
+      if (!slots.containsKey(storageId)) {
+        float[] vectorData = readLegacyVectorFile(file);
+        Column column = columns.computeIfAbsent(vectorData.length, dimension -> new Column(dimension, null));
+        Slot slot = column.append();
+        System.arraycopy(vectorData, 0, slot.values(), slot.offset(), vectorData.length);
+        slots.put(storageId, slot);
+      }
+    }
+  }
+
+  /**
+   * Import the vector files of a LocalS3 before 2.5 into the vector files of their dimensions, and delete them.
+   */
+  private void importLegacyVectorFiles() throws IOException {
+    List<Path> files = legacyVectorFiles();
+    if (files.isEmpty()) {
+      return;
+    }
+    long start = System.nanoTime();
+    for (Path file : files) {
+      long storageId = Long.parseLong(file.getFileName().toString());
+      // A process that died during the import may have imported the vector already.
+      if (!slots.containsKey(storageId)) {
+        float[] vectorData = readLegacyVectorFile(file);
+        Slot slot = allocate(vectorData.length);
+        store(slot, storageId, vectorData);
+        slots.put(storageId, slot);
+      }
+      Files.delete(file);
+    }
+    deleteEmptyShardDirectories();
+    log.info("Imported {} vector files of {} into the vector files of their dimensions in {} ms.", files.size(),
+        storageDirectory, (System.nanoTime() - start) / 1_000_000);
+  }
+
+  /**
+   * The vector files of a LocalS3 before 2.5, in the subdirectories and directly in the directory.
+   */
+  private List<Path> legacyVectorFiles() throws IOException {
+    try (Stream<Path> files = Files.walk(storageDirectory, 3)) {
+      return files.filter(ShardedFileLayout::isIdFile).toList();
+    }
+  }
+
+  private static float[] readLegacyVectorFile(Path file) throws IOException {
+    // Buffered, so that a float doesn't take a read of the file of its own.
+    try (DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
+      int dimensions = dis.readInt();
+      if (dimensions <= 0 || Files.size(file) != Integer.BYTES + (long) dimensions * Float.BYTES) {
+        throw new IllegalStateException("The vector file " + file + " is corrupt.");
+      }
+      float[] vectorData = new float[dimensions];
+      for (int i = 0; i < dimensions; i++) {
+        vectorData[i] = dis.readFloat();
+      }
+      return vectorData;
+    }
+  }
+
+  private void deleteEmptyShardDirectories() throws IOException {
+    try (DirectoryStream<Path> shards = Files.newDirectoryStream(storageDirectory, FileSystemVectorStorage::isShard)) {
+      for (Path shard : shards) {
+        try (DirectoryStream<Path> subShards = Files.newDirectoryStream(shard, FileSystemVectorStorage::isShard)) {
+          for (Path subShard : subShards) {
+            deleteIfEmpty(subShard);
+          }
+        }
+        deleteIfEmpty(shard);
+      }
+    }
+  }
+
+  private static boolean isShard(Path path) {
+    return path.getFileName().toString().matches("[0-9a-f]{2}") && Files.isDirectory(path);
+  }
+
+  private static void deleteIfEmpty(Path directory) throws IOException {
+    try (Stream<Path> entries = Files.list(directory)) {
+      if (entries.findAny().isPresent()) {
+        return;
+      }
+    }
+    Files.delete(directory);
+  }
+
+  /**
+   * Delete the temporary files left behind by a process that died while writing.
    */
   private void deleteTempFiles() throws IOException {
     try (DirectoryStream<Path> tempFiles = Files.newDirectoryStream(storageDirectory, ".*" + TEMP_FILE_SUFFIX)) {
@@ -356,33 +532,8 @@ class FileSystemVectorStorage implements VectorStorage {
     }
   }
 
-  /**
-   * The file of a vector: {@code <directory>/ab/cd/<id>}, see {@linkplain ShardedFileLayout#shardedPath(Path, long)}.
-   */
-  Path vectorFile(Long storageId) {
-    return ShardedFileLayout.shardedPath(storageDirectory, storageId);
-  }
-
-  /**
-   * The file of a vector in the flat layout of a LocalS3 before 2.5.
-   */
-  private Path flatVectorFile(Long storageId) {
-    return ShardedFileLayout.flatPath(storageDirectory, storageId);
-  }
-
-  /**
-   * The file that holds a vector, in either layout: a read-only storage doesn't move the files of the flat layout, and
-   * a writable one may find a file that a process which died while moving the files left.
-   *
-   * @return the file, or {@code null} if the vector doesn't exist.
-   */
-  private Path existingVectorFile(Long storageId) {
-    Path vectorFile = vectorFile(storageId);
-    if (Files.exists(vectorFile)) {
-      return vectorFile;
-    }
-    Path flat = flatVectorFile(storageId);
-    return Files.exists(flat) ? flat : null;
+  private Path tempFile(Path file) {
+    return storageDirectory.resolve("." + file.getFileName() + "." + UUID.randomUUID() + TEMP_FILE_SUFFIX);
   }
 
   private void ensureWritable() {
@@ -391,23 +542,85 @@ class FileSystemVectorStorage implements VectorStorage {
     }
   }
 
-  private float[] readVectorFromFile(Path file) throws IOException {
-    // Buffered, so that a float doesn't take a read of the file of its own.
-    try (DataInputStream dis = new DataInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
-      // Read dimensions
-      int dimensions = dis.readInt();
+  private static ByteBuffer storageIdBuffer(long storageId) {
+    return ByteBuffer.allocate(Long.BYTES).order(ByteOrder.LITTLE_ENDIAN).putLong(storageId).flip();
+  }
 
-      if (dimensions <= 0) {
-        throw new IOException("Invalid vector dimensions: " + dimensions);
-      }
-
-      // Read vector data
-      float[] vectorData = new float[dimensions];
-      for (int i = 0; i < dimensions; i++) {
-        vectorData[i] = dis.readFloat();
-      }
-
-      return vectorData;
+  private static void writeFully(FileChannel channel, ByteBuffer buffer, long position) throws IOException {
+    while (buffer.hasRemaining()) {
+      position += channel.write(buffer, position);
     }
   }
+
+  private static void readFully(FileChannel channel, ByteBuffer buffer, long position) throws IOException {
+    while (buffer.hasRemaining()) {
+      int read = channel.read(buffer, position);
+      if (read < 0) {
+        throw new EOFException();
+      }
+      position += read;
+    }
+  }
+
+  /**
+   * The vectors of a dimension: the records of its file, and their values in memory.
+   */
+  private static final class Column {
+
+    private final int dimension;
+
+    /**
+     * The vector file; {@code null} if the vectors were only read from vector files of a LocalS3 before 2.5.
+     */
+    private final Path file;
+
+    private final int chunkVectors;
+
+    /**
+     * The values of the records, {@linkplain #chunkVectors} records per array. The arrays are never replaced, so that
+     * a view of a vector stays valid.
+     */
+    private final List<float[]> chunks = new ArrayList<>();
+
+    /**
+     * The number of records, used or free.
+     */
+    private int records;
+
+    private final ArrayDeque<Integer> freeRecords = new ArrayDeque<>();
+
+    private Column(int dimension, Path file) {
+      this.dimension = dimension;
+      this.file = file;
+      this.chunkVectors = Math.max(1, Math.min(MAX_CHUNK_VECTORS, MAX_CHUNK_VALUES / dimension));
+    }
+
+    private int recordBytes() {
+      return Long.BYTES + dimension * Float.BYTES;
+    }
+
+    private long offset(int record) {
+      return HEADER_BYTES + (long) record * recordBytes();
+    }
+
+    private Slot append() {
+      int record = records++;
+      if (record / chunkVectors == chunks.size()) {
+        chunks.add(new float[chunkVectors * dimension]);
+      }
+      return slot(record);
+    }
+
+    private Slot slot(int record) {
+      return new Slot(this, record, chunks.get(record / chunkVectors), record % chunkVectors * dimension);
+    }
+
+  }
+
+  /**
+   * The record of a vector, and where its values are in memory, so that they are read without the lock.
+   */
+  private record Slot(Column column, int record, float[] values, int offset) {
+  }
+
 }

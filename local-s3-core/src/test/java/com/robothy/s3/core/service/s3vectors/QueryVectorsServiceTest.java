@@ -257,9 +257,28 @@ class QueryVectorsServiceTest {
     assertEquals("vector1", response.getVectors().get(0).getKey());
   }
 
+  @Test
+  void queryVectors_withMissingVectorData_failsWithAnInternalServerError() {
+    TestQueryVectorsService service = createTestService();
+    VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");
+    VectorIndexMetadata indexMetadata = createVectorIndexMetadata("test-index", 2, DistanceMetric.EUCLIDEAN);
+    addVectorToIndex(indexMetadata, "vector1", 1L, new float[]{1.0f, 2.0f}, null);
+    addVectorToIndex(indexMetadata, "lost", 2L, new float[]{3.0f, 4.0f}, null);
+    bucketMetadata.getIndexes().put("test-index", indexMetadata);
+    service.metadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
+
+    when(service.vectorStorage.getVectorData(1L)).thenReturn(new float[]{1.0f, 2.0f});
+
+    LocalS3VectorException thrown = assertThrows(LocalS3VectorException.class, () -> service.queryVectors(
+        "test-bucket", "test-index", createVectorData(new float[]{1.0f, 2.0f}), 1, true, false, null));
+    assertEquals(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR, thrown.getErrorType());
+    assertTrue(thrown.getMessage().contains("lost"), thrown.getMessage());
+  }
+
   private TestQueryVectorsService createTestService() {
     LocalS3VectorsMetadata metadata = new LocalS3VectorsMetadata();
-    VectorStorage vectorStorage = mock(VectorStorage.class);
+    // The default methods of the storage read through the stubbed abstract ones.
+    VectorStorage vectorStorage = mock(VectorStorage.class, withSettings().defaultAnswer(CALLS_REAL_METHODS));
     return new TestQueryVectorsService(metadata, vectorStorage);
   }
 

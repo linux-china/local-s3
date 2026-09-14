@@ -20,13 +20,10 @@ import com.robothy.s3.core.util.JsonUtils;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
 import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,7 +54,7 @@ class PutVectorsServiceTest {
   }
 
   @Test
-  void aPersistentServiceLeavesNoFileOfAReplacedVector() throws IOException {
+  void aPersistentServiceLeavesNoFileOfAReplacedVector() {
     S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     createIndex(service);
 
@@ -128,7 +125,7 @@ class PutVectorsServiceTest {
   }
 
   @Test
-  void aRejectedPutLeavesNothingInThePersistentService() throws IOException {
+  void aRejectedPutLeavesNothingInThePersistentService() {
     S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     createIndex(service);
     service.putVectors(BUCKET, INDEX, List.of(vector("a", 1.0f, 0.0f)));
@@ -160,10 +157,12 @@ class PutVectorsServiceTest {
         .getStorageId();
   }
 
-  private long vectorFileCount() throws IOException {
-    try (Stream<Path> files = Files.walk(dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY))) {
-      return files.filter(Files::isRegularFile).count();
-    }
+  /**
+   * The number of vectors in the files of the data path.
+   */
+  private long vectorFileCount() {
+    return VectorStorage.createReadOnlyFileSystem(dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY))
+        .getStoredVectorCount();
   }
 
   private static final class FailingStore implements MetadataStore<VectorBucketMetadata> {

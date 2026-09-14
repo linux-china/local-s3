@@ -15,4 +15,10 @@ public class LocalS3VectorException extends RuntimeException {
     this.message = message;
   }
 
+  public LocalS3VectorException(LocalS3VectorErrorType errorType, String message, Throwable cause) {
+    super(message, cause);
+    this.errorType = errorType;
+    this.message = message;
+  }
+
 }

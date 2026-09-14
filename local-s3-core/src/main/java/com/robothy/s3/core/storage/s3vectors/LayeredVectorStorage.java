@@ -1,5 +1,6 @@
 package com.robothy.s3.core.storage.s3vectors;
 
+import java.nio.FloatBuffer;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,6 +47,15 @@ class LayeredVectorStorage implements VectorStorage {
       return vectorData;
     }
     return back.getVectorData(storageId);
+  }
+
+  @Override
+  public FloatBuffer getVectorDataView(Long storageId) {
+    FloatBuffer vectorData = front.getVectorDataView(storageId);
+    if (vectorData != null || isDeletedFromBack(storageId)) {
+      return vectorData;
+    }
+    return back.getVectorDataView(storageId);
   }
 
   @Override

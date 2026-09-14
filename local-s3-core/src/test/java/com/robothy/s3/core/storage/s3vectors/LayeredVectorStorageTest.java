@@ -18,9 +18,9 @@ class LayeredVectorStorageTest {
 
   @Test
   void storesInTheFrontAndReadsTheBack() {
-    Long fromBack = VectorStorage.createFileSystem(tempDir, 10).putVectorData(new float[] {1.0f, 2.0f});
+    Long fromBack = VectorStorage.createFileSystem(tempDir).putVectorData(new float[] {1.0f, 2.0f});
     VectorStorage storage = VectorStorage.createLayered(VectorStorage.createInMemory(),
-        VectorStorage.createReadOnlyFileSystem(tempDir, 10));
+        VectorStorage.createReadOnlyFileSystem(tempDir));
 
     Long fromFront = storage.putVectorData(new float[] {3.0f, 4.0f});
 
@@ -34,10 +34,10 @@ class LayeredVectorStorageTest {
 
   @Test
   void deletingAVectorOfTheBackHidesIt() {
-    VectorStorage back = VectorStorage.createFileSystem(tempDir, 10);
+    VectorStorage back = VectorStorage.createFileSystem(tempDir);
     Long fromBack = back.putVectorData(new float[] {1.0f, 2.0f});
     VectorStorage storage = VectorStorage.createLayered(VectorStorage.createInMemory(),
-        VectorStorage.createReadOnlyFileSystem(tempDir, 10));
+        VectorStorage.createReadOnlyFileSystem(tempDir));
     Long fromFront = storage.putVectorData(new float[] {3.0f, 4.0f});
 
     assertTrue(storage.deleteVectorData(fromBack));
