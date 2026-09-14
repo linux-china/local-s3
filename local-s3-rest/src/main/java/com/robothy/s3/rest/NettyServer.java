@@ -122,9 +122,6 @@ final class NettyServer {
     }
 
     /**
-     * The port the server listens on, which is the random one that was bound if port {@code 0} was requested.
-     */
-    /**
      * The number of requests whose responses aren't written yet.
      */
     int inFlightRequests() {
