@@ -78,6 +78,13 @@ public @interface LocalS3 {
   String dataPath() default "";
 
   /**
+   * default buckets
+   *
+   * @return default buckets
+   */
+  String[] buckets() default {};
+
+  /**
    * Set the data path supplier class for LocalS3 service. The class implements
    * the {@linkplain DataPathSupplier} interface and must have a no-args constructor.
    * This option is used fot the scenario that the data path is generated dynamically.

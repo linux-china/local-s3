@@ -118,6 +118,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     com.robothy.s3.rest.LocalS3.Builder builder = com.robothy.s3.rest.LocalS3.builder()
         .port(s3Config.port())
         .mode(s3Config.mode())
+        .buckets(s3Config.buckets())
         .initialDataCacheEnabled(s3Config.initialDataCacheEnabled())
         .strictBucketNames(s3Config.strictBucketNames())
         .strictPartSizes(s3Config.strictPartSizes())
