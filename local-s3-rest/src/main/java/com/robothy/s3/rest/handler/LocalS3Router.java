@@ -208,7 +208,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   private boolean requiresAuthentication(HttpRequest request) {
     // Neither health checks nor the CORS preflight requests of browsers are signed.
-    return signatureVerifier != null && !isHealthCheck(request) && !isAdminCheck(request) && !isPreflight(request);
+    return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request);
   }
 
   /**
@@ -236,13 +236,6 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
         && HEALTH_CHECK_PATH.equals(trimPath(request.getPath()));
   }
-
-  private boolean isAdminCheck(HttpRequest request) {
-    HttpMethod method = request.getMethod();
-    return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
-            && trimPath(request.getPath()).startsWith(ADMIN_OPS_PATH);
-  }
-
 
   Optional<Map<String, List<Route>>> matchMethod(HttpMethod method) {
     return Optional.ofNullable(this.rules.get(method));
