@@ -200,6 +200,123 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   /**
+   * The event loop only queues the chunks of a body that is buffered in a file: the file is written on the body file
+   * executor, and the request is handed on once the file is complete.
+   */
+  @Test
+  void writesBodyFilesOnTheExecutor() throws IOException {
+    RequestBodyFileTest.ManualExecutor executor = new RequestBodyFileTest.ManualExecutor();
+    EmbeddedChannel async = asyncChannel(executor);
+    try {
+      long bodyFiles = countBodyFiles();
+      byte[] content = randomBytes(100);
+      async.writeInbound(request(content.length), content(content, 0, 30), last(content, 30, 100));
+
+      assertEquals(bodyFiles, countBodyFiles(), "The event loop doesn't touch the disk.");
+      assertNull(async.readInbound(), "The request waits for its body file.");
+      assertFalse(async.config().isAutoRead(), "The connection isn't read until the body file is complete.");
+
+      executor.runAll();
+      async.runPendingTasks();
+      HttpRequest decoded = async.readInbound();
+      try {
+        assertInstanceOf(MappedFileByteBuf.class, decoded.getBody());
+        assertArrayEquals(content, bytes(decoded.getBody()));
+      } finally {
+        decoded.getBody().release();
+      }
+      assertTrue(async.config().isAutoRead());
+    } finally {
+      async.finishAndReleaseAll();
+    }
+  }
+
+  /**
+   * The messages decoded while a body file is completed, e.g. a pipelined request, are decoded after the request, so
+   * that the requests of a connection keep their order.
+   */
+  @Test
+  void keepsTheOrderOfPipelinedRequests() {
+    RequestBodyFileTest.ManualExecutor executor = new RequestBodyFileTest.ManualExecutor();
+    EmbeddedChannel async = asyncChannel(executor);
+    try {
+      byte[] large = randomBytes(100);
+      byte[] small = randomBytes(8);
+      DefaultHttpRequest second = request(small.length);
+      second.setUri("/bucket/second");
+      DefaultLastHttpContent secondBody = last(small, 0, small.length);
+      async.writeInbound(request(large.length), last(large, 0, large.length), second, secondBody);
+      assertNull(async.readInbound());
+      assertEquals(1, secondBody.refCnt(), "The held message is kept until it is decoded.");
+
+      executor.runAll();
+      async.runPendingTasks();
+
+      HttpRequest first = async.readInbound();
+      HttpRequest next = async.readInbound();
+      try {
+        assertEquals("/bucket/key", first.getUri());
+        assertArrayEquals(large, bytes(first.getBody()));
+        assertEquals("/bucket/second", next.getUri());
+        assertArrayEquals(small, bytes(next.getBody()));
+      } finally {
+        first.getBody().release();
+        next.getBody().release();
+      }
+      assertEquals(0, secondBody.refCnt());
+    } finally {
+      async.finishAndReleaseAll();
+    }
+  }
+
+  /**
+   * While more bytes wait to be written than the high water mark, the connection isn't read, so that a client that
+   * sends faster than the disk writes doesn't fill the memory.
+   */
+  @Test
+  void stopsReadingWhileTheBodyFileIsBacklogged() {
+    RequestBodyFileTest.ManualExecutor executor = new RequestBodyFileTest.ManualExecutor();
+    int size = (int) RequestBodyFile.HIGH_WATER_MARK + 2;
+    EmbeddedChannel async = new EmbeddedChannel(new LocalS3HttpRequestDecoder(size, FILE_THRESHOLD, new XmlMapper(),
+        RequestHeadVerifier.ACCEPT_ALL, null, executor));
+    try {
+      byte[] content = new byte[size];
+      async.writeInbound(request(size), content(content, 0, size - 1));
+      assertFalse(async.config().isAutoRead());
+
+      executor.runAll();
+      async.runPendingTasks();
+      assertTrue(async.config().isAutoRead(), "Reading resumes once the queued bytes are written.");
+
+      async.writeInbound(last(content, size - 1, size));
+      executor.runAll();
+      async.runPendingTasks();
+      HttpRequest decoded = async.readInbound();
+      assertEquals(size, decoded.getBody().readableBytes());
+      decoded.getBody().release();
+    } finally {
+      async.finishAndReleaseAll();
+    }
+  }
+
+  /**
+   * A body that fails to be written, e.g. because the disk is full, is answered with an S3 error.
+   */
+  @Test
+  void answersABodyThatFailsToBeWrittenWithAnInternalError(@TempDir Path directory) {
+    RequestBodyFileTest.ManualExecutor executor = new RequestBodyFileTest.ManualExecutor();
+    EmbeddedChannel failing = new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD,
+        new XmlMapper(), RequestHeadVerifier.ACCEPT_ALL, directory.resolve("missing"), executor));
+    byte[] content = randomBytes(100);
+    failing.writeInbound(request(content.length), last(content, 0, content.length));
+
+    executor.runAll();
+    failing.runPendingTasks();
+
+    assertRejected(failing, S3ErrorCode.InternalError);
+  }
+
+  /**
    * AWS Signature Version 4 signs a repeated header with its values joined by commas, in the order they were
    * received, so keeping only the last value makes the signature of such a request mismatch.
    */
@@ -220,6 +337,11 @@ class LocalS3HttpRequestDecoderTest {
     } finally {
       decoded.getBody().release();
     }
+  }
+
+  private static EmbeddedChannel asyncChannel(RequestBodyFileTest.ManualExecutor executor) {
+    return new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD, new XmlMapper(),
+        RequestHeadVerifier.ACCEPT_ALL, null, executor));
   }
 
   private ByteBuf readBody() {

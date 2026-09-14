@@ -98,7 +98,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     // Received bytes may still hold pipelined requests, but no more is read until the connection is idle again.
-    ctx.channel().config().setAutoRead(false);
+    ReadSuspensions.suspend(ctx.channel(), this);
     pendingRequests.add(request);
     handleNext(ctx);
   }
@@ -112,9 +112,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     }
     HttpRequest request = pendingRequests.poll();
     if (request == null) {
-      if (ctx.channel().isActive()) {
-        ctx.channel().config().setAutoRead(true);
-      }
+      ReadSuspensions.resume(ctx.channel(), this);
       return;
     }
 

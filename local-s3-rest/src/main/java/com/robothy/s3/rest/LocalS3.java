@@ -817,7 +817,9 @@ public class LocalS3 implements AutoCloseable {
          *
          * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
          * this is the number of requests handled at the same time. The requests of one connection are still
-         * handled one after another, in the order they were received. Default value is
+         * handled one after another, in the order they were received. The threads also write the request bodies
+         * that are buffered in temporary files, see {@linkplain #requestBodyFileThreshold(long)}, one batch at a
+         * time, so the event loops never wait for the disk. Default value is
          * {@linkplain LocalS3#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
          *
          * @param s3ExecutorThreadNum local-s3 executor thread number.
@@ -870,7 +872,9 @@ public class LocalS3 implements AutoCloseable {
          * Java heap. The file is memory-mapped while the request is handled, so large uploads take neither
          * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
          * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
-         * file, so that its content isn't written a second time. Default value is
+         * file, so that its content isn't written a second time. The file is written on the request executor, not on
+         * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
+         * read, so neither memory nor the other connections of the event loop are affected. Default value is
          * {@linkplain LocalS3#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
          * request bodies on the heap.
          *

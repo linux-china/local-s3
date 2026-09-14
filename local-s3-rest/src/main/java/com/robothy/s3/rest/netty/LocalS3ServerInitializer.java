@@ -18,7 +18,8 @@ import java.util.concurrent.Executor;
  * <p>HTTP parsing, request aggregation, encoding and chunked writing run on the channel's event loop, so that
  * a connection stops reading, and its client sending, while a request is handled, instead of queuing the body
  * of the next request for a busy thread. Routing and handling run on {@code executor}, which all connections
- * share; see {@linkplain LocalS3HttpMessageHandler}.
+ * share; see {@linkplain LocalS3HttpMessageHandler}. So do the writes of the request bodies that are buffered in
+ * temporary files, so that an event loop never waits for the disk; see {@linkplain LocalS3HttpRequestDecoder}.
  */
 public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -78,7 +79,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     /**
      * Create a channel initializer.
      *
-     * @param executor                     executes request handling, shared by all connections.
+     * @param executor                     executes request handling and writes the temporary request body files,
+     *                                     shared by all connections.
      * @param router                       routes requests to handlers.
      * @param xmlMapper                    renders S3 errors.
      * @param maxRequestBodySize           max request body size in bytes.
@@ -120,7 +122,7 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         RequestHeadVerifier headVerifier = router instanceof RequestHeadVerifier verifier ? verifier : RequestHeadVerifier.ACCEPT_ALL;
         ch.pipeline()
                 .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
-                        requestBodyFileThreshold, xmlMapper, headVerifier, requestBodyFileDirectory))
+                        requestBodyFileThreshold, xmlMapper, headVerifier, requestBodyFileDirectory, executor))
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests));
     }

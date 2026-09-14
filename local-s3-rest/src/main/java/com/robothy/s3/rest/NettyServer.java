@@ -126,9 +126,10 @@ final class NettyServer {
     }
 
     /**
-     * Create the executor that handles the requests of all connections: a virtual thread per request, or a pool of
-     * platform threads. The queue of the pool holds at most one request per connection, as a connection stops reading
-     * while its request is in flight.
+     * Create the executor that handles the requests of all connections, and writes the bodies that are buffered in
+     * temporary files: a virtual thread per task, or a pool of platform threads. The queue of the pool holds at most one
+     * request, or one write of its body, per connection, as a connection stops reading while its request is in flight,
+     * and writes its body one batch after the other.
      */
     private ExecutorService createExecutor() {
         ThreadFactory threadFactory = config.isVirtualThreads()

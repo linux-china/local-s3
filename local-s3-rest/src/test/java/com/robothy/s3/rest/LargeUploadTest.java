@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.io.IOException;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -49,6 +51,39 @@ class LargeUploadTest {
       assertEquals(1, countFiles(storageDirectory), "The object is stored once.");
       assertEquals(0, countFiles(storageDirectory.resolve(LocalS3.REQUEST_BODY_DIRECTORY)),
           "The body file was renamed into place.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * The body file of an upload is written off the event loop; a request pipelined after the upload on the same
+   * connection is still answered after it, and sees the uploaded object.
+   */
+  @ParameterizedTest
+  @EnumSource(LocalS3Mode.class)
+  void answersARequestPipelinedAfterAnUploadInOrder(LocalS3Mode mode, @TempDir Path dataPath) throws Exception {
+    LocalS3 localS3 = start(mode, dataPath);
+    try {
+      // Larger than the high water mark of a body file, so that reading is suspended while the file is written.
+      byte[] content = randomBytes(6 * 1024 * 1024);
+      byte[] head = ("PUT /bucket/pipelined HTTP/1.1\r\nHost: localhost\r\nContent-Length: " + content.length
+          + "\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1);
+      byte[] get = "GET /bucket/pipelined HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+          .getBytes(StandardCharsets.ISO_8859_1);
+      try (Socket socket = new Socket("127.0.0.1", localS3.getPort())) {
+        socket.setSoTimeout(30_000);
+        socket.getOutputStream().write(concat(head, content, get));
+        socket.getOutputStream().flush();
+        byte[] responses = socket.getInputStream().readAllBytes();
+
+        String text = new String(responses, StandardCharsets.ISO_8859_1);
+        assertTrue(text.startsWith("HTTP/1.1 200 "), text.substring(0, Math.min(200, text.length())));
+        int second = text.indexOf("HTTP/1.1 200 ", 1);
+        assertTrue(second > 0, "The pipelined GET is answered after the PUT.");
+        int bodyStart = text.indexOf("\r\n\r\n", second) + 4;
+        assertArrayEquals(content, Arrays.copyOfRange(responses, bodyStart, responses.length));
+      }
     } finally {
       localS3.shutdown();
     }
