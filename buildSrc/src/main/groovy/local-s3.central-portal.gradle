@@ -1,3 +1,8 @@
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
+
 plugins {
     id 'org.danilopianini.publish-on-central'
 }
@@ -14,7 +19,7 @@ publishOnCentral {
     projectUrl.set("https://github.com/Robothy/local-s3")
     scmConnection.set("scm:git:https://github.com/Robothy/local-s3")
     licenseName.set('Apache License, Version 2.0')
-    licenseUrl.set('http://www.apache.org/licenses/LICENSE-2.0')
+    licenseUrl.set('https://www.apache.org/licenses/LICENSE-2.0')
 }
 
 publishing {
@@ -72,19 +77,19 @@ tasks.register('uploadMavenCentralPortal') {
         logger.lifecycle("Uploading ${zipFile.name} (${zipFile.length()} bytes) to Maven Central Portal...")
         logger.lifecycle("Publishing type: ${publishingType}, timeout: ${uploadTimeoutMinutes} minutes")
 
-        def client = java.net.http.HttpClient.newBuilder()
-            .connectTimeout(java.time.Duration.ofMinutes(5))
+        def client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofMinutes(5))
             .build()
 
-        def request = java.net.http.HttpRequest.newBuilder()
+        def request = HttpRequest.newBuilder()
             .uri(URI.create(uploadUrl))
             .header("Authorization", "Bearer ${token}")
             .header("Content-Type", "multipart/form-data; boundary=${boundary}")
-            .timeout(java.time.Duration.ofMinutes(uploadTimeoutMinutes))
-            .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(baos.toByteArray()))
+            .timeout(Duration.ofMinutes(uploadTimeoutMinutes))
+            .POST(HttpRequest.BodyPublishers.ofByteArray(baos.toByteArray()))
             .build()
 
-        def response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+        def response = client.send(request, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() == 201) {
             logger.lifecycle("Upload successful! Deployment ID: ${response.body()}")
