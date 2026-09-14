@@ -1,0 +1,541 @@
+package com.robothy.s3.rest;
+
+import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import com.robothy.s3.rest.listener.BucketEventListener;
+import com.robothy.s3.rest.listener.ObjectEventListener;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.Executor;
+import java.util.function.UnaryOperator;
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Builds {@linkplain LocalS3} instances, and the {@linkplain LocalS3Config} they are created from. A builder can build
+ * several instances; changing it afterwards doesn't affect the instances already built.
+ */
+public class LocalS3Builder {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalS3.class);
+
+    /**
+     * Create a builder with the defaults of an embedded service; {@linkplain LocalS3#builder()} is the usual way.
+     */
+    public LocalS3Builder() {
+    }
+
+    private String bindHost = "127.0.0.1";
+
+    private int port = 29090;
+
+    private Path dataPath;
+
+    private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
+
+    private final List<String> defaultBuckets = new ArrayList<>();
+
+    private BucketEventListener bucketEventListener;
+
+    private ObjectEventListener objectEventListener;
+
+    private Executor eventListenerExecutor = Runnable::run;
+
+    private boolean initialDataCacheEnabled = true;
+
+    private boolean daemonThreads = true;
+
+    private boolean registerShutdownHook = true;
+
+    private int nettyParentEventGroupThreadNum = LocalS3Config.DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM;
+
+    private int nettyChildEventGroupThreadNum = LocalS3Config.DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM;
+
+    private int s3ExecutorThreadNum = LocalS3Config.DEFAULT_S3_EXECUTOR_THREAD_NUM;
+
+    private boolean virtualThreads = true;
+
+    private String accessKeyId;
+
+    private String secretAccessKey;
+
+    private long maxRequestBodySize = LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE;
+
+    private long requestBodyFileThreshold = LocalS3Config.DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+
+    private int maxRequestHeaderSize = LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE;
+
+    private long idleConnectionTimeoutSeconds = LocalS3Config.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
+
+    private boolean strictBucketNames;
+
+    private boolean strictPartSizes;
+
+    private boolean compositeMultipartEtags = true;
+
+    private final List<String> virtualHostDomains = new ArrayList<>();
+
+    /**
+     * Set the host that local-s3 service listens on.
+     * The default value is {@code 127.0.0.1}, and local only,
+     * and {@code 0.0.0.0} makes the service accessible through all network interfaces.
+     *
+     * @param bindHost host or IP address to bind.
+     * @return builder.
+     */
+    public LocalS3Builder bindHost(@NonNull String bindHost) {
+        if (bindHost.isBlank()) {
+            throw new IllegalArgumentException("bindHost must not be blank.");
+        }
+        this.bindHost = bindHost;
+        return this;
+    }
+
+    public LocalS3Builder acceptFromAnyHost() {
+        this.bindHost = "0.0.0.0";
+        return this;
+    }
+
+    /**
+     * Set the port that local-s3 service listen to. Default port is 29090.
+     * Set the value to {@code -1} or {@code 0} to bind a random free port, which
+     * {@linkplain LocalS3#getPort()} returns once the service is started.
+     *
+     * @param port customized port.
+     * @return builder.
+     */
+    public LocalS3Builder port(int port) {
+        if (port > 65535) {
+            throw new IllegalArgumentException("port must not be greater than 65535.");
+        }
+        // Binding port 0 lets the OS pick a free port, with no window for another process to take it.
+        this.port = Math.max(port, 0);
+        return this;
+    }
+
+    /**
+     * Set the LocalS3 data directory. The default value is {@code null},
+     * while data is stored in Java Heap.
+     *
+     * @param dataPath data path.
+     * @return builder.
+     */
+    public LocalS3Builder dataPath(@NonNull String dataPath) {
+        this.dataPath = Paths.get(dataPath);
+        return this;
+    }
+
+    /**
+     * Set default buckets
+     *
+     * @param buckets LocalS3 buckets
+     * @return builder.
+     */
+    public LocalS3Builder buckets(String... buckets) {
+        if (buckets != null) {
+            for (String bucket : buckets) {
+                // Tolerate lists like "a, b," as split from the AWS_BUCKETS environment variable.
+                if (bucket != null && !bucket.isBlank()) {
+                    this.defaultBuckets.add(bucket.trim());
+                }
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Set LocalS3 service running mode. Default value is {@code IN_MEMORY}.
+     *
+     * @param mode LocalS3 service running mode.
+     * @return builder.
+     */
+    public LocalS3Builder mode(@NonNull LocalS3Mode mode) {
+        this.mode = mode;
+        return this;
+    }
+
+    /**
+     * Set the executor that delivers events to the bucket and object event listeners.
+     *
+     * <p>By default, listeners run synchronously on the thread handling the request, so an event is
+     * delivered before the S3 response is sent. Pass an executor, e.g.
+     * {@code Executors.newSingleThreadExecutor()}, to deliver events asynchronously so that slow listeners
+     * don't hold up request handling; a single-threaded executor keeps the events in order. LocalS3 does not
+     * shut the executor down.
+     *
+     * <p>Either way, an exception thrown by a listener is logged and does not fail the S3 request.
+     *
+     * @param eventListenerExecutor executor that runs the event listeners.
+     * @return builder.
+     */
+    public LocalS3Builder eventListenerExecutor(@NonNull Executor eventListenerExecutor) {
+        this.eventListenerExecutor = Objects.requireNonNull(eventListenerExecutor);
+        return this;
+    }
+
+    /**
+     * Set bucket event listener
+     *
+     * @param bucketEventListener bucket event listener
+     * @return builder.
+     */
+    public LocalS3Builder bucketEventListener(@NonNull BucketEventListener bucketEventListener) {
+        this.bucketEventListener = bucketEventListener;
+        return this;
+    }
+
+    /**
+     * Set object event listener
+     *
+     * @param objectEventListener bucket event listener
+     * @return builder.
+     */
+    public LocalS3Builder objectEventListener(@NonNull ObjectEventListener objectEventListener) {
+        this.objectEventListener = objectEventListener;
+        return this;
+    }
+
+    /**
+     * This option only available when running LocalS3 in {@code IN_MEMORY} mode
+     * with initial data. If initial data cache is enabled, LocalS3 caches the
+     * accessed initial data in memory. This could reduce dist I/O when running
+     * tests with initial data in the same path.
+     *
+     * <p> The default value is {@code true}.
+     *
+     * @param enabled is the initial data cache enabled.
+     * @return if the initial data cache enabled.
+     */
+    public LocalS3Builder initialDataCacheEnabled(boolean enabled) {
+        this.initialDataCacheEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Set whether the threads that serve the requests are daemon threads.
+     *
+     * <p>The default value is {@code true}, so that a service that isn't {@linkplain LocalS3#shutdown() shut
+     * down}, e.g. by a test that forgets to, doesn't keep the JVM alive; the shutdown hook stops the
+     * service while the JVM exits. Set it to {@code false} to run LocalS3 as a standalone server, whose
+     * {@code main} starts the service and returns: only non-daemon threads keep such a JVM running.
+     *
+     * @param daemonThreads whether the threads that serve the requests are daemon threads.
+     * @return builder.
+     */
+    public LocalS3Builder daemonThreads(boolean daemonThreads) {
+        this.daemonThreads = daemonThreads;
+        return this;
+    }
+
+    /**
+     * Set whether {@linkplain LocalS3#start()} registers a JVM shutdown hook. The default is {@code true}.
+     * Disable it when the LocalS3 lifecycle is managed by a host such as an IDE plugin or Spring container,
+     * and ensure that the host calls {@linkplain LocalS3#shutdown()} or {@linkplain LocalS3#close()}.
+     *
+     * @param registerShutdownHook whether to register a JVM shutdown hook when the service starts.
+     * @return builder.
+     */
+    public LocalS3Builder registerShutdownHook(boolean registerShutdownHook) {
+        this.registerShutdownHook = registerShutdownHook;
+        return this;
+    }
+
+    /**
+     * Set the number of threads that accept connections. Default value is
+     * {@linkplain LocalS3Config#DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM}.
+     *
+     * @param nettyParentEventGroupThreadNum netty parent event group thread number.
+     * @return builder.
+     */
+    public LocalS3Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
+        this.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
+        return this;
+    }
+
+    /**
+     * Set the number of threads that read and write the connections. Netty binds a connection to one
+     * thread of this group for its whole life, and the HTTP parsing of every connection bound to a thread
+     * waits while that thread works. The body of a {@code GetObject} response is read from the storage on
+     * this thread as it is written to the connection, so serving a large object holds it for a while;
+     * raise this value to serve more connections at once. Default value is
+     * {@linkplain LocalS3Config#DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM}.
+     *
+     * @param nettyChildEventGroupThreadNum netty child event group thread number.
+     * @return builder.
+     */
+    public LocalS3Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
+        this.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
+        return this;
+    }
+
+    /**
+     * Set the number of platform threads that handle the requests, where the S3 operations and their storage
+     * I/O run, when {@linkplain #virtualThreads(boolean) virtual threads} are disabled.
+     *
+     * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
+     * this is the number of requests handled at the same time. The requests of one connection are still
+     * handled one after another, in the order they were received. The threads also write the request bodies
+     * that are buffered in temporary files, see {@linkplain #requestBodyFileThreshold(long)}, one batch at a
+     * time, so the event loops never wait for the disk. Default value is
+     * {@linkplain LocalS3Config#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
+     *
+     * @param s3ExecutorThreadNum local-s3 executor thread number.
+     * @return builder.
+     */
+    public LocalS3Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
+        this.s3ExecutorThreadNum = s3ExecutorThreadNum;
+        return this;
+    }
+
+    /**
+     * Set whether every request is handled on a virtual thread of its own, rather than on a pool of
+     * {@linkplain #s3ExecutorThreadNum(int) platform threads}.
+     *
+     * <p>Handling a request mostly waits, for the storage and for the locks of a bucket, so a virtual thread per
+     * request handles as many requests at once as there are connections, without a pool whose size depends on
+     * the processors of the machine, e.g. a CI machine with two of them. The requests of one connection are still
+     * handled one after another. Virtual threads are always daemon threads.
+     *
+     * <p>The default value is {@code true}.
+     *
+     * @param virtualThreads whether requests are handled on virtual threads.
+     * @return builder.
+     */
+    public LocalS3Builder virtualThreads(boolean virtualThreads) {
+        this.virtualThreads = virtualThreads;
+        return this;
+    }
+
+    /**
+     * Set the max size in bytes of a request body. Request bodies are held in memory, or memory-mapped
+     * above {@linkplain #requestBodyFileThreshold(long)}, while a request is handled, so this bounds
+     * the memory a single request can take. A request exceeding the limit
+     * is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
+     * multipart upload instead. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}.
+     *
+     * @param maxRequestBodySize max request body size in bytes, between 1 and {@linkplain Integer#MAX_VALUE}.
+     * @return builder.
+     */
+    public LocalS3Builder maxRequestBodySize(long maxRequestBodySize) {
+        LocalS3Config.requireMaxRequestBodySize(maxRequestBodySize);
+        this.maxRequestBodySize = maxRequestBodySize;
+        return this;
+    }
+
+    /**
+     * Set the size in bytes above which a request body is buffered in a temporary file instead of the
+     * Java heap. The file is memory-mapped while the request is handled, so large uploads take neither
+     * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
+     * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
+     * file, so that its content isn't written a second time. The file is written on the request executor, not on
+     * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
+     * read, so neither memory nor the other connections of the event loop are affected. Default value is
+     * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
+     * request bodies on the heap.
+     *
+     * @param requestBodyFileThreshold size in bytes, not negative.
+     * @return builder.
+     */
+    public LocalS3Builder requestBodyFileThreshold(long requestBodyFileThreshold) {
+        LocalS3Config.requireRequestBodyFileThreshold(requestBodyFileThreshold);
+        this.requestBodyFileThreshold = requestBodyFileThreshold;
+        return this;
+    }
+
+    /**
+     * Set the max size in bytes of the header section of a request, i.e. of all its header lines. A request
+     * whose headers exceed it is answered with {@code 400 RequestHeaderSectionTooLarge}, and its connection is
+     * closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
+     *
+     * @param maxRequestHeaderSize max request header size in bytes, positive.
+     * @return builder.
+     */
+    public LocalS3Builder maxRequestHeaderSize(int maxRequestHeaderSize) {
+        LocalS3Config.requireMaxRequestHeaderSize(maxRequestHeaderSize);
+        this.maxRequestHeaderSize = maxRequestHeaderSize;
+        return this;
+    }
+
+    /**
+     * Set the seconds after which a connection without reads or writes is closed. A connection with a
+     * request in flight is never closed. Default value is
+     * {@linkplain LocalS3Config#DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS}; {@code 0} never closes idle connections.
+     *
+     * @param idleConnectionTimeoutSeconds idle connection timeout in seconds, not negative.
+     * @return builder.
+     */
+    public LocalS3Builder idleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
+        LocalS3Config.requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
+        this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
+        return this;
+    }
+
+    /**
+     * Set whether the names of new buckets must follow the
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">naming rules</a>
+     * of Amazon S3 general purpose buckets, e.g. 3 to 63 lowercase letters, numbers, periods and hyphens.
+     * Creating a bucket with another name then fails with {@code InvalidBucketName}, so that tests don't pass
+     * with bucket names that Amazon S3 rejects. Existing buckets stay accessible.
+     *
+     * <p>The default value is {@code false}, which accepts any non-blank bucket name.
+     *
+     * @param strictBucketNames whether to validate bucket names strictly.
+     * @return builder.
+     */
+    public LocalS3Builder strictBucketNames(boolean strictBucketNames) {
+        this.strictBucketNames = strictBucketNames;
+        return this;
+    }
+
+    /**
+     * Set whether every part of a multipart upload but the last one must be at least 5 MiB, the
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html">minimum part size</a> of
+     * Amazon S3. Completing an upload with a smaller part then fails with {@code EntityTooSmall}, so that
+     * tests don't pass with a part layout that Amazon S3 rejects. The last part may be any size, and so may
+     * the single part of an upload that has only one.
+     *
+     * <p>The default value is {@code false}, which accepts parts of any size, so that tests that upload
+     * small parts keep working.
+     *
+     * @param strictPartSizes whether to validate part sizes strictly.
+     * @return builder.
+     */
+    public LocalS3Builder strictPartSizes(boolean strictPartSizes) {
+        this.strictPartSizes = strictPartSizes;
+        return this;
+    }
+
+    /**
+     * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an
+     * object uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by
+     * {@code -} and the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The
+     * {@code -<parts>} suffix is what a client reads the part layout of an object off, so code that tells
+     * an object uploaded in parts from one uploaded at once, e.g. to decide whether the entity tag may be
+     * compared with the MD5 of a local file, takes the same branch as against Amazon S3.
+     *
+     * <p>The default value is {@code true}. Pass {@code false} to give the object the MD5 digest of its
+     * whole content instead, which is what LocalS3 gave it before 2.5, e.g. for a test that asserts that
+     * entity tag.
+     *
+     * @param compositeMultipartEtags whether to give the objects of completed uploads the entity tag of
+     *     Amazon S3.
+     * @return builder.
+     */
+    public LocalS3Builder compositeMultipartEtags(boolean compositeMultipartEtags) {
+        this.compositeMultipartEtags = compositeMultipartEtags;
+        return this;
+    }
+
+    /**
+     * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
+     * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
+     * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
+     * service name in docker-compose. {@code localhost}, {@code 127.0.0.1} and {@code 0.0.0.0} are always
+     * base domains; hosts of Amazon S3 ({@code amazonaws.com}), of Alibaba Cloud OSS ({@code aliyuncs.com},
+     * e.g. {@code my-bucket.oss-cn-hangzhou.aliyuncs.com}) and of Cloudflare R2 ({@code r2.cloudflarestorage.com},
+     * e.g. {@code my-bucket.<account-id>.r2.cloudflarestorage.com}) and of Tigris ({@code my-bucket.t3.storage.dev},
+     * {@code my-bucket.fly.storage.tigris.dev}) are supported as well.
+     *
+     * @param domains base domains, e.g. {@code s3} or {@code s3.local}.
+     * @return builder.
+     */
+    public LocalS3Builder virtualHostDomains(String... domains) {
+        if (domains != null) {
+            for (String domain : domains) {
+                if (domain != null && !domain.isBlank()) {
+                    this.virtualHostDomains.add(domain.trim());
+                }
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Enable AWS Signature Version 4 authentication with a static access key pair.
+     *
+     * @param accessKeyId     access key ID accepted by the server.
+     * @param secretAccessKey secret access key used to verify request signatures.
+     * @return builder.
+     */
+    public LocalS3Builder credentials(@NonNull String accessKeyId, @NonNull String secretAccessKey) {
+        if (accessKeyId.isBlank()) {
+            throw new IllegalArgumentException("accessKeyId must not be blank.");
+        }
+        if (secretAccessKey.isBlank()) {
+            throw new IllegalArgumentException("secretAccessKey must not be blank.");
+        }
+        this.accessKeyId = accessKeyId;
+        this.secretAccessKey = secretAccessKey;
+        return this;
+    }
+
+    /**
+     * Configure the builder from the environment variables that the Docker image is configured with, read
+     * from the environment or, if a variable isn't set there, from the system property of the same name.
+     *
+     * <p>Only the variables that are set are applied, so the caller keeps its own defaults for everything
+     * else: a container applies its defaults, e.g. binding every interface, before calling this, while an
+     * embedded service or a test keeps the defaults of the builder. The variables are
+     * {@linkplain LocalS3Environment#LOCAL_S3_PORT}, {@linkplain LocalS3Environment#LOCAL_S3_HOST},
+     * {@linkplain LocalS3Environment#LOCAL_S3_MODE},
+     * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_STRICT_BUCKET_NAMES},
+     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_STRICT_PART_SIZES},
+     * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#AWS_BUCKETS},
+     * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
+     *
+     * @return builder.
+     * @throws IllegalArgumentException if a variable has an invalid value.
+     */
+    public LocalS3Builder fromEnvironment() {
+        return fromEnvironment(name -> Optional.ofNullable(System.getenv(name))
+                .orElseGet(() -> System.getProperty(name)));
+    }
+
+    /**
+     * Configure the builder from the variables that {@code variables} resolves by name, e.g. the entries of
+     * a configuration file or of a map in a test. A variable that resolves to {@code null} or to a blank
+     * value is not applied.
+     *
+     * @param variables resolves the value of a variable by name.
+     * @return builder.
+     * @throws IllegalArgumentException if a variable has an invalid value.
+     */
+    public LocalS3Builder fromEnvironment(@NonNull UnaryOperator<String> variables) {
+        LocalS3Environment.applyTo(this, variables);
+        return this;
+    }
+
+    /**
+     * Build the configuration of a {@linkplain LocalS3} service from the values set so far. Changing the builder
+     * afterwards doesn't change the configuration.
+     *
+     * @return the configuration.
+     */
+    public LocalS3Config buildConfig() {
+        return new LocalS3Config(bindHost, port, dataPath, mode, defaultBuckets, bucketEventListener,
+                objectEventListener, eventListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
+                nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
+                accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
+                idleConnectionTimeoutSeconds, strictBucketNames, strictPartSizes, compositeMultipartEtags,
+                virtualHostDomains);
+    }
+
+    /**
+     * Build a {@linkplain LocalS3} instance.
+     *
+     * @return created {@linkplain LocalS3} instance.
+     */
+    public LocalS3 build() {
+        LocalS3Config config = buildConfig();
+        log.debug("Build LocalS3 on {}:{} in {} mode, data path: {}, authentication: {}.", config.bindHost(),
+                config.port(), config.mode(), config.dataPath(), config.authenticationEnabled() ? "enabled" : "disabled");
+        return new LocalS3(config);
+    }
+
+}

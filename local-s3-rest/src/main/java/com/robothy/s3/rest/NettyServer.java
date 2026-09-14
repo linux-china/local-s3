@@ -46,7 +46,7 @@ final class NettyServer {
      */
     static final String EXECUTOR_THREAD_NAME = "locals3-executor-group";
 
-    private final LocalS3 config;
+    private final LocalS3Config config;
 
     private MultiThreadIoEventLoopGroup parentGroup;
 
@@ -66,15 +66,15 @@ final class NettyServer {
 
     private Channel serverSocketChannel;
 
-    private NettyServer(LocalS3 config) {
+    private NettyServer(LocalS3Config config) {
         this.config = config;
     }
 
     /**
      * Start a server. If it fails to start, what was started so far is stopped, and the original exception is thrown.
      *
-     * @param config                   the configuration of the server: its threads, and the limits of its requests.
-     * @param port                     the port to bind; {@code 0} binds a random free port.
+     * @param config                   the configuration of the server: the host and port to bind, its threads, and
+     *                                 the limits of its requests.
      * @param router                   routes the requests to their handlers.
      * @param xmlMapper                renders the errors of malformed requests.
      * @param requestBodyFileDirectory the directory that large request bodies are buffered in; {@code null} for the
@@ -82,11 +82,11 @@ final class NettyServer {
      * @param requestRecorder          receives the requests once their responses are written.
      * @return the started server.
      */
-    static NettyServer start(LocalS3 config, int port, Router router, XmlMapper xmlMapper,
+    static NettyServer start(LocalS3Config config, Router router, XmlMapper xmlMapper,
                              Path requestBodyFileDirectory, RequestRecorder requestRecorder) {
         NettyServer server = new NettyServer(config);
         try {
-            server.bind(port, router, xmlMapper, requestBodyFileDirectory, requestRecorder);
+            server.bind(config.port(), router, xmlMapper, requestBodyFileDirectory, requestRecorder);
         } catch (Throwable e) {
             server.stop();
             throw e;
@@ -96,11 +96,11 @@ final class NettyServer {
 
     private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory,
                       RequestRecorder requestRecorder) {
-        this.parentGroup = new MultiThreadIoEventLoopGroup(config.getNettyParentEventGroupThreadNum(),
-                new NamingThreadFactory("locals3-parent-event-group", config.isDaemonThreads()),
+        this.parentGroup = new MultiThreadIoEventLoopGroup(config.nettyParentEventGroupThreadNum(),
+                new NamingThreadFactory("locals3-parent-event-group", config.daemonThreads()),
                 NioIoHandler.newFactory());
-        this.childGroup = new MultiThreadIoEventLoopGroup(config.getNettyChildEventGroupThreadNum(),
-                new NamingThreadFactory("locals3-child-event-group", config.isDaemonThreads()),
+        this.childGroup = new MultiThreadIoEventLoopGroup(config.nettyChildEventGroupThreadNum(),
+                new NamingThreadFactory("locals3-child-event-group", config.daemonThreads()),
                 NioIoHandler.newFactory());
         this.executor = createExecutor();
         this.inFlightRequests = new InFlightRequests();
@@ -109,10 +109,10 @@ final class NettyServer {
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new LocalS3ServerInitializer(executor, router, xmlMapper,
-                            config.getMaxRequestBodySize(), config.getRequestBodyFileThreshold(),
-                            config.getIdleConnectionTimeoutSeconds(), config.getMaxRequestHeaderSize(),
+                            config.maxRequestBodySize(), config.requestBodyFileThreshold(),
+                            config.idleConnectionTimeoutSeconds(), config.maxRequestHeaderSize(),
                             requestBodyFileDirectory, inFlightRequests, requestRecorder))
-                    .bind(config.getBindHost(), port)
+                    .bind(config.bindHost(), port)
                     .sync()
                     .channel();
         } catch (InterruptedException e) {
@@ -143,9 +143,9 @@ final class NettyServer {
      * and writes its body one batch after the other.
      */
     private ExecutorService createExecutor() {
-        ThreadFactory threadFactory = config.isVirtualThreads()
+        ThreadFactory threadFactory = config.virtualThreads()
                 ? Thread.ofVirtual().name(EXECUTOR_THREAD_NAME + "-", 0).factory()
-                : new NamingThreadFactory(EXECUTOR_THREAD_NAME, config.isDaemonThreads());
+                : new NamingThreadFactory(EXECUTOR_THREAD_NAME, config.daemonThreads());
         // Every thread records itself while it runs, so that stopping from one of them doesn't wait for itself.
         ThreadFactory trackingThreadFactory = runnable -> threadFactory.newThread(() -> {
             executorThreads.add(Thread.currentThread());
@@ -155,10 +155,10 @@ final class NettyServer {
                 executorThreads.remove(Thread.currentThread());
             }
         });
-        if (config.isVirtualThreads()) {
+        if (config.virtualThreads()) {
             return Executors.newThreadPerTaskExecutor(trackingThreadFactory);
         }
-        int threads = config.getS3ExecutorThreadNum();
+        int threads = config.s3ExecutorThreadNum();
         return new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
                 trackingThreadFactory);
     }

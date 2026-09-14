@@ -79,13 +79,13 @@ class LocalS3Test {
         .build();
     assertEquals("127.0.0.1", loopbackOnly.getBindHost());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().bindHost(" "));
-    assertEquals(LocalS3.DEFAULT_MAX_REQUEST_BODY_SIZE, localS3.getMaxRequestBodySize());
+    assertEquals(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE, localS3.getMaxRequestBodySize());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(0));
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(Integer.MAX_VALUE + 1L));
-    assertEquals(LocalS3.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS, localS3.getIdleConnectionTimeoutSeconds());
+    assertEquals(LocalS3Config.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS, localS3.getIdleConnectionTimeoutSeconds());
     assertEquals(0, LocalS3.builder().idleConnectionTimeoutSeconds(0).build().getIdleConnectionTimeoutSeconds());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().idleConnectionTimeoutSeconds(-1));
-    assertEquals(LocalS3.DEFAULT_MAX_REQUEST_HEADER_SIZE, localS3.getMaxRequestHeaderSize());
+    assertEquals(LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE, localS3.getMaxRequestHeaderSize());
     assertEquals(4096, LocalS3.builder().maxRequestHeaderSize(4096).build().getMaxRequestHeaderSize());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestHeaderSize(0));
   }
@@ -248,7 +248,7 @@ class LocalS3Test {
 
   @Test
   void builtInstancesDontDependOnTheBuilder() {
-    LocalS3.Builder builder = LocalS3.builder().port(-1).buckets("first");
+    LocalS3Builder builder = LocalS3.builder().port(-1).buckets("first");
     LocalS3 first = builder.build();
     builder.bindHost("0.0.0.0").buckets("second");
     LocalS3 second = builder.build();
@@ -316,12 +316,12 @@ class LocalS3Test {
    */
   @Test
   void fromEnvironmentAppliesOnlyTheVariablesThatAreSet() {
-    Map<String, String> variables = Map.of(LocalS3.LOCAL_S3_PORT, "29500");
+    Map<String, String> variables = Map.of(LocalS3Environment.LOCAL_S3_PORT, "29500");
     LocalS3 localS3 = LocalS3.builder().fromEnvironment(variables::get).build();
 
     assertEquals(29500, localS3.getPort());
     assertTrue(localS3.isVirtualThreads());
-    assertFalse(LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_VIRTUAL_THREADS, "false")::get).build()
+    assertFalse(LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_VIRTUAL_THREADS, "false")::get).build()
         .isVirtualThreads());
     assertEquals("127.0.0.1", localS3.getBindHost(), "An embedded service stays local by default.");
     assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
@@ -337,8 +337,8 @@ class LocalS3Test {
   @Test
   void fromEnvironmentLetsTheModeWinOverTheDataPath() {
     Map<String, String> variables = Map.of(
-        LocalS3.LOCAL_S3_DATA_PATH, "/var/lib/local-s3",
-        LocalS3.LOCAL_S3_MODE, "in_memory");
+        LocalS3Environment.LOCAL_S3_DATA_PATH, "/var/lib/local-s3",
+        LocalS3Environment.LOCAL_S3_MODE, "in_memory");
     LocalS3 localS3 = LocalS3.builder().fromEnvironment(variables::get).build();
 
     assertEquals(Path.of("/var/lib/local-s3"), localS3.getDataPath());
@@ -348,11 +348,11 @@ class LocalS3Test {
   @Test
   void fromEnvironmentReadsTheBucketsAndTheVirtualHostDomains() {
     Map<String, String> variables = Map.of(
-        LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES, "true",
-        LocalS3.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
-        LocalS3.AWS_BUCKETS, "a, b,",
-        LocalS3.AWS_ACCESS_KEY_ID, "access-key-id",
-        LocalS3.AWS_SECRET_ACCESS_KEY, "secret-access-key");
+        LocalS3Environment.LOCAL_S3_STRICT_BUCKET_NAMES, "true",
+        LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
+        LocalS3Environment.AWS_BUCKETS, "a, b,",
+        LocalS3Environment.AWS_ACCESS_KEY_ID, "access-key-id",
+        LocalS3Environment.AWS_SECRET_ACCESS_KEY, "secret-access-key");
     LocalS3 localS3 = LocalS3.builder().port(-1).fromEnvironment(variables::get).build();
 
     assertTrue(localS3.isStrictBucketNames());
@@ -362,13 +362,13 @@ class LocalS3Test {
   @Test
   void fromEnvironmentRejectsInvalidValues() {
     assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_PORT, "65536")::get));
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_PORT, "65536")::get));
     assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_PORT, "http")::get));
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_PORT, "http")::get));
     assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.LOCAL_S3_MODE, "CLOUD")::get));
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_MODE, "CLOUD")::get));
     assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3.AWS_ACCESS_KEY_ID, "access-key-id")::get),
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.AWS_ACCESS_KEY_ID, "access-key-id")::get),
         "The access key ID and the secret access key are configured together.");
   }
 

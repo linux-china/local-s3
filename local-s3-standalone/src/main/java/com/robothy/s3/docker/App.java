@@ -1,6 +1,7 @@
 package com.robothy.s3.docker;
 
 import com.robothy.s3.rest.LocalS3;
+import com.robothy.s3.rest.LocalS3Builder;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class App {
      * @return a builder of the configured LocalS3 service.
      * @throws IllegalArgumentException if a variable has an invalid value.
      */
-    static LocalS3.Builder configure() {
+    static LocalS3Builder configure() {
         return LocalS3.builder()
                 // The defaults of the container, which differ from the defaults of an embedded service: it
                 // serves every interface and persists to a directory that is usually bind-mounted.

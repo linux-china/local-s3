@@ -506,10 +506,11 @@ The container is configured by environment variables:
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
-The same variables configure an embedded service, through `LocalS3.Builder.fromEnvironment()`, which reads them
+The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them
 from the environment or from the system properties of the same names. Only the variables that are set are
 applied, so the defaults of the embedded service are kept for the rest; the defaults in the table above are
-those of the image, which binds every interface and persists to `/data`.
+those of the image, which binds every interface and persists to `/data`. Their names are the constants of
+`LocalS3Environment`.
 
 ```java
 LocalS3 localS3 = LocalS3.builder()

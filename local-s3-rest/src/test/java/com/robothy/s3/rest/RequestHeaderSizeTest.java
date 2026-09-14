@@ -35,7 +35,7 @@ class RequestHeaderSizeTest {
       String accepted = put(localS3, 9 * 1024);
       assertTrue(accepted.startsWith("HTTP/1.1 200 "), accepted);
 
-      String rejected = put(localS3, LocalS3.DEFAULT_MAX_REQUEST_HEADER_SIZE + 1);
+      String rejected = put(localS3, LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE + 1);
       assertTrue(rejected.startsWith("HTTP/1.1 400 "), rejected);
       assertTrue(rejected.contains("<Code>RequestHeaderSectionTooLarge</Code>"), rejected);
     } finally {

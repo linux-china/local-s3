@@ -138,7 +138,7 @@ class LargeUploadTest {
   }
 
   private static LocalS3 start(LocalS3Mode mode, Path dataPath) {
-    LocalS3.Builder builder = LocalS3.builder()
+    LocalS3Builder builder = LocalS3.builder()
         .port(-1)
         .mode(mode)
         .buckets("bucket")

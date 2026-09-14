@@ -41,12 +41,12 @@ final class LocalS3Services {
   /**
    * Assemble the services of a service that is starting.
    *
-   * @param config the service being started, which carries the options its policies are built from.
+   * @param config the configuration of the service, which its policies are built from.
    * @param s3Manager the manager of the Amazon S3 data of the service.
    * @param vectorsManager the manager of the S3 Vectors data of the service.
    * @return the assembled factory.
    */
-  static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager) {
+  static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager) {
     return create(config, s3Manager, vectorsManager, null);
   }
 
@@ -54,14 +54,14 @@ final class LocalS3Services {
    * Assemble the services of a service that is starting. The events of the service aren't among them: the manager
    * delivers them to its change listeners, however its services are called.
    *
-   * @param config the service being started, which carries the options its policies are built from.
+   * @param config the configuration of the service, which its policies are built from.
    * @param s3Manager the manager of the Amazon S3 data of the service.
    * @param vectorsManager the manager of the S3 Vectors data of the service.
    * @param admin the administration of the service, which the {@code /_admin} endpoints answer through;
    *     {@code null} for none, which leaves the endpoints out.
    * @return the assembled factory.
    */
-  static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
+  static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
                                LocalS3Admin admin) {
     ServiceFactory serviceFactory = new DefaultServiceFactory();
 
@@ -70,12 +70,12 @@ final class LocalS3Services {
     serviceFactory.register(BucketService.class, () -> bucketService);
     serviceFactory.register(ObjectService.class, () -> objectService);
 
-    BucketNameValidator bucketNameValidator = new BucketNameValidator(config.isStrictBucketNames());
+    BucketNameValidator bucketNameValidator = new BucketNameValidator(config.strictBucketNames());
     serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
     MultipartUploadPolicy multipartUploadPolicy =
-        MultipartUploadPolicy.of(config.isStrictPartSizes(), config.isCompositeMultipartEtags());
+        MultipartUploadPolicy.of(config.strictPartSizes(), config.compositeMultipartEtags());
     serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
-    VirtualHostParser virtualHostParser = new VirtualHostParser(config.getVirtualHostDomains());
+    VirtualHostParser virtualHostParser = new VirtualHostParser(config.virtualHostDomains());
     serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
 
     XmlMapper xmlMapper = xmlMapper();
