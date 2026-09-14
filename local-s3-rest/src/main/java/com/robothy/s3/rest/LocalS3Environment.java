@@ -31,6 +31,7 @@ final class LocalS3Environment {
     // The data path is applied before the mode, because dataPath() switches to PERSISTENCE. An explicit
     // mode must win over that, so that IN_MEMORY with a path of initial data stays IN_MEMORY.
     variable(variables, LocalS3.LOCAL_S3_DATA_PATH).ifPresent(builder::dataPath);
+    variable(variables, LocalS3.LOCAL_S3_HOST).ifPresent(builder::bindHost);
     variable(variables, LocalS3.LOCAL_S3_MODE).ifPresent(modeName -> builder.mode(parseMode(modeName)));
     variable(variables, LocalS3.LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
     variable(variables, LocalS3.LOCAL_S3_STRICT_BUCKET_NAMES)

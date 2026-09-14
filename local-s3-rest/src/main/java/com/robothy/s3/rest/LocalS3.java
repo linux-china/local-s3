@@ -106,6 +106,8 @@ public class LocalS3 implements AutoCloseable {
 
     public static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
 
+    public static final String LOCAL_S3_HOST = "127.0.0.1";
+
     public static final String LOCAL_S3_MODE = "LOCAL_S3_MODE";
 
     public static final String LOCAL_S3_DATA_PATH = "LOCAL_S3_DATA_PATH";
@@ -1117,7 +1119,8 @@ public class LocalS3 implements AutoCloseable {
          * <p>Only the variables that are set are applied, so the caller keeps its own defaults for everything
          * else: a container applies its defaults, e.g. binding every interface, before calling this, while an
          * embedded service or a test keeps the defaults of the builder. The variables are
-         * {@linkplain LocalS3#LOCAL_S3_PORT}, {@linkplain LocalS3#LOCAL_S3_MODE},
+         * {@linkplain LocalS3#LOCAL_S3_PORT}, {@linkplain LocalS3#LOCAL_S3_PORT},
+         * {@linkplain LocalS3#LOCAL_S3_HOST}, {@linkplain LocalS3#LOCAL_S3_HOST},
          * {@linkplain LocalS3#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3#LOCAL_S3_STRICT_BUCKET_NAMES},
          * {@linkplain LocalS3#LOCAL_S3_VIRTUAL_THREADS},
          * {@linkplain LocalS3#LOCAL_S3_STRICT_PART_SIZES},
