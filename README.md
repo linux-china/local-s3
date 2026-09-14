@@ -556,7 +556,7 @@ curl -s -X POST http://localhost:29090/_admin/reset
 
 The latency of a request is measured from when its body is received until its response is written. The health check
 and the admin endpoints aren't recorded. Unlike the health check, the admin endpoints must be signed if credentials
-are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY"`.
+are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" http://localhost:29090/_admin/stats`.
 
 ### LocalS3 test container
 
