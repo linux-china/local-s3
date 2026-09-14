@@ -14,6 +14,11 @@ dependencies {
     // The async client of the AWS SDK needs an async HTTP client; the S3AsyncClient bean backs off without it.
     implementation(libs.awssdkNettyNioClient)
 
+    // The Netty modules of the netty-nio-client of the AWS SDK at LocalS3's version, nearer to a Maven consumer than
+    // the ones of the AWS SDK; see local-s3-rest/build.gradle.
+    runtimeOnly(platform(libs.nettyBom))
+    runtimeOnly(libs.bundles.nettyOfAwsSdk)
+
     // Optional integrations, which the application brings: Actuator health and Micrometer metrics.
     compileOnly(libs.springBootHealth)
     compileOnly(libs.micrometerCore)

@@ -64,3 +64,13 @@ springBootConfigurationProcessor = { group = "org.springframework.boot", name = 
 springBootTest = { group = "org.springframework.boot", name = "spring-boot-test", version.ref = "springBoot" }
 micrometerCore = { group = "io.micrometer", name = "micrometer-core", version.ref = "micrometer" }
 awssdkNettyNioClient = { group = "software.amazon.awssdk", name = "netty-nio-client", version.ref = "awssdkS3" }
+nettyBuffer = { group = "io.netty", name = "netty-buffer", version.ref = "netty" }
+nettyCommon = { group = "io.netty", name = "netty-common", version.ref = "netty" }
+nettyResolver = { group = "io.netty", name = "netty-resolver", version.ref = "netty" }
+nettyCodec = { group = "io.netty", name = "netty-codec", version.ref = "netty" }
+nettyCodecHttp2 = { group = "io.netty", name = "netty-codec-http2", version.ref = "netty" }
+nettyTransportClassesEpoll = { group = "io.netty", name = "netty-transport-classes-epoll", version.ref = "netty" }
+
+[bundles]
+# The Netty modules of the netty-nio-client of the AWS SDK, at the Netty version of LocalS3; see local-s3-rest/build.gradle.
+nettyOfAwsSdk = ["nettyBuffer", "nettyCommon", "nettyResolver", "nettyTransport", "nettyHandler", "nettyCodec", "nettyCodecHttp", "nettyCodecHttp2", "nettyTransportClassesEpoll"]

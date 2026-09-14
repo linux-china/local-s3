@@ -27,7 +27,7 @@ publishing {
                 licenses {
                     license {
                         name = 'The Apache License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
                     }
                 }
 
@@ -38,42 +38,14 @@ publishing {
                         email = "robothyluo@gmail.com"
                     }
                 }
-
-                scm {
-                    url = "https://github.com/Robothy/local-s3.git"
-                }
-
             }
         }
-    }
-
-    repositories {
-
-//        maven {
-//            name = "GitHubPackages"
-//            url = uri("https://maven.pkg.github.com/Robothy/local-s3")
-//            credentials {
-//                username = project.findProperty("GITHUB_USERNAME") ?: System.getenv("GITHUB_USERNAME")
-//                password = project.findProperty("GITHUB_TOKEN") ?: System.getenv("GITHUB_TOKEN")
-//            }
-//        }
-
-//            maven {
-//                name = "MavenCentral"
-//                //url = uri('https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/')
-//                url = uri('https://central.sonatype.com/api/v1/publisher/upload')
-//                credentials {
-//                    username = findProperty("OSSRH_USERNAME")
-//                    password = findProperty("OSSRH_PASSWORD")
-//                }
-//            }
-
-
     }
 }
 
 
-task delombok(type: JavaExec, dependsOn: compileJava) {
+tasks.register('delombok', JavaExec) {
+    dependsOn compileJava
     ext.outputDir = project.layout.buildDirectory.dir("delombok").get()
     outputs.dir(outputDir)
     mainClass.set('lombok.launch.Main')
@@ -83,6 +55,7 @@ task delombok(type: JavaExec, dependsOn: compileJava) {
             inputs.dir(it)
         }
     }
+    inputs.files(sourceSets.main.compileClasspath).withPropertyName('compileClasspath')
     doFirst {
         outputDir.asFile.mkdirs()
         def argList = ['delombok']
@@ -91,6 +64,8 @@ task delombok(type: JavaExec, dependsOn: compileJava) {
                 argList += [it.absolutePath]
             }
         }
+        // Delombok resolves the types of the sources, which it reports as errors if they aren't on its classpath.
+        argList += ['--classpath', sourceSets.main.compileClasspath.asPath]
         argList += ['-d', outputDir.asFile.absolutePath]
         args = argList
     }
@@ -102,14 +77,23 @@ javadoc {
     //failOnError = false
 }
 
+// Artifacts are signed for Maven Central, which requires signatures. A signing key is configured with the properties
+// signing.secretKey, or signing.secretKeyRingFile for a file that holds it, and signing.password. Without a key, the
+// signing tasks are skipped, so that publishToMavenLocal installs the modules on any machine; a task that uploads to
+// Maven Central still requires the signatures, and fails without a key.
+def signingKey = findProperty("signing.secretKeyRingFile") != null
+        ? Files.readString(file(findProperty("signing.secretKeyRingFile")).toPath())
+        : findProperty("signing.secretKey")
+
 signing {
-    def signingKey
-    if (findProperty("signingKeyRingFile") != null) {
-        signingKey = Files.readString(file(findProperty("signing.secretKeyRingFile")).toPath())
-    } else {
-        signingKey = findProperty("signing.secretKey")
+    if (signingKey != null) {
+        useInMemoryPgpKeys(signingKey, findProperty("signing.password"))
     }
-    def signingPassword = findProperty("signing.password")
-    useInMemoryPgpKeys(signingKey, signingPassword)
-    sign publishing.publications.maven
+    required = {
+        gradle.taskGraph.allTasks.any { task ->
+            task.project == project && (task.name == 'zipMavenCentralPortalPublication'
+                    || task.name == 'uploadMavenCentralPortal'
+                    || task.name.contains('ToMavenCentral'))
+        }
+    }
 }
