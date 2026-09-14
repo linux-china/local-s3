@@ -7,9 +7,9 @@ public class IdUtils {
   /**
    * The epoch of the generated IDs, 2022-02-26T02:28:33Z, in milliseconds. It used to be expressed in
    * seconds, which left the timestamp of an ID nearly as large as the milliseconds since 1970: shifted
-   * by {@linkplain #TIMESTMP_SHIFT} bits, such an ID overflowed to a negative number in 2039.
+   * by {@linkplain #TIMESTAMP_SHIFT} bits, such an ID overflowed to a negative number in 2039.
    */
-  private final static long S4_EPOCH = 1645837713000L;
+  private final static long S3_EPOCH = 1645837713000L;
 
 
   private final static long SEQUENCE_ID_BITS = 12;
@@ -24,7 +24,7 @@ public class IdUtils {
 
   private final static long SEQUENCE_SHIFT = SEQUENCE_ID_BITS;
   private final static long DATACENTER_ID_SHIFT = SEQUENCE_ID_BITS + WORKER_ID_BITS;
-  private final static long TIMESTMP_SHIFT = DATACENTER_ID_SHIFT + DATACENTER_BITS;
+  private final static long TIMESTAMP_SHIFT = DATACENTER_ID_SHIFT + DATACENTER_BITS;
 
   private long datacenterId;
   private long machineId;
@@ -34,7 +34,7 @@ public class IdUtils {
    * The timestamp that the last ID was generated with. It is a logical clock: it never moves backwards,
    * even when the system clock does.
    */
-  private long lastStmp = -1L;
+  private long lastStamp = -1L;
 
   /**
    * The last ID that this generator issued, so that the generated IDs never decrease. IDs persisted by
@@ -66,7 +66,7 @@ public class IdUtils {
       throw new IllegalArgumentException(String.format("datacenterId can't be greater than %d or less than 0", MAX_DATACENTER_ID));
     }
     if (workerId > MAX_WORKER_ID || workerId < 0) {
-      throw new IllegalArgumentException(String.format("datacenter Id can't be greater than %d or less than 0", MAX_WORKER_ID));
+      throw new IllegalArgumentException(String.format("workerId can't be greater than %d or less than 0", MAX_WORKER_ID));
     }
     this.datacenterId = datacenterId;
     this.machineId = workerId;
@@ -84,21 +84,21 @@ public class IdUtils {
   public synchronized long nextId() {
     // A clock correction, e.g. by NTP, must not fail the request that generates an ID; the IDs keep
     // following the last timestamp until the system clock passes it again.
-    long currStmp = Math.max(getNewTimestamp(), lastStmp);
+    long currStmp = Math.max(getNewTimestamp(), lastStamp);
 
-    if (currStmp == lastStmp) {
+    if (currStmp == lastStamp) {
       sequence = (sequence + 1) & MAX_SEQUENCE;
       if (sequence == 0L) {
         // The sequence of this millisecond is exhausted; borrow from the next one instead of waiting.
-        currStmp = lastStmp + 1;
+        currStmp = lastStamp + 1;
       }
     } else {
       sequence = 0L;
     }
 
-    lastStmp = currStmp;
+    lastStamp = currStmp;
 
-    long id = (currStmp - S4_EPOCH) << TIMESTMP_SHIFT
+    long id = (currStmp - S3_EPOCH) << TIMESTAMP_SHIFT
         | datacenterId << DATACENTER_ID_SHIFT
         | machineId << SEQUENCE_SHIFT
         | sequence;
