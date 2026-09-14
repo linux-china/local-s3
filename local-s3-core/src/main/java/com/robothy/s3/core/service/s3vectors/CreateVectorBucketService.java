@@ -6,7 +6,7 @@ import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
-import com.robothy.s3.core.utils.s3vectors.DateTimeUtils;
+import com.robothy.s3.core.util.s3vectors.DateTimeUtils;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import com.robothy.s3.datatypes.s3vectors.VectorBucket;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;

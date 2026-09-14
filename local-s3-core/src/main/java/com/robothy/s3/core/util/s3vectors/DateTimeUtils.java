@@ -1,4 +1,4 @@
-package com.robothy.s3.core.utils.s3vectors;
+package com.robothy.s3.core.util.s3vectors;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
