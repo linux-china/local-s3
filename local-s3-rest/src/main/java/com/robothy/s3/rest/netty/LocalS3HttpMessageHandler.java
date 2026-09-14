@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Router;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.utils.ErrorResponses;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelFuture;
@@ -36,7 +37,9 @@ import org.slf4j.LoggerFactory;
  * the bodies of further requests are not received, and pile up, before the request has been answered.
  *
  * <p>Every request is counted in {@linkplain InFlightRequests} from the moment it is handed to the executor until its
- * response is written, so that a server that shuts down can wait for the responses in flight.
+ * response is written, so that a server that shuts down can wait for the responses in flight. Once its response is
+ * written, the request is handed to the {@linkplain RequestRecorder}, with the operation that the router named, see
+ * {@linkplain OperationHandler}, and the time since it was handed to the executor.
  */
 public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
@@ -47,6 +50,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   private final Executor executor;
 
   private final InFlightRequests inFlightRequests;
+
+  private final RequestRecorder requestRecorder;
 
   /**
    * Requests received, e.g. pipelined, while another request of the connection is in flight. Only accessed on the
@@ -86,9 +91,23 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * @param inFlightRequests counts the requests in flight, shared by all connections.
    */
   public LocalS3HttpMessageHandler(Router router, Executor executor, InFlightRequests inFlightRequests) {
+    this(router, executor, inFlightRequests, RequestRecorder.NONE);
+  }
+
+  /**
+   * Create a handler.
+   *
+   * @param router           routes requests to handlers.
+   * @param executor         runs the handlers of the requests, shared by all connections.
+   * @param inFlightRequests counts the requests in flight, shared by all connections.
+   * @param requestRecorder  receives the requests once their responses are written, shared by all connections.
+   */
+  public LocalS3HttpMessageHandler(Router router, Executor executor, InFlightRequests inFlightRequests,
+                                   RequestRecorder requestRecorder) {
     this.router = router;
     this.executor = Objects.requireNonNull(executor);
     this.inFlightRequests = Objects.requireNonNull(inFlightRequests);
+    this.requestRecorder = Objects.requireNonNull(requestRecorder);
   }
 
   @Override
@@ -118,8 +137,9 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
     inFlight = true;
     Runnable end = endOnce();
+    long startNanos = System.nanoTime();
     try {
-      executor.execute(() -> handleOnExecutor(ctx, request, end));
+      executor.execute(() -> handleOnExecutor(ctx, request, end, startNanos));
     } catch (RejectedExecutionException e) {
       // The server is shutting down.
       log.debug("Closing connection {}: the request executor rejected {} {}.", ctx.channel().id(),
@@ -144,11 +164,14 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     };
   }
 
-  private void handleOnExecutor(ChannelHandlerContext ctx, HttpRequest request, Runnable end) {
+  private void handleOnExecutor(ChannelHandlerContext ctx, HttpRequest request, Runnable end, long startNanos) {
     StreamingHttpResponse response = null;
     Throwable failure = null;
+    String operation = OperationHandler.UNKNOWN_OPERATION;
     try {
-      response = handle(request);
+      HttpRequestHandler handler = router.match(request);
+      operation = OperationHandler.operationOf(handler);
+      response = handle(request, handler);
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
       if (!response.isStreaming()) {
@@ -163,7 +186,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
     StreamingHttpResponse result = response;
     Throwable cause = failure;
-    Runnable complete = () -> complete(ctx, request, result, cause, end);
+    String matchedOperation = operation;
+    Runnable complete = () -> complete(ctx, request, result, cause, end, matchedOperation, startNanos);
     if (ctx.executor().inEventLoop()) {
       complete.run();
       return;
@@ -183,21 +207,28 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * Write the response of a handled request on the event loop, and go on with the next request once it is written.
    */
   private void complete(ChannelHandlerContext ctx, HttpRequest request, StreamingHttpResponse response,
-                        Throwable failure, Runnable end) {
+                        Throwable failure, Runnable end, String operation, long startNanos) {
     if (failure != null) {
       if (response != null) {
         response.discard();
       }
       end.run();
+      // Answered with an internal error, or not at all if the connection is closed.
+      record(request, operation, HttpResponseStatus.INTERNAL_SERVER_ERROR.code(), null, startNanos);
       inFlight = false;
       releasePendingRequests();
       exceptionCaught(ctx, failure);
       return;
     }
 
+    int status = response.getStatus().code();
+    String requestId = response.getHeaders().get(AmzHeaderNames.X_AMZ_REQUEST_ID);
     ChannelFuture future = ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
     // The request is in flight until its response is written, or fails to be written.
-    future.addListener(written -> end.run());
+    future.addListener(written -> {
+      end.run();
+      record(request, operation, status, requestId, startNanos);
+    });
     if (!isKeepAlive(request)) {
       // Nothing after this response is handled.
       releasePendingRequests();
@@ -212,6 +243,14 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
         releasePendingRequests();
       }
     });
+  }
+
+  private void record(HttpRequest request, String operation, int status, String requestId, long startNanos) {
+    try {
+      requestRecorder.record(request, operation, status, requestId, System.nanoTime() - startNanos);
+    } catch (RuntimeException e) {
+      log.warn("Failed to record {} {}.", request.getMethod(), request.getUri(), e);
+    }
   }
 
   private static void releaseBody(HttpRequest request) {
@@ -262,9 +301,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     return keepAlive;
   }
 
-  private StreamingHttpResponse handle(HttpRequest request) {
+  private StreamingHttpResponse handle(HttpRequest request, HttpRequestHandler handler) {
     StreamingHttpResponse response = new StreamingHttpResponse();
-    HttpRequestHandler handler = router.match(request);
     if (handler == null) {
       log.warn("No handler for {} {}", request.getMethod(), request.getUri());
       ErrorResponses.notImplemented(request, response);

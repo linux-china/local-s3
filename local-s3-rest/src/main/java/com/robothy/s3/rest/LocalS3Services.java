@@ -15,6 +15,7 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
+import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
@@ -50,6 +51,23 @@ final class LocalS3Services {
    */
   static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager,
                                LocalS3VectorsManager vectorsManager, S3EventDispatcher eventDispatcher) {
+    return create(config, s3Manager, vectorsManager, eventDispatcher, null);
+  }
+
+  /**
+   * Assemble the services of a service that is starting.
+   *
+   * @param config the service being started, which carries the options its policies are built from.
+   * @param s3Manager the manager of the Amazon S3 data of the service.
+   * @param vectorsManager the manager of the S3 Vectors data of the service.
+   * @param eventDispatcher dispatches the bucket and object events to the listeners of the service;
+   *     {@code null} if it has no listener, which registers no dispatcher at all.
+   * @param admin the administration of the service, which the {@code /_admin} endpoints answer through;
+   *     {@code null} for none, which leaves the endpoints out.
+   * @return the assembled factory.
+   */
+  static ServiceFactory create(LocalS3 config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
+                               S3EventDispatcher eventDispatcher, LocalS3Admin admin) {
     ServiceFactory serviceFactory = new DefaultServiceFactory();
 
     BucketService bucketService = s3Manager.bucketService();
@@ -75,6 +93,9 @@ final class LocalS3Services {
 
     if (Objects.nonNull(eventDispatcher)) {
       serviceFactory.register(S3EventDispatcher.class, () -> eventDispatcher);
+    }
+    if (Objects.nonNull(admin)) {
+      serviceFactory.register(LocalS3Admin.class, () -> admin);
     }
     return serviceFactory;
   }

@@ -5,6 +5,9 @@ import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
+import com.robothy.s3.rest.admin.LocalS3Admin;
+import com.robothy.s3.rest.admin.RequestStatistics;
+import com.robothy.s3.rest.admin.ServiceStatistics;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.listener.BucketEventListener;
@@ -18,8 +21,11 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -184,7 +190,14 @@ public class LocalS3 implements AutoCloseable {
 
     private boolean running;
 
-    private NettyServer server;
+    private volatile NettyServer server;
+
+    /**
+     * The requests answered since the service started, or was reset.
+     */
+    private volatile RequestStatistics requestStatistics;
+
+    private volatile Instant startedAt;
 
     private Thread shutdownHook;
 
@@ -276,6 +289,9 @@ public class LocalS3 implements AutoCloseable {
     }
 
     private void startServer() {
+        this.requestStatistics = new RequestStatistics(RequestStatistics.DEFAULT_RECENT_REQUESTS,
+                LocalS3RouterFactory.UNRECORDED_OPERATIONS);
+        this.startedAt = Instant.now();
         ServiceFactory serviceFactory = createServiceFactory();
         // create default buckets first
         if (!defaultBuckets.isEmpty()) {
@@ -285,7 +301,7 @@ public class LocalS3 implements AutoCloseable {
         Path requestBodyFileDirectory = prepareRequestBodyFileDirectory();
         this.server = NettyServer.start(this, configuredPort,
                 LocalS3RouterFactory.create(serviceFactory, accessKeyId, secretAccessKey),
-                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory);
+                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, requestStatistics);
         // The actual port, in case a random one was requested.
         this.port = server.port();
         log.info("LocalS3 listens on {}:{}.", bindHost, port);
@@ -340,7 +356,81 @@ public class LocalS3 implements AutoCloseable {
 
         S3EventDispatcher eventDispatcher = bucketEventListener == null && objectEventListener == null ? null
                 : new S3EventDispatcher(bucketEventListener, objectEventListener, eventListenerExecutor);
-        return LocalS3Services.create(this, s3Manager, localS3VectorsManager, eventDispatcher);
+        return LocalS3Services.create(this, s3Manager, localS3VectorsManager, eventDispatcher, new Admin());
+    }
+
+    /**
+     * Replace the data of the service with the data it started with, e.g. between the tests that share a service,
+     * which is much quicker than restarting it: the buckets, objects, multipart uploads and vectors are dropped, the
+     * initial data of the data path, if any, is loaded again, and the {@linkplain Builder#buckets default buckets} are
+     * created again. The requests recorded for {@code GET /_admin/stats} are forgotten too.
+     *
+     * <p>The requests in progress are finished first, and the requests that arrive meanwhile wait for the reset. The
+     * same reset is requested with {@code POST /_admin/reset}.
+     *
+     * @throws UnsupportedOperationException if the service is in {@code PERSISTENCE} mode, whose data a reset would
+     *     delete from its data path.
+     * @throws IllegalStateException if the service has never been started.
+     */
+    public void reset() {
+        if (mode != LocalS3Mode.IN_MEMORY) {
+            throw new UnsupportedOperationException(
+                    "Only an IN_MEMORY service can be reset; a PERSISTENCE service keeps its data in its data path.");
+        }
+        // Not synchronized: a reset requested through the service would wait for a shutdown that waits for it.
+        LocalS3Manager objects = getS3Manager();
+        objects.reset();
+        localS3VectorsManager.reset();
+        if (!defaultBuckets.isEmpty()) {
+            createBuckets();
+        }
+        RequestStatistics statistics = this.requestStatistics;
+        if (statistics != null) {
+            statistics.clear();
+        }
+        log.info("LocalS3 was reset.");
+    }
+
+    /**
+     * The statistics of the service: the amount of its data, the requests in flight, and the requests answered by
+     * operation. The same statistics are requested with {@code GET /_admin/stats}.
+     *
+     * @return the statistics.
+     * @throws IllegalStateException if the service has never been started.
+     */
+    public ServiceStatistics statistics() {
+        LocalS3Manager objects = getS3Manager();
+        RequestStatistics requests = this.requestStatistics;
+        NettyServer started = this.server;
+        Instant since = this.startedAt;
+        return new ServiceStatistics(mode.name(), since == null ? null : since.toString(),
+                since == null ? 0 : Duration.between(since, Instant.now()).toSeconds(),
+                started == null ? 0 : started.inFlightRequests(),
+                objects.statistics(), localS3VectorsManager.statistics(),
+                requests == null ? 0 : requests.totalRequests(),
+                requests == null ? Map.of() : requests.operations());
+    }
+
+    /**
+     * The administration of the service, which the {@code /_admin} endpoints answer through.
+     */
+    private final class Admin implements LocalS3Admin {
+
+        @Override
+        public ServiceStatistics statistics() {
+            return LocalS3.this.statistics();
+        }
+
+        @Override
+        public List<RequestStatistics.RecentRequest> recentRequests(int limit) {
+            RequestStatistics requests = requestStatistics;
+            return requests == null ? List.of() : requests.recentRequests(limit);
+        }
+
+        @Override
+        public void reset() {
+            LocalS3.this.reset();
+        }
     }
 
     LocalS3Manager createLocalS3Manager() {

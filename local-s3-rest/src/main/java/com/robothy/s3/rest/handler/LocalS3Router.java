@@ -8,6 +8,7 @@ import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.model.request.BucketRegion;
+import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -49,6 +50,21 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * probes can use it; as an exact path, it takes precedence over a bucket named {@code _health}.
    */
   static final String HEALTH_CHECK_PATH = "/_health";
+
+  /**
+   * The operation of a request whose signature is rejected.
+   */
+  static final String AUTHENTICATION_FAILURE_OPERATION = "AuthenticationFailure";
+
+  /**
+   * The operation of a request that no route matches.
+   */
+  static final String NOT_FOUND_OPERATION = "NotFound";
+
+  /**
+   * The operation of a request that several routes match equally.
+   */
+  static final String AMBIGUOUS_OPERATION = "AmbiguousRequest";
 
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
@@ -134,6 +150,10 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * The handler of a request, as an {@linkplain OperationHandler} that names the operation it answers, e.g.
+   * {@code PutObject}, so that the request is recorded by its operation.
+   */
   @Override
   public HttpRequestHandler match(HttpRequest request) {
     if (requiresAuthentication(request)) {
@@ -141,14 +161,15 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       AwsSignatureV4Verifier.VerificationResult result =
           signatureVerifier.verifyBody(request, receivedRequests.remove(request));
       if (!result.authenticated()) {
-        return new AuthenticationFailureHandler(result);
+        return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, new AuthenticationFailureHandler(result));
       }
     }
 
-    HttpRequestHandler handler = matchMethod(request.getMethod())
+    OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
-        .orElse(notFoundHandler());
+        .orElseGet(() -> notFoundHandler() == null ? null
+            : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
     return withCorsHeaders(request, handler);
   }
 
@@ -190,15 +211,15 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * {@linkplain com.robothy.s3.rest.netty.LocalS3HttpMessageHandler} keeps them if the handler fails. Preflight
    * requests are answered by their own handler.
    */
-  private HttpRequestHandler withCorsHeaders(HttpRequest request, HttpRequestHandler handler) {
+  private OperationHandler withCorsHeaders(HttpRequest request, OperationHandler handler) {
     if (corsResponseHeaders == null || handler == null || isPreflight(request)
         || request.header(HttpHeaderNames.ORIGIN.toString()).isEmpty()) {
       return handler;
     }
-    return (req, resp) -> {
+    return new OperationHandler(handler.operation(), (req, resp) -> {
       corsResponseHeaders.apply(req, resp);
       handler.handle(req, resp);
-    };
+    });
   }
 
   private static boolean isPreflight(HttpRequest request) {
@@ -285,21 +306,21 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * The handler of the route that matches a request best. If several routes match it equally, the request is answered
    * with {@code InvalidRequest}, rather than by whichever of them was registered last.
    *
-   * @return the handler; {@code null} if no route matches.
+   * @return the handler, named by its operation; {@code null} if no route matches.
    */
-  HttpRequestHandler matchHandler(List<Route> candidates, HttpRequest request) {
+  OperationHandler matchHandler(List<Route> candidates, HttpRequest request) {
     List<Route> best = bestRoutes(candidates, request.getHeaders(), request.getParams());
     if (best.isEmpty()) {
       return null;
     }
     if (best.size() == 1) {
-      return best.get(0).getHandler();
+      return new OperationHandler(operations.get(best.get(0)), best.get(0).getHandler());
     }
     String matched = String.join(", ", best.stream().map(operations::get).toList());
-    return (req, resp) -> {
+    return new OperationHandler(AMBIGUOUS_OPERATION, (req, resp) -> {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
           "The request matches more than one operation: " + matched + ".");
-    };
+    });
   }
 
   /**

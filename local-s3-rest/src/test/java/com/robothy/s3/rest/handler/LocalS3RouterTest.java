@@ -7,6 +7,7 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.rest.netty.OperationHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.HashMap;
@@ -39,14 +40,14 @@ class LocalS3RouterTest {
         .method(HttpMethod.GET).path("/a")
         .params(Map.of("versioning", List.of("true")))
         .build());
-    assertSame(handler1, matchedHandler1);
+    assertSame(handler1, ((OperationHandler) matchedHandler1).handler());
 
     HttpRequestHandler matchedHandler2 = localS3Router.match(HttpRequest.builder()
         .method(HttpMethod.GET).path("/a")
         .params(Map.of("versioning", List.of("true")))
         .headers(Map.of("x-header", "value"))
         .build());
-    assertSame(handler2, matchedHandler2);
+    assertSame(handler2, ((OperationHandler) matchedHandler2).handler());
   }
 
   @Test
@@ -173,8 +174,13 @@ class LocalS3RouterTest {
         .paramMatcher(ParamCondition.has("analytics").andHasNot("id")).handler(list).build());
     assertDoesNotThrow(router::verifyRoutes);
 
-    assertSame(get, router.match(request(Map.of("analytics", List.of(""), "id", List.of("1")), Map.of())));
-    assertSame(list, router.match(request(Map.of("analytics", List.of("")), Map.of())));
+    OperationHandler matchedGet =
+        (OperationHandler) router.match(request(Map.of("analytics", List.of(""), "id", List.of("1")), Map.of()));
+    assertSame(get, matchedGet.handler());
+    assertEquals("GetBucketAnalyticsConfiguration", matchedGet.operation(), "The handler names its operation.");
+    OperationHandler matchedList = (OperationHandler) router.match(request(Map.of("analytics", List.of("")), Map.of()));
+    assertSame(list, matchedList.handler());
+    assertEquals("ListBucketAnalyticsConfigurations", matchedList.operation());
   }
 
   @Test
@@ -214,9 +220,11 @@ class LocalS3RouterTest {
         router.route("GetBucketTagging", tagging).route("GetBucketAcl", acl);
       }
       assertDoesNotThrow(router::verifyRoutes);
-      assertSame(acl.getHandler(), router.match(request(Map.of("acl", List.of("")), Map.of())));
+      assertSame(acl.getHandler(),
+          ((OperationHandler) router.match(request(Map.of("acl", List.of("")), Map.of()))).handler());
 
       HttpRequestHandler handler = router.match(request(Map.of("acl", List.of(""), "tagging", List.of("")), Map.of()));
+      assertEquals(LocalS3Router.AMBIGUOUS_OPERATION, ((OperationHandler) handler).operation());
       LocalS3RequestException thrown = assertThrows(LocalS3RequestException.class,
           () -> handler.handle(null, null));
       assertEquals(S3ErrorCode.InvalidRequest, thrown.getS3ErrorCode());

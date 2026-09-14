@@ -131,4 +131,84 @@ class InMemoryLocalS3ManagerTest {
   }
 
 
+  /**
+   * A reset drops the data of a service without initial data, and the services keep working on the new data.
+   */
+  @Test
+  void resetDropsTheData() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
+    BucketService bucketService = manager.bucketService();
+    ObjectService objectService = manager.objectService();
+    bucketService.createBucket("bucket");
+    putObject(objectService, "bucket", "a.txt", "Hello");
+    objectService.createMultipartUpload("bucket", "upload.txt",
+        com.robothy.s3.core.model.request.CreateMultipartUploadOptions.builder().build());
+
+    assertEquals(new ObjectStatistics(1, 1, 1, 0, 5, 1), manager.statistics());
+
+    manager.reset();
+
+    assertEquals(new ObjectStatistics(0, 0, 0, 0, 0, 0), manager.statistics());
+    assertThrows(BucketNotExistException.class, () -> bucketService.getBucket("bucket"));
+    bucketService.createBucket("bucket");
+    putObject(objectService, "bucket", "b.txt", "World");
+    assertEquals(1, objectService.listObjects("bucket", null, null, null, 10, null).getObjects().size());
+  }
+
+  /**
+   * A reset restores the initial data of the data path, whether it is cached or not, dropping what the service changed.
+   */
+  @Test
+  void resetRestoresTheInitialData() throws IOException {
+    Path dataPath = Files.createTempDirectory("local-s3");
+    try {
+      LocalS3Manager persistent = LocalS3Manager.createFileSystemS3Manager(dataPath);
+      persistent.bucketService().createBucket("bucket");
+      putObject(persistent.objectService(), "bucket", "initial.txt", "Initial");
+      assertThrows(UnsupportedOperationException.class, persistent::reset, "The data of the path isn't deleted.");
+
+      for (boolean cached : new boolean[] {true, false}) {
+        InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(dataPath, cached, new InitialDataCache(16));
+        ObjectService objectService = manager.objectService();
+        objectService.deleteObject("bucket", "initial.txt");
+        putObject(objectService, "bucket", "added.txt", "Added");
+        manager.bucketService().createBucket("another-bucket");
+        assertEquals(2, manager.statistics().buckets());
+
+        manager.reset();
+
+        assertEquals(new ObjectStatistics(1, 1, 1, 0, 7, 0), manager.statistics(), "cached: " + cached);
+        GetObjectAns object = objectService.getObject("bucket", "initial.txt", GetObjectOptions.builder().build());
+        assertEquals("Initial", new String(object.getContent().readAllBytes()));
+        assertThrows(Exception.class,
+            () -> objectService.getObject("bucket", "added.txt", GetObjectOptions.builder().build()));
+      }
+    } finally {
+      FileUtils.deleteDirectory(dataPath.toFile());
+    }
+  }
+
+  @Test
+  void statisticsCountVersionsAndDeleteMarkers() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
+    manager.bucketService().createBucket("versioned");
+    manager.bucketService().setVersioningEnabled("versioned", true);
+    manager.bucketService().createBucket("empty");
+    ObjectService objectService = manager.objectService();
+    putObject(objectService, "versioned", "a.txt", "1");
+    putObject(objectService, "versioned", "a.txt", "22");
+    putObject(objectService, "versioned", "b.txt", "333");
+    objectService.deleteObject("versioned", "b.txt");
+
+    assertEquals(new ObjectStatistics(2, 1, 3, 1, 6, 0), manager.statistics());
+  }
+
+  private static void putObject(ObjectService objectService, String bucket, String key, String content) {
+    byte[] bytes = content.getBytes();
+    objectService.putObject(bucket, key, PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(bytes))
+        .size(bytes.length)
+        .build());
+  }
+
 }

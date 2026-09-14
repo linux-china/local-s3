@@ -4,6 +4,7 @@ import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Default implementation of {@link S3VectorsService}.
@@ -11,16 +12,20 @@ import java.util.Objects;
  */
 final class DefaultS3VectorsService implements S3VectorsService, S3VectorsStorageAware {
 
-  private final LocalS3VectorsMetadata localS3VectorsMetadata;
+  private final Supplier<LocalS3VectorsMetadata> localS3VectorsMetadata;
 
-  private final VectorStorage vectorStorage;
+  private final Supplier<VectorStorage> vectorStorage;
 
   private final BucketGuard bucketGuard;
 
-  public DefaultS3VectorsService(LocalS3VectorsMetadata localS3VectorsMetadata, VectorStorage vectorStorage,
-                                 BucketGuard bucketGuard) {
-    this.localS3VectorsMetadata = localS3VectorsMetadata;
-    this.vectorStorage = vectorStorage;
+  /**
+   * Create a service whose metadata and storage are looked up for every operation, so that a manager can replace
+   * them, e.g. to reset the data of the service, within {@linkplain BucketGuard#exclusive}.
+   */
+  DefaultS3VectorsService(Supplier<LocalS3VectorsMetadata> localS3VectorsMetadata,
+                          Supplier<VectorStorage> vectorStorage, BucketGuard bucketGuard) {
+    this.localS3VectorsMetadata = Objects.requireNonNull(localS3VectorsMetadata);
+    this.vectorStorage = Objects.requireNonNull(vectorStorage);
     this.bucketGuard = Objects.requireNonNull(bucketGuard);
   }
 
@@ -31,11 +36,11 @@ final class DefaultS3VectorsService implements S3VectorsService, S3VectorsStorag
 
   @Override
   public LocalS3VectorsMetadata metadata() {
-    return localS3VectorsMetadata;
+    return localS3VectorsMetadata.get();
   }
 
   @Override
   public VectorStorage vectorStorage() {
-    return this.vectorStorage;
+    return this.vectorStorage.get();
   }
 }

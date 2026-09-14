@@ -12,6 +12,7 @@ import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.storage.TransactionalStorage;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,6 +34,53 @@ class DefaultBucketGuardTest {
 
   private final DefaultBucketGuard<String> guard = new DefaultBucketGuard<>(BucketLock.create(),
       bucketName -> "metadata of " + bucketName, store, storage, reloaded::add);
+
+  /**
+   * An exclusive operation waits for the operations of the buckets in progress, and the operations that start
+   * meanwhile wait for it.
+   */
+  @Test
+  void anExclusiveOperationWaitsForTheOperationsOfEveryBucket() throws Exception {
+    ExecutorService executor = Executors.newFixedThreadPool(3);
+    try {
+      CountDownLatch reading = new CountDownLatch(1);
+      CountDownLatch finishReading = new CountDownLatch(1);
+      List<String> events = Collections.synchronizedList(new ArrayList<>());
+      Future<?> read = executor.submit(() -> guard.read("a", () -> {
+        reading.countDown();
+        await(finishReading);
+        events.add("read a");
+        return null;
+      }));
+      assertTrue(reading.await(5, TimeUnit.SECONDS));
+
+      CountDownLatch exclusiveRunning = new CountDownLatch(1);
+      Future<?> exclusive = executor.submit(() -> guard.exclusive(() -> {
+        exclusiveRunning.countDown();
+        events.add("exclusive");
+        return null;
+      }));
+      assertFalse(exclusiveRunning.await(200, TimeUnit.MILLISECONDS), "The exclusive operation waits for the read.");
+      // A nested operation of the thread that is running doesn't wait for the waiting exclusive operation.
+      assertEquals("nested", guard.read("b", () -> guard.write("c", () -> "nested")));
+
+      finishReading.countDown();
+      read.get(5, TimeUnit.SECONDS);
+      exclusive.get(5, TimeUnit.SECONDS);
+      assertEquals(List.of("read a", "exclusive"), events);
+      assertEquals("after", executor.submit(() -> guard.write("b", () -> "after")).get(5, TimeUnit.SECONDS));
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void anExclusiveOperationCantRunWithinAnOperationOfABucket() {
+    assertThrows(IllegalStateException.class,
+        () -> guard.read("bucket", () -> guard.exclusive(() -> "never")));
+    assertEquals("exclusive", guard.exclusive(() -> "exclusive"));
+  }
+
 
   @Test
   void persistsAChangedBucketOnce() {

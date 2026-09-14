@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * In memory implementation of {@linkplain LocalS3Manager}. Mange in memory
@@ -20,9 +21,16 @@ import java.util.Optional;
  */
 final class InMemoryLocalS3Manager implements LocalS3Manager {
 
-  private final LocalS3Metadata s3Metadata;
+  /**
+   * The data of the service. Replaced as a whole by {@linkplain #reset()}, within an exclusive operation of the
+   * {@linkplain #bucketGuard}, so that an operation of a bucket sees either the old data or the new one.
+   */
+  private volatile Data data;
 
-  private final Storage storage;
+  /**
+   * Creates the data that the service starts with, and that {@linkplain #reset()} restores.
+   */
+  private final Supplier<Data> initialData;
 
   private final BucketService bucketService;
 
@@ -35,6 +43,12 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   private final BucketGuard bucketGuard = BucketGuard.inMemory();
 
   private static final InitialDataCache cache = new InitialDataCache();
+
+  /**
+   * The metadata and the storage of the service.
+   */
+  private record Data(LocalS3Metadata metadata, Storage storage) {
+  }
 
   /**
    * Create a {@linkplain InMemoryLocalS3Manager} with initial data.
@@ -52,44 +66,46 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    * @param cache the cache of the initial data.
    */
   InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
-    if (Objects.isNull(initialDataPath) || !Files.exists(initialDataPath)) {
-      this.storage = Storage.createInMemory();
-      this.s3Metadata = new LocalS3Metadata();
-    } else {
-
-      String absPath = initialDataPath.toAbsolutePath().toString();
-      Path storagePath = Paths.get(initialDataPath.toAbsolutePath().toString(), STORAGE_DIRECTORY);
-      if (enableInitialDataCache) {
-        InitialDataCache.CacheValue cacheValue = cache.computeIfAbsent(absPath, key -> {
-          LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
-          Storage persistent = Storage.createReadOnlyPersistent(storagePath);
-          // Copies of the objects of the persistent storage reduce disk I/O, within the byte budget of the cache.
-          return new InitialDataCache.CacheValue(metadata, Storage.createCopyOnAccess(persistent, cache));
-        });
-        this.storage = cacheValue.storage();
-        this.s3Metadata = cacheValue.metadata();
-
-      } else {
-        this.storage = Storage.createLayered(Storage.createInMemory(), Storage.createReadOnlyPersistent(storagePath));
-        this.s3Metadata = loadS3Metadata(initialDataPath);
-      }
-
-    }
+    this.initialData = () -> initialData(initialDataPath, enableInitialDataCache, cache);
+    this.data = initialData.get();
     this.bucketService = createBucketService();
     this.objectService = createObjectService();
   }
 
   /**
-   * Create an {@linkplain InMemoryLocalS3Manager} with initial data.
+   * Create an {@linkplain InMemoryLocalS3Manager} with initial data. A {@linkplain #reset()} starts over without it,
+   * since the given data has been changed by then.
    *
    * @param initialMetadata initial metadata.
    * @param initialStorage initial storage.
    */
   InMemoryLocalS3Manager(LocalS3Metadata initialMetadata, Storage initialStorage) {
-    this.s3Metadata = Optional.ofNullable(initialMetadata).orElseGet(LocalS3Metadata::new);
-    this.storage = Optional.ofNullable(initialStorage).orElseGet(Storage::createInMemory);
+    this.initialData = () -> new Data(new LocalS3Metadata(), Storage.createInMemory());
+    this.data = new Data(Optional.ofNullable(initialMetadata).orElseGet(LocalS3Metadata::new),
+        Optional.ofNullable(initialStorage).orElseGet(Storage::createInMemory));
     this.bucketService = createBucketService();
     this.objectService = createObjectService();
+  }
+
+  private Data initialData(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
+    if (Objects.isNull(initialDataPath) || !Files.exists(initialDataPath)) {
+      return new Data(new LocalS3Metadata(), Storage.createInMemory());
+    }
+
+    String absPath = initialDataPath.toAbsolutePath().toString();
+    Path storagePath = Paths.get(initialDataPath.toAbsolutePath().toString(), STORAGE_DIRECTORY);
+    if (enableInitialDataCache) {
+      InitialDataCache.CacheValue cacheValue = cache.computeIfAbsent(absPath, key -> {
+        LocalS3Metadata metadata = loadS3Metadata(initialDataPath);
+        Storage persistent = Storage.createReadOnlyPersistent(storagePath);
+        // Copies of the objects of the persistent storage reduce disk I/O, within the byte budget of the cache.
+        return new InitialDataCache.CacheValue(metadata, Storage.createCopyOnAccess(persistent, cache));
+      });
+      // Each call makes a copy of the metadata and a storage of its own over the cached one.
+      return new Data(cacheValue.metadata(), cacheValue.storage());
+    }
+    return new Data(loadS3Metadata(initialDataPath),
+        Storage.createLayered(Storage.createInMemory(), Storage.createReadOnlyPersistent(storagePath)));
   }
 
   @Override
@@ -102,12 +118,24 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
     return objectService;
   }
 
+  /**
+   * Replace the data with the data that the service started with: a new copy of its initial data, or no data. The
+   * initial data is loaded again, unless it is cached.
+   */
+  @Override
+  public void reset() {
+    bucketGuard.exclusive(() -> {
+      data = initialData.get();
+      return null;
+    });
+  }
+
   private BucketService createBucketService() {
-    return InMemoryBucketService.create(s3Metadata, bucketGuard);
+    return InMemoryBucketService.create(() -> data.metadata(), bucketGuard);
   }
 
   private ObjectService createObjectService() {
-    return InMemoryObjectService.create(s3Metadata, storage, bucketGuard);
+    return InMemoryObjectService.create(() -> data.metadata(), () -> data.storage(), bucketGuard);
   }
 
   private LocalS3Metadata loadS3Metadata(Path initialDataDirectory) {

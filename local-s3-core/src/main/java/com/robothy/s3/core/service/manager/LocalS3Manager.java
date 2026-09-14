@@ -76,4 +76,24 @@ public interface LocalS3Manager {
    */
   ObjectService objectService();
 
+  /**
+   * Count the data of the service.
+   *
+   * @return the statistics of the data.
+   */
+  default ObjectStatistics statistics() {
+    return ObjectStatistics.collect(bucketService());
+  }
+
+  /**
+   * Replace the data of the service with the data it started with: none, or the initial data of its data path. The
+   * operations in progress are finished first, and the operations that start meanwhile wait for the reset. The
+   * services of the manager keep working, on the new data.
+   *
+   * @throws UnsupportedOperationException if the manager persists its data, which a reset would delete.
+   */
+  default void reset() {
+    throw new UnsupportedOperationException("Only the data of an IN_MEMORY service can be reset.");
+  }
+
 }

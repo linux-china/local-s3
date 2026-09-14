@@ -38,6 +38,9 @@ import software.amazon.awssdk.services.s3vectors.model.PutVectorsRequest;
 import software.amazon.awssdk.services.s3vectors.model.QueryVectorsRequest;
 import software.amazon.awssdk.services.s3vectors.model.VectorData;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 public class ReachabilityMetadataGenerator {
 
@@ -265,6 +268,14 @@ public class ReachabilityMetadataGenerator {
             .destinationKey("my-object-copy")
             .build());
       }); // not implemented yet
+    }
+
+    // The admin endpoints serialize their statistics with Jackson, which reads the record components reflectively.
+    HttpClient http = HttpClient.newHttpClient();
+    for (String[] request : new String[][] {{"GET", "/_admin/stats"}, {"GET", "/_admin/requests?limit=10"},
+        {"POST", "/_admin/reset"}}) {
+      assertDoesNotThrow(() -> http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + request[1]))
+          .method(request[0], HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString()));
     }
   }
 

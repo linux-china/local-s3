@@ -112,6 +112,38 @@ class InMemoryLocalS3VectorsManagerTest {
         .listVectorBuckets(null, null, null).getVectorBuckets().size());
   }
 
+  /**
+   * A reset restores the vectors of the data path, dropping what the service changed, and the service keeps working.
+   */
+  @Test
+  void resetRestoresTheVectorsOfTheDataPath() {
+    LocalS3VectorsManager persistentManager = LocalS3VectorsManager.createFileSystem(dataPath);
+    S3VectorsService persistent = persistentManager.s3VectorsService();
+    persistent.createVectorBucket(BUCKET, null);
+    persistent.createIndex(BUCKET, INDEX, VectorDataType.FLOAT32, 2, DistanceMetric.EUCLIDEAN, null);
+    persistent.putVectors(BUCKET, INDEX, List.of(vector("a", 1.0f, 0.0f), vector("b", 0.0f, 1.0f)));
+    assertThrows(UnsupportedOperationException.class, persistentManager::reset);
+
+    LocalS3VectorsManager manager = LocalS3VectorsManager.createInMemory(dataPath);
+    S3VectorsService inMemory = manager.s3VectorsService();
+    inMemory.putVectors(BUCKET, INDEX, List.of(vector("c", 1.0f, 1.0f)));
+    inMemory.deleteVectors(BUCKET, INDEX, List.of("a"));
+    inMemory.createVectorBucket("another-bucket", null);
+    assertEquals(new VectorStatistics(2, 1, 2), manager.statistics());
+
+    manager.reset();
+
+    assertEquals(new VectorStatistics(1, 1, 2), manager.statistics());
+    Map<String, float[]> vectors = getVectors(inMemory, "a", "b", "c");
+    assertArrayEquals(new float[] {1.0f, 0.0f}, vectors.get("a"));
+    assertFalse(vectors.containsKey("c"));
+
+    LocalS3VectorsManager empty = LocalS3VectorsManager.createInMemory();
+    empty.s3VectorsService().createVectorBucket(BUCKET, null);
+    empty.reset();
+    assertEquals(new VectorStatistics(0, 0, 0), empty.statistics());
+  }
+
   private static PutInputVector vector(String key, float... values) {
     return PutInputVector.builder().key(key).data(data(values)).build();
   }

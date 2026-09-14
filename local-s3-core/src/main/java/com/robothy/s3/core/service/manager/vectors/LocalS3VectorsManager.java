@@ -33,4 +33,23 @@ public interface LocalS3VectorsManager {
 
   S3VectorsService s3VectorsService();
 
+  /**
+   * Count the data of the service.
+   *
+   * @return the statistics of the data.
+   */
+  default VectorStatistics statistics() {
+    return VectorStatistics.collect(s3VectorsService());
+  }
+
+  /**
+   * Replace the vectors of the service with the vectors it started with: none, or the initial data of its data path.
+   * The operations in progress are finished first, and the operations that start meanwhile wait for the reset.
+   *
+   * @throws UnsupportedOperationException if the manager persists its data, which a reset would delete.
+   */
+  default void reset() {
+    throw new UnsupportedOperationException("Only the vectors of an IN_MEMORY service can be reset.");
+  }
+
 }

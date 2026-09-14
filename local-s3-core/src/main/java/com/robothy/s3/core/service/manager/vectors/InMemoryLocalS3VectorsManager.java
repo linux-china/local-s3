@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service.manager.vectors;
 
 import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
+import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.s3vectors.FileSystemVectorBucketMetadataStore;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
@@ -22,7 +23,20 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 final class InMemoryLocalS3VectorsManager implements LocalS3VectorsManager {
 
+  private final Path initialDataDirectory;
+
+  private final BucketGuard bucketGuard = BucketGuard.inMemory();
+
+  /**
+   * The vectors of the service, replaced as a whole by {@linkplain #reset()} within an exclusive operation of the
+   * {@linkplain #bucketGuard}.
+   */
+  private volatile Data data;
+
   private final S3VectorsService s3VectorsService;
+
+  private record Data(LocalS3VectorsMetadata metadata, VectorStorage storage) {
+  }
 
   /**
    * Create a manager.
@@ -31,6 +45,12 @@ final class InMemoryLocalS3VectorsManager implements LocalS3VectorsManager {
    *     to start without vectors.
    */
   InMemoryLocalS3VectorsManager(Path initialDataDirectory) {
+    this.initialDataDirectory = initialDataDirectory;
+    this.data = initialData();
+    this.s3VectorsService = S3VectorsService.create(() -> data.metadata(), () -> data.storage(), bucketGuard);
+  }
+
+  private Data initialData() {
     LocalS3VectorsMetadata vectorsMetadata = new LocalS3VectorsMetadata();
     VectorStorage storage = VectorStorage.createInMemory();
     if (Objects.nonNull(initialDataDirectory) && Files.isDirectory(initialDataDirectory)) {
@@ -42,12 +62,23 @@ final class InMemoryLocalS3VectorsManager implements LocalS3VectorsManager {
       log.info("Loaded {} vector buckets from {}.", vectorsMetadata.getVectorBucketMetadataMap().size(),
           initialDataDirectory);
     }
-    this.s3VectorsService = S3VectorsService.create(vectorsMetadata, storage);
+    return new Data(vectorsMetadata, storage);
   }
 
   @Override
   public S3VectorsService s3VectorsService() {
     return s3VectorsService;
+  }
+
+  /**
+   * Replace the vectors with the ones that the service started with, loading the initial data again.
+   */
+  @Override
+  public void reset() {
+    bucketGuard.exclusive(() -> {
+      data = initialData();
+      return null;
+    });
   }
 
 }

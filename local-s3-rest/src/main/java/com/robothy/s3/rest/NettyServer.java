@@ -3,6 +3,7 @@ package com.robothy.s3.rest;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.netty.InFlightRequests;
+import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -78,13 +79,14 @@ final class NettyServer {
      * @param xmlMapper                renders the errors of malformed requests.
      * @param requestBodyFileDirectory the directory that large request bodies are buffered in; {@code null} for the
      *                                 default temporary directory.
+     * @param requestRecorder          receives the requests once their responses are written.
      * @return the started server.
      */
     static NettyServer start(LocalS3 config, int port, Router router, XmlMapper xmlMapper,
-                             Path requestBodyFileDirectory) {
+                             Path requestBodyFileDirectory, RequestRecorder requestRecorder) {
         NettyServer server = new NettyServer(config);
         try {
-            server.bind(port, router, xmlMapper, requestBodyFileDirectory);
+            server.bind(port, router, xmlMapper, requestBodyFileDirectory, requestRecorder);
         } catch (Throwable e) {
             server.stop();
             throw e;
@@ -92,7 +94,8 @@ final class NettyServer {
         return server;
     }
 
-    private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory) {
+    private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory,
+                      RequestRecorder requestRecorder) {
         this.parentGroup = new MultiThreadIoEventLoopGroup(config.getNettyParentEventGroupThreadNum(),
                 new NamingThreadFactory("locals3-parent-event-group", config.isDaemonThreads()),
                 NioIoHandler.newFactory());
@@ -108,7 +111,7 @@ final class NettyServer {
                     .childHandler(new LocalS3ServerInitializer(executor, router, xmlMapper,
                             config.getMaxRequestBodySize(), config.getRequestBodyFileThreshold(),
                             config.getIdleConnectionTimeoutSeconds(), config.getMaxRequestHeaderSize(),
-                            requestBodyFileDirectory, inFlightRequests))
+                            requestBodyFileDirectory, inFlightRequests, requestRecorder))
                     .bind(config.getBindHost(), port)
                     .sync()
                     .channel();
@@ -121,6 +124,14 @@ final class NettyServer {
     /**
      * The port the server listens on, which is the random one that was bound if port {@code 0} was requested.
      */
+    /**
+     * The number of requests whose responses aren't written yet.
+     */
+    int inFlightRequests() {
+        InFlightRequests requests = this.inFlightRequests;
+        return requests == null ? 0 : requests.count();
+    }
+
     int port() {
         return ((InetSocketAddress) serverSocketChannel.localAddress()).getPort();
     }

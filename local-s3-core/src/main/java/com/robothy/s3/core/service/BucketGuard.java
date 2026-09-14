@@ -77,4 +77,15 @@ public interface BucketGuard {
    */
   <T> T change(String bucketName, Change change, Supplier<T> operation);
 
+  /**
+   * Run an operation that concerns every bucket at once, e.g. one that replaces all the data of the service, once no
+   * operation of any bucket is running, and while none starts: the operations of the buckets wait for it.
+   *
+   * @param operation the operation.
+   * @return the result of the operation.
+   * @throws IllegalStateException if the current thread is running an operation of a bucket, which would wait for
+   *     itself.
+   */
+  <T> T exclusive(Supplier<T> operation);
+
 }

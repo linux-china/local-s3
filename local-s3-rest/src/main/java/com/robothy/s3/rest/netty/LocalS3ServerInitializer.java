@@ -41,6 +41,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
 
     private final InFlightRequests inFlightRequests;
 
+    private final RequestRecorder requestRecorder;
+
     /**
      * Create a channel initializer.
      *
@@ -97,6 +99,32 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                                     long maxRequestBodySize, long requestBodyFileThreshold,
                                     long idleConnectionTimeoutSeconds, int maxRequestHeaderSize,
                                     Path requestBodyFileDirectory, InFlightRequests inFlightRequests) {
+        this(executor, router, xmlMapper, maxRequestBodySize, requestBodyFileThreshold, idleConnectionTimeoutSeconds,
+                maxRequestHeaderSize, requestBodyFileDirectory, inFlightRequests, RequestRecorder.NONE);
+    }
+
+    /**
+     * Create a channel initializer.
+     *
+     * @param executor                     executes request handling and writes the temporary request body files,
+     *                                     shared by all connections.
+     * @param router                       routes requests to handlers.
+     * @param xmlMapper                    renders S3 errors.
+     * @param maxRequestBodySize           max request body size in bytes.
+     * @param requestBodyFileThreshold     size in bytes above which a request body is buffered in a temporary file.
+     * @param idleConnectionTimeoutSeconds seconds after which an idle connection is closed; {@code 0} never closes it.
+     * @param maxRequestHeaderSize         max size in bytes of the header section of a request.
+     * @param requestBodyFileDirectory     the directory that temporary request body files are created in;
+     *                                     {@code null} for the default temporary directory.
+     * @param inFlightRequests             counts the requests in flight of all connections.
+     * @param requestRecorder              receives the requests of all connections once their responses are written.
+     */
+    public LocalS3ServerInitializer(Executor executor, Router router, XmlMapper xmlMapper,
+                                    long maxRequestBodySize, long requestBodyFileThreshold,
+                                    long idleConnectionTimeoutSeconds, int maxRequestHeaderSize,
+                                    Path requestBodyFileDirectory, InFlightRequests inFlightRequests,
+                                    RequestRecorder requestRecorder) {
+        this.requestRecorder = requestRecorder;
         this.requestBodyFileDirectory = requestBodyFileDirectory;
         this.inFlightRequests = inFlightRequests;
         this.maxRequestHeaderSize = maxRequestHeaderSize;
@@ -124,7 +152,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                 .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(maxRequestBodySize,
                         requestBodyFileThreshold, xmlMapper, headVerifier, requestBodyFileDirectory, executor))
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
-                .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests));
+                .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests,
+                        requestRecorder));
     }
 
 }

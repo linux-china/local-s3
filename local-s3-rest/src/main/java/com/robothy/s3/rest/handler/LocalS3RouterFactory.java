@@ -18,6 +18,7 @@ import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.handler.s3vectors.CreateIndexController;
 import com.robothy.s3.rest.handler.s3vectors.CreateVectorBucketController;
@@ -44,6 +45,13 @@ import java.util.Objects;
 import java.util.Set;
 
 public class LocalS3RouterFactory {
+
+  /**
+   * The operations whose requests aren't worth recording in the statistics of the requests: the health check, which a
+   * probe requests every few seconds, and the administration endpoints, which would record themselves.
+   */
+  public static final Set<String> UNRECORDED_OPERATIONS = Set.of("HealthCheck", "HeadHealthCheck",
+      AdminController.STATS_OPERATION, AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION);
 
   /**
    * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
@@ -187,8 +195,9 @@ public class LocalS3RouterFactory {
   }
 
   /**
-   * The routes that aren't Amazon S3 operations: the health check that a container probe requests, and
-   * the CORS preflight that a browser sends before a cross-origin request. Neither of them is signed.
+   * The routes that aren't Amazon S3 operations: the health check that a container probe requests, the
+   * CORS preflight that a browser sends before a cross-origin request, neither of which is signed, and the
+   * administration endpoints of a running service, see {@linkplain AdminController}.
    */
   private static void serviceRoutes(Routes routes, ServiceFactory serviceFactory) {
     // The two health check routes answer through one controller, and so do the two preflight ones.
@@ -200,6 +209,15 @@ public class LocalS3RouterFactory {
         .add("HeadHealthCheck", HEAD, HEALTH_CHECK_PATH, healthCheck)
         .add("BucketCorsPreflight", OPTIONS, BUCKET_PATH, corsPreflight)
         .add("ObjectCorsPreflight", OPTIONS, BUCKET_KEY_PATH, corsPreflight);
+
+    // Only a running service has an administration; a router of handlers alone doesn't.
+    if (serviceFactory.containsInstance(LocalS3Admin.class)) {
+      AdminController admin = new AdminController(serviceFactory);
+      routes
+          .add(AdminController.STATS_OPERATION, GET, AdminController.STATS_PATH, admin::stats)
+          .add(AdminController.REQUESTS_OPERATION, GET, AdminController.REQUESTS_PATH, admin::requests)
+          .add(AdminController.RESET_OPERATION, POST, AdminController.RESET_PATH, admin::reset);
+    }
   }
 
   /**

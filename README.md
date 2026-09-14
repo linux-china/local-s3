@@ -535,6 +535,29 @@ new LocalS3Container("latest")
 `LocalS3Container` still waits for the startup log message by default, so that it works with images older than
 the health check.
 
+### Admin endpoints
+
+A running service answers a few endpoints for local development and tests, with JSON:
+
+| Endpoint | Description |
+|---|---|
+| `GET /_admin/stats` | The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. |
+| `GET /_admin/requests?limit=n` | The last 100 requests, the most recent first: time, method, URI, operation, status, latency and `x-amz-request-id`. The values of the credentials of presigned URLs are hidden. |
+| `POST /_admin/reset` | Replace the data of an `IN_MEMORY` service with the data it started with, i.e. none, or the initial data of its data path, and create the `AWS_BUCKETS` again. The requests recorded for the statistics are forgotten too. A `PERSISTENCE` service answers `409 Conflict`, since a reset would delete its data path. |
+
+Resetting a service between the tests that share it is much quicker than restarting it. The requests in progress
+are finished first, and the requests that arrive meanwhile wait for the reset. An embedded service is reset with
+`LocalS3#reset()`, and its statistics are read with `LocalS3#statistics()`.
+
+```shell
+curl -s http://localhost:29090/_admin/stats
+curl -s -X POST http://localhost:29090/_admin/reset
+```
+
+The latency of a request is measured from when its body is received until its response is written. The health check
+and the admin endpoints aren't recorded. Unlike the health check, the admin endpoints must be signed if credentials
+are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY"`.
+
 ### LocalS3 test container
 
 LocalS3 provides a [testcontainers](https://www.testcontainers.org/) implementation. You can run LocalS3 in your tests 

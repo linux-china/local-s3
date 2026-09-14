@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -8,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
 import com.robothy.s3.rest.utils.VirtualHostParser;
@@ -62,7 +64,7 @@ class HeadVerificationReuseTest {
     // The upload took longer than the allowed clock skew; the time was valid when the request started.
     clock.instant = Instant.parse("2013-05-24T00:30:00Z");
 
-    assertSame(handler, router.match(request));
+    assertSame(handler, ((OperationHandler) router.match(request)).handler());
   }
 
   @Test
@@ -72,7 +74,9 @@ class HeadVerificationReuseTest {
 
     HttpRequest tampered = decode(router, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
 
-    assertInstanceOf(AuthenticationFailureHandler.class, router.match(tampered));
+    OperationHandler rejected = (OperationHandler) router.match(tampered);
+    assertInstanceOf(AuthenticationFailureHandler.class, rejected.handler());
+    assertEquals(LocalS3Router.AUTHENTICATION_FAILURE_OPERATION, rejected.operation());
   }
 
   /**
@@ -86,7 +90,7 @@ class HeadVerificationReuseTest {
     HttpRequest request = decode(router(clock, mock(HttpRequestHandler.class)), CONTENT);
     clock.instant = Instant.parse("2013-05-24T00:30:00Z");
 
-    assertInstanceOf(AuthenticationFailureHandler.class, verifying.match(request));
+    assertInstanceOf(AuthenticationFailureHandler.class, ((OperationHandler) verifying.match(request)).handler());
   }
 
   private static LocalS3Router router(Clock clock, HttpRequestHandler handler) {
