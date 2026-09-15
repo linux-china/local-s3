@@ -668,4 +668,5 @@ public class AppTest {
 
 # References
 
+* [H2 MVStore](https://h2database.com/html/mvstore.html): a persistent, log structured key-value store
 * S3 compatibility tests: https://github.com/ceph/s3-tests
