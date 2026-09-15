@@ -21,6 +21,7 @@ jspecify="1.0.1"
 springBoot = "4.1.1"
 micrometer = "1.17.1"
 duckdb="1.5.5.1"
+h2MvStore="2.5.250"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -40,6 +41,7 @@ nettyTransport = { group = "io.netty", name = "netty-transport", version.ref = "
 apacheCommonsCollections4 = { group = "org.apache.commons", name = "commons-collections4", version.ref = "apacheCommonsCollections4" }
 commonsIo = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
 apacheCommonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "apacheCommonsLang3" }
+h2MvStore = { group = "com.h2database", name = "h2-mvstore", version.ref = "h2MvStore" }
 junit5 = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit5" }
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }
 junit5JupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junit5" }
