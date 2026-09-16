@@ -13,6 +13,7 @@ import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
+import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
@@ -21,6 +22,8 @@ import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.ObjectIdentifier;
 import com.robothy.s3.datatypes.request.DeleteObjectsRequest;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -176,11 +179,43 @@ class S3ChangeEventsTest extends LocalS3ServiceTestBase {
         "Amazon S3 doesn't notify of created buckets.");
   }
 
+  /**
+   * A listener that runs on the thread of the change, which it does by default, and fails with an error that isn't
+   * caught, e.g. a {@linkplain StackOverflowError}, fails the operation once the change is committed. The content that
+   * the operation stored is referenced by then, and is kept.
+   */
+  @MethodSource("localS3Managers")
+  @ParameterizedTest
+  void anErrorOfAListenerKeepsTheContentOfTheCommittedObject(LocalS3Manager manager) throws Exception {
+    manager.bucketService().createBucket(BUCKET);
+    ObjectService objectService = manager.objectService();
+    put(objectService, "source.txt", "Source");
+    manager.addChangeListener(change -> {
+      throw new StackOverflowError("listener");
+    });
+
+    assertThrows(StackOverflowError.class, () -> put(objectService, "a.txt", "Hello"));
+    assertThrows(StackOverflowError.class, () -> objectService.copyObject(BUCKET, "b.txt",
+        CopyObjectOptions.builder().sourceBucket(BUCKET).sourceKey("source.txt").build()));
+    assertThrows(StackOverflowError.class, () -> objectService.putObject(BUCKET, "a.txt", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("World".getBytes(StandardCharsets.UTF_8)))
+        .build()));
+
+    assertEquals("World", read(objectService, "a.txt"));
+    assertEquals("Source", read(objectService, "b.txt"));
+  }
+
   private static PutObjectAns put(ObjectService objectService, String key, String content) {
     return objectService.putObject(BUCKET, key, PutObjectOptions.builder()
         .content(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)))
         .contentType("text/plain")
         .build());
+  }
+
+  private static String read(ObjectService objectService, String key) throws IOException {
+    try (InputStream in = objectService.getObject(BUCKET, key, GetObjectOptions.builder().build()).getContent()) {
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    }
   }
 
   private static void uploadPart(ObjectService objectService, String key, String uploadId) {

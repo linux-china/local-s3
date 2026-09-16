@@ -34,20 +34,23 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
 
     StoredContent data = storeContent(options.getData(), options.getDataFile());
     Long fileId = data.fileId();
-    try {
-      UploadPartMetadata uploadPartMetadata = UploadPartMetadata.builder()
-          .fileId(fileId)
-          .lastModified(System.currentTimeMillis())
-          // The length of the data that was stored, which the length declared by the request may not match.
-          .size(data.size())
-          .etag(options.getETag().orElse(data.md5()))
-          .contentMd5(data.md5())
-          .build();
-      return commitUploadPart(bucket, key, uploadId, partNumber, uploadPartMetadata);
-    } catch (Throwable e) {
-      discardStoredContent(fileId, e);
-      throw e;
-    }
+    // Like putObject, a failure to deliver the changes of a committed part doesn't delete its data.
+    return deliverChangesAfter(() -> {
+      try {
+        UploadPartMetadata uploadPartMetadata = UploadPartMetadata.builder()
+            .fileId(fileId)
+            .lastModified(System.currentTimeMillis())
+            // The length of the data that was stored, which the length declared by the request may not match.
+            .size(data.size())
+            .etag(options.getETag().orElse(data.md5()))
+            .contentMd5(data.md5())
+            .build();
+        return commitUploadPart(bucket, key, uploadId, partNumber, uploadPartMetadata);
+      } catch (Throwable e) {
+        discardStoredContent(fileId, e);
+        throw e;
+      }
+    });
   }
 
   /**

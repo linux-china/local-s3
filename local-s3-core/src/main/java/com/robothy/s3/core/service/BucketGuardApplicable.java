@@ -96,6 +96,21 @@ public interface BucketGuardApplicable {
   }
 
   /**
+   * Run an action that changes buckets, and deliver the changes it publishes once the action has ended, rather than once
+   * each change it makes has ended. Within the action, a change that returns has been committed, and one that throws
+   * hasn't: a failure to deliver its changes, e.g. an {@linkplain Error} that a listener throws on the thread of the
+   * change, reaches the caller of this method after the action rather than the action itself. So an action that cleans
+   * up after a failed change, e.g. deletes the content that it stored for it, doesn't clean up after a committed one.
+   *
+   * @param action the action.
+   * @return the result of the action.
+   * @see com.robothy.s3.core.event.S3ChangePublisher#withinChange
+   */
+  default <T> T deliverChangesAfter(Supplier<T> action) {
+    return bucketGuard().changePublisher().withinChange(action);
+  }
+
+  /**
    * Run an operation as a part of another one, which the changes that it publishes name, e.g. {@code CopyObject}.
    *
    * @see com.robothy.s3.core.event.S3ChangePublisher#asOperation

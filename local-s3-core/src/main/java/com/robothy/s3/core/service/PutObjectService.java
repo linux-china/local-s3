@@ -39,7 +39,9 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   /**
    * Put an object. The content is stored before the bucket is locked, so that a large upload doesn't block
    * the other requests to the bucket; only {@linkplain #commitPutObject} holds the bucket write lock. If the
-   * object can't be added, the stored content is deleted.
+   * object can't be added, the stored content is deleted. The change is delivered to the listeners once the object is
+   * committed and this cleanup is out of the way, so that a listener that fails can't have the content of a committed
+   * object deleted.
    *
    * @param bucketName the bucket name.
    * @param key the object key.
@@ -52,27 +54,30 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
 
     StoredContent content = storeContent(options.getContent(), options.getContentFile());
     Long fileId = content.fileId();
-    try {
-      VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
-      versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
-      versionedObjectMetadata.setContentType(options.getContentType());
-      versionedObjectMetadata.setSystemMetadata(options.getSystemMetadata());
-      // The length of the content that was stored, which the length declared by the request may not match.
-      versionedObjectMetadata.setSize(content.size());
-      if (Objects.nonNull(options.getUserMetadata())) {
-        versionedObjectMetadata.setUserMetadata(options.getUserMetadata());
-      }
-      versionedObjectMetadata.setFileId(fileId);
-      versionedObjectMetadata.setEtag(content.md5());
-      checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
-      options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
+    return deliverChangesAfter(() -> {
+      try {
+        VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
+        versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
+        versionedObjectMetadata.setContentType(options.getContentType());
+        versionedObjectMetadata.setSystemMetadata(options.getSystemMetadata());
+        // The length of the content that was stored, which the length declared by the request may not match.
+        versionedObjectMetadata.setSize(content.size());
+        if (Objects.nonNull(options.getUserMetadata())) {
+          versionedObjectMetadata.setUserMetadata(options.getUserMetadata());
+        }
+        versionedObjectMetadata.setFileId(fileId);
+        versionedObjectMetadata.setEtag(content.md5());
+        checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
+        options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 
-      return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions(),
-          options.getOperation());
-    } catch (Throwable e) {
-      discardStoredContent(fileId, e);
-      throw e;
-    }
+        // Its change is delivered after this block, so a listener that fails doesn't get here.
+        return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions(),
+            options.getOperation());
+      } catch (Throwable e) {
+        discardStoredContent(fileId, e);
+        throw e;
+      }
+    });
   }
 
   /**
