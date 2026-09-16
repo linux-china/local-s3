@@ -46,7 +46,8 @@ socket ─▶ event loop (Netty)                                  ─▶ executo
   mode that file is created under `.storage/.request-bodies/`, on the file system of the storage, so that storing an
   upload renames the file into place instead of writing the body a second time.
 + **Verification before the body.** The signature of a request with a body is verified from its head, before
-  `100 Continue` is sent, so a request that fails anyway is never uploaded.
+  `100 Continue` is sent, so a request that fails anyway is never uploaded. A browser form upload is the exception:
+  its credentials are fields of the body, so `PostObjectController` verifies them once the body is received.
 + **Executor.** `LocalS3HttpMessageHandler` hands the request to the executor, which all connections share, and stops
   reading the connection until the response is written. The requests of a connection are handled one at a time, in
   order; a slow request only holds up its own connection.

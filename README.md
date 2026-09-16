@@ -58,8 +58,11 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 ## Features
 
-+ **53 S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
++ **54 S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
   [Supported and unsupported APIs](docs/apis.md).
++ **Browser form uploads** (`POST Object`) with policy documents and their signatures: expiration, conditions and
+  `content-length-range` are checked like Amazon S3 checks them, so a frontend upload flow can be debugged locally.
+  [Details](docs/semantics.md#browser-form-uploads-post-object).
 + **Lifecycle configurations are saved but not applied**: they can be put, read back and deleted, so frameworks that
   configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
@@ -78,7 +81,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | Document | Contents |
 |---|---|
 | [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
-| [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, and change events. |
+| [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |

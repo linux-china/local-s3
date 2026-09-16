@@ -10,6 +10,7 @@ Amazon S3 would refuse.
 - [Conditional requests](#conditional-requests)
 - [Versioning](#versioning)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
+- [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Change events](#change-events)
 
@@ -93,6 +94,78 @@ The object of a completed multipart upload gets the entity tag of Amazon S3: the
 of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the MD5 of the whole content instead;
 `compositeMultipartEtags(false)`, `@LocalS3(compositeMultipartEtags = false)` or
 `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS=false` bring that back for tests that depend on it.
+
+## Browser form uploads (POST Object)
+
+A web page can upload a file straight to a bucket with an HTML form, without the file passing through its backend:
+the backend creates a **policy**, a base64-encoded JSON document that says what the form may upload and until when,
+signs it, and puts both into hidden fields of the form. LocalS3 implements that flow, `POST Object`, so the
+frontend can be developed and its policies debugged locally rather than against Amazon S3.
+
+```html
+<form action="http://localhost:29090/uploads" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="key" value="user/42/${filename}">
+  <input type="hidden" name="Content-Type" value="image/png">
+  <input type="hidden" name="success_action_status" value="201">
+  <input type="hidden" name="x-amz-algorithm" value="AWS4-HMAC-SHA256">
+  <input type="hidden" name="x-amz-credential" value="access-key-id/20300101/us-east-1/s3/aws4_request">
+  <input type="hidden" name="x-amz-date" value="20300101T000000Z">
+  <input type="hidden" name="policy" value="eyJleHBpcmF0aW9uIjoi...">
+  <input type="hidden" name="x-amz-signature" value="4b8c...">
+  <input type="file" name="file">
+  <button>Upload</button>
+</form>
+```
+
+The fields are usually generated rather than written by hand, e.g. with `createPresignedPost` of
+`@aws-sdk/s3-presigned-post` or `generate_presigned_post` of boto3, pointed at LocalS3 as their endpoint with
+path-style addressing.
+
+**The form.** The fields that precede `file` carry what a `PutObject` request carries in headers: `key` (required;
+`${filename}` is replaced by the name of the selected file), `Content-Type`, `Cache-Control`, `Content-Disposition`,
+`Content-Encoding`, `Content-Language`, `Expires`, `x-amz-meta-*` and `tagging` (a `Tagging` XML document). Field
+names are case-insensitive, the fields after `file` are ignored, and the fields before it are limited to 20 KB. The
+object's change event is `PostObject`, `s3:ObjectCreated:Post`.
+
+**Authentication.** A service with credentials requires a `policy` and its signature, as fields rather than headers:
+Signature Version 4 (`x-amz-algorithm`, `x-amz-credential`, `x-amz-date`, `x-amz-signature`), or the Signature
+Version 2 that older upload libraries send (`AWSAccessKeyId`, `signature`). A service without credentials accepts
+forms without a policy, but **checks the policy of a form that carries one**, so that its expiration and conditions
+can be debugged without setting up credentials.
+
+**The policy.** `expiration` is checked against the current time, and every condition against the form:
+
+| Condition | Satisfied if |
+|---|---|
+| `{"field": "value"}` or `["eq", "$field", "value"]` | the field equals the value |
+| `["starts-with", "$field", "prefix"]` | the field starts with the prefix; `""` accepts any value. Each value of a comma-separated `Content-Type` must |
+| `["content-length-range", min, max]` | the size of the file is between `min` and `max` bytes |
+
+`bucket` is always the bucket that the form is posted to. Every field of the form must be named by a condition, except
+`policy`, `x-amz-signature`, `signature`, `AWSAccessKeyId`, `file` and the fields that start with `x-ignore-`.
+
+| Problem | Response |
+|---|---|
+| The body isn't `multipart/form-data` | `400 RequestIsNotMultiPartContent` |
+| The body is malformed, or has no `file` | `400 MalformedPOSTRequest`, `400 IncorrectNumberOfFilesInPostRequest` |
+| The fields before `file` exceed 20 KB | `400 MaxPostPreDataLengthExceededError` |
+| No `key` | `400 InvalidArgument` |
+| No policy or signature, on a service with credentials | `403 AccessDenied` |
+| A wrong signature, or an unknown access key | `403 SignatureDoesNotMatch`, `403 InvalidAccessKeyId` |
+| The policy isn't base64, isn't JSON, lacks `expiration` or `conditions`, or has an unknown condition | `400 InvalidPolicyDocument` |
+| The policy expired | `403 AccessDenied`: `Invalid according to Policy: Policy expired.` |
+| A condition fails | `403 AccessDenied`: `Invalid according to Policy: Policy Condition failed: ["starts-with","$key","user/42/"]` |
+| A field that no condition names | `403 AccessDenied`: `Invalid according to Policy: Extra input fields: x-amz-meta-note` |
+| The file is outside of `content-length-range` | `400 EntityTooSmall`, `400 EntityTooLarge` |
+
+**The response.** With `success_action_redirect` (or the older `redirect`), `303 See Other` to that URL with
+`bucket`, `key` and `etag` added to its query. Otherwise the `success_action_status` of the form: `200`, `201` with
+a `PostResponse` document (`Location`, `Bucket`, `Key`, `ETag`), or `204`, the default. The `ETag`, `Location` and
+`x-amz-version-id` headers carry the same. A page on another origin reads the response if the CORS configuration of
+the bucket allows `POST` from it and exposes those headers.
+
+Accepted but not applied, like the headers of `PutObject`: `acl`, `x-amz-storage-class` and the server-side
+encryption fields. They still have to be named by the policy.
 
 ## Lifecycle configuration
 

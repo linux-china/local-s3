@@ -54,7 +54,7 @@ class RequestIdTest {
       // A response that succeeded, and the errors of the exception handlers and of the request decoder.
       seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket/a.txt")).GET())));
       seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket"))
-          .POST(HttpRequest.BodyPublishers.noBody()))));
+          .method("PATCH", HttpRequest.BodyPublishers.noBody()))));
       seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket/missing")).GET())));
       seen.add(check(send(client, HttpRequest.newBuilder(
           URI.create(base + "/request-id-bucket?list-type=2&continuation-token=bad")).GET())));

@@ -55,6 +55,7 @@ versioning, see [semantics.md](semantics.md).
 + PutBucketReplication
 + PutBucketVersioning
 + PutBucketTagging
++ PostObject
 + PutObject
 + PutObjectTagging
 + UploadPart
@@ -68,6 +69,9 @@ The lifecycle configuration of a bucket is **stored but not applied**: `GetBucke
 was put, but no object expires or transitions, and no incomplete multipart upload is aborted because of it. See
 [semantics.md](semantics.md#lifecycle-configuration). The deprecated `PutBucketLifecycle` and `GetBucketLifecycle`
 send the same requests, and are answered the same way.
+
+`PostObject` is the upload of a file by an HTML form that a browser posts to a bucket, with its policy document and
+signature; see [semantics.md](semantics.md#browser-form-uploads-post-object).
 
 `ListBuckets` is paginated with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, so
 `listBucketsPaginator` works.
@@ -174,9 +178,5 @@ answer. LocalS3 has its own listener API instead; see [change events](semantics.
 
 ## Not routed at all
 
-`POST Object`, the browser form upload (`multipart/form-data` to the bucket, with its base64 policy
-document and signature), has no route, so it answers `501 NotImplemented` from the fallback handler:
-`LocalS3 does not implement POST /<bucket>.` Testing a browser upload flow against LocalS3 therefore needs
-presigned `PUT` instead.
-
-Every other operation of the S3 API that isn't listed on this page is also unrouted and answers the same way.
+Every other operation of the S3 API that isn't listed on this page has no route, and answers `501 NotImplemented`
+from the fallback handler, e.g. `LocalS3 does not implement PATCH /<bucket>.`

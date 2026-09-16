@@ -67,7 +67,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
       options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 
-      return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions());
+      return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions(),
+          options.getOperation());
     } catch (Throwable e) {
       discardStoredContent(fileId, e);
       throw e;
@@ -108,12 +109,30 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   default PutObjectAns commitPutObject(String bucketName, String key,
                                        VersionedObjectMetadata versionedObjectMetadata,
                                        ObjectPreconditions preconditions) {
+    return commitPutObject(bucketName, key, versionedObjectMetadata, preconditions, PutObjectOptions.PUT_OBJECT);
+  }
+
+  /**
+   * Add a new version of an object whose content is already stored, like
+   * {@linkplain #commitPutObject(String, String, VersionedObjectMetadata, ObjectPreconditions)}, and name the change it
+   * publishes after the operation that stored the object.
+   *
+   * @param bucketName the bucket name.
+   * @param key the object key.
+   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
+   * @param preconditions the conditions that the object the key holds must satisfy.
+   * @param operation the S3 operation that stores the object, e.g. {@code PutObject} or {@code PostObject}.
+   * @return result of the put object operation.
+   */
+  default PutObjectAns commitPutObject(String bucketName, String key,
+                                       VersionedObjectMetadata versionedObjectMetadata,
+                                       ObjectPreconditions preconditions, String operation) {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       PreconditionAssertions.assertWritePreconditionsHold(preconditions, key,
           bucketMetadata.getObjectMetadata(key).orElse(null));
       PutObjectAns ans = addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
-      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "PutObject", bucketName, key,
+      publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, operation, bucketName, key,
           ans.getVersionId(), ans.getSize(), ans.getEtag()));
       return ans;
     });

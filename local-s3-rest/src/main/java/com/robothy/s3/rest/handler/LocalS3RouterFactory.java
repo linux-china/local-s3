@@ -149,15 +149,15 @@ public class LocalS3RouterFactory {
     CorsResponseHeaders corsResponseHeaders = serviceFactory.containsInstance(BucketService.class)
         ? new CorsResponseHeaders(serviceFactory.getInstance(BucketService.class))
         : null;
-    LocalS3Router router = new LocalS3Router(
-        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), virtualHostParser,
-        corsResponseHeaders);
+    AwsSignatureV4Verifier signatureVerifier =
+        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey);
+    LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders);
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
     serviceRoutes(routes, serviceFactory);
     bucketReadRoutes(routes, serviceFactory, shared);
-    bucketWriteRoutes(routes, serviceFactory, shared);
+    bucketWriteRoutes(routes, serviceFactory, shared, signatureVerifier);
     objectReadRoutes(routes, serviceFactory, shared);
     objectWriteRoutes(routes, serviceFactory, shared);
     vectorRoutes(routes, serviceFactory);
@@ -249,10 +249,14 @@ public class LocalS3RouterFactory {
 
   /**
    * The operations that create, configure or delete a bucket, i.e. the {@code PUT}, {@code POST} and
-   * {@code DELETE} requests addressed at one. {@code DeleteObjects} is here as well: it is posted to the
-   * bucket rather than to an object.
+   * {@code DELETE} requests addressed at one. {@code DeleteObjects} and {@code PostObject} are here as well: they
+   * are posted to the bucket rather than to an object.
+   *
+   * @param signatureVerifier verifies the policy of a {@code PostObject} form, whose credentials are fields of the form
+   *     rather than headers; {@code null} if the service doesn't require signed requests.
    */
-  private static void bucketWriteRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+  private static void bucketWriteRoutes(Routes routes, ServiceFactory factory, SharedControllers shared,
+                                        AwsSignatureV4Verifier signatureVerifier) {
     routes
         .add("CreateBucket", PUT, BUCKET_PATH, new CreateBucketController(factory))
         .add("DeleteBucket", DELETE, BUCKET_PATH, new DeleteBucketController(factory))
@@ -265,6 +269,7 @@ public class LocalS3RouterFactory {
         .add("DeleteObjects", POST, BUCKET_PATH, has("delete"), new DeleteObjectsController(factory))
         .add("DeletePublicAccessBlock", DELETE, BUCKET_PATH, has("publicAccessBlock"),
             new DeletePublicAccessBlockController(factory))
+        .add(PostObjectController.OPERATION, POST, BUCKET_PATH, new PostObjectController(factory, signatureVerifier))
         .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)

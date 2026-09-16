@@ -103,6 +103,7 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
       case OBJECT_CREATED -> switch (Objects.toString(operation, "")) {
         case "CopyObject" -> "s3:ObjectCreated:Copy";
         case "CompleteMultipartUpload" -> "s3:ObjectCreated:CompleteMultipartUpload";
+        case "PostObject" -> "s3:ObjectCreated:Post";
         default -> "s3:ObjectCreated:Put";
       };
       case OBJECT_DELETED -> deleteMarker ? "s3:ObjectRemoved:DeleteMarkerCreated" : "s3:ObjectRemoved:Delete";

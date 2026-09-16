@@ -18,6 +18,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -27,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -735,6 +737,103 @@ final class AwsSignatureV4Verifier {
     return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
         || value >= '0' && value <= '9' || value == '-' || value == '_'
         || value == '.' || value == '~';
+  }
+
+  /**
+   * Verify the signature of the policy of a browser form upload, {@code POST Object}, whose credentials are fields of
+   * the form rather than headers. The signature covers the base64-encoded policy, not the request, so neither the
+   * time of the request nor its headers are checked: the expiration of the policy limits how long the form can be
+   * used, which {@linkplain PostPolicy} checks.
+   *
+   * <p>Both signature versions that Amazon S3 accepts for a form are verified:
+   * <ul>
+   *   <li>Signature Version 4: {@code x-amz-algorithm}, {@code x-amz-credential}, {@code x-amz-date} and
+   *   {@code x-amz-signature}, the hex HMAC-SHA256 of the policy with the signing key of the credential scope;</li>
+   *   <li>Signature Version 2: {@code AWSAccessKeyId} and {@code signature}, the base64 HMAC-SHA1 of the policy with
+   *   the secret access key, which older upload libraries still send.</li>
+   * </ul>
+   *
+   * @param policy the {@code policy} field, base64-encoded as the form carries it.
+   * @param field the value of a field of the form, whose name is compared ignoring case.
+   * @return the result.
+   */
+  VerificationResult verifyPostPolicy(String policy, Function<String, Optional<String>> field) {
+    Optional<String> signatureV4 = field.apply("x-amz-signature");
+    if (signatureV4.isPresent()) {
+      return verifyPostPolicyV4(policy, signatureV4.get(), field);
+    }
+    Optional<String> signatureV2 = field.apply("signature");
+    if (signatureV2.isPresent()) {
+      return verifyPostPolicyV2(policy, signatureV2.get(), field);
+    }
+    return VerificationResult.failure(S3ErrorCode.AccessDenied, S3ErrorCode.AccessDenied.description());
+  }
+
+  private VerificationResult verifyPostPolicyV4(String policy, String suppliedSignature,
+      Function<String, Optional<String>> field) {
+    Optional<String> algorithm = field.apply("x-amz-algorithm");
+    if (algorithm.isEmpty() || !ALGORITHM.equals(algorithm.get())) {
+      return postFieldInvalid("Unsupported or missing signing algorithm: "
+          + algorithm.orElse(""));
+    }
+    Optional<String> credential = field.apply("x-amz-credential");
+    if (credential.isEmpty()) {
+      return postFieldInvalid("The form must contain the field x-amz-credential.");
+    }
+    final CredentialScope scope;
+    try {
+      scope = parseCredential(credential.get());
+    } catch (IllegalArgumentException e) {
+      return postFieldInvalid(e.getMessage());
+    }
+    if (!accessKeyId.equals(scope.accessKeyId())) {
+      return VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
+          "The AWS access key ID you provided does not exist in our records.");
+    }
+    if (!"s3".equals(scope.service())) {
+      return postFieldInvalid("The credential scope service must be s3.");
+    }
+    Optional<String> amzDate = field.apply("x-amz-date");
+    if (amzDate.isEmpty()) {
+      return postFieldInvalid("The form must contain the field x-amz-date.");
+    }
+    try {
+      AMZ_DATE_FORMAT.parse(amzDate.get());
+    } catch (DateTimeParseException e) {
+      return postFieldInvalid("x-amz-date is not a valid ISO-8601 basic timestamp.");
+    }
+    if (!amzDate.get().startsWith(scope.date())) {
+      return postFieldInvalid("The credential scope date does not match x-amz-date.");
+    }
+    String expectedSignature = signature(signingKey(scope), policy);
+    return secureEquals(expectedSignature, suppliedSignature) ? VerificationResult.success() : signatureMismatch();
+  }
+
+  private VerificationResult verifyPostPolicyV2(String policy, String suppliedSignature,
+      Function<String, Optional<String>> field) {
+    Optional<String> suppliedAccessKeyId = field.apply("AWSAccessKeyId");
+    if (suppliedAccessKeyId.isEmpty()) {
+      return postFieldInvalid("The form must contain the field AWSAccessKeyId.");
+    }
+    if (!accessKeyId.equals(suppliedAccessKeyId.get())) {
+      return VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
+          "The AWS access key ID you provided does not exist in our records.");
+    }
+    try {
+      Mac mac = Mac.getInstance("HmacSHA1");
+      mac.init(new SecretKeySpec(secretAccessKey.getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
+      byte[] expected = mac.doFinal(policy.getBytes(StandardCharsets.UTF_8));
+      byte[] supplied = Base64.getDecoder().decode(suppliedSignature.trim());
+      return MessageDigest.isEqual(expected, supplied) ? VerificationResult.success() : signatureMismatch();
+    } catch (IllegalArgumentException e) {
+      return signatureMismatch();
+    } catch (Exception e) {
+      throw new IllegalStateException("Unable to calculate an HMAC-SHA1 signature.", e);
+    }
+  }
+
+  private static VerificationResult postFieldInvalid(String message) {
+    return VerificationResult.failure(S3ErrorCode.InvalidArgument, message);
   }
 
   private static VerificationResult malformed(String message) {

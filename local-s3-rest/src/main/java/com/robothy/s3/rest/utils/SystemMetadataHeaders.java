@@ -58,12 +58,23 @@ public final class SystemMetadataHeaders {
    * @return the system-defined metadata of the request; {@code null} if it carries none.
    */
   public static SystemMetadata fromRequest(HttpRequest request) {
+    return fromValues(name -> request.header(name).orElse(null));
+  }
+
+  /**
+   * Read the system-defined metadata of an object from values named like the headers, e.g. the fields of the form
+   * of a {@code PostObject} request.
+   *
+   * @param values the value of a header name, e.g. {@code cache-control}; {@code null} if there is none.
+   * @return the system-defined metadata; {@code null} if there is none.
+   */
+  public static SystemMetadata fromValues(Function<String, String> values) {
     SystemMetadata systemMetadata = SystemMetadata.builder()
-        .cacheControl(header(request, Header.CACHE_CONTROL))
-        .contentDisposition(header(request, Header.CONTENT_DISPOSITION))
-        .contentEncoding(storedContentEncoding(header(request, Header.CONTENT_ENCODING)))
-        .contentLanguage(header(request, Header.CONTENT_LANGUAGE))
-        .expires(header(request, Header.EXPIRES))
+        .cacheControl(values.apply(Header.CACHE_CONTROL.headerName))
+        .contentDisposition(values.apply(Header.CONTENT_DISPOSITION.headerName))
+        .contentEncoding(storedContentEncoding(values.apply(Header.CONTENT_ENCODING.headerName)))
+        .contentLanguage(values.apply(Header.CONTENT_LANGUAGE.headerName))
+        .expires(values.apply(Header.EXPIRES.headerName))
         .build();
     return systemMetadata.equals(new SystemMetadata()) ? null : systemMetadata;
   }
@@ -81,10 +92,6 @@ public final class SystemMetadataHeaders {
         .filter(coding -> !coding.isEmpty() && !AWS_CHUNKED.equalsIgnoreCase(coding))
         .collect(Collectors.joining(","));
     return stored.isEmpty() ? null : stored;
-  }
-
-  private static String header(HttpRequest request, Header header) {
-    return request.header(header.headerName).orElse(null);
   }
 
   /**

@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -161,7 +162,17 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   @Override
   public HttpRequestHandler match(HttpRequest request) {
-    if (requiresAuthentication(request)) {
+    OperationHandler handler = matchMethod(request.getMethod())
+        .map(pathRules -> matchPath(pathRules, request))
+        .map(rules -> matchHandler(rules, request))
+        .orElseGet(() -> notFoundHandler() == null ? null
+            : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
+
+    // The form of a browser upload carries its credentials, which its controller verifies; any other request that
+    // looks like a form upload, e.g. one posted to an object, is verified like every request.
+    boolean authenticatedByForm = isFormUpload(request) && handler != null
+        && PostObjectController.OPERATION.equals(handler.operation());
+    if (requiresAuthentication(request) && !authenticatedByForm) {
       // A request whose head was verified before its body was received has only its body verified.
       AwsSignatureV4Verifier.VerificationResult result =
           signatureVerifier.verifyBody(request, receivedRequests.remove(request));
@@ -169,12 +180,6 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, new AuthenticationFailureHandler(result));
       }
     }
-
-    OperationHandler handler = matchMethod(request.getMethod())
-        .map(pathRules -> matchPath(pathRules, request))
-        .map(rules -> matchHandler(rules, request))
-        .orElseGet(() -> notFoundHandler() == null ? null
-            : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
     return withCorsHeaders(request, handler);
   }
 
@@ -186,7 +191,8 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   @Override
   public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
-    if (!requiresAuthentication(head)) {
+    // The credentials of a form upload are fields of its body, so it can only be verified once the body is received.
+    if (!requiresAuthentication(head) || isFormUpload(head)) {
       return null;
     }
     AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);
@@ -225,6 +231,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       corsResponseHeaders.apply(req, resp);
       handler.handle(req, resp);
     });
+  }
+
+  /**
+   * Whether a request looks like a browser form upload, {@code POST Object}: a {@code multipart/form-data} POST that
+   * carries neither an {@code Authorization} header nor the signature of a presigned URL, since its credentials are
+   * fields of the form.
+   */
+  private static boolean isFormUpload(HttpRequest request) {
+    return HttpMethod.POST.equals(request.getMethod())
+        && request.header(HttpHeaderNames.CONTENT_TYPE.toString())
+            .map(contentType -> contentType.trim().toLowerCase(Locale.ROOT).startsWith("multipart/form-data"))
+            .orElse(false)
+        && request.header(HttpHeaderNames.AUTHORIZATION.toString()).isEmpty()
+        && !Objects.toString(request.getUri(), "").contains("X-Amz-Algorithm=");
   }
 
   private static boolean isPreflight(HttpRequest request) {

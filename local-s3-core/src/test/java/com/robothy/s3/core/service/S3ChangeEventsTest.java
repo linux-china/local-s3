@@ -60,6 +60,16 @@ class S3ChangeEventsTest extends LocalS3ServiceTestBase {
     assertEquals("s3:ObjectCreated:Copy", changes.get(0).s3EventName());
 
     changes.clear();
+    objectService.putObject(BUCKET, "form.txt", PutObjectOptions.builder()
+        .operation("PostObject")
+        .content(new ByteArrayInputStream("form".getBytes(StandardCharsets.UTF_8)))
+        .size(4)
+        .build());
+    assertEquals("PostObject", changes.get(0).operation());
+    assertEquals("s3:ObjectCreated:Post", changes.get(0).s3EventName());
+    objectService.deleteObject(BUCKET, "form.txt");
+
+    changes.clear();
     objectService.putObjectTagging(BUCKET, "a.txt", null, new String[][] {{"k", "v"}});
     objectService.deleteObjectTagging(BUCKET, "a.txt", null);
     objectService.putObjectAcl(BUCKET, "a.txt", null, AccessControlPolicy.builder().build());

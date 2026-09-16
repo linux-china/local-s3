@@ -15,6 +15,11 @@ import lombok.Getter;
 @EqualsAndHashCode(exclude = "content")
 public class PutObjectOptions {
 
+  /**
+   * The operation of a put that names none.
+   */
+  public static final String PUT_OBJECT = "PutObject";
+
   private String contentType;
 
   /**
@@ -46,6 +51,12 @@ public class PutObjectOptions {
   private ObjectPreconditions preconditions;
 
   /**
+   * The S3 operation that stores the object, which the change it publishes is named after, e.g. {@code PostObject}
+   * for a browser form upload; {@code null} for {@code PutObject}.
+   */
+  private String operation;
+
+  /**
    * Get tagging in the put object request.
    *
    * @return tagging.
@@ -61,6 +72,15 @@ public class PutObjectOptions {
    */
   public ObjectPreconditions getPreconditions() {
     return Optional.ofNullable(preconditions).orElseGet(ObjectPreconditions::none);
+  }
+
+  /**
+   * Get the S3 operation that stores the object.
+   *
+   * @return the operation; {@code PutObject} if none was set.
+   */
+  public String getOperation() {
+    return Optional.ofNullable(operation).orElse(PUT_OBJECT);
   }
 
 }

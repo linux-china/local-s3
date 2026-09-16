@@ -84,6 +84,11 @@ imported either.
   [semantics](docs/semantics.md#conditional-requests).
 + **Operations**: `UploadPartCopy`, `GetObjectAttributes`, `GetObjectAcl`, `PutObjectAcl`, `ListMultipartUploads`,
   `GetBucketCors`, `PutBucketCors`, `DeleteBucketCors`, `GetBucketPolicyStatus`, and CORS preflight requests.
++ **Browser form uploads**: `POST Object` stores the file of an HTML form posted to a bucket, with the policy
+  document and its Signature Version 4 or 2 signature checked like Amazon S3 checks them: expiration, `eq`,
+  `starts-with` and `content-length-range` conditions, and fields that no condition names. The policy of a form is
+  checked even by a service without credentials. `success_action_redirect` and `success_action_status` are honored.
+  See [semantics](docs/semantics.md#browser-form-uploads-post-object).
 + **Lifecycle configurations**: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration` and
   `DeleteBucketLifecycle` store, return and delete the configuration of a bucket instead of answering
   `501 NotImplemented`. The configuration is validated like Amazon S3 validates its structure, but its rules are
