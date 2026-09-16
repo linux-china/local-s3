@@ -7,7 +7,12 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataCache;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
+import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
+import com.robothy.s3.core.model.internal.UploadPartMetadata;
+import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.JsonUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -39,6 +44,13 @@ import org.h2.mvstore.MVStore;
  *
  * <p>{@linkplain #store} writes the objects and uploads that the bucket recorded as changed, see
  * {@linkplain BucketMetadata#drainChangedObjectKeys()}, and always writes the settings of the bucket, which are small.
+ *
+ * <p>{@linkplain #fetch} reads the keys of the objects of a bucket, not their metadata: each key gets an
+ * {@linkplain ObjectMetadataRef} that reads its metadata from the {@code objects/} map when something needs it, and an
+ * {@linkplain ObjectMetadataCache} bounds how many of them keep it in heap. Opening a data directory therefore costs
+ * the keys it holds rather than the metadata of every version of every object, and a service that serves a few keys of
+ * a large bucket holds a few keys' metadata. A store that keeps its metadata in memory has nothing to read a bucket
+ * back from, so its references are loaded and its cache keeps everything.
  */
 public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata> {
 
@@ -66,7 +78,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private abstract static class BucketAttributes {
 
     @JsonIgnore
-    abstract Map<String, ObjectMetadata> getObjectMap();
+    abstract Map<String, ObjectMetadataRef> getObjectMap();
 
     @JsonIgnore
     abstract Map<String, NavigableMap<String, UploadMetadata>> getUploads();
@@ -83,17 +95,49 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private final MVStore store;
 
   /**
+   * Bounds how much of the object metadata that the buckets of this store reference is in heap at once.
+   */
+  private final ObjectMetadataCache objectMetadataCache;
+
+  /**
    * Create a store over the MVStore of a LocalS3 service.
    *
    * @param localS3Store the store of the service.
    * @return a metadata store that reads and writes the buckets of the service.
    */
   public static MetadataStore<BucketMetadata> create(LocalS3Store localS3Store) {
-    return new MVStoreBucketMetadataStore(Objects.requireNonNull(localS3Store, "localS3Store").store());
+    Objects.requireNonNull(localS3Store, "localS3Store");
+    // A store that keeps its metadata in memory has nothing to read a bucket back from, so its buckets hold every
+    // object they were given; one over a file reads an object when it is needed, within a bounded heap.
+    return new MVStoreBucketMetadataStore(localS3Store.store(),
+        localS3Store.isInMemory() ? ObjectMetadataCache.unbounded() : ObjectMetadataCache.bounded());
   }
 
-  private MVStoreBucketMetadataStore(MVStore store) {
+  /**
+   * Create a store with a given cache, for the tests that exercise the bound.
+   *
+   * @param localS3Store the store of the service.
+   * @param objectMetadataCache bounds how much object metadata is in heap.
+   * @return a metadata store that reads and writes the buckets of the service.
+   */
+  public static MetadataStore<BucketMetadata> create(LocalS3Store localS3Store,
+                                                     ObjectMetadataCache objectMetadataCache) {
+    return new MVStoreBucketMetadataStore(Objects.requireNonNull(localS3Store, "localS3Store").store(),
+        Objects.requireNonNull(objectMetadataCache, "objectMetadataCache"));
+  }
+
+  private MVStoreBucketMetadataStore(MVStore store, ObjectMetadataCache objectMetadataCache) {
     this.store = store;
+    this.objectMetadataCache = objectMetadataCache;
+  }
+
+  /**
+   * The cache that bounds how much of the object metadata of the buckets of this store is in heap.
+   *
+   * @return the cache.
+   */
+  public ObjectMetadataCache objectMetadataCache() {
+    return objectMetadataCache;
   }
 
   private MVMap<String, String> buckets() {
@@ -115,8 +159,13 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
       return null;
     }
     BucketMetadata bucketMetadata = JsonUtils.fromJson(attributes, BucketMetadata.class);
-    objects(bucketName).forEach((key, json) ->
-        bucketMetadata.getObjectMap().put(key, JsonUtils.fromJson(json, ObjectMetadata.class)));
+    // Only the keys of the objects are read here, each with a reference that reads its metadata when it is needed:
+    // opening a bucket of a million objects costs its keys rather than all of their metadata. The multipart uploads
+    // in progress are read whole, being few and short lived.
+    MVMap<String, String> objects = objects(bucketName);
+    for (String key : objects.keySet()) {
+      bucketMetadata.putObjectMetadataRef(key, ObjectMetadataRef.lazy(key, objects::get, objectMetadataCache));
+    }
     uploads(bucketName).forEach((key, json) -> bucketMetadata.getUploads().put(key, readUploads(json)));
     // A bucket that was just read has nothing left to write.
     bucketMetadata.drainChangedObjectKeys();
@@ -135,17 +184,26 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
       throw new IllegalArgumentException("Invalid bucket name '" + bucketMetadata.getBucketName() + "'.");
     }
     String name = requireBucketName(bucketMetadata.getBucketName());
-    buckets().put(name, writeAttributes(bucketMetadata));
 
     List<String> changedObjects = bucketMetadata.drainChangedObjectKeys();
     if (!changedObjects.isEmpty()) {
       MVMap<String, String> objects = objects(name);
       for (String key : changedObjects) {
-        ObjectMetadata objectMetadata = bucketMetadata.getObjectMap().get(key);
-        if (objectMetadata == null) {
+        ObjectMetadataRef ref = bucketMetadata.getObjectMap().get(key);
+        if (ref == null) {
           objects.remove(key);
         } else {
-          objects.put(key, JsonUtils.toJson(objectMetadata));
+          ObjectMetadata objectMetadata = ref.persisted();
+          String json = JsonUtils.toJson(objectMetadata);
+          objects.put(key, json);
+          ref.persistedSize(json.length());
+          recordMaxId(bucketMetadata, objectMetadata);
+          // Written, so the metadata may now be dropped from heap and read back from here. An object that was created
+          // in heap gets its source here, and is tracked from here on, so that storing many objects in one session
+          // doesn't end up holding the metadata of all of them.
+          ref.attach(key, objects::get, objectMetadataCache);
+          ref.unpin();
+          objectMetadataCache.recordRead(ref);
         }
       }
     }
@@ -159,10 +217,13 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
           uploads.remove(key);
         } else {
           uploads.put(key, JsonUtils.toJson(uploadsOfKey));
+          uploadsOfKey.forEach((uploadId, upload) -> recordMaxId(bucketMetadata, uploadId, upload));
         }
       }
     }
 
+    // Written last: the attributes carry the greatest ID in use, which the objects and uploads above raised.
+    buckets().put(name, writeAttributes(bucketMetadata));
     store.commit();
     return name;
   }
@@ -188,6 +249,44 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
       }
     }
     return all;
+  }
+
+  /**
+   * Record the greatest generated ID that an object references, so that a service which opens this store again can
+   * seed its ID generator without reading the metadata of every object to find the IDs in use. Only the objects that
+   * are written are walked, so it costs what the change costs.
+   */
+  private static void recordMaxId(BucketMetadata bucketMetadata, ObjectMetadata objectMetadata) {
+    objectMetadata.getVersionedObjectMap().forEach((versionId, version) -> {
+      bucketMetadata.recordMaxId(toId(versionId));
+      bucketMetadata.recordMaxId(toId(version.getFileId()));
+      // The content of a version completed from a multipart upload is stored in its parts.
+      for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
+        bucketMetadata.recordMaxId(toId(part.getFileId()));
+      }
+    });
+  }
+
+  private static void recordMaxId(BucketMetadata bucketMetadata, String uploadId, UploadMetadata upload) {
+    bucketMetadata.recordMaxId(toId(uploadId));
+    for (UploadPartMetadata part : upload.getParts().values()) {
+      bucketMetadata.recordMaxId(toId(part.getFileId()));
+    }
+  }
+
+  /**
+   * An ID as a number; {@code -1} for anything the generator didn't produce, e.g. the {@code null} version.
+   */
+  private static long toId(String id) {
+    try {
+      return Long.parseLong(id);
+    } catch (NumberFormatException | NullPointerException e) {
+      return -1L;
+    }
+  }
+
+  private static long toId(Long id) {
+    return id == null ? -1L : id;
   }
 
   private static String writeAttributes(BucketMetadata bucketMetadata) {

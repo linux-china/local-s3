@@ -144,11 +144,11 @@ class InMemoryLocalS3ManagerTest {
     objectService.createMultipartUpload("bucket", "upload.txt",
         com.robothy.s3.core.model.request.CreateMultipartUploadOptions.builder().build());
 
-    assertEquals(new ObjectStatistics(1, 1, 1, 0, 5, 1), manager.statistics());
+    assertEquals(new ObjectStatistics(1, 1, 1, 0, 5, 1, 0, 0), withoutHeapCounts(manager.statistics()));
 
     manager.reset();
 
-    assertEquals(new ObjectStatistics(0, 0, 0, 0, 0, 0), manager.statistics());
+    assertEquals(new ObjectStatistics(0, 0, 0, 0, 0, 0, 0, 0), withoutHeapCounts(manager.statistics()));
     assertThrows(BucketNotExistException.class, () -> bucketService.getBucket("bucket"));
     bucketService.createBucket("bucket");
     putObject(objectService, "bucket", "b.txt", "World");
@@ -177,7 +177,8 @@ class InMemoryLocalS3ManagerTest {
 
         manager.reset();
 
-        assertEquals(new ObjectStatistics(1, 1, 1, 0, 7, 0), manager.statistics(), "cached: " + cached);
+        assertEquals(new ObjectStatistics(1, 1, 1, 0, 7, 0, 0, 0), withoutHeapCounts(manager.statistics()),
+            "cached: " + cached);
         GetObjectAns object = objectService.getObject("bucket", "initial.txt", GetObjectOptions.builder().build());
         assertEquals("Initial", new String(object.getContent().readAllBytes()));
         assertThrows(Exception.class,
@@ -200,7 +201,16 @@ class InMemoryLocalS3ManagerTest {
     putObject(objectService, "versioned", "b.txt", "333");
     objectService.deleteObject("versioned", "b.txt");
 
-    assertEquals(new ObjectStatistics(2, 1, 3, 1, 6, 0), manager.statistics());
+    assertEquals(new ObjectStatistics(2, 1, 3, 1, 6, 0, 0, 0), withoutHeapCounts(manager.statistics()));
+  }
+
+  /**
+   * The data of a service without the counts of what its metadata holds in heap, which depend on what the store of
+   * the service happens to have read; {@code ObjectStatisticsTest} covers those.
+   */
+  private static ObjectStatistics withoutHeapCounts(ObjectStatistics statistics) {
+    return new ObjectStatistics(statistics.buckets(), statistics.objects(), statistics.objectVersions(),
+        statistics.deleteMarkers(), statistics.objectBytes(), statistics.multipartUploads(), 0, 0);
   }
 
   private static void putObject(ObjectService objectService, String bucket, String key, String content) {

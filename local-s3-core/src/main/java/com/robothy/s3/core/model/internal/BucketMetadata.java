@@ -40,8 +40,26 @@ public class BucketMetadata {
 
   }
 
+  /**
+   * The objects of the bucket, by key, each as a reference that reads its metadata when it is needed. The keys of
+   * every object are held here, which is what the listings navigate; only the metadata of the objects in use is in
+   * heap, see {@linkplain ObjectMetadataRef}.
+   */
   @JsonDeserialize(converter = ObjectMetadataMapConverter.class)
-  private ConcurrentSkipListMap<String, ObjectMetadata> objectMap = new ConcurrentSkipListMap<>();
+  private NavigableMap<String, ObjectMetadataRef> objectMap = new ConcurrentSkipListMap<>();
+
+  /**
+   * The greatest ID that the generator produced for anything this bucket references, e.g. a version ID or the ID of a
+   * stored file, as far as the bucket has been written; {@code null} for a bucket that has never been written, or one
+   * written by a LocalS3 that didn't record it.
+   *
+   * <p>It is persisted so that a service that opens a data directory can seed its ID generator above the IDs that are
+   * already in use without reading the metadata of every object to find them, which is what made opening a directory
+   * cost its whole contents.
+   *
+   * @see com.robothy.s3.core.service.loader.DefaultFileSystemS3MetadataLoader
+   */
+  private Long maxId;
 
   /**
    * The keys whose objects changed since the metadata store last wrote the bucket, so that it only writes those. Not
@@ -101,13 +119,29 @@ public class BucketMetadata {
    * @return the object metadata of the specified object key.
    */
   public Optional<ObjectMetadata> getObjectMetadata(String key) {
-    ObjectMetadata objectMetadata = objectMap.get(key);
-    if (objectMetadata != null && BucketChangeScope.isChanging(bucketName)) {
-      // The caller changes the object in place, e.g. adds a version or sets the tagging of one, which only the key
-      // recorded here tells the metadata store about.
-      changedObjectKeys.add(key);
+    ObjectMetadataRef ref = objectMap.get(key);
+    if (ref == null) {
+      return Optional.empty();
     }
-    return Optional.ofNullable(objectMetadata);
+    if (BucketChangeScope.isChanging(bucketName)) {
+      // The caller changes the object in place, e.g. adds a version or sets the tagging of one, which only the key
+      // recorded here tells the metadata store about. The reference is pinned with it, so that the metadata the
+      // caller is about to change isn't dropped from heap before it is written.
+      changedObjectKeys.add(key);
+      ref.pin();
+    }
+    return Optional.of(ref.get());
+  }
+
+  /**
+   * The reference to the metadata of an object, which reads it when it is needed: for the callers that walk the
+   * objects of a bucket without needing all of their metadata.
+   *
+   * @param key the object key.
+   * @return the reference; empty if the key holds no object.
+   */
+  public Optional<ObjectMetadataRef> getObjectMetadataRef(String key) {
+    return Optional.ofNullable(objectMap.get(key));
   }
 
   /**
@@ -119,9 +153,22 @@ public class BucketMetadata {
    */
   public ObjectMetadata putObjectMetadata(String key, ObjectMetadata objectMetadata) {
     ObjectAssertions.assertObjectKeyIsValid(key);
-    objectMap.put(key, objectMetadata);
+    ObjectMetadataRef ref = ObjectMetadataRef.of(objectMetadata);
+    ref.pin();
+    objectMap.put(key, ref);
     changedObjectKeys.add(key);
     return objectMetadata;
+  }
+
+  /**
+   * Put a reference to the metadata of an object, without reading it: called by a metadata store that loads a bucket.
+   * The key is not recorded as changed, since the store it comes from holds it already.
+   *
+   * @param key the object key.
+   * @param ref the reference to the metadata of the object.
+   */
+  public void putObjectMetadataRef(String key, ObjectMetadataRef ref) {
+    objectMap.put(key, ref);
   }
 
   /**
@@ -131,9 +178,9 @@ public class BucketMetadata {
    * @return the removed object metadata; {@code null} if the key held none.
    */
   public ObjectMetadata removeObjectMetadata(String key) {
-    ObjectMetadata removed = objectMap.remove(key);
+    ObjectMetadataRef removed = objectMap.remove(key);
     changedObjectKeys.add(key);
-    return removed;
+    return removed == null ? null : removed.get();
   }
 
   /**
@@ -152,7 +199,19 @@ public class BucketMetadata {
    */
   public void markAllChanged() {
     changedObjectKeys.addAll(objectMap.keySet());
+    objectMap.values().forEach(ObjectMetadataRef::pin);
     changedUploadKeys.addAll(uploads.keySet());
+  }
+
+  /**
+   * Record the greatest generated ID that this bucket references, keeping the greatest one seen.
+   *
+   * @param id the ID; ignored if it is not greater than the one recorded.
+   */
+  public void recordMaxId(long id) {
+    if (maxId == null || id > maxId) {
+      maxId = id;
+    }
   }
 
   /**

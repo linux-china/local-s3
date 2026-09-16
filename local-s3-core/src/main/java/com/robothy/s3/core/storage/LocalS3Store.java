@@ -151,6 +151,16 @@ public final class LocalS3Store implements AutoCloseable {
   }
 
   /**
+   * Whether the store keeps its metadata in memory and writes no file, which {@linkplain #inMemory()} opens. Such a
+   * store is the only copy of what it holds, so nothing that is read from it may be dropped and read again.
+   *
+   * @return {@code true} if the store has no file.
+   */
+  public boolean isInMemory() {
+    return file == null;
+  }
+
+  /**
    * Whether the store is open for reading only, which {@linkplain #readOnly(Path)} opens a data directory as. Writing
    * such a store fails, so {@linkplain #persistent(Path)} refuses to hand one out.
    *

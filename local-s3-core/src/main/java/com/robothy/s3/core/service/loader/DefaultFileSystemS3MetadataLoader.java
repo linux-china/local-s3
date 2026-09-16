@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.loader;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
@@ -23,6 +24,9 @@ import java.util.Objects;
  * Load the {@linkplain LocalS3Metadata} instance from a give path.
  */
 public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLoader {
+
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(DefaultFileSystemS3MetadataLoader.class);
 
   @Override
   public LocalS3Metadata load(Path s3DataPath) {
@@ -49,33 +53,53 @@ public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLo
    * the timestamp of an ID against an epoch expressed in seconds, which makes the persisted IDs far
    * larger than the ones generated now.
    *
+   * <p>A bucket records the greatest ID it references as it is written, see
+   * {@linkplain BucketMetadata#getMaxId()}, so this normally reads one number per bucket rather than the metadata of
+   * every object. A bucket written by a LocalS3 that didn't record it is walked once, which reads all of its objects;
+   * the number is recorded the next time the bucket is written, so a data directory pays that only until it is
+   * changed.
+   *
    * @param s3Metadata the loaded metadata.
    */
   private void seedIdGenerator(LocalS3Metadata s3Metadata) {
     long maxId = -1L;
     for (BucketMetadata bucketMetadata : s3Metadata.getBucketMetadataMap().values()) {
-      for (ObjectMetadata objectMetadata : bucketMetadata.getObjectMap().values()) {
-        for (Map.Entry<String, VersionedObjectMetadata> version : objectMetadata.getVersionedObjectMap().entrySet()) {
-          maxId = Math.max(maxId, toId(version.getKey()));
-          maxId = Math.max(maxId, toId(version.getValue().getFileId()));
-          // The content of a version completed from a multipart upload is stored in its parts.
-          for (ObjectPartMetadata part : version.getValue().getParts().orElse(List.of())) {
-            maxId = Math.max(maxId, toId(part.getFileId()));
-          }
-        }
-      }
+      Long recorded = bucketMetadata.getMaxId();
+      maxId = Math.max(maxId, recorded == null ? scanMaxId(bucketMetadata) : recorded);
+    }
 
-      for (NavigableMap<String, UploadMetadata> uploadsOfKey : bucketMetadata.getUploads().values()) {
-        for (Map.Entry<String, UploadMetadata> upload : uploadsOfKey.entrySet()) {
-          maxId = Math.max(maxId, toId(upload.getKey()));
-          for (UploadPartMetadata part : upload.getValue().getParts().values()) {
-            maxId = Math.max(maxId, toId(part.getFileId()));
-          }
+    IdUtils.defaultGenerator().ensureGreaterThan(maxId);
+  }
+
+  /**
+   * The greatest generated ID that a bucket references, by reading the metadata of every object and upload it holds:
+   * for the buckets that were written before the number was recorded.
+   */
+  private static long scanMaxId(BucketMetadata bucketMetadata) {
+    log.debug("Bucket {} records no greatest ID, reading its objects to find it.", bucketMetadata.getBucketName());
+    long maxId = -1L;
+    for (ObjectMetadataRef ref : bucketMetadata.getObjectMap().values()) {
+      // Read rather than kept, so that opening a directory doesn't fill the heap with what it walked.
+      ObjectMetadata objectMetadata = ref.read();
+      for (Map.Entry<String, VersionedObjectMetadata> version : objectMetadata.getVersionedObjectMap().entrySet()) {
+        maxId = Math.max(maxId, toId(version.getKey()));
+        maxId = Math.max(maxId, toId(version.getValue().getFileId()));
+        // The content of a version completed from a multipart upload is stored in its parts.
+        for (ObjectPartMetadata part : version.getValue().getParts().orElse(List.of())) {
+          maxId = Math.max(maxId, toId(part.getFileId()));
         }
       }
     }
 
-    IdUtils.defaultGenerator().ensureGreaterThan(maxId);
+    for (NavigableMap<String, UploadMetadata> uploadsOfKey : bucketMetadata.getUploads().values()) {
+      for (Map.Entry<String, UploadMetadata> upload : uploadsOfKey.entrySet()) {
+        maxId = Math.max(maxId, toId(upload.getKey()));
+        for (UploadPartMetadata part : upload.getValue().getParts().values()) {
+          maxId = Math.max(maxId, toId(part.getFileId()));
+        }
+      }
+    }
+    return maxId;
   }
 
   private static long toId(String id) {

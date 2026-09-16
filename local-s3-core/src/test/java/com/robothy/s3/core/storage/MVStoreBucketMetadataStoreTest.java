@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import java.nio.file.Files;
@@ -56,7 +57,7 @@ class MVStoreBucketMetadataStoreTest {
     assertEquals(true, loaded.getVersioningEnabled());
     assertEquals(bucket.getCreationDate(), loaded.getCreationDate());
     assertEquals(List.of("a.txt"), List.copyOf(loaded.getObjectMap().keySet()));
-    assertEquals("etag-a", loaded.getObjectMap().get("a.txt").getVersionedObjectMap().get("v1").getEtag());
+    assertEquals("etag-a", loaded.getObjectMap().get("a.txt").get().getVersionedObjectMap().get("v1").getEtag());
     assertEquals(List.of("upload-1"), List.copyOf(loaded.getUploads().get("big.bin").keySet()));
   }
 
@@ -86,7 +87,7 @@ class MVStoreBucketMetadataStoreTest {
     store.store("my-bucket", bucket);
 
     // Changed in memory, but not recorded as changed: the store doesn't know of it.
-    bucket.getObjectMap().get("b.txt").getVersionedObjectMap().get("v1").setEtag("etag-b-new");
+    bucket.getObjectMap().get("b.txt").get().getVersionedObjectMap().get("v1").setEtag("etag-b-new");
     // Recorded, like a service that changes an object within a change of its bucket does.
     bucket.putObjectMetadata("a.txt", object("v2", 7L, "etag-a-new"));
     assertEquals(List.of("a.txt"), bucket.drainChangedObjectKeys());
@@ -95,8 +96,8 @@ class MVStoreBucketMetadataStoreTest {
     store.store("my-bucket", bucket);
 
     BucketMetadata loaded = store.fetch("my-bucket");
-    assertEquals("etag-a-new", loaded.getObjectMap().get("a.txt").getVersionedObjectMap().get("v2").getEtag());
-    assertEquals("etag-b", loaded.getObjectMap().get("b.txt").getVersionedObjectMap().get("v1").getEtag(),
+    assertEquals("etag-a-new", loaded.getObjectMap().get("a.txt").get().getVersionedObjectMap().get("v2").getEtag());
+    assertEquals("etag-b", loaded.getObjectMap().get("b.txt").get().getVersionedObjectMap().get("v1").getEtag(),
         "Only the recorded object is written.");
   }
 
@@ -201,6 +202,60 @@ class MVStoreBucketMetadataStoreTest {
     try (LocalS3Store store = LocalS3Store.readOnly(empty)) {
       assertEquals(List.of(), MVStoreBucketMetadataStore.create(store).fetchAll());
     }
+  }
+
+  /**
+   * Opening a bucket reads the keys of its objects, not their metadata: that is what keeps opening a data directory
+   * proportional to the keys it holds rather than to everything they carry.
+   */
+  @Test
+  void fetchReadsTheKeysOfABucketWithoutTheMetadataOfItsObjects() {
+    BucketMetadata bucket = bucket("my-bucket");
+    for (int i = 0; i < 100; i++) {
+      bucket.putObjectMetadata("key-" + i, objectMetadata("v" + i, "etag-" + i));
+    }
+    store.store("my-bucket", bucket);
+
+    BucketMetadata loaded = store.fetch("my-bucket");
+    assertEquals(100, loaded.getObjectMap().size(), "Every key is there.");
+    assertTrue(loaded.getObjectMap().values().stream().noneMatch(ObjectMetadataRef::isLoaded),
+        "None of the metadata has been read.");
+
+    assertEquals("etag-7", loaded.getObjectMap().get("key-7").get().getVersionedObjectMap().get("v7").getEtag());
+    assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count(),
+        "Only the object that was asked for has been read.");
+  }
+
+  /**
+   * A bucket records the greatest generated ID it references as it is written, so that a service which opens the
+   * store can seed its ID generator without reading the metadata of every object to find the IDs in use.
+   */
+  @Test
+  void recordsTheGreatestIdOfTheObjectsItWrites() {
+    BucketMetadata bucket = bucket("my-bucket");
+    assertNull(bucket.getMaxId(), "Nothing has been written yet.");
+
+    VersionedObjectMetadata version = new VersionedObjectMetadata();
+    version.setEtag("etag");
+    version.setFileId(4242L);
+    bucket.putObjectMetadata("a.txt", new ObjectMetadata("777", version));
+    store.store("my-bucket", bucket);
+
+    assertEquals(4242L, store.fetch("my-bucket").getMaxId(),
+        "The file ID is greater than the version ID, so it is the one recorded.");
+
+    VersionedObjectMetadata newer = new VersionedObjectMetadata();
+    newer.setFileId(11L);
+    bucket.putObjectMetadata("b.txt", new ObjectMetadata("9999", newer));
+    store.store("my-bucket", bucket);
+    assertEquals(9999L, store.fetch("my-bucket").getMaxId(), "The greatest ID seen is kept.");
+  }
+
+  private static ObjectMetadata objectMetadata(String versionId, String etag) {
+    VersionedObjectMetadata version = new VersionedObjectMetadata();
+    version.setEtag(etag);
+    version.setSize(1L);
+    return new ObjectMetadata(versionId, version);
   }
 
   private static BucketMetadata bucket(String name) {

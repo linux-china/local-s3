@@ -7,7 +7,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataCache;
+import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
+import com.robothy.s3.core.storage.MetadataStore;
+import com.robothy.s3.core.util.JsonUtils;
+import java.util.ArrayList;
+import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
@@ -199,6 +208,149 @@ class FileSystemLocalS3ManagerTest {
     assertTrue(restartedAgain.objectService().listMultipartUploads(BUCKET, null, null, null, 10, null, null)
         .getUploads().isEmpty());
   }
+
+  /**
+   * A service holds the metadata of the objects it serves, not of every object of its data directory: listing and
+   * reading a bucket of many more objects than the bound keeps working, and answers the same as one that holds them
+   * all. Listing is where it matters, since a listing walks keys rather than looking one up.
+   */
+  @Test
+  void servesABucketOfMoreObjectsThanItKeepsInHeap() {
+    int objects = 400;
+    withObjectMetadataCacheOf(20, () -> {
+      LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+      ObjectService objectService = manager.objectService();
+      manager.bucketService().createBucket(BUCKET);
+      for (int i = 0; i < objects; i++) {
+        putObject(objectService, String.format("logs/%03d.txt", i), "content-" + i);
+      }
+      putObject(objectService, "a.txt", "a");
+      putObject(objectService, "z.txt", "z");
+      manager.close();
+
+      LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath);
+      ObjectService restartedObjects = restarted.objectService();
+
+      // A listing of every key, paged the way a client pages it.
+      List<String> listed = new ArrayList<>();
+      String marker = null;
+      do {
+        var page = restartedObjects.listObjects(BUCKET, null, null, marker, 50, null);
+        page.getObjects().forEach(object -> listed.add(object.getKey()));
+        marker = page.getNextMarker().orElse(null);
+      } while (marker != null);
+
+      List<String> expected = new ArrayList<>();
+      expected.add("a.txt");
+      for (int i = 0; i < objects; i++) {
+        expected.add(String.format("logs/%03d.txt", i));
+      }
+      expected.add("z.txt");
+      assertEquals(expected, listed, "Every key is listed once, in order, however little is held in heap.");
+
+      // The rolled up listing takes the same route through the keys.
+      var rolledUp = restartedObjects.listObjects(BUCKET, "/", null, null, 10, null);
+      assertEquals(List.of("a.txt", "z.txt"),
+          rolledUp.getObjects().stream().map(object -> object.getKey()).toList());
+      assertEquals(List.of("logs/"), rolledUp.getCommonPrefixes());
+
+      // The content of an object is still served, whatever was evicted.
+      assertEquals("content-377", getObject(restartedObjects, "logs/377.txt"));
+
+      ObjectStatistics statistics = restarted.statistics();
+      assertEquals(objects + 2, statistics.objects(), "Every object is counted.");
+      assertTrue(statistics.loadedObjects() <= 20,
+          "Holds the metadata of " + statistics.loadedObjects() + " objects, more than the bound of 20.");
+      assertTrue(statistics.loadedObjectMetadataBytes() > 0,
+          "The metadata that is held is measured.");
+      restarted.close();
+      return null;
+    });
+  }
+
+  /**
+   * Storing objects doesn't fill the heap either: the references created while the service runs are handed to the
+   * store, which gives them something to be read back from, so they fall under the bound like the loaded ones.
+   */
+  @Test
+  void storingManyObjectsDoesNotFillTheHeap() {
+    withObjectMetadataCacheOf(20, () -> {
+      LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+      manager.bucketService().createBucket(BUCKET);
+      for (int i = 0; i < 300; i++) {
+        putObject(manager.objectService(), "key-" + i, "content-" + i);
+      }
+
+      ObjectStatistics statistics = manager.statistics();
+      assertEquals(300, statistics.objects());
+      assertTrue(statistics.loadedObjects() <= 20,
+          "Holds the metadata of " + statistics.loadedObjects() + " objects it stored, more than the bound of 20.");
+      manager.close();
+      return null;
+    });
+  }
+
+  /**
+   * A bucket records the greatest generated ID it references as it is written, which is what a service that opens the
+   * data directory seeds its ID generator from instead of reading the metadata of every object to find the IDs in
+   * use. That the seeding then works is covered by {@code DefaultFileSystemS3MetadataLoaderTest}, which needs a fresh
+   * generator to show it and so can't be asserted here: the generator is the one of the JVM, and within one JVM it
+   * has already passed the IDs that this test writes.
+   */
+  @Test
+  void recordsTheGreatestIdItReferences() {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    manager.bucketService().createBucket(BUCKET);
+    manager.bucketService().setVersioningEnabled(BUCKET, true);
+    putObject(manager.objectService(), KEY, "v1");
+    String version = ((ObjectVersion) manager.objectService()
+        .listObjectVersions(BUCKET, null, null, 10, null, null).getVersions().get(0)).getVersionId();
+    manager.close();
+
+    LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    Long recorded = restarted.bucketService().localS3Metadata().getBucketMetadata(BUCKET).orElseThrow().getMaxId();
+    assertNotNull(recorded, "The bucket records the greatest ID it references.");
+    assertTrue(recorded >= Long.parseLong(version),
+        "Recorded " + recorded + ", which is below the version ID " + version + " that the bucket holds.");
+    assertEquals("v1", getObject(restarted.objectService(), KEY));
+    restarted.close();
+  }
+
+  /**
+   * Run an action with a given bound on the object metadata that a new service keeps in heap. The bound is read when
+   * a service opens its store, so it is set around the whole action.
+   */
+  private static <T> T withObjectMetadataCacheOf(int maxEntries, java.util.function.Supplier<T> action) {
+    String previous = System.getProperty(ObjectMetadataCache.MAX_ENTRIES_VARIABLE);
+    System.setProperty(ObjectMetadataCache.MAX_ENTRIES_VARIABLE, String.valueOf(maxEntries));
+    try {
+      return action.get();
+    } finally {
+      if (previous == null) {
+        System.clearProperty(ObjectMetadataCache.MAX_ENTRIES_VARIABLE);
+      } else {
+        System.setProperty(ObjectMetadataCache.MAX_ENTRIES_VARIABLE, previous);
+      }
+    }
+  }
+
+  private static void putObject(ObjectService objectService, String key, String content) {
+    byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+    objectService.putObject(BUCKET, key, PutObjectOptions.builder()
+        .content(new ByteArrayInputStream(bytes))
+        .contentType("text/plain")
+        .size((long) bytes.length)
+        .build());
+  }
+
+  private static String getObject(ObjectService objectService, String key) {
+    try (InputStream content = objectService.getObject(BUCKET, key, GetObjectOptions.builder().build()).getContent()) {
+      return new String(content.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+  }
+
 
   private static void putObject(ObjectService objectService, String content) {
     byte[] bytes = content.getBytes(StandardCharsets.UTF_8);

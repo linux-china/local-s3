@@ -7,6 +7,7 @@ import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
@@ -38,7 +39,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
       List<String> commonPrefixes = new LinkedList<>();
 
       int prefixLen = Objects.isNull(prefix) ? 0 : prefix.length();
-      NavigableMap<String, ObjectMetadata> candidates;
+      NavigableMap<String, ObjectMetadataRef> candidates;
       String commonPrefixOfKeyMarker = null;
       String nextVersionIdMarker;
       String nextKeyMarker;
@@ -101,17 +102,19 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
 
       // Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, so that
       // each common prefix is listed once, and a page takes O(page size * log N) steps however many keys it rolls up.
-      Iterator<Map.Entry<String, ObjectMetadata>> entries = candidates.entrySet().iterator();
+      Iterator<Map.Entry<String, ObjectMetadataRef>> entries = candidates.entrySet().iterator();
       while (entries.hasNext()) {
-        Map.Entry<String, ObjectMetadata> entry = entries.next();
+        Map.Entry<String, ObjectMetadataRef> entry = entries.next();
         String key = entry.getKey();
-        ObjectMetadata objectMetadata = entry.getValue();
+        // Only the keys of the page have their metadata read; the ones rolled up into a common prefix are skipped.
+        ObjectMetadataRef ref = entry.getValue();
         if (Objects.nonNull(delimiter) && -1 != (delimiterIndex = key.indexOf(delimiter, prefixLen))) {
           String commonPrefix = key.substring(0, delimiterIndex + delimiter.length());
           commonPrefixes.add(commonPrefix);
           nextVersionIdMarker = null;
           entries = ListItemUtils.skipPrefix(candidates, commonPrefix).entrySet().iterator();
         } else {
+          ObjectMetadata objectMetadata = ref.get();
           nextVersionIdMarker = fetchVersions(versionItems, commonPrefixes, key, objectMetadata.getVersionedObjectMap(), true, maxKeys, objectMetadata.getVirtualVersion().orElse(null));
         }
         nextKeyMarker = key;

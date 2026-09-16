@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service.loader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
@@ -12,6 +13,7 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
+import com.robothy.s3.core.util.JsonUtils;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -52,6 +54,46 @@ class DefaultFileSystemS3MetadataLoaderTest {
     assertTrue(latest.isLatest());
 
     FileUtils.deleteDirectory(dataPath.toFile());
+  }
+
+  /**
+   * A bucket records the greatest ID it references as it is written, which is what the generator is normally seeded
+   * from. A data directory written before that was recorded holds no such number, so the IDs in use are found by
+   * reading the objects of the bucket once, and a version added after loading it still follows them.
+   */
+  @Test
+  void seedsTheGeneratorByReadingABucketThatRecordsNoGreatestId() throws Exception {
+    Path dataPath = Files.createTempDirectory("local-s3");
+    String bucketName = "legacy-bucket";
+    String key = "key";
+    persistBucketWithLegacyVersion(dataPath, bucketName, key);
+    stripRecordedMaxId(dataPath, bucketName);
+
+    ObjectService objectService = LocalS3Manager.createFileSystemS3Manager(dataPath).objectService();
+    PutObjectAns putObjectAns = objectService.putObject(bucketName, key, PutObjectOptions.builder()
+        .contentType("plain/text")
+        .content(new ByteArrayInputStream("Robothy".getBytes()))
+        .size(7)
+        .build());
+
+    assertTrue(Long.parseLong(putObjectAns.getVersionId()) > LEGACY_VERSION_ID,
+        "The new version " + putObjectAns.getVersionId() + " doesn't follow the loaded " + LEGACY_VERSION_ID);
+
+    FileUtils.deleteDirectory(dataPath.toFile());
+  }
+
+  /**
+   * Leave a bucket the way a LocalS3 that didn't record the greatest ID left it: the objects are there, the number
+   * that describes them isn't.
+   */
+  private void stripRecordedMaxId(Path dataPath, String bucketName) {
+    try (LocalS3Store store = LocalS3Store.persistent(dataPath)) {
+      BucketMetadata bucketMetadata = MVStoreBucketMetadataStore.create(store).fetch(bucketName);
+      assertNotNull(bucketMetadata.getMaxId(), "The bucket was written with the greatest ID it references.");
+      bucketMetadata.setMaxId(null);
+      store.store().openMap("buckets").put(bucketName, JsonUtils.toJson(bucketMetadata));
+      store.store().commit();
+    }
   }
 
   private void persistBucketWithLegacyVersion(Path dataPath, String bucketName, String key) {

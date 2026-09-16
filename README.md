@@ -286,6 +286,38 @@ objects. A change writes only the buckets and objects it touched, so a put into 
 The store is opened while the service runs, and released by `shutdown()`; the services of a JVM that share a data path
 share the one open store.
 
+#### Opening a large data path
+
+A `PERSISTENCE` service reads the **keys** of the objects of its data path when it starts, not their metadata: the
+metadata of an object is read from `buckets.mvstore` when a request needs it, and a bounded number of them is kept in
+heap. Opening a data path therefore costs the keys it holds rather than every version, tag and ACL of every object,
+which is what lets a directory of a few hundred thousand data files, e.g. an Iceberg table, be served without loading
+it all first.
+
+`GET /_admin/stats` reports the boundary, so it can be seen rather than guessed:
+
+```json
+{
+  "data": {
+    "objects": 412000,
+    "loadedObjects": 50000,
+    "loadedObjectMetadataBytes": 18432000
+  }
+}
+```
+
+`loadedObjects` is how many objects have their metadata in heap and `loadedObjectMetadataBytes` an estimate of what
+that costs, measured as the size of the persisted form of that metadata. The bound defaults to 50000 objects and is
+configured with the environment variable, or system property, `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`:
+
+```shell
+LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES=200000 java -jar s3.jar
+```
+
+Raising it trades heap for fewer reads of the store; the objects that a service serves stay in heap either way, since
+what is dropped is what was read longest ago. An `IN_MEMORY` service holds all of its objects, having nowhere to read
+them back from, so the bound doesn't apply to it and `loadedObjects` equals `objects`.
+
 #### Run LocalS3 in In-Memory mode with initial data.
 
 LocalS3 loads initial data from the specified path. Changes on such LocalS3 instance only modify the
@@ -579,7 +611,7 @@ A running service answers a few endpoints for local development and tests, with 
 
 | Endpoint | Description |
 |---|---|
-| `GET /_admin/stats` | The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. |
+| `GET /_admin/stats` | The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), how much object metadata the service keeps in heap (`loadedObjects` and `loadedObjectMetadataBytes`, see [Opening a large data path](#opening-a-large-data-path)), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. |
 | `GET /_admin/requests?limit=n` | The last 100 requests, the most recent first: time, method, URI, operation, status, latency and `x-amz-request-id`. The values of the credentials of presigned URLs are hidden. |
 | `POST /_admin/reset` | Replace the data of an `IN_MEMORY` service with the data it started with, i.e. none, or the initial data of its data path, and create the `AWS_BUCKETS` again. The requests recorded for the statistics are forgotten too. A `PERSISTENCE` service answers `409 Conflict`, since a reset would delete its data path. |
 

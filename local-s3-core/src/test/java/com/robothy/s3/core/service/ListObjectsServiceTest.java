@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.datatypes.response.S3Object;
@@ -123,7 +124,7 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
   @org.junit.jupiter.api.Test
   void skipsTheKeysOfACommonPrefix() {
     int[] visits = new int[1];
-    NavigableMap<String, ObjectMetadata> objects = new ConcurrentSkipListMap<>();
+    NavigableMap<String, ObjectMetadataRef> objects = new ConcurrentSkipListMap<>();
     objects.put("a.txt", countingObject(visits, false));
     // Only deleted objects: the prefix isn't listed.
     objects.put("empty/1", countingObject(visits, true));
@@ -157,16 +158,16 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
   }
 
-  private static ObjectMetadata countingObject(int[] visits, boolean deleted) {
+  private static ObjectMetadataRef countingObject(int[] visits, boolean deleted) {
     VersionedObjectMetadata version = new VersionedObjectMetadata();
     version.setDeleted(deleted);
-    return new ObjectMetadata(ObjectMetadata.NULL_VERSION, version) {
+    return ObjectMetadataRef.of(new ObjectMetadata(ObjectMetadata.NULL_VERSION, version) {
       @Override
       public VersionedObjectMetadata getLatest() {
         visits[0]++;
         return super.getLatest();
       }
-    };
+    });
   }
 
 }

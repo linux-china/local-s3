@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
@@ -36,9 +37,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
       String effectivePrefix = Objects.toString(prefix, "");
 
-      NavigableMap<String, ObjectMetadata> objectsAfterMarker =
+      NavigableMap<String, ObjectMetadataRef> objectsAfterMarker =
               ListItemUtils.filterByKeyMarkerAndDelimiterForListObjects(bucketMetadata.getObjectMap(), marker, effectivePrefix, delimiter);
-      NavigableMap<String, ObjectMetadata> filteredByPrefix = ListItemUtils.filterByPrefix(objectsAfterMarker, prefix);
+      NavigableMap<String, ObjectMetadataRef> filteredByPrefix = ListItemUtils.filterByPrefix(objectsAfterMarker, prefix);
 
       ListObjectsAns listObjectsAns = listObjectsAndCommonPrefixes(filteredByPrefix, effectivePrefix, delimiter, maxKeys);
       listObjectsAns.setDelimiter(delimiter);
@@ -57,7 +58,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
    * common prefixes roll up, rather than a step per key. Only the objects whose latest version is a delete marker are
    * stepped over one by one, as a common prefix is only listed if it rolls up an object that isn't deleted.
    */
-  static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadata> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {
+  static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadataRef> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {
     if (filteredObjects.isEmpty() || 0 == maxKeys) {
       return ListObjectsAns.builder()
         .delimiter(delimiter)
@@ -72,11 +73,12 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     String nextMarker = null;
 
     // The entries are iterated rather than the keys, so that each object is found once instead of looked up again.
-    Iterator<Map.Entry<String, ObjectMetadata>> entries = filteredObjects.entrySet().iterator();
+    Iterator<Map.Entry<String, ObjectMetadataRef>> entries = filteredObjects.entrySet().iterator();
     while (entries.hasNext()) {
-      Map.Entry<String, ObjectMetadata> entry = entries.next();
+      Map.Entry<String, ObjectMetadataRef> entry = entries.next();
       String key = entry.getKey();
-      ObjectMetadata objectMetadata = entry.getValue();
+      // Only the objects of the page, and the deleted ones stepped over, have their metadata read.
+      ObjectMetadata objectMetadata = entry.getValue().get();
       if (objectMetadata.getLatest().isDeleted()) {
         continue;
       }
@@ -115,7 +117,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
    * @param entries the entries after the last item; after its common prefix, if the last item is one.
    * @return the key of the last item, or its common prefix; {@code null} if nothing is left to list.
    */
-  static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadata>> entries,
+  static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadataRef>> entries,
           String effectivePrefix, String delimiter) {
 
     Optional<String> commonPrefixOpt = ListItemUtils.commonPrefix(currentKey, effectivePrefix, delimiter);
@@ -125,8 +127,8 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
 
     String commonPrefix = commonPrefixOpt.get();
     while (entries.hasNext()) {
-      Map.Entry<String, ObjectMetadata> entry = entries.next();
-      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().getLatest().isDeleted()) {
+      Map.Entry<String, ObjectMetadataRef> entry = entries.next();
+      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().get().getLatest().isDeleted()) {
         return commonPrefix;
       }
     }
