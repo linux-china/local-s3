@@ -1,6 +1,7 @@
 package com.robothy.s3.rest;
 
 import com.robothy.s3.core.event.S3ChangeListener;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
@@ -36,6 +37,8 @@ public class LocalS3Builder {
     private Path dataPath;
 
     private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
+
+    private PersistencePolicy persistencePolicy = PersistencePolicy.DURABLE;
 
     private final List<String> defaultBuckets = new ArrayList<>();
 
@@ -461,6 +464,29 @@ public class LocalS3Builder {
     }
 
     /**
+     * Set when the changes of a {@code PERSISTENCE} service reach the disk.
+     *
+     * <p>{@linkplain PersistencePolicy#DURABLE}, the default, commits the metadata of every change, so a process that
+     * is killed loses nothing. Every commit appends a chunk to the file of the data directory, so a bulk load leaves
+     * one per object: loading twenty thousand objects writes about 420 MB for about 5 MB of metadata, and the room is
+     * only reclaimed when the store is closed, which compacts the file.
+     *
+     * <p>{@linkplain PersistencePolicy#FAST} lets the store commit in the background instead, at most a second after
+     * a change, and commits what is left when the service is shut down. The same load then writes about 5 MB and
+     * takes about a tenth of the time. A killed process loses the changes of the last second, which is the trade
+     * a data directory built for a test can usually make.
+     *
+     * <p>An {@code IN_MEMORY} service writes nothing, so the policy doesn't apply to it.
+     *
+     * @param persistencePolicy when the changes reach the disk.
+     * @return builder.
+     */
+    public LocalS3Builder persistencePolicy(@NonNull PersistencePolicy persistencePolicy) {
+        this.persistencePolicy = persistencePolicy;
+        return this;
+    }
+
+    /**
      * Enable AWS Signature Version 4 authentication with a static access key pair.
      *
      * @param accessKeyId     access key ID accepted by the server.
@@ -524,7 +550,7 @@ public class LocalS3Builder {
      * @return the configuration.
      */
     public LocalS3Config buildConfig() {
-        return new LocalS3Config(bindHost, port, dataPath, mode, defaultBuckets, changeListeners,
+        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, changeListeners,
                 changeListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,

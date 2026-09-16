@@ -286,6 +286,39 @@ objects. A change writes only the buckets and objects it touched, so a put into 
 The store is opened while the service runs, and released by `shutdown()`; the services of a JVM that share a data path
 share the one open store.
 
+#### Persistence policy
+
+A `PERSISTENCE` service commits the metadata of every change by default, so a process that is killed loses nothing it
+answered a request for. A commit appends a chunk to `buckets.mvstore` rather than replacing what it supersedes, so a
+bulk load leaves one chunk per object: the file grows far beyond the metadata it holds while the load runs.
+
+`persistencePolicy(FAST)` lets the store commit in the background instead, at most a second after a change, and
+commits what is left when the service is shut down:
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .mode(LocalS3Mode.PERSISTENCE)
+    .dataPath("/data")
+    .persistencePolicy(PersistencePolicy.FAST)
+    .build();
+```
+
+Storing twenty thousand small objects through a service, measured end to end:
+
+| Policy | Load | `buckets.mvstore` while running | `buckets.mvstore` at rest |
+|---|---:|---:|---:|
+| `DURABLE` (default) | 4.8 s | 432.6 MB | 1.0 MB |
+| `FAST` | 2.9 s | 4.9 MB | 1.0 MB |
+
+A killed `FAST` process loses the changes of the last second; one that is shut down, including by the JVM shutdown
+hook, persists everything. That is the trade a data directory built to test against can usually make, e.g. the table
+of a big data engine, which is built again if it is lost. Use `DURABLE` when the data directory itself is what
+matters.
+
+Either way the file is compacted when the last holder closes the store, so a data directory rests at the size of the
+metadata it holds rather than of everything ever written to it. Compaction costs the live metadata, not the size the
+file grew to, so it stays quick.
+
 #### Opening a large data path
 
 A `PERSISTENCE` service reads the **keys** of the objects of its data path when it starts, not their metadata: the
@@ -523,11 +556,13 @@ The container is configured by environment variables:
 | `LOCAL_S3_HOST` | `127.0.0.1` | host to bind. |
 | `LOCAL_S3_MODE` | `PERSISTENCE` | `PERSISTENCE` or `IN_MEMORY`. |
 | `LOCAL_S3_DATA_PATH` | `/data` | Data directory, or initial data in `IN_MEMORY` mode. |
+| `LOCAL_S3_PERSISTENCE_POLICY` | `DURABLE` | `PERSISTENCE` mode: when changes reach the disk. `DURABLE` commits every change; `FAST` commits in the background and on shutdown, which is much quicker and writes far less. See [Persistence policy](#persistence-policy). |
 | `LOCAL_S3_STRICT_BUCKET_NAMES` | `false` | Reject bucket names that Amazon S3 doesn't accept. |
 | `LOCAL_S3_STRICT_PART_SIZES` | `false` | Reject a multipart upload whose parts, except the last one, are smaller than the 5 MiB that Amazon S3 requires. |
 | `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS` | `true` | Give the object of a completed multipart upload the entity tag of Amazon S3, i.e. the digest of the digests of its parts with a `-<parts>` suffix. `false` answers the digest of the whole content, which LocalS3 answered before 2.5. |
 | `LOCAL_S3_VIRTUAL_HOST_DOMAINS` | | Comma-separated base domains of virtual-hosted-style requests, e.g. `s3,s3.local` for `my-bucket.s3`. `localhost`, Amazon S3 (`*.amazonaws.com`) Alibaba Cloud OSS (`my-bucket.oss-cn-hangzhou.aliyuncs.com`) Cloudflare R2 (`my-bucket.<account-id>.r2.cloudflarestorage.com`) and Tigris (`my-bucket.t3.storage.dev`, `my-bucket.fly.storage.tigris.dev`) hosts always work. |
 | `LOCAL_S3_VIRTUAL_THREADS` | `true` | Handle every request on a virtual thread of its own. `false` handles the requests on a pool of platform threads, as many as the machine has processors and at least 4. |
+| `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES` | `50000` | `PERSISTENCE` mode: the number of objects whose metadata is kept in heap; see [Opening a large data path](#opening-a-large-data-path). |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES` | `1024` | `IN_MEMORY` mode with initial data: the max number of data paths whose loaded data the JVM caches. |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |

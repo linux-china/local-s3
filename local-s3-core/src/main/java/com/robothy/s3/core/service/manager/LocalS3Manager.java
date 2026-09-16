@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.manager;
 import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import java.nio.file.Path;
 import java.util.concurrent.Executor;
 
@@ -61,7 +62,18 @@ public interface LocalS3Manager {
    * @return an instance of file system implementation.
    */
   static LocalS3Manager createFileSystemS3Manager(Path dataDirectory) {
-    return new FileSystemLocalS3Manager(dataDirectory);
+    return createFileSystemS3Manager(dataDirectory, PersistencePolicy.DURABLE);
+  }
+
+  /**
+   * Create a file system implementation of {@linkplain LocalS3Manager}.
+   *
+   * @param dataDirectory the data directory.
+   * @param persistencePolicy when the changes of the service reach the disk.
+   * @return an instance of file system implementation.
+   */
+  static LocalS3Manager createFileSystemS3Manager(Path dataDirectory, PersistencePolicy persistencePolicy) {
+    return new FileSystemLocalS3Manager(dataDirectory, persistencePolicy);
   }
 
   /**

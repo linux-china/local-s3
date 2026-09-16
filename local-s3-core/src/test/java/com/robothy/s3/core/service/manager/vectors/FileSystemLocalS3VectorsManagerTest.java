@@ -12,6 +12,7 @@ import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
@@ -53,7 +54,7 @@ class FileSystemLocalS3VectorsManagerTest {
           .build();
 
       // Phase 1: Create first manager instance and create buckets
-      FileSystemLocalS3VectorsManager manager1 = new FileSystemLocalS3VectorsManager(tempDirectory);
+      FileSystemLocalS3VectorsManager manager1 = new FileSystemLocalS3VectorsManager(tempDirectory, PersistencePolicy.DURABLE);
       S3VectorsService service1 = manager1.s3VectorsService();
       // Vector data is stored in the data path, not in the working directory.
       assertTrue(Files.isDirectory(LocalS3VectorsManager.vectorStorageDirectory(tempDirectory)));
@@ -119,7 +120,7 @@ class FileSystemLocalS3VectorsManagerTest {
       assertDoesNotThrow(() -> service1.getVectorBucket(bucket3Name));
 
       // Phase 2: Create new manager instance with same directory to test persistence
-      FileSystemLocalS3VectorsManager manager2 = new FileSystemLocalS3VectorsManager(tempDirectory);
+      FileSystemLocalS3VectorsManager manager2 = new FileSystemLocalS3VectorsManager(tempDirectory, PersistencePolicy.DURABLE);
       S3VectorsService service2 = manager2.s3VectorsService();
 
       // Verify bucket1 and bucket3 still exist after manager restart
@@ -167,7 +168,7 @@ class FileSystemLocalS3VectorsManagerTest {
       assertThrows(Exception.class, () -> service2.getVectorBucket(bucket3Name));
 
       // Phase 3: Create third manager instance to verify final state persistence
-      FileSystemLocalS3VectorsManager manager3 = new FileSystemLocalS3VectorsManager(tempDirectory);
+      FileSystemLocalS3VectorsManager manager3 = new FileSystemLocalS3VectorsManager(tempDirectory, PersistencePolicy.DURABLE);
       S3VectorsService service3 = manager3.s3VectorsService();
 
       // Verify final state: only bucket1 and newBucket should exist

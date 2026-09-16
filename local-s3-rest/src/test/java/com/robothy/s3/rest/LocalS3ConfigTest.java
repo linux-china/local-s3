@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -68,7 +69,7 @@ class LocalS3ConfigTest {
 
     assertThrows(IllegalArgumentException.class, () -> withPort(valid, 65536));
     assertThrows(IllegalArgumentException.class, () -> new LocalS3Config(valid.bindHost(), valid.port(),
-        valid.dataPath(), valid.mode(), valid.buckets(), valid.changeListeners(), valid.changeListenerExecutor(),
+        valid.dataPath(), valid.mode(), valid.persistencePolicy(), valid.buckets(), valid.changeListeners(), valid.changeListenerExecutor(),
         valid.initialDataCacheEnabled(), valid.daemonThreads(), valid.registerShutdownHook(),
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
@@ -76,7 +77,7 @@ class LocalS3ConfigTest {
         valid.strictPartSizes(), valid.compositeMultipartEtags(), valid.virtualHostDomains(), null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
-    LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), buckets,
+    LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
         valid.changeListeners(), valid.changeListenerExecutor(), valid.initialDataCacheEnabled(), valid.daemonThreads(),
         valid.registerShutdownHook(), valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(),
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
@@ -124,7 +125,7 @@ class LocalS3ConfigTest {
   }
 
   private static LocalS3Config withPort(LocalS3Config config, int port) {
-    return new LocalS3Config(config.bindHost(), port, config.dataPath(), config.mode(), config.buckets(),
+    return new LocalS3Config(config.bindHost(), port, config.dataPath(), config.mode(), config.persistencePolicy(), config.buckets(),
         config.changeListeners(), config.changeListenerExecutor(),
         config.initialDataCacheEnabled(), config.daemonThreads(), config.registerShutdownHook(),
         config.nettyParentEventGroupThreadNum(), config.nettyChildEventGroupThreadNum(), config.s3ExecutorThreadNum(),

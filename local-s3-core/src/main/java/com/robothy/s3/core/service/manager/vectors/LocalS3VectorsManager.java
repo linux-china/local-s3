@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service.manager.vectors;
 
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import java.nio.file.Path;
 
 public interface LocalS3VectorsManager {
@@ -54,7 +55,19 @@ public interface LocalS3VectorsManager {
    * @return a persistent manager.
    */
   static LocalS3VectorsManager createFileSystem(Path dataDirectory) {
-    return new FileSystemLocalS3VectorsManager(dataDirectory);
+    return createFileSystem(dataDirectory, PersistencePolicy.DURABLE);
+  }
+
+  /**
+   * Create a manager that keeps the vectors in a data directory, like {@linkplain #createFileSystem(Path)}.
+   *
+   * @param dataDirectory the data directory, the one that the S3 buckets are kept in.
+   * @param persistencePolicy when the changes of the service reach the disk, shared with the S3 buckets of the same
+   *     directory, which hold the same store.
+   * @return a persistent manager.
+   */
+  static LocalS3VectorsManager createFileSystem(Path dataDirectory, PersistencePolicy persistencePolicy) {
+    return new FileSystemLocalS3VectorsManager(dataDirectory, persistencePolicy);
   }
 
   S3VectorsService s3VectorsService();

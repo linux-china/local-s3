@@ -9,6 +9,7 @@ import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.MetadataStore;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.core.storage.s3vectors.MVStoreVectorBucketMetadataStore;
 import com.robothy.s3.core.storage.s3vectors.TransactionalVectorStorage;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
@@ -42,10 +43,11 @@ final class FileSystemLocalS3VectorsManager implements LocalS3VectorsManager {
 
   private final S3VectorsService s3VectorsService;
 
-  FileSystemLocalS3VectorsManager(Path dataPath) {
+  FileSystemLocalS3VectorsManager(Path dataPath, PersistencePolicy persistencePolicy) {
     Objects.requireNonNull(dataPath, "Data directory is required to create a persistent LocalS3 Vectors service.");
+    Objects.requireNonNull(persistencePolicy, "persistencePolicy");
     // One store per data directory, which holds the metadata and stays open: it is both loaded from and written to.
-    this.localS3Store = LocalS3Store.persistent(dataPath);
+    this.localS3Store = LocalS3Store.persistent(dataPath, persistencePolicy);
     this.metadataStore = MVStoreVectorBucketMetadataStore.create(localS3Store);
     this.vectorsMetadata = new S3VectorsMetadataLoader().load(metadataStore);
     VectorStorageIds.seedGenerator(vectorsMetadata);

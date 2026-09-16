@@ -5,6 +5,7 @@ import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.core.util.JsonUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,17 +39,33 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
   private final MVStore store;
 
   /**
+   * Whether a change is committed as it is written; see {@linkplain PersistencePolicy}.
+   */
+  private final boolean commitEveryChange;
+
+  /**
    * Create a store over the MVStore of a LocalS3 service.
    *
    * @param localS3Store the store of the service, shared with the S3 buckets of the same data directory.
    * @return a metadata store that reads and writes the vector buckets of the service.
    */
   public static MetadataStore<VectorBucketMetadata> create(LocalS3Store localS3Store) {
-    return new MVStoreVectorBucketMetadataStore(Objects.requireNonNull(localS3Store, "localS3Store").store());
+    Objects.requireNonNull(localS3Store, "localS3Store");
+    return new MVStoreVectorBucketMetadataStore(localS3Store.store(), localS3Store.commitsEveryChange());
   }
 
-  private MVStoreVectorBucketMetadataStore(MVStore store) {
+  private MVStoreVectorBucketMetadataStore(MVStore store, boolean commitEveryChange) {
     this.store = store;
+    this.commitEveryChange = commitEveryChange;
+  }
+
+  /**
+   * Make the change durable, if the store commits every change; see {@linkplain PersistencePolicy}.
+   */
+  private void commit() {
+    if (commitEveryChange) {
+      store.commit();
+    }
   }
 
   private MVMap<String, String> vectorBuckets() {
@@ -74,7 +91,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
     }
     String name = requireVectorBucketName(vectorBucketMetadata.getVectorBucketName());
     vectorBuckets().put(name, JsonUtils.toJson(vectorBucketMetadata));
-    store.commit();
+    commit();
     return name;
   }
 
@@ -84,7 +101,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
     if (vectorBuckets().remove(name) == null) {
       throw new IllegalStateException("Failed to delete metadata of vector bucket " + vectorBucketName);
     }
-    store.commit();
+    commit();
   }
 
   @Override

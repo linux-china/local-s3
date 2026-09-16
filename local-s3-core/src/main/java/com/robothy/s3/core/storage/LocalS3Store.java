@@ -22,6 +22,9 @@ import org.h2.mvstore.MVStore;
  * {@linkplain #close()} it. Sharing it is also what keeps them consistent: they read and write the same metadata
  * rather than overwrite each other's.
  *
+ * <p>The file is compacted when its last holder closes the store, so that a data directory rests at the size of the
+ * metadata it holds rather than of everything that was ever written to it; see {@linkplain PersistencePolicy}.
+ *
  * <p>The one store of a file is open either for reading or for writing, and stays that way while a holder still reads
  * it. {@linkplain #readOnly(Path)} therefore shares a store that {@linkplain #persistent(Path)} opened, but not the
  * other way around: opening a data directory for writing while it is open read-only is rejected, see
@@ -35,11 +38,25 @@ public final class LocalS3Store implements AutoCloseable {
   public static final String FILE_NAME = "buckets.mvstore";
 
   /**
+   * Time allotted to compacting the file when the last holder closes the store. {@code -1} compacts it fully, by
+   * writing the live metadata to a new file: the cost is the metadata that the store holds, not the size the file
+   * grew to, and it is what leaves a data directory at the size of what it holds rather than of what was written to
+   * it. See {@linkplain PersistencePolicy#DURABLE}.
+   */
+  private static final int CLOSE_COMPACTION_TIME = -1;
+
+  /**
    * The stores of the files that are open, by the absolute path of the file. Guarded by itself.
    */
   private static final Map<Path, LocalS3Store> OPEN_FILES = new HashMap<>();
 
   private final MVStore store;
+
+  /**
+   * When the changes written to this store reach the disk; {@linkplain PersistencePolicy#DURABLE} for a store that
+   * has no file, whose changes never do.
+   */
+  private final PersistencePolicy policy;
 
   /**
    * The file that the store holds open; {@code null} for an in-memory store, which is shared with nobody.
@@ -51,9 +68,10 @@ public final class LocalS3Store implements AutoCloseable {
    */
   private int holders = 1;
 
-  private LocalS3Store(MVStore store, Path file) {
+  private LocalS3Store(MVStore store, Path file, PersistencePolicy policy) {
     this.store = store;
     this.file = file;
+    this.policy = policy;
   }
 
   /**
@@ -62,7 +80,8 @@ public final class LocalS3Store implements AutoCloseable {
    * @return a new store.
    */
   public static LocalS3Store inMemory() {
-    return new LocalS3Store(MVStore.open(null), null);
+    // Nothing is written to a disk, so committing a change costs almost nothing and there is no policy to choose.
+    return new LocalS3Store(MVStore.open(null), null, PersistencePolicy.DURABLE);
   }
 
   /**
@@ -76,9 +95,24 @@ public final class LocalS3Store implements AutoCloseable {
    *     while its holder still reads it.
    */
   public static LocalS3Store persistent(Path dataPath) {
+    return persistent(dataPath, PersistencePolicy.DURABLE);
+  }
+
+  /**
+   * Open the store of a data directory for reading and writing, creating the directory and the file if they don't
+   * exist.
+   *
+   * @param dataPath the data directory.
+   * @param policy when the changes written to the store reach the disk.
+   * @return the store over {@code dataPath/}{@value #FILE_NAME}, shared with the other holders of the same file.
+   * @throws IllegalStateException if the file is already open read-only, or open with another policy, see
+   *     {@linkplain #persistent(Path)}.
+   */
+  public static LocalS3Store persistent(Path dataPath, PersistencePolicy policy) {
     Objects.requireNonNull(dataPath, "dataPath");
+    Objects.requireNonNull(policy, "policy");
     PathUtils.createDirectoryIfNotExist(dataPath);
-    return open(fileOf(dataPath), false);
+    return open(fileOf(dataPath), false, policy);
   }
 
   /**
@@ -96,7 +130,7 @@ public final class LocalS3Store implements AutoCloseable {
         // Nothing to read, and opening a file that doesn't exist read-only fails.
         return inMemory();
       }
-      return open(file, true);
+      return open(file, true, PersistencePolicy.DURABLE);
     }
   }
 
@@ -118,7 +152,7 @@ public final class LocalS3Store implements AutoCloseable {
    * @return the store, whose holder the caller now is.
    * @throws IllegalStateException if the caller writes the store and it is open read-only.
    */
-  private static LocalS3Store open(Path file, boolean readOnly) {
+  private static LocalS3Store open(Path file, boolean readOnly, PersistencePolicy policy) {
     synchronized (OPEN_FILES) {
       LocalS3Store open = OPEN_FILES.get(file);
       if (open != null) {
@@ -128,6 +162,11 @@ public final class LocalS3Store implements AutoCloseable {
               + " Give the service that writes it a data directory of its own, or open it once the read-only"
               + " holder has closed it.");
         }
+        if (!readOnly && open.policy != policy) {
+          throw new IllegalStateException("The metadata store " + file + " is open with the persistence policy "
+              + open.policy + ", so it can't be opened with " + policy + " at the same time: the holders of a store"
+              + " share when its changes reach the disk. Configure the services of a data directory the same way.");
+        }
         open.holders++;
         return open;
       }
@@ -135,7 +174,9 @@ public final class LocalS3Store implements AutoCloseable {
       if (readOnly) {
         builder.readOnly();
       }
-      LocalS3Store store = new LocalS3Store(builder.open(), file);
+      // A DURABLE store commits every change itself; a FAST one leaves that to the background thread of MVStore,
+      // which commits at most a second after a change, or once a megabyte of them is unsaved.
+      LocalS3Store store = new LocalS3Store(builder.open(), file, policy);
       OPEN_FILES.put(file, store);
       return store;
     }
@@ -148,6 +189,25 @@ public final class LocalS3Store implements AutoCloseable {
    */
   public MVStore store() {
     return store;
+  }
+
+  /**
+   * When the changes written to this store reach the disk.
+   *
+   * @return the policy the store was opened with.
+   */
+  public PersistencePolicy policy() {
+    return policy;
+  }
+
+  /**
+   * Whether a change must be committed as it is written, i.e. whether the store was opened as
+   * {@linkplain PersistencePolicy#DURABLE}.
+   *
+   * @return {@code true} if every change is committed.
+   */
+  public boolean commitsEveryChange() {
+    return policy == PersistencePolicy.DURABLE;
   }
 
   /**
@@ -198,7 +258,9 @@ public final class LocalS3Store implements AutoCloseable {
       OPEN_FILES.remove(file);
     }
     if (!store.isClosed()) {
-      store.close();
+      // Writes what is left, and compacts the file: a commit appends a chunk rather than replacing what it
+      // supersedes, so without this a data directory keeps the room that every write it ever took needed.
+      store.close(CLOSE_COMPACTION_TIME);
     }
   }
 

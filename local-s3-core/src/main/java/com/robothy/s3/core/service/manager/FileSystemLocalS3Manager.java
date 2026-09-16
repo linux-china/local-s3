@@ -13,6 +13,7 @@ import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.storage.TransactionalStorage;
 import java.nio.file.Path;
@@ -42,10 +43,11 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
    */
   private final BucketGuard bucketGuard;
 
-  FileSystemLocalS3Manager(Path dataDirectory) {
+  FileSystemLocalS3Manager(Path dataDirectory, PersistencePolicy persistencePolicy) {
     Objects.requireNonNull(dataDirectory, "Data directory is required to create a persistent LocalS3 service.");
+    Objects.requireNonNull(persistencePolicy, "persistencePolicy");
     // One store per service, which holds the metadata and stays open: it is both loaded from and written to.
-    this.localS3Store = LocalS3Store.persistent(dataDirectory);
+    this.localS3Store = LocalS3Store.persistent(dataDirectory, persistencePolicy);
     this.bucketMetaStore = MVStoreBucketMetadataStore.create(localS3Store);
     this.s3Metadata = FileSystemS3MetadataLoader.create().load(bucketMetaStore);
     this.storage = new TransactionalStorage(

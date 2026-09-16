@@ -14,6 +14,7 @@ import com.robothy.s3.core.model.internal.ObjectMetadataCache;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.core.util.JsonUtils;
 import java.util.ArrayList;
 import com.robothy.s3.datatypes.response.ObjectVersion;
@@ -314,6 +315,64 @@ class FileSystemLocalS3ManagerTest {
         "Recorded " + recorded + ", which is below the version ID " + version + " that the bucket holds.");
     assertEquals("v1", getObject(restarted.objectService(), KEY));
     restarted.close();
+  }
+
+  /**
+   * A FAST service doesn't commit every change, so what a killed process would lose is the last second of them. A
+   * service that is shut down persists everything: closing its store writes what is left.
+   */
+  @Test
+  void aFastServicePersistsEverythingWhenItIsClosed() {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath, PersistencePolicy.FAST);
+    manager.bucketService().createBucket(BUCKET);
+    manager.bucketService().setVersioningEnabled(BUCKET, true);
+    for (int i = 0; i < 500; i++) {
+      putObject(manager.objectService(), "key-" + i, "content-" + i);
+    }
+    putObject(manager.objectService(), KEY, "v1");
+    putObject(manager.objectService(), KEY, "v2");
+    manager.objectService().putObjectTagging(BUCKET, KEY, null, new String[][] {{"team", "s3"}});
+    manager.close();
+
+    LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath, PersistencePolicy.FAST);
+    assertEquals(501, restarted.statistics().objects(), "Every object written before the shutdown is there.");
+    assertEquals("content-499", getObject(restarted.objectService(), "key-499"));
+    assertEquals("v2", getObject(restarted.objectService(), KEY));
+    assertEquals(2, restarted.objectService()
+        .listObjectVersions(BUCKET, null, null, 10, KEY, null).getVersions().size());
+    assertEquals("team", restarted.objectService().getObjectTagging(BUCKET, KEY, null).getTagging()[0][0]);
+    restarted.close();
+  }
+
+  /**
+   * A commit appends a chunk to the file of the data directory, so committing every change leaves one per change. A
+   * FAST service commits them together instead, which is what keeps the file of a bulk load close to the metadata it
+   * holds rather than to the number of writes that built it.
+   */
+  @Test
+  void aFastServiceWritesFarLessWhileItLoads() throws IOException {
+    Path durablePath = dataPath.resolve("durable");
+    Path fastPath = dataPath.resolve("fast");
+    long durableSize = loadAndMeasure(durablePath, PersistencePolicy.DURABLE);
+    long fastSize = loadAndMeasure(fastPath, PersistencePolicy.FAST);
+
+    assertTrue(fastSize * 4 < durableSize,
+        "The FAST load wrote " + fastSize + " bytes and the DURABLE one " + durableSize + ".");
+  }
+
+  /**
+   * Load a data directory and answer how large its file grew while the service ran, i.e. before it was closed and
+   * the file compacted.
+   */
+  private static long loadAndMeasure(Path path, PersistencePolicy policy) throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(path, policy);
+    manager.bucketService().createBucket(BUCKET);
+    for (int i = 0; i < 2_000; i++) {
+      putObject(manager.objectService(), String.format("data/part-%05d.parquet", i), "content-" + i);
+    }
+    long whileRunning = Files.size(path.resolve(LocalS3Store.FILE_NAME));
+    manager.close();
+    return whileRunning;
   }
 
   /**

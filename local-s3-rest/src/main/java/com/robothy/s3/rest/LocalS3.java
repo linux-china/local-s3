@@ -315,8 +315,9 @@ public class LocalS3 implements AutoCloseable {
             log.info("Created in-memory LocalS3 manager.");
             return LocalS3Manager.createInMemoryS3Manager(config.dataPath(), config.initialDataCacheEnabled());
         } else {
-            log.info("Created file system LocalS3 manager.");
-            return LocalS3Manager.createFileSystemS3Manager(config.dataPath());
+            log.info("Created file system LocalS3 manager with the {} persistence policy.",
+                    config.persistencePolicy());
+            return LocalS3Manager.createFileSystemS3Manager(config.dataPath(), config.persistencePolicy());
         }
     }
 
@@ -329,8 +330,8 @@ public class LocalS3 implements AutoCloseable {
         } else {
             log.info("Created file system LocalS3 Vectors manager.");
             // The same data path as the S3 buckets: the vector buckets are written to the store of the path too, and
-            // their data files to its vectors directory.
-            return LocalS3VectorsManager.createFileSystem(dataPath);
+            // their data files to its vectors directory. The store is shared, so the policy has to be the same one.
+            return LocalS3VectorsManager.createFileSystem(dataPath, config.persistencePolicy());
         }
     }
 

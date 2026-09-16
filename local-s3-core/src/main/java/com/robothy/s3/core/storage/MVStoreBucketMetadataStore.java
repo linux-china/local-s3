@@ -39,6 +39,9 @@ import org.h2.mvstore.MVStore;
  *   <li>{@code uploads/&lt;bucket&gt;}: an object key to the multipart uploads in progress for that key.</li>
  * </ul>
  *
+ * <p>Whether a change is committed as it is written is the {@linkplain PersistencePolicy} of the store; the change
+ * itself is always written into the key-value store, so every request sees it either way.
+ *
  * <p>The values are JSON, written by the same Jackson mapper that reads them, so the metadata model needs no
  * {@code Serializable} of its own and a store can be read by a later version that added fields.
  *
@@ -100,6 +103,12 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private final ObjectMetadataCache objectMetadataCache;
 
   /**
+   * Whether a change is committed as it is written; a {@linkplain PersistencePolicy#FAST} store leaves that to the
+   * background thread of MVStore and to {@linkplain LocalS3Store#close()}.
+   */
+  private final boolean commitEveryChange;
+
+  /**
    * Create a store over the MVStore of a LocalS3 service.
    *
    * @param localS3Store the store of the service.
@@ -110,7 +119,8 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     // A store that keeps its metadata in memory has nothing to read a bucket back from, so its buckets hold every
     // object they were given; one over a file reads an object when it is needed, within a bounded heap.
     return new MVStoreBucketMetadataStore(localS3Store.store(),
-        localS3Store.isInMemory() ? ObjectMetadataCache.unbounded() : ObjectMetadataCache.bounded());
+        localS3Store.isInMemory() ? ObjectMetadataCache.unbounded() : ObjectMetadataCache.bounded(),
+        localS3Store.commitsEveryChange());
   }
 
   /**
@@ -122,13 +132,16 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
    */
   public static MetadataStore<BucketMetadata> create(LocalS3Store localS3Store,
                                                      ObjectMetadataCache objectMetadataCache) {
-    return new MVStoreBucketMetadataStore(Objects.requireNonNull(localS3Store, "localS3Store").store(),
-        Objects.requireNonNull(objectMetadataCache, "objectMetadataCache"));
+    Objects.requireNonNull(localS3Store, "localS3Store");
+    return new MVStoreBucketMetadataStore(localS3Store.store(),
+        Objects.requireNonNull(objectMetadataCache, "objectMetadataCache"), localS3Store.commitsEveryChange());
   }
 
-  private MVStoreBucketMetadataStore(MVStore store, ObjectMetadataCache objectMetadataCache) {
+  private MVStoreBucketMetadataStore(MVStore store, ObjectMetadataCache objectMetadataCache,
+                                     boolean commitEveryChange) {
     this.store = store;
     this.objectMetadataCache = objectMetadataCache;
+    this.commitEveryChange = commitEveryChange;
   }
 
   /**
@@ -138,6 +151,17 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
    */
   public ObjectMetadataCache objectMetadataCache() {
     return objectMetadataCache;
+  }
+
+  /**
+   * Make the change durable, if the store commits every change. A {@linkplain PersistencePolicy#FAST} store leaves
+   * the change in the key-value store, where every request sees it, and lets MVStore commit it in the background:
+   * a burst of small writes is then committed together rather than appending a chunk each.
+   */
+  private void commit() {
+    if (commitEveryChange) {
+      store.commit();
+    }
   }
 
   private MVMap<String, String> buckets() {
@@ -224,7 +248,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
 
     // Written last: the attributes carry the greatest ID in use, which the objects and uploads above raised.
     buckets().put(name, writeAttributes(bucketMetadata));
-    store.commit();
+    commit();
     return name;
   }
 
@@ -236,7 +260,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     }
     store.removeMap(objects(name));
     store.removeMap(uploads(name));
-    store.commit();
+    commit();
   }
 
   @Override

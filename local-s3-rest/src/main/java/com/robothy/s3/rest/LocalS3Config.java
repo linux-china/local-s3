@@ -1,6 +1,7 @@
 package com.robothy.s3.rest;
 
 import com.robothy.s3.core.event.S3ChangeListener;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
@@ -20,6 +21,8 @@ import org.jspecify.annotations.Nullable;
  * @param port the port to bind; {@code 0} binds a random free port.
  * @param dataPath the data directory, or the initial data of an {@code IN_MEMORY} service; {@code null} for none.
  * @param mode whether the data is kept in memory or persisted to {@code dataPath}.
+ * @param persistencePolicy when the changes of a {@code PERSISTENCE} service reach the disk; ignored by an
+ *     {@code IN_MEMORY} service, which writes none.
  * @param buckets the buckets that are created when the service starts, and again when it is reset.
  * @param changeListeners receive the changes that the services commit; empty for none.
  * @param changeListenerExecutor runs the change listeners.
@@ -49,6 +52,7 @@ public record LocalS3Config(
     int port,
     @Nullable Path dataPath,
     LocalS3Mode mode,
+    PersistencePolicy persistencePolicy,
     List<String> buckets,
     List<S3ChangeListener> changeListeners,
     Executor changeListenerExecutor,

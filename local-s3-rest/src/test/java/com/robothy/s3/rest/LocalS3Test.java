@@ -14,6 +14,7 @@ import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.io.ByteArrayOutputStream;
 import java.net.BindException;
@@ -380,6 +381,19 @@ class LocalS3Test {
    * A data path is the initial data of an IN_MEMORY service, so setting it must not switch the mode, although
    * {@code dataPath} on its own does.
    */
+  @Test
+  void fromEnvironmentAppliesThePersistencePolicy() {
+    assertEquals(PersistencePolicy.DURABLE, LocalS3.builder().buildConfig().persistencePolicy(),
+        "Committing every change is the default.");
+    assertEquals(PersistencePolicy.FAST, LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_PERSISTENCE_POLICY, "fast")::get)
+        .buildConfig().persistencePolicy());
+
+    IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_PERSISTENCE_POLICY, "eventually")::get));
+    assertTrue(e.getMessage().contains(LocalS3Environment.LOCAL_S3_PERSISTENCE_POLICY), e.getMessage());
+  }
+
   @Test
   void fromEnvironmentLetsTheModeWinOverTheDataPath() {
     Map<String, String> variables = Map.of(

@@ -1,5 +1,6 @@
 package com.robothy.s3.rest;
 
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.util.Arrays;
 import java.util.Locale;
@@ -24,6 +25,13 @@ public final class LocalS3Environment {
   public static final String LOCAL_S3_MODE = "LOCAL_S3_MODE";
 
   public static final String LOCAL_S3_DATA_PATH = "LOCAL_S3_DATA_PATH";
+
+  /**
+   * When the changes of a {@code PERSISTENCE} service reach the disk: {@code DURABLE} or {@code FAST}.
+   *
+   * @see com.robothy.s3.core.storage.PersistencePolicy
+   */
+  public static final String LOCAL_S3_PERSISTENCE_POLICY = "LOCAL_S3_PERSISTENCE_POLICY";
 
   public static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
 
@@ -58,6 +66,8 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_HOST).ifPresent(builder::bindHost);
     variable(variables, LOCAL_S3_MODE).ifPresent(modeName -> builder.mode(parseMode(modeName)));
     variable(variables, LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
+    variable(variables, LOCAL_S3_PERSISTENCE_POLICY)
+        .ifPresent(policy -> builder.persistencePolicy(parsePersistencePolicy(policy)));
     variable(variables, LOCAL_S3_STRICT_BUCKET_NAMES)
         .ifPresent(strict -> builder.strictBucketNames(Boolean.parseBoolean(strict)));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
@@ -84,6 +94,15 @@ public final class LocalS3Environment {
   /**
    * The value of a variable, trimmed; empty if it isn't set or is blank.
    */
+  private static PersistencePolicy parsePersistencePolicy(String policyName) {
+    try {
+      return PersistencePolicy.valueOf(policyName.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("\"" + policyName + "\" is not a valid " + LOCAL_S3_PERSISTENCE_POLICY
+          + "; expected DURABLE or FAST.");
+    }
+  }
+
   private static Optional<String> variable(UnaryOperator<String> variables, String name) {
     return Optional.ofNullable(variables.apply(name))
         .map(String::trim)
