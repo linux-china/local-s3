@@ -1,17 +1,22 @@
 package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.handler.AwsSignatureV4Verifier.VerificationResult;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,6 +28,7 @@ import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Verifies requests from the examples of the AWS Signature Version 4 documentation.
@@ -147,6 +153,42 @@ class AwsSignatureV4VerifierTest {
     assertVerified(headers, path, HttpMethod.PUT, withoutFinalCrlf, 10);
     byte[] truncated = Arrays.copyOf(encoded, encoded.length - 100);
     assertRejected(headers, path, HttpMethod.PUT, truncated, 10);
+  }
+
+  /**
+   * A body larger than 2 GiB is only in a file, which no {@code ByteBuf} holds: its payload hash and its chunk signatures
+   * are verified by reading the file. The chunked body is larger than the window the file is read through.
+   */
+  @Test
+  void verifiesThePayloadOfABodyThatIsOnlyInAFile(@TempDir Path directory) throws IOException {
+    Map<CharSequence, String> headers = putObjectHeaders();
+    assertTrue(verifyFileBody(directory, headers, PUT_OBJECT_PATH, PUT_OBJECT_CONTENT).authenticated());
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifyFileBody(directory, headers, PUT_OBJECT_PATH,
+        "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8)).errorCode());
+
+    Map<CharSequence, String> chunked = chunkedHeaders();
+    String path = "/examplebucket/chunkObject.txt";
+    byte[] encoded = chunkedBody();
+    assertTrue(verifyFileBody(directory, chunked, path, encoded).authenticated());
+    byte[] tampered = encoded.clone();
+    tampered[88 + 65_538 + 86 + 10] = 'b';
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifyFileBody(directory, chunked, path, tampered).errorCode());
+    assertEquals(S3ErrorCode.SignatureDoesNotMatch,
+        verifyFileBody(directory, chunked, path, Arrays.copyOf(encoded, encoded.length - 100)).errorCode());
+  }
+
+  private VerificationResult verifyFileBody(Path directory, Map<CharSequence, String> headers, String path,
+                                            byte[] content) throws IOException {
+    Path file = Files.write(Files.createTempFile(directory, "body", ".tmp"), content);
+    ByteBuf body = RequestBodies.fileBody(file);
+    try {
+      return verifier.verify(HttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path)
+          .httpVersion(HttpVersion.HTTP_1_1).headers(new HashMap<>(headers)).params(new HashMap<>()).body(body)
+          .build());
+    } finally {
+      body.release();
+      assertFalse(Files.exists(file), "Releasing the body deletes its file.");
+    }
   }
 
   private static byte[] chunkedBody() {

@@ -9,7 +9,7 @@ import com.robothy.s3.datatypes.VersioningConfiguration;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 
@@ -30,7 +30,7 @@ class PutBucketVersioningController implements HttpRequestHandler {
   @Override
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
-    InputStream requestBody = new ByteBufInputStream(request.getBody());
+    InputStream requestBody = RequestBodies.inputStream(request.getBody());
     VersioningConfiguration versioningConfiguration = xmlMapper.readValue(requestBody, VersioningConfiguration.class);
     boolean versioningEnabled = VersioningConfiguration.Enabled.equals(versioningConfiguration.getStatus());
     bucketService.setVersioningEnabled(bucketName, versioningEnabled);

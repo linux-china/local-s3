@@ -13,7 +13,7 @@ import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import java.io.InputStream;
@@ -36,10 +36,10 @@ class CreateBucketController extends BucketHttpRequestHandler {
 
   @Override
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
-    InputStream inputStream = new ByteBufInputStream(request.getBody());
+    InputStream inputStream = RequestBodies.inputStream(request.getBody());
 
     String locationConstraint = LocalS3Constants.DEFAULT_LOCATION_CONSTRAINT;
-    if (request.getBody().readableBytes() != 0) {
+    if (RequestBodies.length(request.getBody()) != 0) {
       CreateBucketConfiguration createBucketConfig = xmlMapper.readValue(inputStream, CreateBucketConfiguration.class);
       locationConstraint = createBucketConfig.getLocationConstraint();
     }

@@ -132,6 +132,8 @@ imported either.
 
 ### Fixed
 
++ A single `PutObject` or `UploadPart` of more than 2 GiB and up to `maxRequestBodySize` (5 GiB) is stored instead of
+  failing with `InternalError`: such a body is read from its temporary file rather than memory-mapped.
 + The data of S3 Vectors is written to the data directory instead of the working directory.
 + Continuation tokens of `ListObjectsV2` with `encoding-type=url` no longer repeat pages.
 + `max-keys`, opaque continuation tokens, `x-amz-version-id: null`, and `Last-Modified` and `ETag` headers behave like

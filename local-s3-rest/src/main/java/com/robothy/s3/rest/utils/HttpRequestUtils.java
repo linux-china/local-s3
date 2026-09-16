@@ -3,6 +3,7 @@ package com.robothy.s3.rest.utils;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -28,6 +29,10 @@ public final class HttpRequestUtils {
      */
     public static byte[] extractRequestBody(HttpRequest request) {
         ByteBuf bodyBuf = request.getBody();
+        if (RequestBodies.fileOnly(bodyBuf).isPresent()) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
+                "The request body is larger than " + Integer.MAX_VALUE + " bytes.");
+        }
         byte[] bodyBytes = new byte[bodyBuf.readableBytes()];
         bodyBuf.getBytes(bodyBuf.readerIndex(), bodyBytes);
         return bodyBytes;

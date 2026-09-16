@@ -2,6 +2,7 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
@@ -82,10 +83,16 @@ public final class MultipartFormData {
    * @throws LocalS3RequestException {@code RequestIsNotMultiPartContent} if the request isn't
    *     {@code multipart/form-data}, {@code MalformedPOSTRequest} if the body isn't well-formed,
    *     {@code MaxPostPreDataLengthExceededError} if the fields preceding the file are too large, and
-   *     {@code IncorrectNumberOfFilesInPostRequest} if the form has no file.
+   *     {@code IncorrectNumberOfFilesInPostRequest} if the form has no file, and {@code EntityTooLarge} if the body is
+   *     larger than {@linkplain Integer#MAX_VALUE} bytes.
    */
   public static MultipartFormData parse(String contentType, ByteBuf body) {
     String boundary = boundary(contentType);
+    if (RequestBodies.fileOnly(body).isPresent()) {
+      // The form is parsed in place, in a ByteBuf, which a body larger than 2 GiB isn't held by.
+      throw new LocalS3RequestException(S3ErrorCode.EntityTooLarge,
+          "LocalS3 does not accept a browser form upload larger than " + Integer.MAX_VALUE + " bytes.");
+    }
     ByteBuf content = body == null ? Unpooled.EMPTY_BUFFER : body;
     ByteBuf delimiter = Unpooled.wrappedBuffer(("--" + boundary).getBytes(StandardCharsets.ISO_8859_1));
 

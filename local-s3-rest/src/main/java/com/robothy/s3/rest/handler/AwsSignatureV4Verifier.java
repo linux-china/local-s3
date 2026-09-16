@@ -8,7 +8,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -50,6 +49,11 @@ final class AwsSignatureV4Verifier {
       DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
   private static final Pattern WHITESPACE = Pattern.compile("[\\t\\n\\r ]+");
   private static final Pattern HEX_SHA256 = Pattern.compile("[0-9a-fA-F]{64}");
+  /**
+   * The longest line of chunk metadata that is read, e.g. {@code <hex length>;chunk-signature=<64 hex digits>} or a
+   * trailing header, so that a body that isn't {@code aws-chunked} isn't read into a string whole.
+   */
+  private static final int MAX_CHUNK_HEADER_LENGTH = 8 * 1024;
 
   private final String accessKeyId;
   private final String secretAccessKey;
@@ -187,7 +191,9 @@ final class AwsSignatureV4Verifier {
         return new HeadVerification(VerificationResult.success(), VerifiedHead.SIGNATURE_UNVERIFIED);
       }
       // Without x-amz-content-sha256, the signature covers the hash of the body as received.
-      payloadHash = sha256Hex(request.getBody());
+      try (PayloadBytes bytes = PayloadBytes.of(request.getBody())) {
+        payloadHash = sha256Hex(bytes);
+      }
       payloadHashOfBody = true;
     } else if (!isStreamingOrUnsigned(payloadHash) && !HEX_SHA256.matcher(payloadHash).matches()) {
       return HeadVerification.failed(malformed("x-amz-content-sha256 is invalid."));
@@ -213,20 +219,20 @@ final class AwsSignatureV4Verifier {
    */
   private static VerificationResult verifyPayload(ByteBuf body, VerifiedHead head) {
     String payloadHash = head.payloadHash();
-    if (!head.payloadHashOfBody() && HEX_SHA256.matcher(payloadHash).matches()) {
-      return secureEquals(payloadHash, sha256Hex(body)) ? VerificationResult.success() : signatureMismatch();
+    boolean hashOfBody = !head.payloadHashOfBody() && HEX_SHA256.matcher(payloadHash).matches();
+    boolean chunked = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash);
+    boolean chunkedWithTrailer = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash);
+    if (!hashOfBody && !chunked && !chunkedWithTrailer) {
+      return VerificationResult.success();
     }
-    if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payloadHash)
-        && !verifyChunkSignatures(body, head.signingKey(), head.amzDate(), head.scope(),
-        head.seedSignature(), false, null)) {
-      return signatureMismatch();
+    try (PayloadBytes bytes = PayloadBytes.of(body)) {
+      if (hashOfBody) {
+        return secureEquals(payloadHash, sha256Hex(bytes)) ? VerificationResult.success() : signatureMismatch();
+      }
+      boolean verified = verifyChunkSignatures(bytes, head.signingKey(), head.amzDate(), head.scope(),
+          head.seedSignature(), chunkedWithTrailer, chunkedWithTrailer ? head.trailerHeaderNames() : null);
+      return verified ? VerificationResult.success() : signatureMismatch();
     }
-    if (AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash)
-        && !verifyChunkSignatures(body, head.signingKey(), head.amzDate(), head.scope(),
-        head.seedSignature(), true, head.trailerHeaderNames())) {
-      return signatureMismatch();
-    }
-    return VerificationResult.success();
   }
 
   /**
@@ -512,19 +518,15 @@ final class AwsSignatureV4Verifier {
   }
 
   /**
-   * Hash the readable bytes of a request body without copying them.
+   * Hash a request body without copying it, if it is in memory.
    */
-  private static String sha256Hex(ByteBuf body) {
-    return body == null ? EMPTY_SHA256 : sha256Hex(body, body.readerIndex(), body.readableBytes());
+  private static String sha256Hex(PayloadBytes body) {
+    return sha256Hex(body, 0, body.length());
   }
 
-  private static String sha256Hex(ByteBuf value, int index, int length) {
+  private static String sha256Hex(PayloadBytes value, long index, long length) {
     MessageDigest digest = sha256();
-    if (length > 0) {
-      for (ByteBuffer buffer : value.nioBuffers(index, length)) {
-        digest.update(buffer);
-      }
-    }
+    value.digest(digest, index, length);
     return HexFormat.of().formatHex(digest.digest());
   }
 
@@ -547,28 +549,31 @@ final class AwsSignatureV4Verifier {
 
   /**
    * Verify the signatures of an {@code aws-chunked} encoded body. The body is read in place, by
-   * absolute index, so that neither the body nor its chunks are copied.
+   * index, so that neither the body nor its chunks are copied if the body is in memory.
    */
-  private static boolean verifyChunkSignatures(ByteBuf encodedBody, byte[] signingKey,
+  private static boolean verifyChunkSignatures(PayloadBytes encodedBody, byte[] signingKey,
       String amzDate, String scope, String seedSignature, boolean hasTrailer,
       String trailerHeaderNames) {
-    if (encodedBody == null) {
+    long end = encodedBody.length();
+    if (end == 0) {
       return false;
     }
-    int end = encodedBody.writerIndex();
-    int offset = encodedBody.readerIndex();
+    long offset = 0;
     String previousSignature = seedSignature;
     while (offset < end) {
-      int lineEnd = indexOfCrlf(encodedBody, offset, end);
+      long lineEnd = indexOfCrlf(encodedBody, offset, end);
       if (lineEnd < 0) {
         return false;
       }
-      String header = encodedBody.toString(offset, lineEnd - offset, StandardCharsets.US_ASCII);
+      if (lineEnd - offset > MAX_CHUNK_HEADER_LENGTH) {
+        return false;
+      }
+      String header = encodedBody.toString(offset, (int) (lineEnd - offset), StandardCharsets.US_ASCII);
       offset = lineEnd + 2;
       String[] headerParts = header.split(";");
-      final int chunkLength;
+      final long chunkLength;
       try {
-        chunkLength = Integer.parseInt(headerParts[0].trim(), 16);
+        chunkLength = Long.parseLong(headerParts[0].trim(), 16);
       } catch (NumberFormatException e) {
         return false;
       }
@@ -607,19 +612,19 @@ final class AwsSignatureV4Verifier {
     return false;
   }
 
-  private static boolean verifyTrailer(ByteBuf encodedBody, int offset, int end, byte[] signingKey,
+  private static boolean verifyTrailer(PayloadBytes encodedBody, long offset, long end, byte[] signingKey,
       String amzDate, String scope, String previousSignature, String trailerHeaderNames) {
     Map<String, String> trailerHeaders = new HashMap<>();
     while (offset < end) {
-      int lineEnd = indexOfCrlf(encodedBody, offset, end);
-      if (lineEnd < 0) {
+      long lineEnd = indexOfCrlf(encodedBody, offset, end);
+      if (lineEnd < 0 || lineEnd - offset > MAX_CHUNK_HEADER_LENGTH) {
         return false;
       }
       if (lineEnd == offset) {
         offset += 2;
         break;
       }
-      String line = encodedBody.toString(offset, lineEnd - offset, StandardCharsets.UTF_8);
+      String line = encodedBody.toString(offset, (int) (lineEnd - offset), StandardCharsets.UTF_8);
       int separator = line.indexOf(':');
       if (separator <= 0) {
         return false;
@@ -654,7 +659,7 @@ final class AwsSignatureV4Verifier {
     return secureEquals(signature(signingKey, trailerStringToSign), trailerSignature);
   }
 
-  private static boolean onlyCrlfRemains(ByteBuf value, int offset, int end) {
+  private static boolean onlyCrlfRemains(PayloadBytes value, long offset, long end) {
     return offset == end
         || offset + 2 == end && value.getByte(offset) == '\r' && value.getByte(offset + 1) == '\n';
   }
@@ -664,10 +669,10 @@ final class AwsSignatureV4Verifier {
    *
    * @return the absolute index of the CR; {@code -1} if there is no CRLF.
    */
-  private static int indexOfCrlf(ByteBuf value, int offset, int end) {
-    int from = offset;
+  private static long indexOfCrlf(PayloadBytes value, long offset, long end) {
+    long from = offset;
     while (true) {
-      int cr = value.indexOf(from, end, (byte) '\r');
+      long cr = value.indexOf(from, end, (byte) '\r');
       if (cr < 0 || cr + 1 >= end) {
         return -1;
       }

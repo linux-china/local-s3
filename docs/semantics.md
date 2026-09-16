@@ -25,6 +25,9 @@ Amazon S3 would refuse.
 + A request body is limited to 5 GiB by default (`maxRequestBodySize`), and its header section to 16 KiB
   (`maxRequestHeaderSize`). A body whose declared `Content-Length` is already too large is rejected with
   `EntityTooLarge` before `100 Continue` is sent, so the client never uploads it.
++ A single `PutObject` or `UploadPart` may send up to 5 GiB, like Amazon S3 allows. A body larger than 2 GiB is kept
+  in its temporary file and read from there, since no memory-mapped buffer holds it; a browser form upload
+  (`POST Object`) larger than 2 GiB is rejected with `EntityTooLarge`.
 + If credentials are configured, the signature of a request with a body is verified before the body is received, so
   the body of a request that fails anyway is neither uploaded nor buffered.
 
@@ -124,8 +127,9 @@ path-style addressing.
 **The form.** The fields that precede `file` carry what a `PutObject` request carries in headers: `key` (required;
 `${filename}` is replaced by the name of the selected file), `Content-Type`, `Cache-Control`, `Content-Disposition`,
 `Content-Encoding`, `Content-Language`, `Expires`, `x-amz-meta-*` and `tagging` (a `Tagging` XML document). Field
-names are case-insensitive, the fields after `file` are ignored, and the fields before it are limited to 20 KB. The
-object's change event is `PostObject`, `s3:ObjectCreated:Post`.
+names are case-insensitive, the fields after `file` are ignored, and the fields before it are limited to 20 KB. A form
+of more than 2 GiB is rejected with `EntityTooLarge`. The object's change event is `PostObject`,
+`s3:ObjectCreated:Post`.
 
 **Authentication.** A service with credentials requires a `policy` and its signature, as fields rather than headers:
 Signature Version 4 (`x-amz-algorithm`, `x-amz-credential`, `x-amz-date`, `x-amz-signature`), or the Signature

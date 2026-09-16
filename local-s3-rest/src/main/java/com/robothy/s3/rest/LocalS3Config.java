@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * @param virtualThreads whether every request is handled on a virtual thread of its own.
  * @param accessKeyId the access key ID that requests must be signed with; {@code null} to accept unsigned requests.
  * @param secretAccessKey the secret access key of {@code accessKeyId}; {@code null} if it is {@code null}.
- * @param maxRequestBodySize the max size in bytes of a request body, between 1 and {@linkplain Integer#MAX_VALUE}.
+ * @param maxRequestBodySize the max size in bytes of a request body, between 1 and
+ *     {@value #DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB, the largest object that Amazon S3 accepts in a single upload.
  * @param requestBodyFileThreshold the size in bytes above which a request body is buffered in a file, not negative.
  * @param maxRequestHeaderSize the max size in bytes of the header section of a request, positive.
  * @param idleConnectionTimeoutSeconds the seconds after which an idle connection is closed; {@code 0} for never.
@@ -72,7 +73,8 @@ public record LocalS3Config(
     RequestRecorder requestRecorder) {
 
   /**
-   * Default max request body size(5G), the largest body the in-memory request aggregation can hold.
+   * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
+   * of more than 2 GiB is kept in a temporary file only, rather than memory-mapped.
    */
   public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 5L * 1024 * 1024 * 1024;
 

@@ -302,13 +302,14 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set the max size in bytes of a request body. Request bodies are held in memory, or memory-mapped
-     * above {@linkplain #requestBodyFileThreshold(long)}, while a request is handled, so this bounds
-     * the memory a single request can take. A request exceeding the limit
+     * Set the max size in bytes of a request body. Request bodies are held in memory, or buffered in a temporary
+     * file above {@linkplain #requestBodyFileThreshold(long)}, which is memory-mapped up to 2 GiB, while a request is
+     * handled, so this bounds the memory and the disk space a single request can take. A request exceeding the limit
      * is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
      * multipart upload instead. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}.
      *
-     * @param maxRequestBodySize max request body size in bytes, between 1 and {@linkplain Integer#MAX_VALUE}.
+     * @param maxRequestBodySize max request body size in bytes, between 1 and
+     *     {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB.
      * @return builder.
      */
     public LocalS3Builder maxRequestBodySize(long maxRequestBodySize) {
@@ -319,7 +320,8 @@ public class LocalS3Builder {
 
     /**
      * Set the size in bytes above which a request body is buffered in a temporary file instead of the
-     * Java heap. The file is memory-mapped while the request is handled, so large uploads take neither
+     * Java heap. The file is memory-mapped while the request is handled, or only read from the file if the body is
+     * larger than 2 GiB, which no buffer holds, so large uploads take neither
      * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
      * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
      * file, so that its content isn't written a second time. The file is written on the request executor, not on

@@ -9,7 +9,7 @@ import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import java.io.InputStream;
 
 /**
@@ -31,7 +31,7 @@ class PutPublicAccessBlockController implements HttpRequestHandler {
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
 
-    try(InputStream in = new ByteBufInputStream(request.getBody())) {
+    try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       PublicAccessBlockConfiguration configuration = xmlMapper.readValue(in, PublicAccessBlockConfiguration.class);
       bucketService.putPublicAccessBlock(bucketName, configuration);
     }

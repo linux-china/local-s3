@@ -8,7 +8,7 @@ import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,7 +40,7 @@ class BucketPolicyController {
    */
   void put(HttpRequest request, HttpResponse response) throws IOException {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
-    try(InputStream in = new ByteBufInputStream(request.getBody()) ){
+    try(InputStream in = RequestBodies.inputStream(request.getBody()) ){
       bucketPolicyService.putBucketPolicy(bucketName, new String(in.readAllBytes(), StandardCharsets.UTF_8));
     }
     ResponseUtils.addDateHeader(response);

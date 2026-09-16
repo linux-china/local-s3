@@ -7,7 +7,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 
@@ -28,7 +28,7 @@ class PutObjectAclController extends ObjectHttpRequestHandler {
     String versionId = request.parameter("versionId").orElse(null);
 
     String returnedVersionId;
-    try (InputStream in = new ByteBufInputStream(request.getBody())) {
+    try (InputStream in = RequestBodies.inputStream(request.getBody())) {
       AccessControlPolicy acl = xmlMapper.readValue(in, AccessControlPolicy.class);
       returnedVersionId = objectService.putObjectAcl(bucketName, key, versionId, acl);
     }

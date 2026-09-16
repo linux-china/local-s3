@@ -10,7 +10,6 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.netty.RequestBodies;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.QueryStringDecoder;
@@ -44,12 +43,12 @@ public class RequestUtils {
     switch (amzContentSha256) {
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD:
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER:
-        result.setDecodedBody(new AwsChunkedDecodingInputStream(new ByteBufInputStream(request.getBody())));
+        result.setDecodedBody(new AwsChunkedDecodingInputStream(RequestBodies.inputStream(request.getBody())));
         result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
       case AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER:
       case AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD:
-        result.setDecodedBody(new AwsUnsignedChunkedDecodingInputStream(new ByteBufInputStream(request.getBody())));
+        result.setDecodedBody(new AwsUnsignedChunkedDecodingInputStream(RequestBodies.inputStream(request.getBody())));
         result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
       case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD:
@@ -59,7 +58,7 @@ public class RequestUtils {
       default:
         // Taken before the body is read: the body is only the content of its file while it is unread.
         RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
-        result.setDecodedBody(new ByteBufInputStream(request.getBody()));
+        result.setDecodedBody(RequestBodies.inputStream(request.getBody()));
         result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
     }
 

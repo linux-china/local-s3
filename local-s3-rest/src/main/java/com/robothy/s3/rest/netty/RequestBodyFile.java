@@ -26,6 +26,10 @@ import org.slf4j.LoggerFactory;
  * holds up neither the event loop nor the other connections it serves. The chunks queued at once are written with a
  * single gathering write.
  *
+ * <p>A complete body of up to {@value #MAX_MAPPED_BYTES} bytes is memory-mapped, see {@linkplain MappedFileByteBuf}. A
+ * larger one can't be: no {@code ByteBuf} holds more bytes. It is handed on as a {@linkplain FileBodyByteBuf}, whose
+ * content is only read from the file.
+ *
  * <p>The bytes that are queued but not written yet are bounded by the receiver: {@linkplain #write(ByteBuf)} reports
  * when they exceed {@value #HIGH_WATER_MARK} bytes, and the receiver then stops reading the connection until
  * {@linkplain Listener#drained()} reports that they dropped to {@value #LOW_WATER_MARK} bytes.
@@ -47,6 +51,12 @@ final class RequestBodyFile {
   private static final long MAX_BYTES_PER_RUN = 64L << 20;
 
   /**
+   * The largest body that is memory-mapped: a {@linkplain java.nio.MappedByteBuffer} holds at most
+   * {@linkplain Integer#MAX_VALUE} bytes.
+   */
+  static final long MAX_MAPPED_BYTES = Integer.MAX_VALUE;
+
+  /**
    * Receives the events of a body file, on the event loop.
    */
   interface Listener {
@@ -60,7 +70,8 @@ final class RequestBodyFile {
     /**
      * The body is complete, after {@linkplain #complete()}.
      *
-     * @param body the body memory-mapped from the file, which the listener owns.
+     * @param body the body memory-mapped from the file, or a {@linkplain FileBodyByteBuf} if the body is too large to
+     *     be mapped, which the listener owns.
      */
     void completed(ByteBuf body);
 
@@ -80,6 +91,11 @@ final class RequestBodyFile {
   private final Path directory;
 
   private final Listener listener;
+
+  /**
+   * The largest body that is memory-mapped; a larger one is handed on as a {@linkplain FileBodyByteBuf}.
+   */
+  private final long maxMappedBytes;
 
   // Guarded by this.
 
@@ -122,6 +138,25 @@ final class RequestBodyFile {
    * @param listener receives the events of the file.
    */
   RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener) {
+    this(executor, eventLoop, directory, listener, MAX_MAPPED_BYTES);
+  }
+
+  /**
+   * Create a body file, which is created on the disk once it is first written. For tests, which exercise the bodies
+   * that are too large to be mapped with a lower limit.
+   *
+   * @param executor runs the file operations.
+   * @param eventLoop the event loop of the connection, which the listener is called on.
+   * @param directory the directory of the file; {@code null} for the default temporary directory.
+   * @param listener receives the events of the file.
+   * @param maxMappedBytes the largest body that is memory-mapped, at most {@value #MAX_MAPPED_BYTES}.
+   */
+  RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
+                  long maxMappedBytes) {
+    if (maxMappedBytes < 0 || maxMappedBytes > MAX_MAPPED_BYTES) {
+      throw new IllegalArgumentException("maxMappedBytes must be between 0 and " + MAX_MAPPED_BYTES + ".");
+    }
+    this.maxMappedBytes = maxMappedBytes;
     this.executor = Objects.requireNonNull(executor);
     this.eventLoop = Objects.requireNonNull(eventLoop);
     this.directory = directory;
@@ -315,13 +350,16 @@ final class RequestBodyFile {
   }
 
   /**
-   * Map the complete file as the body, which owns the file from then on.
+   * Map the complete file as the body, or hand it on unmapped if it is too large to be mapped. The body owns the file
+   * from then on.
    */
   private void finish() {
     ByteBuf body;
     try {
       open();
-      body = MappedFileByteBuf.map(channel, file, writtenBytes);
+      body = writtenBytes > maxMappedBytes
+          ? new FileBodyByteBuf(file, writtenBytes)
+          : MappedFileByteBuf.map(channel, file, writtenBytes);
       // The mapping outlives the channel.
       channel.close();
       channel = null;

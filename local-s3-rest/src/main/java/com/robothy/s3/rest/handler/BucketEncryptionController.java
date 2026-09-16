@@ -7,7 +7,7 @@ import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 
@@ -25,7 +25,7 @@ class BucketEncryptionController {
    */
   void put(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
-    try(InputStream in = new ByteBufInputStream(request.getBody())) {
+    try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       this.encryptionService.putBucketEncryption(bucketName, new String(in.readAllBytes()));
     }
     ResponseUtils.addCommonHeaders(response)

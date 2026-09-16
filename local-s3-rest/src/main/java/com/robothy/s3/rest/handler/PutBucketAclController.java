@@ -10,7 +10,7 @@ import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import java.io.InputStream;
 import java.util.Map;
 import java.util.Optional;
@@ -43,7 +43,7 @@ class PutBucketAclController implements HttpRequestHandler {
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
 
-    try(InputStream in = new ByteBufInputStream(request.getBody())) {
+    try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       AccessControlPolicy acl = getAclFromHeader(request).orElse(xmlMapper
           .readValue(in, AccessControlPolicy.class));
       aclService.putBucketAcl(bucketName, acl);

@@ -11,6 +11,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.util.concurrent.ImmediateEventExecutor;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -63,6 +64,36 @@ class RequestBodyFileTest {
     }
     assertEquals(0, countFiles());
     assertEquals(1, executor.runs, "The queued chunks are written in one run.");
+  }
+
+  /**
+   * A body larger than a buffer can map, i.e. 2 GiB, which the test lowers, is handed on unmapped: its content is only
+   * read from the file, which it owns like a mapped body.
+   */
+  @Test
+  void handsOnABodyTooLargeToBeMappedAsItsFile() throws IOException {
+    RequestBodyFile file = new RequestBodyFile(executor, ImmediateEventExecutor.INSTANCE, directory, listener, 999);
+    byte[] content = randomBytes(1000);
+
+    file.write(Unpooled.copiedBuffer(content));
+    file.complete();
+    executor.runAll();
+
+    ByteBuf body = listener.body;
+    Path bodyFile = RequestBodies.fileOnly(body).orElseThrow();
+    try {
+      assertInstanceOf(FileBodyByteBuf.class, body);
+      assertEquals(0, body.readableBytes());
+      assertEquals(1000, RequestBodies.length(body));
+      assertEquals(bodyFile, RequestBodies.file(body).orElseThrow());
+      try (InputStream in = RequestBodies.inputStream(body)) {
+        assertArrayEquals(content, in.readAllBytes());
+      }
+    } finally {
+      body.release();
+    }
+    assertFalse(Files.exists(bodyFile), "Releasing the body deletes its file.");
+    assertEquals(0, countFiles());
   }
 
   @Test

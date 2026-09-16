@@ -14,7 +14,7 @@ import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import io.netty.buffer.ByteBufInputStream;
+import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 import java.util.List;
@@ -45,7 +45,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
 
     CompleteMultipartUploadAns completeMultipartUploadAns;
-    try(InputStream in = new ByteBufInputStream(request.getBody())) {
+    try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       CompleteMultipartUpload completeMultipartUpload = xmlMapper.readValue(in, CompleteMultipartUpload.class);
       List<CompleteMultipartUploadPartOption> parts = completeMultipartUpload.getParts().stream().map(part -> CompleteMultipartUploadPartOption.builder()
                   .etag(part.getEtag())
