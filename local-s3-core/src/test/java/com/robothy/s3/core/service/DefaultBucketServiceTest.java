@@ -7,7 +7,7 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import org.junit.jupiter.api.Test;
 
-class InMemoryBucketServiceTest {
+class DefaultBucketServiceTest {
 
   @Test
   void createInstance() {
@@ -17,7 +17,7 @@ class InMemoryBucketServiceTest {
     s3Metadata.addBucketMetadata(bucketMetadata);
     bucketMetadata.setCreationDate(System.currentTimeMillis());
     bucketMetadata.setVersioningEnabled(true);
-    BucketService bucketService = InMemoryBucketService.create(s3Metadata);
+    BucketService bucketService = DefaultBucketService.create(s3Metadata);
     assertNotNull(bucketService);
     assertEquals(Bucket.fromBucketMetadata(bucketMetadata), bucketService.getBucket("test"));
   }

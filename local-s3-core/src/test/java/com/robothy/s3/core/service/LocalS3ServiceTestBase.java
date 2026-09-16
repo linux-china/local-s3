@@ -21,7 +21,7 @@ public abstract class LocalS3ServiceTestBase {
     Path bucketStore = Files.createTempDirectory("bucket-metadata");
     bucketStore.toFile().deleteOnExit();
     return Stream.of(
-        arguments(InMemoryBucketService.create(new LocalS3Metadata())),
+        arguments(DefaultBucketService.create(new LocalS3Metadata())),
         arguments(LocalS3Manager.createFileSystemS3Manager(bucketStore).bucketService())
     );
   }

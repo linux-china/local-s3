@@ -6,9 +6,10 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * The {@linkplain ObjectService} of a LocalS3 service, whose operations run within its {@linkplain BucketGuard}.
+ * The {@linkplain ObjectService} of a LocalS3 service, used by both the in-memory and the persistent mode, whose
+ * operations run within its {@linkplain BucketGuard}.
  */
-public class InMemoryObjectService implements ObjectService {
+public class DefaultObjectService implements ObjectService {
 
   /**
    * Create a service with a guard of its own, which only locks the buckets.
@@ -44,7 +45,7 @@ public class InMemoryObjectService implements ObjectService {
    */
   public static ObjectService create(Supplier<LocalS3Metadata> s3Metadata, Supplier<Storage> storage,
                                      BucketGuard bucketGuard) {
-    return new InMemoryObjectService(s3Metadata, storage, bucketGuard);
+    return new DefaultObjectService(s3Metadata, storage, bucketGuard);
   }
 
   private final Supplier<LocalS3Metadata> s3Metadata;
@@ -53,7 +54,7 @@ public class InMemoryObjectService implements ObjectService {
 
   private final BucketGuard bucketGuard;
 
-  private InMemoryObjectService(Supplier<LocalS3Metadata> s3Metadata, Supplier<Storage> storage,
+  private DefaultObjectService(Supplier<LocalS3Metadata> s3Metadata, Supplier<Storage> storage,
                                 BucketGuard bucketGuard) {
     this.s3Metadata = Objects.requireNonNull(s3Metadata);
     this.storage = Objects.requireNonNull(storage);

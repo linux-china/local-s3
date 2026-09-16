@@ -9,27 +9,27 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * In memory implementation of {@linkplain BucketService}. All related data
- * are stored in memory.
+ * The {@linkplain BucketService} of a LocalS3 service, used by both the in-memory and the persistent mode. It works on
+ * the {@linkplain LocalS3Metadata} of the service, whose operations run within its {@linkplain BucketGuard}.
  */
-public class InMemoryBucketService implements BucketService {
+public class DefaultBucketService implements BucketService {
 
   /**
-   * Create an {@linkplain InMemoryBucketService} with a {@linkplain LocalS3Metadata} instance.
+   * Create a {@linkplain DefaultBucketService} with a {@linkplain LocalS3Metadata} instance.
    *
    * @param s3Metadata s3 metadata.
-   * @return a new {@linkplain InMemoryBucketService} with a {@linkplain BucketMetadata} from the {@code provider}.
+   * @return a new {@linkplain DefaultBucketService}.
    */
   public static BucketService create(LocalS3Metadata s3Metadata) {
     return create(s3Metadata, BucketGuard.inMemory());
   }
 
   /**
-   * Create an {@linkplain InMemoryBucketService}.
+   * Create a {@linkplain DefaultBucketService}.
    *
    * @param s3Metadata s3 metadata.
    * @param bucketGuard the guard of the buckets, shared with the object service of the same LocalS3 service.
-   * @return a new {@linkplain InMemoryBucketService}.
+   * @return a new {@linkplain DefaultBucketService}.
    */
   public static BucketService create(LocalS3Metadata s3Metadata, BucketGuard bucketGuard) {
     Objects.requireNonNull(s3Metadata);
@@ -37,22 +37,22 @@ public class InMemoryBucketService implements BucketService {
   }
 
   /**
-   * Create an {@linkplain InMemoryBucketService} whose metadata is looked up for every operation, so that a manager
+   * Create a {@linkplain DefaultBucketService} whose metadata is looked up for every operation, so that a manager
    * can replace it, e.g. to reset the data of the service, within {@linkplain BucketGuard#exclusive}.
    *
    * @param s3Metadata supplies the current metadata of the service.
    * @param bucketGuard the guard of the buckets, shared with the object service of the same LocalS3 service.
-   * @return a new {@linkplain InMemoryBucketService}.
+   * @return a new {@linkplain DefaultBucketService}.
    */
   public static BucketService create(Supplier<LocalS3Metadata> s3Metadata, BucketGuard bucketGuard) {
-    return new InMemoryBucketService(Objects.requireNonNull(s3Metadata), bucketGuard);
+    return new DefaultBucketService(Objects.requireNonNull(s3Metadata), bucketGuard);
   }
 
   private final Supplier<LocalS3Metadata> s3Metadata;
 
   private final BucketGuard bucketGuard;
 
-  private InMemoryBucketService(Supplier<LocalS3Metadata> metadata, BucketGuard bucketGuard) {
+  private DefaultBucketService(Supplier<LocalS3Metadata> metadata, BucketGuard bucketGuard) {
     this.s3Metadata = metadata;
     this.bucketGuard = Objects.requireNonNull(bucketGuard);
   }

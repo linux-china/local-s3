@@ -5,8 +5,8 @@ import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.DefaultBucketGuard;
-import com.robothy.s3.core.service.InMemoryBucketService;
-import com.robothy.s3.core.service.InMemoryObjectService;
+import com.robothy.s3.core.service.DefaultBucketService;
+import com.robothy.s3.core.service.DefaultObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
 import com.robothy.s3.core.service.locks.BucketLock;
@@ -70,11 +70,11 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
   }
 
   private BucketService createBucketService() {
-    return InMemoryBucketService.create(s3Metadata, bucketGuard);
+    return DefaultBucketService.create(s3Metadata, bucketGuard);
   }
 
   private ObjectService createObjectService() {
-    return InMemoryObjectService.create(s3Metadata, storage, bucketGuard);
+    return DefaultObjectService.create(s3Metadata, storage, bucketGuard);
   }
 
   /**
