@@ -7,14 +7,11 @@ import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
-import com.robothy.s3.core.storage.FileSystemBucketMetadataStore;
+import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.PathUtils;
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -27,23 +24,20 @@ import java.util.Objects;
  */
 public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLoader {
 
-  private static final String VERSION_FILE_NAME = "version";
-
   @Override
   public LocalS3Metadata load(Path s3DataPath) {
     Objects.requireNonNull(s3DataPath);
     PathUtils.createDirectoryIfNotExist(s3DataPath);
-    File versionFile = new File(s3DataPath.toFile(), VERSION_FILE_NAME);
-    LocalS3Metadata s3Metadata = new LocalS3Metadata();
-    if (!versionFile.exists()) {
-      try {
-        Files.write(versionFile.toPath(), String.valueOf(LocalS3Metadata.VERSION).getBytes(StandardCharsets.UTF_8));
-      } catch (IOException e) {
-        throw new IllegalStateException("Failed to load S3 metadata from " + s3DataPath);
-      }
+    // Read-only, so that loading the initial data of a path doesn't lock it against the services that start from it.
+    try (LocalS3Store store = LocalS3Store.readOnly(s3DataPath)) {
+      return load(MVStoreBucketMetadataStore.create(store));
     }
+  }
 
-    MetadataStore<BucketMetadata> bucketMetaStore = FileSystemBucketMetadataStore.create(s3DataPath);
+  @Override
+  public LocalS3Metadata load(MetadataStore<BucketMetadata> bucketMetaStore) {
+    Objects.requireNonNull(bucketMetaStore);
+    LocalS3Metadata s3Metadata = new LocalS3Metadata();
     bucketMetaStore.fetchAll().forEach(s3Metadata::addBucketMetadata);
     seedIdGenerator(s3Metadata);
     return s3Metadata;

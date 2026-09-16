@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.io.ByteArrayOutputStream;
 import java.net.BindException;
@@ -185,8 +186,8 @@ class LocalS3Test {
       assertDoesNotThrow(() -> bucketService.getBucket("a-bucket"));
       assertDoesNotThrow(() -> bucketService.getBucket("b-bucket"));
       assertThrows(BucketNotExistException.class, () -> bucketService.getBucket(" b-bucket "));
-      assertTrue(Files.isRegularFile(dataPath.resolve("a-bucket.bucket.meta")));
-      assertTrue(Files.isRegularFile(dataPath.resolve("b-bucket.bucket.meta")));
+      // The metadata of every bucket lives in the one store of the data directory.
+      assertTrue(Files.isRegularFile(dataPath.resolve(LocalS3Store.FILE_NAME)));
     } finally {
       localS3.shutdown();
       FileUtils.deleteDirectory(dataPath.toFile());

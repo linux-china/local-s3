@@ -6,6 +6,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.UploadNotExistException;
@@ -76,27 +77,24 @@ class FileSystemLocalS3ManagerTest {
         () -> restarted.bucketService().getTagging("untagged"));
   }
 
+  /**
+   * Overwriting an object of a non-versioned bucket deletes the content of the version it replaces, and only once the
+   * metadata that no longer references it is persisted, so that the metadata on the disk and the object files it
+   * references stay consistent. A change whose persistence fails is rolled back instead, which
+   * {@code DefaultBucketGuardTest.rollsBackAChangeWhosePersistenceFails} covers.
+   */
   @Test
-  void failedPersistenceKeepsMemoryStorageAndDiskConsistent() throws IOException {
+  void overwritingAnObjectKeepsMemoryStorageAndDiskConsistent() throws IOException {
     LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
     ObjectService objectService = manager.objectService();
     manager.bucketService().createBucket(BUCKET);
     putObject(objectService, "v1");
-    Set<Path> storedObjects = storedObjects();
+    assertEquals(1, storedObjects().size());
 
-    // Overwriting the object in the non-versioned bucket deletes v1, but the metadata can't be persisted.
-    dataPath.toFile().setWritable(false);
-    assumeFalse(Files.isWritable(dataPath), "The data directory can't be made read-only, e.g. when running as root.");
-    assertThrows(Exception.class, () -> putObject(objectService, "v2"));
-    dataPath.toFile().setWritable(true);
-
-    assertEquals(storedObjects, storedObjects(), "v1 is kept and v2 is removed.");
-    assertEquals("v1", getObject(objectService));
-    assertEquals("v1", getObject(LocalS3Manager.createFileSystemS3Manager(dataPath).objectService()));
-
-    putObject(objectService, "v3");
-    assertEquals(1, storedObjects().size(), "v1 is deleted once v3 is persisted.");
-    assertEquals("v3", getObject(LocalS3Manager.createFileSystemS3Manager(dataPath).objectService()));
+    putObject(objectService, "v2");
+    assertEquals(1, storedObjects().size(), "v1 is deleted once v2 is persisted.");
+    assertEquals("v2", getObject(objectService));
+    assertEquals("v2", getObject(LocalS3Manager.createFileSystemS3Manager(dataPath).objectService()));
   }
 
   @Test
@@ -155,6 +153,51 @@ class FileSystemLocalS3ManagerTest {
         }
       }
     };
+  }
+
+  /**
+   * The store writes the objects that a change touched, which a service reaches through the metadata of its bucket and
+   * then changes in place, e.g. the tagging of a version. A restarted service has to see every such change, so this
+   * walks the changes that don't replace the object of a key.
+   */
+  @Test
+  void persistsTheChangesMadeInsideAnObject() throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    ObjectService objectService = manager.objectService();
+    manager.bucketService().createBucket(BUCKET);
+    manager.bucketService().setVersioningEnabled(BUCKET, true);
+
+    String firstVersion = objectService.putObject(BUCKET, KEY, PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("v1".getBytes(StandardCharsets.UTF_8)))
+        .contentType("text/plain")
+        .size(2L)
+        .build()).getVersionId();
+    // A second version is added to the object that the key already holds, rather than replacing it.
+    putObject(objectService, "v2");
+    // Both change a version in place.
+    objectService.putObjectTagging(BUCKET, KEY, firstVersion, new String[][] {{"team", "s3"}});
+
+    String uploadId = objectService.createMultipartUpload(BUCKET, KEY + ".part",
+        CreateMultipartUploadOptions.builder().contentType("text/plain").build());
+
+    LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    ObjectService restartedObjects = restarted.objectService();
+    assertEquals("v2", getObject(restartedObjects));
+    assertEquals(2, restartedObjects.listObjectVersions(BUCKET, null, null, 10, null, null).getVersions().size());
+    assertEquals("team", restartedObjects.getObjectTagging(BUCKET, KEY, firstVersion).getTagging()[0][0],
+        "The tagging set on a version of a loaded object is persisted.");
+    assertEquals(List.of(uploadId), restartedObjects.listMultipartUploads(BUCKET, null, null, null, 10, null, null)
+        .getUploads().stream().map(upload -> upload.getUploadId()).toList());
+
+    // Aborting the upload, and deleting a version, are persisted too.
+    restartedObjects.abortMultipartUpload(BUCKET, KEY + ".part", uploadId);
+    restartedObjects.deleteObject(BUCKET, KEY, firstVersion);
+
+    LocalS3Manager restartedAgain = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    assertEquals(1, restartedAgain.objectService()
+        .listObjectVersions(BUCKET, null, null, 10, null, null).getVersions().size());
+    assertTrue(restartedAgain.objectService().listMultipartUploads(BUCKET, null, null, null, 10, null, null)
+        .getUploads().isEmpty());
   }
 
   private static void putObject(ObjectService objectService, String content) {

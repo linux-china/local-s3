@@ -41,6 +41,7 @@ public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, 
         uploads.remove(objectKey);
       }
 
+      bucketMetadata.markUploadsChanged(objectKey);
       // help GC.
       uploadMetadata.getParts().clear();
       publishChange(S3Change.multipartUploadAborted("AbortMultipartUpload", bucketName, objectKey, uploadId));

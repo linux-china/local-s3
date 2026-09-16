@@ -280,6 +280,12 @@ LocalS3 localS3 = LocalS3.builder()
 localS3.start();
 ```
 
+A data path holds two things: `buckets.mvstore`, the [H2 MVStore](https://www.h2database.com/html/mvstore.html)
+key-value file that holds the metadata of every bucket, and `.storage/`, the directory that holds the content of the
+objects. A change writes only the buckets and objects it touched, so a put into a bucket of many objects stays cheap.
+The store is opened while the service runs, and released by `shutdown()`; the services of a JVM that share a data path
+share the one open store.
+
 #### Run LocalS3 in In-Memory mode with initial data.
 
 LocalS3 loads initial data from the specified path. Changes on such LocalS3 instance only modify the

@@ -1,16 +1,24 @@
 package com.robothy.s3.core.service.manager;
 
+import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.core.service.DefaultBucketGuard;
 import com.robothy.s3.core.service.InMemoryBucketService;
 import com.robothy.s3.core.service.InMemoryObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
+import com.robothy.s3.core.service.locks.BucketLock;
+import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
+import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.Storage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -37,10 +45,19 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   private final ObjectService objectService;
 
   /**
-   * Locks the buckets of this service, shared by its bucket and object services. The buckets are kept in memory, so
-   * nothing is persisted.
+   * The key-value store of the service, which keeps the metadata of its buckets in memory and writes no file.
    */
-  private final BucketGuard bucketGuard = BucketGuard.inMemory();
+  private final LocalS3Store localS3Store = LocalS3Store.inMemory();
+
+  private final MetadataStore<BucketMetadata> bucketMetaStore = MVStoreBucketMetadataStore.create(localS3Store);
+
+  /**
+   * Locks the buckets of this service, shared by its bucket and object services, and writes a changed bucket to the
+   * in-memory store.
+   */
+  private final BucketGuard bucketGuard = new DefaultBucketGuard<>(BucketLock.create(),
+      bucketName -> data.metadata().getBucketMetadata(bucketName).get(), bucketMetaStore, null,
+      this::reloadBucketMetadata);
 
   private static final InitialDataCache cache = new InitialDataCache();
 
@@ -68,6 +85,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
     this.initialData = () -> initialData(initialDataPath, enableInitialDataCache, cache);
     this.data = initialData.get();
+    seedStore();
     this.bucketService = createBucketService();
     this.objectService = createObjectService();
   }
@@ -83,6 +101,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
     this.initialData = () -> new Data(new LocalS3Metadata(), Storage.createInMemory());
     this.data = new Data(Optional.ofNullable(initialMetadata).orElseGet(LocalS3Metadata::new),
         Optional.ofNullable(initialStorage).orElseGet(Storage::createInMemory));
+    seedStore();
     this.bucketService = createBucketService();
     this.objectService = createObjectService();
   }
@@ -126,8 +145,42 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   public void reset() {
     bucketGuard.exclusive(() -> {
       data = initialData.get();
+      clearStore();
+      seedStore();
       return null;
     });
+  }
+
+  /**
+   * Write the buckets that the service starts with to its store, which the operations then change.
+   */
+  private void seedStore() {
+    for (BucketMetadata bucketMetadata : data.metadata().getBucketMetadataMap().values()) {
+      bucketMetadata.markAllChanged();
+      bucketMetaStore.store(bucketMetadata.getBucketName(), bucketMetadata);
+    }
+  }
+
+  /**
+   * Drop everything the store holds, so that the data of a {@linkplain #reset()} replaces it.
+   */
+  private void clearStore() {
+    for (String mapName : new ArrayList<>(localS3Store.store().getMapNames())) {
+      localS3Store.store().removeMap(localS3Store.store().openMap(mapName));
+    }
+  }
+
+  /**
+   * Replace the in-memory metadata of a bucket with the stored one, which drops the changes that a failed operation
+   * made in the metadata only.
+   */
+  private void reloadBucketMetadata(String bucketName) {
+    Map<String, BucketMetadata> buckets = data.metadata().getBucketMetadataMap();
+    if (bucketMetaStore.exists(bucketName)) {
+      buckets.put(bucketName, bucketMetaStore.fetch(bucketName));
+    } else {
+      buckets.remove(bucketName);
+    }
   }
 
   private BucketService createBucketService() {

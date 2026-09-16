@@ -10,7 +10,8 @@ import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
-import com.robothy.s3.core.storage.FileSystemBucketMetadataStore;
+import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -67,7 +68,9 @@ class DefaultFileSystemS3MetadataLoaderTest {
     bucketMetadata.putObjectMetadata(key,
         new ObjectMetadata(String.valueOf(LEGACY_VERSION_ID), versionedObjectMetadata));
 
-    FileSystemBucketMetadataStore.create(dataPath).store(bucketName, bucketMetadata);
+    try (LocalS3Store store = LocalS3Store.persistent(dataPath)) {
+      MVStoreBucketMetadataStore.create(store).store(bucketName, bucketMetadata);
+    }
   }
 
 }

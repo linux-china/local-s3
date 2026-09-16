@@ -342,6 +342,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       if (uploads.get(key).isEmpty()) {
         uploads.remove(key);
       }
+      bucketMetadata.markUploadsChanged(key);
 
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "CompleteMultipartUpload", bucket, key,
           putObjectAns.getVersionId(), putObjectAns.getSize(), putObjectAns.getEtag()));

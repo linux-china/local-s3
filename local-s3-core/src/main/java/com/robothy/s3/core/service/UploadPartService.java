@@ -70,6 +70,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
       if (Objects.nonNull(replaced)) {
         storage().delete(replaced.getFileId());
       }
+      bucketMetadata.markUploadsChanged(key);
       return UploadPartAns.builder()
           .etag(uploadPartMetadata.getEtag())
           .lastModified(uploadPartMetadata.getLastModified())

@@ -123,6 +123,13 @@ public interface LocalS3Manager {
   }
 
   /**
+   * Close the resources of the manager, e.g. the store that holds the metadata of its buckets, writing what it still
+   * holds. The services of the manager can't be used afterwards. A manager that holds nothing to close does nothing.
+   */
+  default void close() {
+  }
+
+  /**
    * Replace the data of the service with the data it started with: none, or the initial data of its data path. The
    * operations in progress are finished first, and the operations that start meanwhile wait for the reset. The
    * services of the manager keep working, on the new data.

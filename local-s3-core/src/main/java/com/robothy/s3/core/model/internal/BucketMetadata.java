@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.internal;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
@@ -8,9 +9,12 @@ import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.Getter;
 import lombok.Setter;
@@ -38,6 +42,21 @@ public class BucketMetadata {
 
   @JsonDeserialize(converter = ObjectMetadataMapConverter.class)
   private ConcurrentSkipListMap<String, ObjectMetadata> objectMap = new ConcurrentSkipListMap<>();
+
+  /**
+   * The keys whose objects changed since the metadata store last wrote the bucket, so that it only writes those. Not
+   * part of the persisted state: a bucket that is read from the store has nothing left to write.
+   *
+   * @see BucketChangeScope
+   */
+  @JsonIgnore
+  private final transient Set<String> changedObjectKeys = ConcurrentHashMap.newKeySet();
+
+  /**
+   * The keys whose multipart uploads changed since the metadata store last wrote the bucket.
+   */
+  @JsonIgnore
+  private final transient Set<String> changedUploadKeys = ConcurrentHashMap.newKeySet();
 
   private long creationDate;
 
@@ -82,7 +101,13 @@ public class BucketMetadata {
    * @return the object metadata of the specified object key.
    */
   public Optional<ObjectMetadata> getObjectMetadata(String key) {
-    return Optional.ofNullable(objectMap.get(key));
+    ObjectMetadata objectMetadata = objectMap.get(key);
+    if (objectMetadata != null && BucketChangeScope.isChanging(bucketName)) {
+      // The caller changes the object in place, e.g. adds a version or sets the tagging of one, which only the key
+      // recorded here tells the metadata store about.
+      changedObjectKeys.add(key);
+    }
+    return Optional.ofNullable(objectMetadata);
   }
 
   /**
@@ -95,7 +120,67 @@ public class BucketMetadata {
   public ObjectMetadata putObjectMetadata(String key, ObjectMetadata objectMetadata) {
     ObjectAssertions.assertObjectKeyIsValid(key);
     objectMap.put(key, objectMetadata);
+    changedObjectKeys.add(key);
     return objectMetadata;
+  }
+
+  /**
+   * Remove the metadata of an object, so that the metadata store deletes it.
+   *
+   * @param key the object key.
+   * @return the removed object metadata; {@code null} if the key held none.
+   */
+  public ObjectMetadata removeObjectMetadata(String key) {
+    ObjectMetadata removed = objectMap.remove(key);
+    changedObjectKeys.add(key);
+    return removed;
+  }
+
+  /**
+   * Record that the multipart uploads of a key changed, so that the metadata store writes them. The services change
+   * {@linkplain #getUploads()} in place, which the metadata can't see.
+   *
+   * @param key the object key of the upload.
+   */
+  public void markUploadsChanged(String key) {
+    changedUploadKeys.add(key);
+  }
+
+  /**
+   * Record every object and multipart upload of the bucket as changed, so that the metadata store writes the whole
+   * bucket, e.g. to seed a store with a bucket that was read from another one.
+   */
+  public void markAllChanged() {
+    changedObjectKeys.addAll(objectMap.keySet());
+    changedUploadKeys.addAll(uploads.keySet());
+  }
+
+  /**
+   * Take the object keys that changed since this was last called, and forget them. Called by the metadata store when
+   * it writes the bucket.
+   *
+   * @return the changed object keys.
+   */
+  public List<String> drainChangedObjectKeys() {
+    return drain(changedObjectKeys);
+  }
+
+  /**
+   * Take the keys whose multipart uploads changed since this was last called, and forget them.
+   *
+   * @return the keys whose uploads changed.
+   */
+  public List<String> drainChangedUploadKeys() {
+    return drain(changedUploadKeys);
+  }
+
+  private static List<String> drain(Set<String> keys) {
+    if (keys.isEmpty()) {
+      return List.of();
+    }
+    List<String> drained = List.copyOf(keys);
+    drained.forEach(keys::remove);
+    return drained;
   }
 
   /**

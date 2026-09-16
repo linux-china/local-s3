@@ -1,6 +1,8 @@
 package com.robothy.s3.core.service.loader;
 
+import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
+import com.robothy.s3.core.storage.MetadataStore;
 import java.nio.file.Path;
 
 /**
@@ -18,11 +20,20 @@ public interface FileSystemS3MetadataLoader {
   }
 
   /**
-   * Load {@linkplain LocalS3Metadata} from the given {@code s3Path}.
+   * Load {@linkplain LocalS3Metadata} from the store of the given {@code s3Path}, which is opened and closed again.
    *
    * @param s3Path that contains {@linkplain LocalS3Metadata}.
    * @return loaded {@linkplain LocalS3Metadata} instance.
    */
   LocalS3Metadata load(Path s3Path);
+
+  /**
+   * Load {@linkplain LocalS3Metadata} from an open metadata store, e.g. the one that a manager writes to, which must
+   * not be opened a second time.
+   *
+   * @param bucketMetaStore the store that holds the buckets.
+   * @return loaded {@linkplain LocalS3Metadata} instance.
+   */
+  LocalS3Metadata load(MetadataStore<BucketMetadata> bucketMetaStore);
 
 }

@@ -360,6 +360,24 @@ public class LocalS3 implements AutoCloseable {
         running = false;
         removeShutdownHook();
         stopServer();
+        closePersistentManagers();
+    }
+
+    /**
+     * Close the store that holds the metadata of a {@code PERSISTENCE} service, which releases its data directory, so
+     * that another service can open the same directory. The manager is dropped with it, and a service that is started
+     * again creates one that loads the data from the directory. The managers of an {@code IN_MEMORY} service are kept,
+     * so that a service that is started again serves the data it held.
+     */
+    private void closePersistentManagers() {
+        if (config.mode() != LocalS3Mode.PERSISTENCE) {
+            return;
+        }
+        LocalS3Manager manager = this.s3Manager;
+        this.s3Manager = null;
+        if (manager != null) {
+            manager.close();
+        }
     }
 
     @Override
@@ -482,11 +500,19 @@ public class LocalS3 implements AutoCloseable {
     /**
      * get Local S3 Manager after start()
      *
+     * <p>A {@code PERSISTENCE} service releases its manager, and the data directory it holds open, when it is
+     * {@linkplain #shutdown() shut down}, so its manager is only available while it runs. An {@code IN_MEMORY} service
+     * keeps its manager, and the data it holds, across a restart.
+     *
      * @return local s3 manager
+     * @throws IllegalStateException if the service has never been started, or is a {@code PERSISTENCE} service that
+     *     has been shut down.
      */
     public LocalS3Manager getS3Manager() {
         if (s3Manager == null) {
-            throw new IllegalStateException("S3Manager has not been initialized");
+            throw new IllegalStateException("S3Manager has not been initialized"
+                    + (config.mode() == LocalS3Mode.PERSISTENCE ? ", or was released when the service was shut down."
+                    : "."));
         }
         return s3Manager;
     }

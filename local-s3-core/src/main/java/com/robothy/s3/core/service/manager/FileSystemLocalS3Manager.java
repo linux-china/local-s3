@@ -10,7 +10,8 @@ import com.robothy.s3.core.service.InMemoryObjectService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.loader.FileSystemS3MetadataLoader;
 import com.robothy.s3.core.service.locks.BucketLock;
-import com.robothy.s3.core.storage.FileSystemBucketMetadataStore;
+import com.robothy.s3.core.storage.LocalS3Store;
+import com.robothy.s3.core.storage.MVStoreBucketMetadataStore;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.storage.TransactionalStorage;
@@ -22,6 +23,11 @@ import java.util.Objects;
 final class FileSystemLocalS3Manager implements LocalS3Manager {
 
   private final LocalS3Metadata s3Metadata;
+
+  /**
+   * The key-value store of the service, which holds the metadata of every bucket in one file.
+   */
+  private final LocalS3Store localS3Store;
 
   private final MetadataStore<BucketMetadata> bucketMetaStore;
 
@@ -38,8 +44,10 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
 
   FileSystemLocalS3Manager(Path dataDirectory) {
     Objects.requireNonNull(dataDirectory, "Data directory is required to create a persistent LocalS3 service.");
-    this.bucketMetaStore = FileSystemBucketMetadataStore.create(dataDirectory);
-    this.s3Metadata = FileSystemS3MetadataLoader.create().load(dataDirectory);
+    // One store per service, which holds the metadata and stays open: it is both loaded from and written to.
+    this.localS3Store = LocalS3Store.persistent(dataDirectory);
+    this.bucketMetaStore = MVStoreBucketMetadataStore.create(localS3Store);
+    this.s3Metadata = FileSystemS3MetadataLoader.create().load(bucketMetaStore);
     this.storage = new TransactionalStorage(
         Storage.createPersistent(Paths.get(dataDirectory.toAbsolutePath().toString(), STORAGE_DIRECTORY)));
     this.bucketGuard = new DefaultBucketGuard<>(BucketLock.create(),
@@ -65,6 +73,14 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
 
   private ObjectService createObjectService() {
     return InMemoryObjectService.create(s3Metadata, storage, bucketGuard);
+  }
+
+  /**
+   * Close the store of the service, writing what it still holds. The manager can't be used afterwards.
+   */
+  @Override
+  public void close() {
+    localS3Store.close();
   }
 
   /**

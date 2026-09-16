@@ -3,6 +3,7 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.event.S3ChangePublisher;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
+import com.robothy.s3.core.model.internal.BucketChangeScope;
 import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.StorageTransactions;
@@ -93,9 +94,15 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     // The changes that the operation publishes are delivered once the write lock is released.
     return changePublisher.withinChange(() -> write(bucketName, () -> {
       changing.add(bucketName);
+      // Within the scope, the metadata of the bucket records the objects it hands out as changed, so that the store
+      // only writes those. It spans the persistence too, which drains what the operation recorded.
+      boolean ownsScope = BucketChangeScope.begin(bucketName);
       try {
         return Objects.isNull(bucketMetaStore) ? operation.get() : invokeAndPersist(bucketName, change, operation);
       } finally {
+        if (ownsScope) {
+          BucketChangeScope.end(bucketName);
+        }
         changing.remove(bucketName);
         if (changing.isEmpty()) {
           changingBuckets.remove();

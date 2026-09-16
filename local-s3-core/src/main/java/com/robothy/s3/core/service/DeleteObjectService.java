@@ -70,7 +70,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
       throw new LocalS3InvalidArgumentException("versionId", versionId);
     }
 
-    ObjectMetadata removedObject = bucketMetadata.getObjectMap().remove(key);
+    ObjectMetadata removedObject = bucketMetadata.removeObjectMetadata(key);
     if (Objects.nonNull(removedObject)) { // the object exists
       VersionedObjectMetadata removedVersion = removedObject.getVersionedObjectMap().firstEntry().getValue();
       ObjectContentUtils.delete(storage, removedVersion);
@@ -174,7 +174,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
     }
 
     if (objectMetadata.getVersionedObjectMap().isEmpty()) {
-      bucketMetadata.getObjectMap().remove(key);
+      bucketMetadata.removeObjectMetadata(key);
     }
 
     return DeleteObjectAns.builder()
