@@ -61,7 +61,7 @@ class RequestIdTest {
       seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket/large"))
           .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[128])))));
       // An operation that is routed but not implemented, which NotImplementedOperationController answers.
-      seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket?lifecycle"))
+      seen.add(check(send(client, HttpRequest.newBuilder(URI.create(base + "/request-id-bucket?website"))
           .GET())));
 
       assertEquals(6, seen.size(), "Every request gets its own ID: " + seen);

@@ -2,6 +2,7 @@ package com.robothy.s3.core.model.internal;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.core.exception.InvalidObjectKeyException;
+import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.util.JsonUtils;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.Grant;
@@ -77,6 +78,7 @@ class BucketMetadataTest {
 
     bucketMetadata.setReplication("Replication Configuration");
     bucketMetadata.setEncryption("Encryption");
+    bucketMetadata.setLifecycle(new BucketLifecycleConfiguration("<LifecycleConfiguration/>", "varies_by_storage_class"));
 
     String json = JsonUtils.toJson(bucketMetadata);
     BucketMetadata deserialized = JsonUtils.fromJson(json, BucketMetadata.class);

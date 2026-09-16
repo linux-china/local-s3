@@ -15,6 +15,11 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_BUCKET_REGION = "x-amz-bucket-region";
 
+  /**
+   * The minimum size of the objects that the transitions of a lifecycle configuration apply to by default.
+   */
+  public static final String X_AMZ_TRANSITION_DEFAULT_MINIMUM_OBJECT_SIZE = "x-amz-transition-default-minimum-object-size";
+
   public static final String X_AMZ_DELETE_MARKER = "x-amz-delete-marker";
 
   public static final String X_AMZ_TAGGING = "x-amz-tagging";

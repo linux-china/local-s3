@@ -84,6 +84,10 @@ imported either.
   [semantics](docs/semantics.md#conditional-requests).
 + **Operations**: `UploadPartCopy`, `GetObjectAttributes`, `GetObjectAcl`, `PutObjectAcl`, `ListMultipartUploads`,
   `GetBucketCors`, `PutBucketCors`, `DeleteBucketCors`, `GetBucketPolicyStatus`, and CORS preflight requests.
++ **Lifecycle configurations**: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration` and
+  `DeleteBucketLifecycle` store, return and delete the configuration of a bucket instead of answering
+  `501 NotImplemented`. The configuration is validated like Amazon S3 validates its structure, but its rules are
+  **never applied**. See [semantics](docs/semantics.md#lifecycle-configuration).
   Paginated `ListBuckets`. Operations that LocalS3 knows but doesn't implement answer `501 NotImplemented` naming the
   operation; see [the API list](docs/apis.md).
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,

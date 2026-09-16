@@ -56,15 +56,13 @@ public class LocalS3RouterFactory {
   /**
    * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
    * error that names the operation, so that a client fails clearly instead of appearing to succeed. Operations whose
-   * requests are the same, e.g. {@code GetBucketLifecycle} and {@code GetBucketLifecycleConfiguration}, share one route.
+   * requests are the same, e.g. {@code GetBucketNotification} and {@code GetBucketNotificationConfiguration}, share one
+   * route.
    */
   private static final List<NotImplementedOperation> NOT_IMPLEMENTED_OPERATIONS = List.of(
       // Bucket configurations.
       new NotImplementedOperation("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate")),
       new NotImplementedOperation("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate")),
-      new NotImplementedOperation("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle")),
-      new NotImplementedOperation("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle")),
-      new NotImplementedOperation("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle")),
       new NotImplementedOperation("GetBucketLogging", GET, BUCKET_PATH, has("logging")),
       new NotImplementedOperation("PutBucketLogging", PUT, BUCKET_PATH, has("logging")),
       new NotImplementedOperation("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification")),
@@ -184,12 +182,14 @@ public class LocalS3RouterFactory {
   private record SharedControllers(BucketPolicyController bucketPolicy,
                                    BucketReplicationController bucketReplication,
                                    BucketEncryptionController bucketEncryption,
+                                   BucketLifecycleController bucketLifecycle,
                                    ObjectTaggingController objectTagging) {
 
     static SharedControllers create(ServiceFactory serviceFactory) {
       return new SharedControllers(new BucketPolicyController(serviceFactory),
           new BucketReplicationController(serviceFactory),
           new BucketEncryptionController(serviceFactory),
+          new BucketLifecycleController(serviceFactory),
           new ObjectTaggingController(serviceFactory));
     }
   }
@@ -229,6 +229,7 @@ public class LocalS3RouterFactory {
         .add("GetBucketAcl", GET, BUCKET_PATH, has("acl"), new GetBucketAclController(factory))
         .add("GetBucketCors", GET, BUCKET_PATH, has("cors"), new GetBucketCorsController(factory))
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
+        .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
         .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
         .add("GetBucketPolicy", GET, BUCKET_PATH, has("policy"), shared.bucketPolicy()::get)
         .add("GetBucketPolicyStatus", GET, BUCKET_PATH, has("policyStatus"),
@@ -257,6 +258,7 @@ public class LocalS3RouterFactory {
         .add("DeleteBucket", DELETE, BUCKET_PATH, new DeleteBucketController(factory))
         .add("DeleteBucketCors", DELETE, BUCKET_PATH, has("cors"), new DeleteBucketCorsController(factory))
         .add("DeleteBucketEncryption", DELETE, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::delete)
+        .add("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::delete)
         .add("DeleteBucketPolicy", DELETE, BUCKET_PATH, has("policy"), shared.bucketPolicy()::delete)
         .add("DeleteBucketReplication", DELETE, BUCKET_PATH, has("replication"), shared.bucketReplication()::delete)
         .add("DeleteBucketTagging", DELETE, BUCKET_PATH, has("tagging"), new DeleteBucketTaggingController(factory))
@@ -266,6 +268,7 @@ public class LocalS3RouterFactory {
         .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
+        .add("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::put)
         .add("PutBucketPolicy", PUT, BUCKET_PATH, has("policy"), shared.bucketPolicy()::put)
         .add("PutBucketReplication", PUT, BUCKET_PATH, has("replication"), shared.bucketReplication()::put)
         .add("PutBucketTagging", PUT, BUCKET_PATH, has("tagging"), new PutBucketTaggingController(factory))

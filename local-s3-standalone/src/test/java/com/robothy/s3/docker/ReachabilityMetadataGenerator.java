@@ -217,6 +217,15 @@ public class ReachabilityMetadataGenerator {
       s3.getBucketCors(b -> b.bucket(bucketName));
       s3.deleteBucketCors(b -> b.bucket(bucketName));
 
+      // The configuration is validated with the StAX parser of the JDK.
+      s3.putBucketLifecycleConfiguration(b -> b.bucket(bucketName).lifecycleConfiguration(c -> c.rules(rule -> rule
+          .id("expire-tmp")
+          .filter(filter -> filter.prefix("tmp/"))
+          .status(ExpirationStatus.ENABLED)
+          .expiration(expiration -> expiration.days(1)))));
+      s3.getBucketLifecycleConfiguration(b -> b.bucket(bucketName));
+      s3.deleteBucketLifecycle(b -> b.bucket(bucketName));
+
       s3.putBucketReplication(PutBucketReplicationRequest.builder()
           .bucket(bucketName)
           .replicationConfiguration(ReplicationConfiguration.builder()

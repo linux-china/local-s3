@@ -58,8 +58,10 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 ## Features
 
-+ **50 S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
++ **53 S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
   [Supported and unsupported APIs](docs/apis.md).
++ **Lifecycle configurations are saved but not applied**: they can be put, read back and deleted, so frameworks that
+  configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
 + **Faithful semantics**: conditional reads, writes and deletes that are atomic per key, Amazon S3 entity tags for
   multipart uploads, and the validation of Amazon S3 for bucket names and part sizes. [Semantics](docs/semantics.md).

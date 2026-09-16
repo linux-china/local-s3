@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
+import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
@@ -111,6 +112,11 @@ public class BucketMetadata {
   private PublicAccessBlockConfiguration publicAccessBlock;
 
   private CORSConfiguration cors;
+
+  /**
+   * The lifecycle configuration of the bucket, which LocalS3 stores but never applies; {@code null} for none.
+   */
+  private BucketLifecycleConfiguration lifecycle;
 
   /**
    * Get metadata of the specified object.
@@ -307,6 +313,15 @@ public class BucketMetadata {
    */
   public void setReplication(String replication) {
     this.replication = replication;
+  }
+
+  /**
+   * Get the lifecycle configuration.
+   *
+   * @return the lifecycle configuration of the bucket; empty if it has none.
+   */
+  public Optional<BucketLifecycleConfiguration> getLifecycle() {
+    return Optional.ofNullable(lifecycle);
   }
 
   /**

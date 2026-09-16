@@ -17,6 +17,7 @@ versioning, see [semantics.md](semantics.md).
 + DeleteBucket
 + DeleteBucketCors
 + DeleteBucketEncryption
++ DeleteBucketLifecycle
 + DeleteBucketPolicy
 + DeleteBucketReplication
 + DeleteBucketTagging
@@ -31,6 +32,7 @@ versioning, see [semantics.md](semantics.md).
 + GetBucketAcl
 + GetBucketCors
 + GetBucketEncryption
++ GetBucketLifecycleConfiguration
 + GetBucketPolicy
 + GetBucketPolicyStatus
 + GetBucketReplication
@@ -48,6 +50,7 @@ versioning, see [semantics.md](semantics.md).
 + PutBucketAcl
 + PutBucketCors
 + PutBucketEncryption
++ PutBucketLifecycleConfiguration
 + PutBucketPolicy
 + PutBucketReplication
 + PutBucketVersioning
@@ -60,6 +63,11 @@ versioning, see [semantics.md](semantics.md).
 + GetPublicAccessBlock
 + DeletePublicAccessBlock
 + OPTIONS object (CORS preflight requests, answered without authentication)
+
+The lifecycle configuration of a bucket is **stored but not applied**: `GetBucketLifecycleConfiguration` returns what
+was put, but no object expires or transitions, and no incomplete multipart upload is aborted because of it. See
+[semantics.md](semantics.md#lifecycle-configuration). The deprecated `PutBucketLifecycle` and `GetBucketLifecycle`
+send the same requests, and are answered the same way.
 
 `ListBuckets` is paginated with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, so
 `listBucketsPaginator` works.
@@ -96,17 +104,10 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 ## Known unimplemented Amazon S3 APIs
 
 LocalS3 is a mock for testing, so it implements the operations that application code exercises and leaves
-the ones that configure a real bucket's lifecycle, billing and reporting alone. The operations below are
+the ones that configure a real bucket's billing, hosting and reporting alone. The operations below are
 routed and answer `501 NotImplemented` with an `<Error>` document naming the operation, so a client fails
 with a clear error instead of appearing to succeed. If your tests need one of them, please
 [open an issue](https://github.com/Robothy/local-s3/issues/new).
-
-**Lifecycle**
-+ DeleteBucketLifecycle
-+ GetBucketLifecycleConfiguration
-+ PutBucketLifecycleConfiguration
-
-(The deprecated `GetBucketLifecycle` and `PutBucketLifecycle` send the same requests, and get the same answer.)
 
 **Event notifications**
 + GetBucketNotificationConfiguration

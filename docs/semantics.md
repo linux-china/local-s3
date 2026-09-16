@@ -10,6 +10,7 @@ Amazon S3 would refuse.
 - [Conditional requests](#conditional-requests)
 - [Versioning](#versioning)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
+- [Lifecycle configuration](#lifecycle-configuration)
 - [Change events](#change-events)
 
 ## Request validation
@@ -92,6 +93,32 @@ The object of a completed multipart upload gets the entity tag of Amazon S3: the
 of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the MD5 of the whole content instead;
 `compositeMultipartEtags(false)`, `@LocalS3(compositeMultipartEtags = false)` or
 `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS=false` bring that back for tests that depend on it.
+
+## Lifecycle configuration
+
+`PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration` and `DeleteBucketLifecycle` store, return and
+delete the lifecycle configuration of a bucket, so that frameworks that set one when they start, e.g. to clean up
+temporary files, work against LocalS3 instead of failing with `501 NotImplemented`.
+
+**The configuration is saved, but never takes effect.** LocalS3 doesn't expire objects or noncurrent versions,
+doesn't remove expired delete markers, doesn't transition anything to another storage class, and doesn't abort
+incomplete multipart uploads. A test that relies on a rule being applied needs to delete the objects itself.
+
+What is checked is the structure that Amazon S3 checks, so a configuration that Amazon S3 rejects isn't accepted:
+
+| Configuration | Answer |
+|---|---|
+| Not well-formed XML, a document type, a root element other than `LifecycleConfiguration`, no `Rule`, or an element other than `Rule` in it | `400 MalformedXML` |
+| A rule whose `Status` isn't `Enabled` or `Disabled` | `400 MalformedXML` |
+| A rule without an action (`Expiration`, `Transition`, `NoncurrentVersionExpiration`, `NoncurrentVersionTransition` or `AbortIncompleteMultipartUpload`) | `400 InvalidRequest` |
+| More than 1000 rules | `400 InvalidRequest` |
+| An `ID` longer than 255 characters, or the same `ID` in two rules | `400 InvalidArgument` |
+| An `x-amz-transition-default-minimum-object-size` other than `all_storage_classes_128K` or `varies_by_storage_class` | `400 InvalidArgument` |
+
+The contents of the filters and actions aren't checked, since nothing reads them. The document is stored as it was
+put, and `GetBucketLifecycleConfiguration` returns it as is, with the `x-amz-transition-default-minimum-object-size` it
+was put with, `all_storage_classes_128K` by default. A bucket without a configuration answers
+`404 NoSuchLifecycleConfiguration`; deleting the configuration of such a bucket succeeds.
 
 ## Change events
 
