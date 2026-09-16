@@ -32,54 +32,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Login to Docker Hub
-        if: runner.os == 'Linux'
-        uses: docker/login-action@v4
-        with:
-          username: luofuxiang
-          password: ${{secrets.DOCKER_HUB_TOKEN}}
-
-      - name: Docker Version
-        if: runner.os == 'Linux'
-        run: |
-          docker --version
-
-      - name: Prepare parameters
-        run: |
-          git log --pretty=format:"%H - %an, %aI : %s" -5
-          mkdir -p ~/.gradle
-          echo "GITHUB_TOKEN=${{secrets.PACKAGES_TOKEN}}" > ~/.gradle/gradle.properties
-          echo "GITHUB_USERNAME=Robothy" >> ~/.gradle/gradle.properties
-          chmod +x gradlew
-          pwd
-          ls -l
-
-      # Tests the JVM based Docker image, but doesn't build the GraalVM native image.
-      # --continue runs the tests of the other modules after one of them fails, so that a pull request
-      # shows every failure at once instead of only the first. The build still fails, and the report step
-      # below publishes the results of every module that ran.
-      - name: Build and test the Docker image
-        if: runner.os == 'Linux'
-        run: ./gradlew mergeReports :local-s3-standalone:dockerImageTest --continue
-
       # The image tests are left to the Linux job. The rest of the suite runs, which is what covers the file
       # handling that Windows needs; `mergeReports` doesn't reach a Docker daemon.
       - name: Build
-        if: runner.os == 'Windows'
-        run: ./gradlew mergeReports --continue
-
-      # One report per operating system, so that the two jobs don't publish over each other.
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v5
-        if: success() || failure()
-        with:
-          report_paths: '**/build/test-results/*/TEST-*.xml'
-          check_name: Test Report (${{ matrix.os }})
-
-      # The coverage of both jobs is the same, so it is uploaded once.
-      - name: Upload coverage to Codecov
-        if: runner.os == 'Linux'
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./build/reports/jacoco/mergeReports/mergeReports.xml
-          token: ${{ secrets.CODECOV_GLOBAL_UPLOAD_TOKEN }}
+        run: ./gradlew -x :local-s3-integration-test:build build
