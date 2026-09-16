@@ -1,15 +1,15 @@
 package com.robothy.s3.datatypes.request;
 
 import static org.junit.jupiter.api.Assertions.*;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.s3.datatypes.ObjectIdentifier;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class DeleteObjectsRequestTest {
 
   @Test
-  void testDeserializeDeleteObjectsRequest() throws JsonProcessingException {
+  void testDeserializeDeleteObjectsRequest() throws JacksonException {
 
     String xml = "<Delete>\n" +
         "  <Object>\n" +
@@ -38,7 +38,7 @@ class DeleteObjectsRequestTest {
   }
 
   @Test
-  void deserializesTheConditionsOfAnObject() throws JsonProcessingException {
+  void deserializesTheConditionsOfAnObject() throws JacksonException {
     String xml = "<Delete>\n" +
         "  <Object>\n" +
         "    <Key>a.txt</Key>\n" +
@@ -51,9 +51,8 @@ class DeleteObjectsRequestTest {
         "  </Object>\n" +
         "</Delete>";
 
-    // The service reads the request with the Java time module, like this.
+    // Jackson 3 reads java.time values without a module.
     XmlMapper xmlMapper = new XmlMapper();
-    xmlMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
     DeleteObjectsRequest request = xmlMapper.readValue(xml, DeleteObjectsRequest.class);
 
     ObjectIdentifier conditional = request.getObjects().get(0);

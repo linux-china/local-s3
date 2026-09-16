@@ -1,15 +1,6 @@
 package com.robothy.s3.rest.model.response;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
-import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
 import com.robothy.s3.datatypes.response.VersionItem;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Objects;
@@ -18,6 +9,14 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.ser.std.StdSerializer;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+import tools.jackson.dataformat.xml.ser.ToXmlGenerator;
 
 @Builder
 @AllArgsConstructor
@@ -75,7 +74,7 @@ public class ListVersionsResult {
 
     @SneakyThrows
     @Override
-    public void serialize(ListVersionsResult value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+    public void serialize(ListVersionsResult value, JsonGenerator gen, SerializationContext provider) {
       if (gen instanceof ToXmlGenerator) {
         ToXmlGenerator xmlGenerator = (ToXmlGenerator) gen;
         xmlGenerator.writeStartObject();
@@ -87,8 +86,8 @@ public class ListVersionsResult {
             for (java.lang.Object version : (List) fieldValue) {
               JacksonXmlRootElement annotation = version.getClass().getAnnotation(JacksonXmlRootElement.class);
               Objects.requireNonNull(annotation, "Must add @JacksonXmlRootElement to " + version.getClass());
-              xmlGenerator.writeFieldName(annotation.localName());
-              xmlGenerator.writeObject(version);
+              xmlGenerator.writeName(annotation.localName());
+              xmlGenerator.writePOJO(version);
             }
           } else {
             if ("$jacocoData".equals(field.getName())) {
@@ -97,8 +96,8 @@ public class ListVersionsResult {
 
             JacksonXmlProperty jacksonXmlProperty = field.getAnnotation(JacksonXmlProperty.class);
             Objects.requireNonNull(jacksonXmlProperty, "Must add @JacksonXmlProperty to " + value.getClass() + "#" + field.getName());
-            xmlGenerator.writeFieldName(jacksonXmlProperty.localName());
-            xmlGenerator.writeObject(fieldValue);
+            xmlGenerator.writeName(jacksonXmlProperty.localName());
+            xmlGenerator.writePOJO(fieldValue);
           }
         }
         xmlGenerator.writeEndObject();

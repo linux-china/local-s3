@@ -1,10 +1,9 @@
 package com.robothy.s3.datatypes.serializer;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import com.robothy.s3.datatypes.Grantee;
-import java.io.IOException;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.ser.std.StdSerializer;
 
 public class GranteeSerializer extends StdSerializer<Grantee> {
 
@@ -13,13 +12,13 @@ public class GranteeSerializer extends StdSerializer<Grantee> {
   }
 
   @Override
-  public void serialize(Grantee value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+  public void serialize(Grantee value, JsonGenerator gen, SerializationContext provider) {
     gen.writeStartObject();
-    gen.writeObject(value.getDisplayName());
-    gen.writeObject(value.getEmailAddress());
-    gen.writeObject(value.getId());
-    gen.writeObject(value.getUri());
-    gen.writeStringField("type", value.getType());
+    gen.writePOJO(value.getDisplayName());
+    gen.writePOJO(value.getEmailAddress());
+    gen.writePOJO(value.getId());
+    gen.writePOJO(value.getUri());
+    gen.writeStringProperty("type", value.getType());
     gen.writeEndObject();
   }
 }

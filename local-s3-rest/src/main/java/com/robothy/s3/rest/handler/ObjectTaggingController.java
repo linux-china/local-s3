@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.model.answers.GetObjectTaggingAns;
@@ -15,6 +14,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 import java.util.Objects;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class ObjectTaggingController {
 

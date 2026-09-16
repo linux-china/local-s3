@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.rest.admin.LocalS3Admin;
@@ -10,6 +9,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Map;
 import java.util.Set;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Answers the administration endpoints of a LocalS3 service with JSON, for local development and tests:

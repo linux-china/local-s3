@@ -1,9 +1,9 @@
 package com.robothy.s3.datatypes.response;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class DeleteResultTest {
 

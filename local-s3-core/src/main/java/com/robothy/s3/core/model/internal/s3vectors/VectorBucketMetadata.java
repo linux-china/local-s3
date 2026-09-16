@@ -1,11 +1,11 @@
 package com.robothy.s3.core.model.internal.s3vectors;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.Getter;
 import lombok.Setter;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * Internal metadata representation for S3 Vector Buckets.

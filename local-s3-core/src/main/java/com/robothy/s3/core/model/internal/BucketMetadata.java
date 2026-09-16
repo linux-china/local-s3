@@ -1,7 +1,6 @@
 package com.robothy.s3.core.model.internal;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
@@ -19,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.Getter;
 import lombok.Setter;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * The state that LocalS3 holds for a bucket, which grows with every object and multipart upload that the

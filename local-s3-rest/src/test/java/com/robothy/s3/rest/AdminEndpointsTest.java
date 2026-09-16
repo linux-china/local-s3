@@ -4,8 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -14,6 +12,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The {@code /_admin} endpoints of a running service: the statistics, the recent requests, and the reset of the data.

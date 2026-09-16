@@ -1,8 +1,8 @@
 package com.robothy.s3.datatypes.converter;
 
-import com.fasterxml.jackson.databind.util.StdConverter;
 import java.time.Instant;
 import java.util.Date;
+import tools.jackson.databind.util.StdConverter;
 
 /**
  * Convert to Amazon instant.

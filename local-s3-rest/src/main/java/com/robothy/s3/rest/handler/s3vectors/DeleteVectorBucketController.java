@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -9,6 +8,7 @@ import com.robothy.s3.datatypes.s3vectors.request.DeleteVectorBucketRequest;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Handle S3 Vectors DeleteVectorBucket operation.

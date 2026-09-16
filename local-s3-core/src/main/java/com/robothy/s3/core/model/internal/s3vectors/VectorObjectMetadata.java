@@ -1,8 +1,8 @@
 package com.robothy.s3.core.model.internal.s3vectors;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Internal metadata representation for S3 Vector Objects.

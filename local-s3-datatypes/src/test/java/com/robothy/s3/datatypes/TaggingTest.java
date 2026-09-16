@@ -3,12 +3,12 @@ package com.robothy.s3.datatypes;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class TaggingTest {
 

@@ -1,14 +1,5 @@
 package com.robothy.s3.datatypes.response;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
-import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Objects;
@@ -17,6 +8,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.databind.ser.std.StdSerializer;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+import tools.jackson.dataformat.xml.ser.ToXmlGenerator;
 
 @Setter
 @Getter
@@ -60,7 +59,7 @@ public class DeleteResult {
 
     @SneakyThrows
     @Override
-    public void serialize(DeleteResult deleteResult, JsonGenerator gen, SerializerProvider provider) throws IOException {
+    public void serialize(DeleteResult deleteResult, JsonGenerator gen, SerializationContext provider) {
 
       if (gen instanceof ToXmlGenerator) {
         gen.writeStartObject();
@@ -69,8 +68,8 @@ public class DeleteResult {
         for (Object item : (List)deletedListField.get(deleteResult)) {
           JacksonXmlRootElement jacksonXmlRootElement = item.getClass().getDeclaredAnnotation(JacksonXmlRootElement.class);
           Objects.requireNonNull(jacksonXmlRootElement, "Must add @JacksonXmlRootElement to " + item.getClass());
-          gen.writeFieldName(jacksonXmlRootElement.localName());
-          gen.writeObject(item);
+          gen.writeName(jacksonXmlRootElement.localName());
+          gen.writePOJO(item);
         }
 
         gen.writeEndObject();

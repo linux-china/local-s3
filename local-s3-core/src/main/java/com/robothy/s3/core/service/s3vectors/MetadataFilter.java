@@ -1,14 +1,14 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Implements metadata filtering for S3 Vector queries according to AWS S3 Vectors specification.
@@ -87,9 +87,7 @@ public class MetadataFilter {
 
         // Handle field-based filters
         // Check all field filters
-        var fieldIterator = filterObj.fieldNames();
-        while (fieldIterator.hasNext()) {
-            String fieldName = fieldIterator.next();
+        for (String fieldName : filterObj.propertyNames()) {
             JsonNode fieldFilter = filterObj.get(fieldName);
             
             if (!evaluateFieldFilter(vector, fieldName, fieldFilter)) {
@@ -160,10 +158,7 @@ public class MetadataFilter {
 
         // Handle operator-based filters
         ObjectNode filterObj = (ObjectNode) fieldFilter;
-        var operatorIterator = filterObj.fieldNames();
-        
-        while (operatorIterator.hasNext()) {
-            String operator = operatorIterator.next();
+        for (String operator : filterObj.propertyNames()) {
             JsonNode operatorValue = filterObj.get(operator);
 
             boolean operatorResult = switch (operator) {

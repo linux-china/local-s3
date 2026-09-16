@@ -1,7 +1,7 @@
 package com.robothy.s3.core.model.internal.s3vectors;
 
-import com.fasterxml.jackson.databind.util.StdConverter;
 import java.util.concurrent.ConcurrentSkipListMap;
+import tools.jackson.databind.util.StdConverter;
 
 /**
  * Jackson converter for deserializing VectorIndexMetadata maps.

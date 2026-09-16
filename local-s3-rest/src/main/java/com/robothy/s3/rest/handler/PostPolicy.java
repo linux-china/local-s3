@@ -1,8 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import java.nio.charset.StandardCharsets;
@@ -11,7 +8,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,6 +15,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The policy of a browser form upload, {@code POST Object}: when the form expires, and the conditions that its fields
@@ -49,7 +49,7 @@ import java.util.function.Function;
  */
 final class PostPolicy {
 
-  private static final ObjectMapper JSON = new ObjectMapper();
+  private static final ObjectMapper JSON = JsonMapper.builderWithJackson2Defaults().build();
 
   /**
    * The fields that no condition needs to name: the policy and its signature, and the file.
@@ -83,7 +83,7 @@ final class PostPolicy {
       document = JSON.readTree(new String(json, StandardCharsets.UTF_8));
     } catch (IllegalArgumentException e) {
       throw invalidPolicy("Invalid Policy: Invalid 'base64' encoding.");
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw invalidPolicy("Invalid Policy: Invalid JSON.");
     }
     if (document == null || !document.isObject()) {
@@ -135,9 +135,7 @@ final class PostPolicy {
     Set<String> named = new TreeSet<>();
     for (JsonNode condition : conditions) {
       if (condition.isObject()) {
-        Iterator<Map.Entry<String, JsonNode>> entries = condition.fields();
-        while (entries.hasNext()) {
-          Map.Entry<String, JsonNode> entry = entries.next();
+        for (Map.Entry<String, JsonNode> entry : condition.properties()) {
           String name = fieldName(entry.getKey());
           named.add(name);
           if (!entry.getValue().asText().equals(value(name, bucketName, field))) {
@@ -219,11 +217,11 @@ final class PostPolicy {
 
   private static void validateCondition(JsonNode condition) {
     if (condition.isObject()) {
-      condition.fields().forEachRemaining(entry -> {
+      for (Map.Entry<String, JsonNode> entry : condition.properties()) {
         if (!entry.getValue().isValueNode()) {
           throw invalidCondition(condition);
         }
-      });
+      }
       return;
     }
     if (!condition.isArray() || condition.size() != 3 || !condition.get(0).isTextual()) {

@@ -43,8 +43,6 @@ dependencies {
     // with a NoClassDefFoundError. Declaring every Netty module of netty-nio-client makes Maven pick LocalS3's version.
     runtimeOnly(libs.bundles.nettyOfAwsSdk)
 
-    implementation(libs.jacksonDatatypeJdk8)
-    implementation(libs.jacksonDatatypeJsr310)
     implementation(libs.commonsIo)
     implementation(libs.apacheCommonsLang3)
     implementation(libs.apacheCommonsCollections4)

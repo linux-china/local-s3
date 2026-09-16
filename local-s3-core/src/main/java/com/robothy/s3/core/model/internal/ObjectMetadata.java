@@ -1,13 +1,13 @@
 package com.robothy.s3.core.model.internal;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.core.converters.deserializer.VersionedObjectMetadataMapConverter;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.Getter;
 import lombok.Setter;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * Represents local-s3 Object metadata, which holds every version that the object key was ever stored

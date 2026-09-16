@@ -2,7 +2,6 @@ package com.robothy.s3.datatypes.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
@@ -10,6 +9,7 @@ import com.robothy.s3.datatypes.enums.StorageClass;
 import java.time.Instant;
 import java.util.Comparator;
 import lombok.Data;
+import tools.jackson.databind.annotation.JsonSerialize;
 
 /**
  * Represents S3 <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_Object.html">Object</a>.

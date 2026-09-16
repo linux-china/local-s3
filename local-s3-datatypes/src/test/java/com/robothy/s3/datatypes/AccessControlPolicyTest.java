@@ -3,18 +3,18 @@ package com.robothy.s3.datatypes;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.ctc.wstx.stax.WstxInputFactory;
 import com.ctc.wstx.stax.WstxOutputFactory;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlFactory;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.xml.stream.XMLInputFactory;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlFactory;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class AccessControlPolicyTest {
 
   @Test
-  void serialization() throws JsonProcessingException {
+  void serialization() throws JacksonException {
 
     AccessControlPolicy accessControlPolicy = new AccessControlPolicy();
 
@@ -42,7 +42,14 @@ class AccessControlPolicyTest {
 
     XMLInputFactory input = new WstxInputFactory();
     input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
-    XmlMapper xmlMapper = new XmlMapper(new XmlFactory(input, new WstxOutputFactory()));
+    // Configured like the mapper of the service. With the defaults of Jackson 3, AUTO_DETECT_XSI_TYPE declares the xsi
+    // namespace of xsi:type a second time, next to the xmlns:xsi attribute of Grantee.
+    XmlMapper xmlMapper = XmlMapper.builder(XmlFactory.builderWithJackson2Defaults()
+            .xmlInputFactory(input)
+            .xmlOutputFactory(new WstxOutputFactory())
+            .build())
+        .configureForJackson2()
+        .build();
 
 
     String xml = xmlMapper.writerWithDefaultPrettyPrinter()
@@ -52,7 +59,7 @@ class AccessControlPolicyTest {
   }
 
   @Test
-  void deserialization() throws JsonProcessingException {
+  void deserialization() throws JacksonException {
     String xml = "<AccessControlPolicy xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n" +
                  "	<Owner>\n" +
                  "		<ID>001</ID>\n" +

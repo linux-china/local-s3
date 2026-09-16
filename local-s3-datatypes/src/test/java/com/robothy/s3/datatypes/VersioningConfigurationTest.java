@@ -1,11 +1,11 @@
 package com.robothy.s3.datatypes;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectReader;
+import tools.jackson.databind.ObjectWriter;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class VersioningConfigurationTest {
 
@@ -21,7 +21,7 @@ class VersioningConfigurationTest {
 
     String xmlStr = writer.writeValueAsString(versioningConfiguration);
     VersioningConfiguration deserialized =
-        reader.readValue(xmlStr, VersioningConfiguration.class);
+        reader.forType(VersioningConfiguration.class).readValue(xmlStr);
     assertEquals(VersioningConfiguration.Enabled, deserialized.getStatus());
   }
 

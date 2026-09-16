@@ -2,13 +2,13 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Utility class for common HTTP request/response operations in S3 Vectors controllers.

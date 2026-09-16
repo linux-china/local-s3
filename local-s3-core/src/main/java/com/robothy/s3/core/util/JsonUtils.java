@@ -1,12 +1,5 @@
 package com.robothy.s3.core.util;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.ObjectWriter;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.databind.util.TokenBuffer;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -16,6 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectWriter;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.util.TokenBuffer;
 
 /**
  * Reads and writes JSON. A failure to read or write reaches the caller as an {@linkplain UncheckedIOException},
@@ -28,14 +27,13 @@ public class JsonUtils {
    */
   private static final String TEMP_FILE_SUFFIX = ".json.tmp";
 
-  private static final JsonMapper jsonMapper = new JsonMapper();
-
-  static {
-    jsonMapper.registerModule(new Jdk8Module());
-    jsonMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-  }
-
-  private static final ObjectReader jsonReader = jsonMapper.reader();
+  /**
+   * Configured like Jackson 2 configured a mapper, so that the JSON of the stored metadata stays what it was, e.g. its
+   * properties in the order of the fields rather than sorted. Optional values are supported by Jackson 3 itself.
+   */
+  private static final JsonMapper jsonMapper = JsonMapper.builderWithJackson2Defaults()
+      .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+      .build();
 
   private static final ObjectWriter jsonWriter = jsonMapper.writer();
 
@@ -44,9 +42,9 @@ public class JsonUtils {
    */
   public static <T> T fromJson(String json, Class<T> clazz) {
     try {
-      return jsonReader.readValue(json, clazz);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to read a " + clazz.getSimpleName() + " from JSON.", e);
+      return jsonMapper.readValue(json, clazz);
+    } catch (JacksonException e) {
+      throw unchecked("Failed to read a " + clazz.getSimpleName() + " from JSON.", e);
     }
   }
 
@@ -55,9 +53,9 @@ public class JsonUtils {
    */
   public static <T> T fromJson(File jsonFile, Class<T> clazz) {
     try {
-      return jsonReader.readValue(jsonFile, clazz);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to read a " + clazz.getSimpleName() + " from " + jsonFile + ".", e);
+      return jsonMapper.readValue(jsonFile, clazz);
+    } catch (JacksonException e) {
+      throw unchecked("Failed to read a " + clazz.getSimpleName() + " from " + jsonFile + ".", e);
     }
   }
 
@@ -69,11 +67,11 @@ public class JsonUtils {
    * @return the tokens of the object.
    */
   public static TokenBuffer toTokens(Object object) {
-    TokenBuffer tokens = new TokenBuffer(jsonMapper, false);
+    TokenBuffer tokens = TokenBuffer.forGeneration();
     try {
       jsonMapper.writeValue(tokens, object);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to write " + object.getClass().getSimpleName() + " as JSON tokens.", e);
+    } catch (JacksonException e) {
+      throw unchecked("Failed to write " + object.getClass().getSimpleName() + " as JSON tokens.", e);
     }
     return tokens;
   }
@@ -88,8 +86,8 @@ public class JsonUtils {
   public static <T> T fromTokens(TokenBuffer tokens, Class<T> clazz) {
     try (JsonParser parser = tokens.asParser()) {
       return jsonMapper.readValue(parser, clazz);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to read a " + clazz.getSimpleName() + " from JSON tokens.", e);
+    } catch (JacksonException e) {
+      throw unchecked("Failed to read a " + clazz.getSimpleName() + " from JSON tokens.", e);
     }
   }
 
@@ -99,8 +97,8 @@ public class JsonUtils {
   public static String toJson(Object object) {
     try {
       return jsonWriter.writeValueAsString(object);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to write " + object.getClass().getSimpleName() + " as JSON.", e);
+    } catch (JacksonException e) {
+      throw unchecked("Failed to write " + object.getClass().getSimpleName() + " as JSON.", e);
     }
   }
 
@@ -122,10 +120,23 @@ public class JsonUtils {
     } catch (IOException e) {
       deleteQuietly(temp, e);
       throw new UncheckedIOException("Failed to write " + target + ".", e);
+    } catch (JacksonException e) {
+      deleteQuietly(temp, e);
+      throw unchecked("Failed to write " + target + ".", e);
     } catch (RuntimeException e) {
       deleteQuietly(temp, e);
       throw e;
     }
+  }
+
+  /**
+   * The failure of Jackson, whose exceptions are unchecked and not {@linkplain IOException}s since Jackson 3, as the
+   * {@linkplain UncheckedIOException} that the callers of this class expect: with the I/O failure that Jackson wrapped,
+   * e.g. a file that doesn't exist, or with the failure of Jackson itself, e.g. malformed JSON.
+   */
+  private static UncheckedIOException unchecked(String message, JacksonException e) {
+    IOException cause = e.getCause() instanceof IOException io ? io : new IOException(e.getMessage(), e);
+    return new UncheckedIOException(message, cause);
   }
 
   /**

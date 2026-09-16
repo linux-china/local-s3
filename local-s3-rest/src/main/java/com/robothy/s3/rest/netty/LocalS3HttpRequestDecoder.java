@@ -1,7 +1,5 @@
 package com.robothy.s3.rest.netty;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -42,6 +40,8 @@ import java.util.Queue;
 import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Aggregates Netty HTTP messages into an {@linkplain HttpRequest} for the router.
@@ -483,7 +483,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     byte[] content;
     try {
       content = xmlMapper.writeValueAsBytes(error);
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }
 

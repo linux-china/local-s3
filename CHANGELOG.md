@@ -71,6 +71,11 @@ imported either.
   `LocalS3.Builder` needs to use `LocalS3Builder`.
 + `local-s3-jupiter` no longer injects the AWS SDK v1 `AmazonS3`, and no longer depends on the v1 SDK. Use `S3Client`.
 + `@LocalS3(inmemory = ...)`, deprecated before, is removed. Use `mode`.
++ LocalS3 uses **Jackson 3** (`tools.jackson`, 3.2) instead of Jackson 2, like Spring Boot 4 does. The types of the public
+  API that come from Jackson change package with it, e.g. `tools.jackson.databind.JsonNode` for the metadata of a vector
+  and `tools.jackson.dataformat.xml.XmlMapper` for the mapper of the XML documents; the annotations of the models are
+  still `com.fasterxml.jackson.annotation`. The mappers of the service are configured with the defaults of Jackson 2, so
+  the XML and JSON documents it writes, and the metadata of a data directory, stay the same.
 + The module `local-s3-docker` is renamed to `local-s3-standalone`, and `local-s3-integrationtest` to
   `local-s3-integration-test`.
 

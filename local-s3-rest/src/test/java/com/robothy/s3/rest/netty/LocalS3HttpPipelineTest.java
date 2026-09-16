@@ -14,7 +14,6 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
@@ -58,6 +57,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.LoggerFactory;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class LocalS3HttpPipelineTest {
 

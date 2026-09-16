@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import io.netty.buffer.ByteBuf;
@@ -35,6 +34,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class LocalS3HttpRequestDecoderTest {
 

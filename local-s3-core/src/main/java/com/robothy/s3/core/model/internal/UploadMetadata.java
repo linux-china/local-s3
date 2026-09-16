@@ -1,6 +1,5 @@
 package com.robothy.s3.core.model.internal;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.robothy.s3.core.converters.deserializer.UploadPartMetadataMapConverter;
 
 import java.util.Map;
@@ -12,6 +11,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 /**
  * The state of a multipart upload that was created but not completed yet, which holds every part that was

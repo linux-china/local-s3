@@ -3,8 +3,8 @@ package com.robothy.s3.datatypes;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import lombok.Data;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 
 /**
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_Grantee.html">Grantee</a>

@@ -1,17 +1,16 @@
 package com.robothy.s3.datatypes.response;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class S3ErrorTest {
 
   @Test
-  public void test() throws JsonProcessingException {
-    XmlMapper xmlMapper = new XmlMapper();
-    xmlMapper.configure(JsonParser.Feature.IGNORE_UNDEFINED, true);
+  public void test() throws JacksonException {
+    XmlMapper xmlMapper = XmlMapper.builder().enable(StreamReadFeature.IGNORE_UNDEFINED).build();
 
     S3Error error = S3Error.builder()
         .code("InternalServerError")

@@ -1,11 +1,11 @@
 package com.robothy.s3.datatypes;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 /**
  * Policy status for a bucket.

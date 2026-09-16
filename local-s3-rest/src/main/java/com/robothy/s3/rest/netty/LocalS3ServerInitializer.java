@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.netty;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.LocalS3Config;
 import io.netty.channel.ChannelInitializer;
@@ -13,6 +12,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Initializes the channel pipeline of the LocalS3 HTTP server.

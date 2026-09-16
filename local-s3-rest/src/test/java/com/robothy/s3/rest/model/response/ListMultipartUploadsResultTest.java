@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.model.response;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 

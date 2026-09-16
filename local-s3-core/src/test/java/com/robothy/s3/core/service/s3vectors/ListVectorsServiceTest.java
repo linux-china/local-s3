@@ -3,8 +3,6 @@ package com.robothy.s3.core.service.s3vectors;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
@@ -19,6 +17,8 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 class ListVectorsServiceTest {
 

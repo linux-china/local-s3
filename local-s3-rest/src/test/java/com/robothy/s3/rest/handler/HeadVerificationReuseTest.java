@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.s3.rest.netty.OperationHandler;
@@ -27,6 +26,7 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * The head of a request with a body is verified by the decoder before the body is received, and the router verifies

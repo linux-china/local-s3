@@ -1,8 +1,8 @@
 package com.robothy.s3.datatypes.response;
 
 import static org.junit.jupiter.api.Assertions.*;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class LocationConstraintTest {
 

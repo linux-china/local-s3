@@ -1,19 +1,19 @@
 package com.robothy.s3.rest.model.response;
 
 import static org.junit.jupiter.api.Assertions.*;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class ListVersionsResultTest {
 
   @Test
-  void serialization() throws JsonProcessingException {
+  void serialization() throws JacksonException {
     ListVersionsResult listVersionsResult = ListVersionsResult.builder()
         .versions(Arrays.asList(ObjectVersion.builder().versionId("!23123").owner(Owner.DEFAULT_OWNER).build(),
             DeleteMarkerEntry.builder().key("a.txt").owner(Owner.DEFAULT_OWNER).build()))

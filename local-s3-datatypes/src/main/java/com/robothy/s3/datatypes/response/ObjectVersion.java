@@ -1,8 +1,5 @@
 package com.robothy.s3.datatypes.response;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
@@ -11,6 +8,9 @@ import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import tools.jackson.databind.annotation.JsonSerialize;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 @Builder
 @Getter

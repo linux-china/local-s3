@@ -1,7 +1,7 @@
 [versions]
 logback = "1.5.38"
 awssdkS3 = "2.54.14"
-jackson = "2.22.2"
+jackson = "3.2.2"
 nettyHttpRouter = "1.15"
 apacheCommonsCodec = "1.22.1"
 netty = "4.2.18.Final"
@@ -28,10 +28,10 @@ logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.r
 awssdkS3 = { group = "software.amazon.awssdk", name = "s3", version.ref = "awssdkS3" }
 awssdkS3vectors = { group = "software.amazon.awssdk", name = "s3vectors", version.ref = "awssdkS3" }
 awss3ApacheClient = { group = "software.amazon.awssdk", name = "apache-client", version.ref = "awssdkS3" }
-jacksonDatabind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version.ref = "jackson" }
-jacksonDataformatXml = { group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-xml", version.ref = "jackson" }
-jacksonDatatypeJdk8 = { group = "com.fasterxml.jackson.datatype", name = "jackson-datatype-jdk8", version.ref = "jackson" }
-jacksonDatatypeJsr310 = { group = "com.fasterxml.jackson.datatype", name = "jackson-datatype-jsr310", version.ref = "jackson" }
+# Jackson 3, whose annotations are still those of Jackson 2, com.fasterxml.jackson.annotation, which databind brings.
+# Optional, java.time and parameter names are supported by databind itself, without modules.
+jacksonDatabind = { group = "tools.jackson.core", name = "jackson-databind", version.ref = "jackson" }
+jacksonDataformatXml = { group = "tools.jackson.dataformat", name = "jackson-dataformat-xml", version.ref = "jackson" }
 nettyHttpRouter = { group = "io.github.robothy", name = "netty-http-router", version.ref = "nettyHttpRouter" }
 apacheCommonsCodec = { group = "commons-codec", name = "commons-codec", version.ref = "apacheCommonsCodec" }
 nettyBom = { group = "io.netty", name = "netty-bom", version.ref = "netty" }

@@ -1,9 +1,9 @@
 package com.robothy.s3.datatypes.request;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import lombok.SneakyThrows;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 class CreateBucketConfigurationTest {
 

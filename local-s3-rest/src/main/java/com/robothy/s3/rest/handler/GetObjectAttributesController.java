@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -27,6 +26,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html">GetObjectAttributes</a>.

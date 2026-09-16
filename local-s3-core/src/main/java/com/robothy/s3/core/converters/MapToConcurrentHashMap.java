@@ -1,9 +1,9 @@
 package com.robothy.s3.core.converters;
 
-import com.fasterxml.jackson.databind.util.StdConverter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import tools.jackson.databind.util.StdConverter;
 
 /**
  * Restore data from a {@linkplain Map} to {@linkplain ConcurrentHashMap}.

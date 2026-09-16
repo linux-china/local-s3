@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -13,6 +12,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
 import lombok.extern.slf4j.Slf4j;
 import com.robothy.s3.core.service.s3vectors.MetadataFilterExpression;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 public class QueryVectorsController implements HttpRequestHandler {

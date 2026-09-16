@@ -1,12 +1,12 @@
 package com.robothy.s3.datatypes.s3vectors;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import tools.jackson.databind.JsonNode;
 
 /**
  * The attributes of a vector returned by the ListVectors operation.

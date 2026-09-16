@@ -1,7 +1,5 @@
 package com.robothy.s3.rest.utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -15,6 +13,9 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Locale;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Writes error responses in the format that AWS SDKs parse: an S3 {@code <Error>} document, or, for
@@ -22,7 +23,7 @@ import java.util.Locale;
  */
 public final class ErrorResponses {
 
-  private static final ObjectMapper JSON = new ObjectMapper();
+  private static final ObjectMapper JSON = JsonMapper.builderWithJackson2Defaults().build();
 
   private ErrorResponses() {
   }
@@ -79,7 +80,7 @@ public final class ErrorResponses {
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
     try {
       response.write(JSON.writeValueAsString(S3VectorsError.builder().message(message).build()));
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }
   }

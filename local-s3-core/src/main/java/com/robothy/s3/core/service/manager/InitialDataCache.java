@@ -1,6 +1,5 @@
 package com.robothy.s3.core.service.manager;
 
-import com.fasterxml.jackson.databind.util.TokenBuffer;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.storage.CopyBudget;
 import com.robothy.s3.core.storage.CopyOnAccessStorage;
@@ -17,6 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.util.TokenBuffer;
 
 /**
  * The initial data of the data paths that {@code IN_MEMORY} managers start from: the loaded metadata of a path, and a

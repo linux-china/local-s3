@@ -1,11 +1,11 @@
 package com.robothy.s3.datatypes;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import java.time.Instant;
 import java.util.Optional;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 
 
 /**

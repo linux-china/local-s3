@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -9,6 +8,7 @@ import com.robothy.s3.core.util.S3VectorsArnUtils;
 import com.robothy.s3.datatypes.s3vectors.request.DeleteVectorBucketPolicyRequest;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
+import tools.jackson.databind.ObjectMapper;
 
 public class DeleteVectorBucketPolicyController implements HttpRequestHandler {
 

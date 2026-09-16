@@ -1,6 +1,5 @@
 package com.robothy.s3.rest;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
@@ -27,6 +26,7 @@ import java.util.Objects;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * LocalS3 service launcher.

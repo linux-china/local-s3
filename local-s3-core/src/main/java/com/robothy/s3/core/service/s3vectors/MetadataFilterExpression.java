@@ -1,8 +1,8 @@
 package com.robothy.s3.core.service.s3vectors;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import java.util.Objects;
+import tools.jackson.databind.JsonNode;
 
 /**
  * The condition that the metadata of a vector must satisfy for a

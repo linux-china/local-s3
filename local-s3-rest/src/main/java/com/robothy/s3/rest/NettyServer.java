@@ -1,6 +1,5 @@
 package com.robothy.s3.rest;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.netty.InFlightRequests;
 import com.robothy.s3.rest.netty.RequestRecorder;
@@ -28,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * The HTTP server of a {@linkplain LocalS3} service: the event loops that accept and serve the connections, the executor

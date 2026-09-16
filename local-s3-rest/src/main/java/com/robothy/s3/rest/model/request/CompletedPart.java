@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.model.request;
 
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import lombok.Data;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 
 @Data
 public class CompletedPart {

@@ -1,7 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -36,6 +34,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html">POST Object</a>, the upload
@@ -164,7 +164,7 @@ class PostObjectController implements HttpRequestHandler {
     }
     try {
       return xmlMapper.readValue(tagging.get(), Tagging.class).toArrays();
-    } catch (JsonProcessingException e) {
+    } catch (JacksonException e) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }

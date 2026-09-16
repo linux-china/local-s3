@@ -1,15 +1,6 @@
 package com.robothy.s3.rest;
 
-import com.ctc.wstx.stax.WstxInputFactory;
-import com.ctc.wstx.stax.WstxOutputFactory;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.dataformat.xml.XmlFactory;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
@@ -21,8 +12,13 @@ import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
+import com.robothy.s3.rest.utils.XmlUtils;
 import java.util.Objects;
-import javax.xml.stream.XMLInputFactory;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Assembles the {@linkplain ServiceFactory} that the request handlers of a running service resolve their
@@ -77,7 +73,7 @@ final class LocalS3Services {
     VirtualHostParser virtualHostParser = new VirtualHostParser(config.virtualHostDomains());
     serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
 
-    XmlMapper xmlMapper = xmlMapper();
+    XmlMapper xmlMapper = XmlUtils.createXmlMapper();
     serviceFactory.register(XmlMapper.class, () -> xmlMapper);
     ObjectMapper objectMapper = objectMapper();
     serviceFactory.register(ObjectMapper.class, () -> objectMapper);
@@ -92,37 +88,16 @@ final class LocalS3Services {
   }
 
   /**
-   * The mapper of the XML documents of the Amazon S3 API. It reads no DTD and no external entity, so that
-   * a request body can't make the service read a file or open a connection of its own.
-   *
-   * @return a new mapper.
-   */
-  private static XmlMapper xmlMapper() {
-    XMLInputFactory input = new WstxInputFactory();
-    input.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, Boolean.FALSE);
-    input.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE); // Disable DTDs
-    input.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE); // Disable external entities
-
-    XmlMapper xmlMapper = new XmlMapper(new XmlFactory(input, new WstxOutputFactory()));
-    xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    xmlMapper.registerModule(new Jdk8Module());
-    xmlMapper.registerModule(new JavaTimeModule());
-    return xmlMapper;
-  }
-
-  /**
-   * The mapper of the JSON documents of the S3 Vectors API.
+   * The mapper of the JSON documents of the S3 Vectors API, configured like Jackson 2 configured a mapper.
    *
    * @return a new mapper.
    */
   private static ObjectMapper objectMapper() {
-    ObjectMapper objectMapper = new ObjectMapper();
-    objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-    objectMapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
-    objectMapper.registerModule(new Jdk8Module());
-    objectMapper.registerModule(new JavaTimeModule());
-    return objectMapper;
+    return JsonMapper.builderWithJackson2Defaults()
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
+        .changeDefaultPropertyInclusion(inclusion -> inclusion.withValueInclusion(JsonInclude.Include.NON_NULL))
+        .build();
   }
 
 }

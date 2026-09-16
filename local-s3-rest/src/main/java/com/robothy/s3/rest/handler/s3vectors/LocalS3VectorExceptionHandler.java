@@ -1,7 +1,5 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
@@ -12,6 +10,8 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3VectorException> {
@@ -35,7 +35,7 @@ public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3Ve
     try {
       httpResponse.write(objectMapper.writer()
           .writeValueAsString(S3VectorsError.builder().message(e.getMessage()).build()));
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       httpResponse.status(HttpResponseStatus.INTERNAL_SERVER_ERROR);
       httpResponse.write("Internal Server Error");
     }

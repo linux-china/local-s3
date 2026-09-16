@@ -1,9 +1,6 @@
 package com.robothy.s3.core.storage;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
@@ -28,6 +25,9 @@ import java.util.function.BooleanSupplier;
 import org.apache.commons.lang3.StringUtils;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Keeps the metadata of the buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values.
@@ -72,8 +72,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   /**
    * Writes the settings of a bucket without the objects and the uploads it holds, which are stored on their own.
    */
-  private static final JsonMapper ATTRIBUTES_MAPPER = JsonMapper.builder()
-      .addModule(new Jdk8Module())
+  private static final JsonMapper ATTRIBUTES_MAPPER = JsonMapper.builderWithJackson2Defaults()
       .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
       .addMixIn(BucketMetadata.class, BucketAttributes.class)
       .build();
@@ -94,8 +93,8 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   /**
    * Reads the uploads of an object key, which Jackson can't infer from a nested generic type.
    */
-  private static final com.fasterxml.jackson.core.type.TypeReference<ConcurrentSkipListMap<String, UploadMetadata>>
-      UPLOADS_OF_KEY = new com.fasterxml.jackson.core.type.TypeReference<>() {
+  private static final tools.jackson.core.type.TypeReference<ConcurrentSkipListMap<String, UploadMetadata>>
+      UPLOADS_OF_KEY = new tools.jackson.core.type.TypeReference<>() {
       };
 
   private final MVStore store;
@@ -412,17 +411,18 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private static String writeAttributes(BucketMetadata bucketMetadata) {
     try {
       return ATTRIBUTES_MAPPER.writeValueAsString(bucketMetadata);
-    } catch (IOException e) {
+    } catch (JacksonException e) {
       throw new UncheckedIOException("Failed to write the settings of bucket "
-          + bucketMetadata.getBucketName() + " as JSON.", e);
+          + bucketMetadata.getBucketName() + " as JSON.", new IOException(e.getMessage(), e));
     }
   }
 
   private static NavigableMap<String, UploadMetadata> readUploads(String json) {
     try {
       return ATTRIBUTES_MAPPER.readValue(json, UPLOADS_OF_KEY);
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to read the multipart uploads of an object from JSON.", e);
+    } catch (JacksonException e) {
+      throw new UncheckedIOException("Failed to read the multipart uploads of an object from JSON.",
+          new IOException(e.getMessage(), e));
     }
   }
 

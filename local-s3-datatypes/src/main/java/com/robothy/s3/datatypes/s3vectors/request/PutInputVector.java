@@ -1,11 +1,11 @@
 package com.robothy.s3.datatypes.s3vectors.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Represents an input vector for PutVectors operation.

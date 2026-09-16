@@ -1,8 +1,6 @@
 package com.robothy.s3.rest.handler;
 
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
@@ -17,6 +15,8 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Parse the {@linkplain LocalS3Exception} to {@linkplain S3Error} and response to the client.
@@ -52,7 +52,7 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
       if (!HttpMethod.HEAD.equals(request.getMethod())) {
         response.write(xmlMapper.writeValueAsString(error));
       }
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       throw new IllegalStateException(ex);
     }
   }

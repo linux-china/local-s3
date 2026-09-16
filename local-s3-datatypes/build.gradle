@@ -5,13 +5,11 @@ plugins {
 }
 
 dependencies {
-    // Types of the public API: the serializers and deserializers of the model extend Jackson's
-    // StdSerializer, StdDeserializer and JsonSerializer, and take JsonGenerator and SerializerProvider.
+    // Types of the public API: the serializers of the model extend Jackson's StdSerializer and ValueSerializer, and
+    // take JsonGenerator and SerializationContext.
     api(libs.jacksonDatabind)
 
-    implementation(libs.jacksonDatatypeJdk8)
     implementation(libs.jacksonDataformatXml)
-    implementation(libs.jacksonDatatypeJsr310)
     implementation(libs.commonsIo)
     implementation(libs.apacheCommonsLang3)
     implementation(libs.apacheCommonsCollections4)

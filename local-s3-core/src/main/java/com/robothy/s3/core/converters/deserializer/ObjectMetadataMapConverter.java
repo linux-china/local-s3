@@ -1,10 +1,10 @@
 package com.robothy.s3.core.converters.deserializer;
 
-import com.fasterxml.jackson.databind.util.StdConverter;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
+import tools.jackson.databind.util.StdConverter;
 
 /**
  * Reads the objects of a bucket, which are written as the metadata of each key, into the

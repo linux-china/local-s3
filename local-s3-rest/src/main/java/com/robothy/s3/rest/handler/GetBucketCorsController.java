@@ -1,6 +1,5 @@
 package com.robothy.s3.rest.handler;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -12,6 +11,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html">GetBucketCors</a>.
