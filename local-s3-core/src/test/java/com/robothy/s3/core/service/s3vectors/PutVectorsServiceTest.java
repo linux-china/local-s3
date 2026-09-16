@@ -161,7 +161,7 @@ class PutVectorsServiceTest {
    * The number of vectors in the files of the data path.
    */
   private long vectorFileCount() {
-    return VectorStorage.createReadOnlyFileSystem(dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY))
+    return VectorStorage.createReadOnlyFileSystem(LocalS3VectorsManager.vectorStorageDirectory(dataPath))
         .getStoredVectorCount();
   }
 

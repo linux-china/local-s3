@@ -41,11 +41,6 @@ public class LocalS3 implements AutoCloseable {
      */
     static final String REQUEST_BODY_DIRECTORY = ".request-bodies";
 
-    /**
-     * The directory in the data path that the vector buckets and their vectors are stored in.
-     */
-    static final String VECTORS_DIRECTORY = "vectors";
-
     private final LocalS3Config config;
 
     /* Runtime state; start() and shutdown() are synchronized. */
@@ -330,11 +325,12 @@ public class LocalS3 implements AutoCloseable {
         if (config.mode() == LocalS3Mode.IN_MEMORY) {
             log.info("Created in-memory LocalS3 Vectors manager.");
             // Starts from the vectors of the data path, if any, which it never changes, like the objects of the path.
-            return LocalS3VectorsManager.createInMemory(dataPath == null ? null : dataPath.resolve(VECTORS_DIRECTORY));
+            return LocalS3VectorsManager.createInMemory(dataPath);
         } else {
-            Path vectorsDataPath = dataPath.resolve(VECTORS_DIRECTORY);
             log.info("Created file system LocalS3 Vectors manager.");
-            return LocalS3VectorsManager.createFileSystem(vectorsDataPath);
+            // The same data path as the S3 buckets: the vector buckets are written to the store of the path too, and
+            // their data files to its vectors directory.
+            return LocalS3VectorsManager.createFileSystem(dataPath);
         }
     }
 
@@ -365,18 +361,29 @@ public class LocalS3 implements AutoCloseable {
 
     /**
      * Close the store that holds the metadata of a {@code PERSISTENCE} service, which releases its data directory, so
-     * that another service can open the same directory. The manager is dropped with it, and a service that is started
-     * again creates one that loads the data from the directory. The managers of an {@code IN_MEMORY} service are kept,
-     * so that a service that is started again serves the data it held.
+     * that another service can open the same directory. Both managers hold that one store, the S3 buckets and the
+     * vector buckets of the directory being kept in it, so both are released here: a hold that was left would keep the
+     * directory locked. The managers are dropped with it, and a service that is started again creates ones that load
+     * the data from the directory. The managers of an {@code IN_MEMORY} service are kept, so that a service that is
+     * started again serves the data it held.
      */
     private void closePersistentManagers() {
         if (config.mode() != LocalS3Mode.PERSISTENCE) {
             return;
         }
+        LocalS3VectorsManager vectorsManager = this.localS3VectorsManager;
+        this.localS3VectorsManager = null;
         LocalS3Manager manager = this.s3Manager;
         this.s3Manager = null;
-        if (manager != null) {
-            manager.close();
+        // Both hold the one store of the data directory, which is closed once they have both released it.
+        try {
+            if (vectorsManager != null) {
+                vectorsManager.close();
+            }
+        } finally {
+            if (manager != null) {
+                manager.close();
+            }
         }
     }
 

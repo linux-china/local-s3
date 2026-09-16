@@ -9,6 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
+import com.robothy.s3.core.exception.InvalidBucketNameException;
+import com.robothy.s3.core.service.manager.LocalS3Manager;
+import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
@@ -17,6 +20,7 @@ import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
 import com.robothy.s3.datatypes.s3vectors.response.QueryOutputVector;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import com.robothy.s3.datatypes.s3vectors.VectorBucket;
+import com.robothy.s3.datatypes.s3vectors.response.VectorBucketSummary;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
 import com.robothy.s3.datatypes.s3vectors.response.ListVectorBucketsResponse;
 import java.io.IOException;
@@ -25,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,7 +56,9 @@ class FileSystemLocalS3VectorsManagerTest {
       FileSystemLocalS3VectorsManager manager1 = new FileSystemLocalS3VectorsManager(tempDirectory);
       S3VectorsService service1 = manager1.s3VectorsService();
       // Vector data is stored in the data path, not in the working directory.
-      assertTrue(Files.isDirectory(tempDirectory.resolve(".storage")));
+      assertTrue(Files.isDirectory(LocalS3VectorsManager.vectorStorageDirectory(tempDirectory)));
+      // The metadata of the vector buckets goes to the store of the data path, together with its S3 buckets.
+      assertTrue(Files.isRegularFile(tempDirectory.resolve(LocalS3Store.FILE_NAME)));
 
       // Create multiple buckets with different configurations
       CreateVectorBucketResponse response1 = service1.createVectorBucket(bucket1Name, encryptionConfig);
@@ -187,16 +194,51 @@ class FileSystemLocalS3VectorsManagerTest {
         "A second service would keep a copy of the metadata of its own and write the same files.");
   }
 
+  /**
+   * A vector bucket name that the store can't write, e.g. one that holds a {@code /}, is rejected rather than half
+   * created. The rollback of a change whose persistence fails is covered by
+   * {@code DefaultBucketGuardTest.rollsBackAChangeWhosePersistenceFails}, which no longer depends on a metadata file
+   * that a directory can take the place of: a vector bucket is a record in the store of the data path.
+   */
   @Test
-  void aVectorBucketThatFailsToBePersistedIsNotKeptInMemory(@TempDir Path dataPath) throws IOException {
+  void aVectorBucketThatCannotBePersistedIsNotKeptInMemory(@TempDir Path dataPath) {
     S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
-    // A non-empty directory takes the place of the metadata file of the bucket, so the bucket can't be persisted.
-    Files.createDirectories(dataPath.resolve("blocked-bucket.vectorbucket.meta").resolve("child"));
 
-    assertThrows(UncheckedIOException.class, () -> service.createVectorBucket("blocked-bucket", null));
+    assertThrows(InvalidBucketNameException.class, () -> service.createVectorBucket("blocked/bucket", null));
 
     assertTrue(service.listVectorBuckets(null, null, null).getVectorBuckets().isEmpty(),
         "The in-memory metadata is reloaded from the store, which doesn't have the bucket.");
+  }
+
+  /**
+   * The vector buckets of a data path and its S3 buckets are kept in the one store of the path, so a copy of that file
+   * is a consistent point of both halves of the service rather than of one of them.
+   */
+  @Test
+  void keepsTheVectorBucketsInTheStoreOfTheDataPathBesideItsS3Buckets(@TempDir Path dataPath) {
+    LocalS3Manager s3Manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    LocalS3VectorsManager vectorsManager = LocalS3VectorsManager.createFileSystem(dataPath);
+    s3Manager.bucketService().createBucket("objects");
+    vectorsManager.s3VectorsService().createVectorBucket("vectors", null);
+
+    try (Stream<Path> files = Files.list(dataPath)) {
+      assertEquals(List.of(LocalS3Manager.STORAGE_DIRECTORY, LocalS3Store.FILE_NAME,
+              LocalS3VectorsManager.VECTORS_DIRECTORY),
+          files.map(path -> path.getFileName().toString()).sorted().toList(),
+          "The data path holds one metadata file, and the directories of the object and the vector data.");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    // Both managers hold the same store, which stays open until both have released it.
+    vectorsManager.close();
+    s3Manager.close();
+
+    LocalS3Manager restartedS3 = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    LocalS3VectorsManager restartedVectors = LocalS3VectorsManager.createFileSystem(dataPath);
+    assertEquals("objects", restartedS3.bucketService().getBucket("objects").getName());
+    assertEquals(List.of("vectors"), restartedVectors.s3VectorsService().listVectorBuckets(null, null, null)
+        .getVectorBuckets().stream().map(VectorBucketSummary::getVectorBucketName).toList());
   }
 
   /**
@@ -226,6 +268,6 @@ class FileSystemLocalS3VectorsManagerTest {
 
     restarted.deleteIndex("bucket", "index");
     assertEquals(0, VectorStorage.createReadOnlyFileSystem(
-        dataPath.resolve(LocalS3VectorsManager.VECTOR_STORAGE_DIRECTORY)).getStoredVectorCount());
+        LocalS3VectorsManager.vectorStorageDirectory(dataPath)).getStoredVectorCount());
   }
 }

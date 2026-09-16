@@ -194,6 +194,47 @@ class LocalS3Test {
     }
   }
 
+  /**
+   * The S3 buckets and the vector buckets of a {@code PERSISTENCE} service are kept in the one store of its data
+   * directory, so both managers hold that store and {@linkplain LocalS3#shutdown()} has to release both holds. A hold
+   * that was left would keep the directory open for writing: the read-only open below would share that writable store
+   * instead of opening one of its own.
+   */
+  @Test
+  void shutdownReleasesEveryHoldOnTheStoreOfTheDataDirectory() throws Exception {
+    Path dataPath = Files.createTempDirectory("local-s3");
+    try {
+      LocalS3 localS3 = LocalS3.builder()
+          .port(-1)
+          .mode(LocalS3Mode.PERSISTENCE)
+          .dataPath(dataPath.toString())
+          .buckets("a-bucket")
+          .build();
+      localS3.start();
+      localS3.shutdown();
+
+      try (LocalS3Store released = LocalS3Store.readOnly(dataPath)) {
+        assertTrue(released.isReadOnly(),
+            "The store of the data directory is closed, so it is opened again here, read-only.");
+      }
+
+      // The directory opens for writing again, and serves what the service left in it.
+      LocalS3 restarted = LocalS3.builder()
+          .port(-1)
+          .mode(LocalS3Mode.PERSISTENCE)
+          .dataPath(dataPath.toString())
+          .build();
+      restarted.start();
+      try {
+        assertDoesNotThrow(() -> restarted.getS3Manager().bucketService().getBucket("a-bucket"));
+      } finally {
+        restarted.shutdown();
+      }
+    } finally {
+      FileUtils.deleteDirectory(dataPath.toFile());
+    }
+  }
+
   @Test
   void servesPersistentObjectRangesThroughFileRegions() throws Exception {
     Path dataPath = Files.createTempDirectory("local-s3");

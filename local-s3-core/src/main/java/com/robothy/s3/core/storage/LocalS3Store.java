@@ -151,6 +151,16 @@ public final class LocalS3Store implements AutoCloseable {
   }
 
   /**
+   * Whether the store is open for reading only, which {@linkplain #readOnly(Path)} opens a data directory as. Writing
+   * such a store fails, so {@linkplain #persistent(Path)} refuses to hand one out.
+   *
+   * @return {@code true} if the store can only be read.
+   */
+  public boolean isReadOnly() {
+    return store.isReadOnly();
+  }
+
+  /**
    * Write the pending changes to the file, if the store has one.
    */
   public void flush() {

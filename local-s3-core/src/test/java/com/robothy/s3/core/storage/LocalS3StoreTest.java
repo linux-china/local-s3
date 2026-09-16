@@ -28,7 +28,7 @@ class LocalS3StoreTest {
     try (LocalS3Store writable = LocalS3Store.persistent(dataPath);
          LocalS3Store readOnly = LocalS3Store.readOnly(dataPath)) {
       assertSame(writable, readOnly);
-      assertFalse(readOnly.store().isReadOnly());
+      assertFalse(readOnly.isReadOnly());
     }
   }
 
@@ -38,7 +38,7 @@ class LocalS3StoreTest {
     LocalS3Store.persistent(dataPath).close();
 
     try (LocalS3Store readOnly = LocalS3Store.readOnly(dataPath)) {
-      assertTrue(readOnly.store().isReadOnly());
+      assertTrue(readOnly.isReadOnly());
 
       IllegalStateException e = assertThrows(IllegalStateException.class,
           () -> LocalS3Store.persistent(dataPath));
@@ -50,7 +50,7 @@ class LocalS3StoreTest {
 
     // Once the read-only holder has closed it, the directory opens for writing again.
     try (LocalS3Store writable = LocalS3Store.persistent(dataPath)) {
-      assertFalse(writable.store().isReadOnly());
+      assertFalse(writable.isReadOnly());
     }
   }
 
@@ -60,11 +60,11 @@ class LocalS3StoreTest {
          LocalS3Store another = LocalS3Store.readOnly(dataPath)) {
       // Nothing to share: each caller gets an in-memory store of its own, and neither locks the directory.
       assertNotSame(readOnly, another);
-      assertFalse(readOnly.store().isReadOnly());
+      assertFalse(readOnly.isReadOnly());
     }
 
     try (LocalS3Store writable = LocalS3Store.persistent(dataPath)) {
-      assertFalse(writable.store().isReadOnly());
+      assertFalse(writable.isReadOnly());
     }
   }
 
