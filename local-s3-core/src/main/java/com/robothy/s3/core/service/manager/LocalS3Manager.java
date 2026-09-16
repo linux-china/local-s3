@@ -13,7 +13,8 @@ import java.util.concurrent.Executor;
 public interface LocalS3Manager {
 
   /**
-   * Relative path of storage.
+   * Relative path of storage. The content files in it that the metadata doesn't reference are deleted in the background
+   * when a persistent service opens the data directory; see {@code UnreferencedContentSweeper}.
    */
    String STORAGE_DIRECTORY = ".storage";
 

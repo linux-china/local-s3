@@ -132,6 +132,9 @@ imported either.
 
 ### Fixed
 
++ The content files that a `PERSISTENCE` data directory no longer references, e.g. after a crash or a failed delete, are
+  deleted in the background when a service opens the directory, rather than kept forever. See
+  [architecture](docs/architecture.md#a-change).
 + A single `PutObject` or `UploadPart` of more than 2 GiB and up to `maxRequestBodySize` (5 GiB) is stored instead of
   failing with `InternalError`: such a body is read from its temporary file rather than memory-mapped.
 + The data of S3 Vectors is written to the data directory instead of the working directory.

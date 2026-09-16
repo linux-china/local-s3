@@ -123,6 +123,13 @@ If the operation or the persistence fails:
 Deleting only after the metadata is persisted means that persisted metadata never references a deleted object, even if
 the process dies in between; at worst an unreferenced file is left behind.
 
+Such a file, or one whose deletion failed, is removed later: when a `PERSISTENCE` service opens a data directory
+that no other service of the JVM has open, a background thread deletes the content files under `.storage/ab/cd/`
+that the metadata didn't reference when the directory was opened, and that were last modified more than a minute
+before. It reads a snapshot of the metadata of that moment, so it is correct while the service handles requests, and
+opening a directory doesn't wait for its files to be listed. It deletes nothing if the metadata references no content
+at all, or if the directory still holds `*.bucket.meta` files of a LocalS3 before 2.5.
+
 ### Change events
 
 The changes an operation publishes are held back until the outermost change of the thread has ended. A change that was

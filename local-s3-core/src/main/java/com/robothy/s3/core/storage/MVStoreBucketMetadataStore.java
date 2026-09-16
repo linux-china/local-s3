@@ -17,11 +17,14 @@ import com.robothy.s3.core.util.JsonUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.BooleanSupplier;
 import org.apache.commons.lang3.StringUtils;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
@@ -273,6 +276,99 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
       }
     }
     return all;
+  }
+
+  /**
+   * A snapshot of the maps of a store that reference content in the storage, i.e. the {@code objects/} and
+   * {@code uploads/} maps of every bucket, as they are now: read-only maps that later changes of the store don't change,
+   * as long as the caller keeps the current version of the store in use, see {@linkplain MVStore#registerVersionUsage()}.
+   *
+   * @param store the MVStore of a {@linkplain LocalS3Store}.
+   * @return the maps, whether or not a bucket of their name exists, so that anything a map references is counted.
+   */
+  public static List<MVMap<String, String>> contentReferencingMaps(MVStore store) {
+    long version = store.getCurrentVersion();
+    List<MVMap<String, String>> maps = new ArrayList<>();
+    for (String mapName : store.getMapNames()) {
+      if (mapName.startsWith(OBJECTS_MAP_PREFIX) || mapName.startsWith(UPLOADS_MAP_PREFIX)) {
+        maps.add(store.<String, String>openMap(mapName).openVersion(version));
+      }
+    }
+    return maps;
+  }
+
+  /**
+   * The IDs of the content in the storage that maps of {@linkplain #contentReferencingMaps} reference: the content of
+   * every version of every object, of the parts of a version that a multipart upload completed, and of the parts of the
+   * uploads in progress. The IDs of a version are counted however its content is read, e.g. both the file ID and the
+   * part IDs of a version that has both. Reads the metadata of every object, so it costs the metadata that the maps
+   * hold.
+   *
+   * @param maps the maps.
+   * @param cancelled whether to stop reading, checked between the values.
+   * @return the referenced IDs, sorted and without duplicates; empty if the maps hold no objects and no uploads.
+   * @throws UncheckedIOException if the metadata can't be read.
+   * @throws java.util.concurrent.CancellationException if {@code cancelled} turned {@code true}.
+   */
+  public static long[] referencedContentIds(List<MVMap<String, String>> maps, BooleanSupplier cancelled) {
+    ContentIds ids = new ContentIds();
+    for (MVMap<String, String> map : maps) {
+      boolean objects = map.getName().startsWith(OBJECTS_MAP_PREFIX);
+      for (String json : map.values()) {
+        if (cancelled.getAsBoolean()) {
+          throw new CancellationException();
+        }
+        if (objects) {
+          ObjectMetadata objectMetadata = JsonUtils.fromJson(json, ObjectMetadata.class);
+          for (VersionedObjectMetadata version : objectMetadata.getVersionedObjectMap().values()) {
+            ids.add(version.getFileId());
+            for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
+              ids.add(part.getFileId());
+            }
+          }
+        } else {
+          for (UploadMetadata upload : readUploads(json).values()) {
+            for (UploadPartMetadata part : upload.getParts().values()) {
+              ids.add(part.getFileId());
+            }
+          }
+        }
+      }
+    }
+    return ids.sortedDistinct();
+  }
+
+  /**
+   * IDs collected into a growing array of primitives rather than a set of boxed {@code Long}s, which takes several times
+   * the heap for the many IDs of a large data directory.
+   */
+  private static final class ContentIds {
+
+    private long[] ids = new long[1024];
+
+    private int size;
+
+    void add(Long id) {
+      if (id == null) {
+        return;
+      }
+      if (size == ids.length) {
+        ids = Arrays.copyOf(ids, ids.length * 2);
+      }
+      ids[size++] = id;
+    }
+
+    long[] sortedDistinct() {
+      long[] sorted = Arrays.copyOf(ids, size);
+      Arrays.sort(sorted);
+      int distinct = 0;
+      for (int i = 0; i < sorted.length; i++) {
+        if (i == 0 || sorted[i] != sorted[i - 1]) {
+          sorted[distinct++] = sorted[i];
+        }
+      }
+      return Arrays.copyOf(sorted, distinct);
+    }
   }
 
   /**

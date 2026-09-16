@@ -3,6 +3,7 @@ package com.robothy.s3.core.storage;
 import com.robothy.s3.core.util.PathUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -21,6 +22,9 @@ import org.h2.mvstore.MVStore;
  * service and another one that starts from its directory, share one open store, which is closed once they all
  * {@linkplain #close()} it. Sharing it is also what keeps them consistent: they read and write the same metadata
  * rather than overwrite each other's.
+ *
+ * <p>When the first holder opens the store of a data directory for writing, the content files that its metadata doesn't
+ * reference are deleted in the background, see {@linkplain UnreferencedContentSweeper}.
  *
  * <p>The file is compacted when its last holder closes the store, so that a data directory rests at the size of the
  * metadata it holds rather than of everything that was ever written to it; see {@linkplain PersistencePolicy}.
@@ -68,6 +72,12 @@ public final class LocalS3Store implements AutoCloseable {
    */
   private int holders = 1;
 
+  /**
+   * The sweep of the unreferenced content files of the data directory, which the last holder stops before the store is
+   * closed; {@code null} if there is none. Set before the store is handed out.
+   */
+  private UnreferencedContentSweeper sweeper;
+
   private LocalS3Store(MVStore store, Path file, PersistencePolicy policy) {
     this.store = store;
     this.file = file;
@@ -101,6 +111,10 @@ public final class LocalS3Store implements AutoCloseable {
   /**
    * Open the store of a data directory for reading and writing, creating the directory and the file if they don't
    * exist.
+   *
+   * <p>If no holder has the store open, and the file exists, the content files of the directory that the metadata
+   * doesn't reference are deleted in the background, see {@linkplain UnreferencedContentSweeper}, until the last holder
+   * closes the store.
    *
    * @param dataPath the data directory.
    * @param policy when the changes written to the store reach the disk.
@@ -174,12 +188,28 @@ public final class LocalS3Store implements AutoCloseable {
       if (readOnly) {
         builder.readOnly();
       }
+      boolean existed = Files.isRegularFile(file);
+      Instant openedAt = Instant.now();
       // A DURABLE store commits every change itself; a FAST one leaves that to the background thread of MVStore,
       // which commits at most a second after a change, or once a megabyte of them is unsaved.
       LocalS3Store store = new LocalS3Store(builder.open(), file, policy);
+      if (!readOnly && existed) {
+        // No holder of this JVM writes the directory, and MVStore's lock of the file keeps other processes out, so no
+        // request is storing content that the metadata doesn't reference yet. A new file references nothing.
+        store.sweeper = UnreferencedContentSweeper.start(store.store, file.getParent(), openedAt);
+      }
       OPEN_FILES.put(file, store);
       return store;
     }
+  }
+
+  /**
+   * The sweep of the unreferenced content files that opening the store started; for tests.
+   *
+   * @return the sweep; {@code null} if none was started.
+   */
+  UnreferencedContentSweeper sweeper() {
+    return sweeper;
   }
 
   /**
@@ -256,6 +286,10 @@ public final class LocalS3Store implements AutoCloseable {
         return;
       }
       OPEN_FILES.remove(file);
+    }
+    if (sweeper != null) {
+      // It reads the store, and would keep touching the data directory after its services are gone.
+      sweeper.cancel();
     }
     if (!store.isClosed()) {
       // Writes what is left, and compacts the file: a commit appends a chunk rather than replacing what it
