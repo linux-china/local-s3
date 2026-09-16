@@ -25,7 +25,7 @@ public class BucketAssertions {
    * A valid bucket name shouldn't be blank, and must name a file in a single directory: the file system
    * stores of the PERSISTENCE mode build metadata file names from the bucket name, so a name holding a
    * path separator or a traversal segment would read, write or delete files outside the data directory.
-   * Names that break these rules are rejected in both strict and lenient mode.
+   * Names that break these rules are rejected before the naming rules of Amazon S3 are checked.
    *
    * @param bucketName bucket name to validate.
    * @return valid bucket name.

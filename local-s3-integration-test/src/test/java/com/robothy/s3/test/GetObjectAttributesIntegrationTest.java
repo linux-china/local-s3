@@ -111,7 +111,7 @@ public class GetObjectAttributesIntegrationTest {
     String bucket = "attributes-parts-bucket";
     String key = "a.txt";
     s3.createBucket(b -> b.bucket(bucket));
-    upload(s3, bucket, key, "Hello", "World!", "Again");
+    upload(s3, bucket, key, Parts.large("Hello"), Parts.large("World!", 1), "Again");
 
     GetObjectAttributesParts parts = s3.getObjectAttributes(b -> b.bucket(bucket).key(key)
         .objectAttributes(ObjectAttributes.OBJECT_PARTS)).objectParts();
@@ -122,8 +122,9 @@ public class GetObjectAttributesIntegrationTest {
     assertFalse(parts.isTruncated());
     assertEquals(List.of(1, 2, 3), parts.parts().stream().map(ObjectPart::partNumber).toList());
     // The lengths of the parts that were concatenated, which add up to the size of the object.
-    assertEquals(List.of(5L, 6L, 5L), parts.parts().stream().map(ObjectPart::size).toList());
-    assertEquals(16L, s3.headObject(b -> b.bucket(bucket).key(key)).contentLength());
+    long minPartSize = Parts.MIN_PART_SIZE;
+    assertEquals(List.of(minPartSize, minPartSize + 1, 5L), parts.parts().stream().map(ObjectPart::size).toList());
+    assertEquals(2 * minPartSize + 6, s3.headObject(b -> b.bucket(bucket).key(key)).contentLength());
   }
 
   /**
@@ -153,7 +154,7 @@ public class GetObjectAttributesIntegrationTest {
     String bucket = "attributes-paged-parts-bucket";
     String key = "a.txt";
     s3.createBucket(b -> b.bucket(bucket));
-    upload(s3, bucket, key, "Hello", "World!", "Again");
+    upload(s3, bucket, key, Parts.large("Hello"), Parts.large("World!", 1), "Again");
 
     GetObjectAttributesParts firstPage = s3.getObjectAttributes(b -> b.bucket(bucket).key(key)
         .objectAttributes(ObjectAttributes.OBJECT_PARTS).maxParts(2)).objectParts();
@@ -188,8 +189,9 @@ public class GetObjectAttributesIntegrationTest {
     CreateMultipartUploadResponse created = s3.createMultipartUpload(b -> b.bucket(bucket).key(key));
     List<CompletedPart> completed = new ArrayList<>();
     for (int partNumber : new int[] {2, 7}) {
+      String content = partNumber == 2 ? Parts.large("Hello") : "Hello";
       UploadPartResponse part = s3.uploadPart(b -> b.bucket(bucket).key(key)
-          .uploadId(created.uploadId()).partNumber(partNumber), RequestBody.fromString("Hello"));
+          .uploadId(created.uploadId()).partNumber(partNumber), RequestBody.fromString(content));
       completed.add(CompletedPart.builder().partNumber(partNumber).eTag(part.eTag()).build());
     }
     s3.completeMultipartUpload(b -> b.bucket(bucket).key(key).uploadId(created.uploadId())

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class AppTest {
 
     private static final List<String> VARIABLES = List.of(LocalS3Environment.LOCAL_S3_PORT, LocalS3Environment.LOCAL_S3_MODE,
-            LocalS3Environment.LOCAL_S3_DATA_PATH, LocalS3Environment.LOCAL_S3_STRICT_BUCKET_NAMES, LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
+            LocalS3Environment.LOCAL_S3_DATA_PATH, LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS);
 
     @AfterEach
     void clearVariables() {
@@ -35,7 +35,6 @@ class AppTest {
             assertEquals(App.DEFAULT_PORT, localS3.getPort());
             assertEquals(Path.of(App.DEFAULT_DATA_PATH), localS3.getDataPath());
             assertEquals("127.0.0.1", localS3.getBindHost());
-            assertFalse(localS3.isStrictBucketNames());
             assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
             // main() returns once the service is started, so daemon threads would let the container exit at once.
             assertFalse(localS3.isDaemonThreads(), "The threads of the service keep the container running.");
@@ -47,13 +46,11 @@ class AppTest {
         System.setProperty(LocalS3Environment.LOCAL_S3_PORT, "29500");
         System.setProperty(LocalS3Environment.LOCAL_S3_MODE, "in_memory");
         System.setProperty(LocalS3Environment.LOCAL_S3_DATA_PATH, "/var/lib/local-s3");
-        System.setProperty(LocalS3Environment.LOCAL_S3_STRICT_BUCKET_NAMES, "true");
         System.setProperty(LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local");
 
         try (LocalS3 localS3 = App.configure().build()) {
             assertEquals(29500, localS3.getPort());
             assertEquals(Path.of("/var/lib/local-s3"), localS3.getDataPath());
-            assertTrue(localS3.isStrictBucketNames());
             assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
             // A data path is the initial data of an IN_MEMORY service, so it must not switch the mode back.
             assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());

@@ -33,11 +33,7 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_PERSISTENCE_POLICY = "LOCAL_S3_PERSISTENCE_POLICY";
 
-  public static final String LOCAL_S3_STRICT_BUCKET_NAMES = "LOCAL_S3_STRICT_BUCKET_NAMES";
-
   public static final String LOCAL_S3_VIRTUAL_THREADS = "LOCAL_S3_VIRTUAL_THREADS";
-
-  public static final String LOCAL_S3_STRICT_PART_SIZES = "LOCAL_S3_STRICT_PART_SIZES";
 
   public static final String LOCAL_S3_COMPOSITE_MULTIPART_ETAGS = "LOCAL_S3_COMPOSITE_MULTIPART_ETAGS";
 
@@ -68,12 +64,8 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
     variable(variables, LOCAL_S3_PERSISTENCE_POLICY)
         .ifPresent(policy -> builder.persistencePolicy(parsePersistencePolicy(policy)));
-    variable(variables, LOCAL_S3_STRICT_BUCKET_NAMES)
-        .ifPresent(strict -> builder.strictBucketNames(Boolean.parseBoolean(strict)));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
         .ifPresent(virtual -> builder.virtualThreads(Boolean.parseBoolean(virtual)));
-    variable(variables, LOCAL_S3_STRICT_PART_SIZES)
-        .ifPresent(strict -> builder.strictPartSizes(Boolean.parseBoolean(strict)));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
         .ifPresent(composite -> builder.compositeMultipartEtags(Boolean.parseBoolean(composite)));
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)

@@ -120,8 +120,6 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         .mode(s3Config.mode())
         .buckets(s3Config.buckets())
         .initialDataCacheEnabled(s3Config.initialDataCacheEnabled())
-        .strictBucketNames(s3Config.strictBucketNames())
-        .strictPartSizes(s3Config.strictPartSizes())
         .compositeMultipartEtags(s3Config.compositeMultipartEtags())
         .virtualHostDomains(s3Config.virtualHostDomains());
     // The data path supplier may return null.

@@ -207,7 +207,7 @@ public class LocalS3 implements AutoCloseable {
 
     private void createBuckets() {
         BucketService bucketService = this.getS3Manager().bucketService();
-        BucketNameValidator bucketNameValidator = new BucketNameValidator(config.strictBucketNames());
+        BucketNameValidator bucketNameValidator = new BucketNameValidator();
         for (String bucketName : config.buckets()) {
             try {
                 bucketService.getBucket(bucketName);
@@ -467,14 +467,6 @@ public class LocalS3 implements AutoCloseable {
 
     public long getIdleConnectionTimeoutSeconds() {
         return config.idleConnectionTimeoutSeconds();
-    }
-
-    public boolean isStrictBucketNames() {
-        return config.strictBucketNames();
-    }
-
-    public boolean isStrictPartSizes() {
-        return config.strictPartSizes();
     }
 
     public boolean isCompositeMultipartEtags() {

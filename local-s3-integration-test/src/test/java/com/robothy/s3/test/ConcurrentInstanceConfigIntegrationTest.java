@@ -1,8 +1,7 @@
 package com.robothy.s3.test;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.rest.LocalS3;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
@@ -14,7 +13,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.UploadPartResponse;
 
 /**
@@ -34,61 +32,35 @@ public class ConcurrentInstanceConfigIntegrationTest {
   }
 
   /**
-   * The strict service rejects what Amazon S3 rejects, while the lenient one running next to it doesn't.
+   * The entity tag of a completed multipart upload, which the service computes while a request is handled,
+   * follows the configuration of the instance that handles it.
    */
   @Test
-  void eachInstanceKeepsItsOwnBucketNameRules() {
-    LocalS3 lenient = LocalS3.builder().port(-1).strictBucketNames(false).build();
-    LocalS3 strict = LocalS3.builder().port(-1).strictBucketNames(true).build();
-    lenient.start();
-    // The strict service starts last, so a shared registry would give its rules to the lenient one.
-    strict.start();
-    try (S3Client lenientClient = client(lenient); S3Client strictClient = client(strict)) {
-      // A name that the SDK sends but Amazon S3 reserves, so the strict rules reject it and lenient ones don't.
-      String reservedName = "test-bucket-s3alias";
-      assertDoesNotThrow(() -> lenientClient.createBucket(b -> b.bucket(reservedName)));
-
-      S3Exception thrown =
-          assertThrows(S3Exception.class, () -> strictClient.createBucket(b -> b.bucket(reservedName)));
-      assertEquals("InvalidBucketName", thrown.awsErrorDetails().errorCode());
+  void eachInstanceKeepsItsOwnMultipartEtags() {
+    LocalS3 composite = LocalS3.builder().port(-1).compositeMultipartEtags(true).build();
+    LocalS3 plain = LocalS3.builder().port(-1).compositeMultipartEtags(false).build();
+    composite.start();
+    // The plain service starts last, so a shared registry would give its policy to the composite one.
+    plain.start();
+    try (S3Client compositeClient = client(composite); S3Client plainClient = client(plain)) {
+      assertTrue(completeWithSinglePart(compositeClient).endsWith("-1\""));
+      assertFalse(completeWithSinglePart(plainClient).contains("-"));
     } finally {
-      strict.shutdown();
-      lenient.shutdown();
+      plain.shutdown();
+      composite.shutdown();
     }
   }
 
-  /**
-   * The same for the part sizes of a multipart upload, which the service checks while a request is handled.
-   */
-  @Test
-  void eachInstanceKeepsItsOwnPartSizeRules() {
-    LocalS3 strict = LocalS3.builder().port(-1).strictPartSizes(true).build();
-    LocalS3 lenient = LocalS3.builder().port(-1).strictPartSizes(false).build();
-    strict.start();
-    // The lenient service starts last, so a shared registry would let the strict one accept a small part.
-    lenient.start();
-    try (S3Client strictClient = client(strict); S3Client lenientClient = client(lenient)) {
-      assertThrows(S3Exception.class, () -> completeWithSmallParts(strictClient));
-      assertDoesNotThrow(() -> completeWithSmallParts(lenientClient));
-    } finally {
-      lenient.shutdown();
-      strict.shutdown();
-    }
-  }
-
-  private static void completeWithSmallParts(S3Client s3) {
+  private static String completeWithSinglePart(S3Client s3) {
     String bucket = "parts-bucket";
     String key = "target.txt";
     s3.createBucket(b -> b.bucket(bucket));
     String uploadId = s3.createMultipartUpload(b -> b.bucket(bucket).key(key)).uploadId();
-    UploadPartResponse first = s3.uploadPart(b -> b.bucket(bucket).key(key).uploadId(uploadId).partNumber(1),
-        RequestBody.fromString("small"));
-    UploadPartResponse second = s3.uploadPart(b -> b.bucket(bucket).key(key).uploadId(uploadId).partNumber(2),
-        RequestBody.fromString("parts"));
-    s3.completeMultipartUpload(b -> b.bucket(bucket).key(key).uploadId(uploadId)
+    UploadPartResponse only = s3.uploadPart(b -> b.bucket(bucket).key(key).uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("only"));
+    return s3.completeMultipartUpload(b -> b.bucket(bucket).key(key).uploadId(uploadId)
         .multipartUpload(CompletedMultipartUpload.builder().parts(
-            CompletedPart.builder().partNumber(1).eTag(first.eTag()).build(),
-            CompletedPart.builder().partNumber(2).eTag(second.eTag()).build()).build()));
+            CompletedPart.builder().partNumber(1).eTag(only.eTag()).build()).build())).eTag();
   }
 
 }

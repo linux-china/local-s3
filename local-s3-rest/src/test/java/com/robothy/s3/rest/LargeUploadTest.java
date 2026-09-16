@@ -94,8 +94,9 @@ class LargeUploadTest {
   void servesAnObjectCompletedFromParts(LocalS3Mode mode, @TempDir Path dataPath) throws Exception {
     LocalS3 localS3 = start(mode, dataPath);
     try {
-      byte[] part1 = randomBytes(8 * 1024);
-      byte[] part2 = randomBytes(300);
+      // Every part but the last one must be at least 5 MiB, like Amazon S3 requires.
+      byte[] part1 = randomBytes(5 * 1024 * 1024 + 8 * 1024);
+      byte[] part2 = randomBytes(5 * 1024 * 1024 + 300);
       byte[] part3 = randomBytes(5 * 1024);
       byte[] content = concat(part1, part2, part3);
 

@@ -8,27 +8,21 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
-class StrictBucketNamesTest {
+class BucketNamesTest {
 
   /**
    * The AWS SDK itself rejects some invalid names, e.g. with uppercase characters, before sending
-   * CreateBucket; but not reserved prefixes, which only Amazon S3, or LocalS3 in strict mode, rejects.
+   * CreateBucket; but not reserved prefixes, which only Amazon S3, and LocalS3, rejects.
    */
   private static final String RESERVED_PREFIX_NAME = "sthree-my-bucket";
 
   @Test
-  @LocalS3(strictBucketNames = true)
+  @LocalS3
   void rejectsBucketNamesThatAmazonS3Rejects(S3Client client) {
     S3Exception e = assertThrows(S3Exception.class, () -> client.createBucket(b -> b.bucket(RESERVED_PREFIX_NAME)));
     assertEquals(400, e.statusCode());
     assertEquals("InvalidBucketName", e.awsErrorDetails().errorCode());
     assertDoesNotThrow(() -> client.createBucket(b -> b.bucket("my-bucket")));
-  }
-
-  @Test
-  @LocalS3
-  void acceptsAnyBucketNameByDefault(S3Client client) {
-    assertDoesNotThrow(() -> client.createBucket(b -> b.bucket(RESERVED_PREFIX_NAME)));
   }
 
 }

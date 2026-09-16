@@ -15,9 +15,8 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.UploadPartResponse;
 
 /**
- * What a multipart upload is validated against: the part number and the entity tags of the parts are always
- * checked, while the minimum part size is only checked when the service is configured to, so that tests that
- * upload small parts keep working.
+ * What a multipart upload is validated against: the part number, the entity tags and the minimum size of the
+ * parts, like Amazon S3.
  */
 public class MultipartUploadValidationIntegrationTest {
 
@@ -75,24 +74,6 @@ public class MultipartUploadValidationIntegrationTest {
   }
 
   /**
-   * By default the size of a part is not checked, so an upload of small parts completes.
-   */
-  @Test
-  @LocalS3
-  void acceptsSmallPartsByDefault(S3Client s3) {
-    String uploadId = startUpload(s3);
-    UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
-        RequestBody.fromString("small"));
-    UploadPartResponse second = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(2),
-        RequestBody.fromString("parts"));
-
-    s3.completeMultipartUpload(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId)
-        .multipartUpload(completed(first.eTag(), second.eTag())));
-
-    assertEquals("smallparts", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key(KEY)).asUtf8String());
-  }
-
-  /**
    * An entity tag that isn't the one that the upload of the part answered fails with {@code InvalidPart}, like
    * Amazon S3, and the upload can still be completed with the right one.
    */
@@ -138,12 +119,12 @@ public class MultipartUploadValidationIntegrationTest {
   }
 
   /**
-   * With strict part sizes, a part that isn't the last one must be at least 5 MiB, like Amazon S3 requires.
+   * A part that isn't the last one must be at least 5 MiB, like Amazon S3 requires.
    * The upload is rejected when it is completed, which is when it is known which part is the last one.
    */
   @Test
-  @LocalS3(strictPartSizes = true)
-  void rejectsSmallPartWhenPartSizesAreStrict(S3Client s3) {
+  @LocalS3
+  void rejectsSmallPart(S3Client s3) {
     String uploadId = startUpload(s3);
     UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
         RequestBody.fromString("small"));
@@ -161,8 +142,8 @@ public class MultipartUploadValidationIntegrationTest {
    * The last part may be smaller than the minimum, and so may the single part of an upload.
    */
   @Test
-  @LocalS3(strictPartSizes = true)
-  void acceptsLargeEnoughPartsWhenPartSizesAreStrict(S3Client s3) {
+  @LocalS3
+  void acceptsLargeEnoughParts(S3Client s3) {
     String uploadId = startUpload(s3);
     byte[] large = new byte[5 * 1024 * 1024];
     UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
@@ -179,11 +160,11 @@ public class MultipartUploadValidationIntegrationTest {
   }
 
   /**
-   * An upload of a single small part completes even when part sizes are strict.
+   * An upload of a single small part completes.
    */
   @Test
-  @LocalS3(strictPartSizes = true)
-  void acceptsSingleSmallPartWhenPartSizesAreStrict(S3Client s3) {
+  @LocalS3
+  void acceptsSingleSmallPart(S3Client s3) {
     String uploadId = startUpload(s3);
     UploadPartResponse only = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
         RequestBody.fromString("only"));

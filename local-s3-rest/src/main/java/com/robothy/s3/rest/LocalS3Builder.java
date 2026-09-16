@@ -72,10 +72,6 @@ public class LocalS3Builder {
 
     private long idleConnectionTimeoutSeconds = LocalS3Config.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
 
-    private boolean strictBucketNames;
-
-    private boolean strictPartSizes;
-
     private boolean compositeMultipartEtags = true;
 
     private final List<String> virtualHostDomains = new ArrayList<>();
@@ -370,41 +366,6 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set whether the names of new buckets must follow the
-     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">naming rules</a>
-     * of Amazon S3 general purpose buckets, e.g. 3 to 63 lowercase letters, numbers, periods and hyphens.
-     * Creating a bucket with another name then fails with {@code InvalidBucketName}, so that tests don't pass
-     * with bucket names that Amazon S3 rejects. Existing buckets stay accessible.
-     *
-     * <p>The default value is {@code false}, which accepts any non-blank bucket name.
-     *
-     * @param strictBucketNames whether to validate bucket names strictly.
-     * @return builder.
-     */
-    public LocalS3Builder strictBucketNames(boolean strictBucketNames) {
-        this.strictBucketNames = strictBucketNames;
-        return this;
-    }
-
-    /**
-     * Set whether every part of a multipart upload but the last one must be at least 5 MiB, the
-     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html">minimum part size</a> of
-     * Amazon S3. Completing an upload with a smaller part then fails with {@code EntityTooSmall}, so that
-     * tests don't pass with a part layout that Amazon S3 rejects. The last part may be any size, and so may
-     * the single part of an upload that has only one.
-     *
-     * <p>The default value is {@code false}, which accepts parts of any size, so that tests that upload
-     * small parts keep working.
-     *
-     * @param strictPartSizes whether to validate part sizes strictly.
-     * @return builder.
-     */
-    public LocalS3Builder strictPartSizes(boolean strictPartSizes) {
-        this.strictPartSizes = strictPartSizes;
-        return this;
-    }
-
-    /**
      * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an
      * object uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by
      * {@code -} and the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The
@@ -514,9 +475,7 @@ public class LocalS3Builder {
      * embedded service or a test keeps the defaults of the builder. The variables are
      * {@linkplain LocalS3Environment#LOCAL_S3_PORT}, {@linkplain LocalS3Environment#LOCAL_S3_HOST},
      * {@linkplain LocalS3Environment#LOCAL_S3_MODE},
-     * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_STRICT_BUCKET_NAMES},
-     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
-     * {@linkplain LocalS3Environment#LOCAL_S3_STRICT_PART_SIZES},
+     * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#AWS_BUCKETS},
      * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
@@ -554,7 +513,7 @@ public class LocalS3Builder {
                 changeListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
-                idleConnectionTimeoutSeconds, strictBucketNames, strictPartSizes, compositeMultipartEtags,
+                idleConnectionTimeoutSeconds, compositeMultipartEtags,
                 virtualHostDomains, requestRecorder);
     }
 

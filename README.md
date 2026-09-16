@@ -192,6 +192,13 @@ also unrouted and answers the same way.
 + Support conditional requests and conditional writes (see below).
 + Support paginated `ListBuckets` with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, e.g. `listBucketsPaginator`.
 + In memory and persistence mode.
++ Validate requests like Amazon S3 does, so that tests don't pass with requests that Amazon S3 rejects:
+  + Bucket names must follow the [naming rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html)
+    of general purpose buckets, e.g. 3 to 63 lowercase letters, numbers, periods and hyphens; otherwise `CreateBucket`
+    fails with `InvalidBucketName`. Buckets loaded from an existing data path stay accessible.
+  + Every part of a multipart upload except the last one must be at least 5 MiB, the
+    [minimum part size](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html) of Amazon S3; otherwise
+    `CompleteMultipartUpload` fails with `EntityTooSmall`. An upload with a single part may be of any size.
 
 ### Conditional requests
 
@@ -557,8 +564,6 @@ The container is configured by environment variables:
 | `LOCAL_S3_MODE` | `PERSISTENCE` | `PERSISTENCE` or `IN_MEMORY`. |
 | `LOCAL_S3_DATA_PATH` | `/data` | Data directory, or initial data in `IN_MEMORY` mode. |
 | `LOCAL_S3_PERSISTENCE_POLICY` | `DURABLE` | `PERSISTENCE` mode: when changes reach the disk. `DURABLE` commits every change; `FAST` commits in the background and on shutdown, which is much quicker and writes far less. See [Persistence policy](#persistence-policy). |
-| `LOCAL_S3_STRICT_BUCKET_NAMES` | `false` | Reject bucket names that Amazon S3 doesn't accept. |
-| `LOCAL_S3_STRICT_PART_SIZES` | `false` | Reject a multipart upload whose parts, except the last one, are smaller than the 5 MiB that Amazon S3 requires. |
 | `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS` | `true` | Give the object of a completed multipart upload the entity tag of Amazon S3, i.e. the digest of the digests of its parts with a `-<parts>` suffix. `false` answers the digest of the whole content, which LocalS3 answered before 2.5. |
 | `LOCAL_S3_VIRTUAL_HOST_DOMAINS` | | Comma-separated base domains of virtual-hosted-style requests, e.g. `s3,s3.local` for `my-bucket.s3`. `localhost`, Amazon S3 (`*.amazonaws.com`) Alibaba Cloud OSS (`my-bucket.oss-cn-hangzhou.aliyuncs.com`) Cloudflare R2 (`my-bucket.<account-id>.r2.cloudflarestorage.com`) and Tigris (`my-bucket.t3.storage.dev`, `my-bucket.fly.storage.tigris.dev`) hosts always work. |
 | `LOCAL_S3_VIRTUAL_THREADS` | `true` | Handle every request on a virtual thread of its own. `false` handles the requests on a pool of platform threads, as many as the machine has processors and at least 4. |

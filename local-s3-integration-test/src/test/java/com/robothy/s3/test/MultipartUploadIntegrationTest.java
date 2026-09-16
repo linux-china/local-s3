@@ -34,7 +34,7 @@ public class MultipartUploadIntegrationTest {
       b.bucket("multipart-bucket")
        .key("example.txt")
        .uploadId(createResult.uploadId())
-       .partNumber(1), RequestBody.fromString("Hello"));
+       .partNumber(1), RequestBody.fromString(Parts.large("Hello")));
     UploadPartResponse part2 = s3.uploadPart(b ->
       b.bucket("multipart-bucket")
        .key("example.txt")
@@ -49,7 +49,7 @@ public class MultipartUploadIntegrationTest {
          CompletedPart.builder().partNumber(2).eTag(part2.eTag()).build()
        )));
     ResponseInputStream<GetObjectResponse> objectContent = s3.getObject(b -> b.bucket("multipart-bucket").key("example.txt"));
-    assertEquals("HelloWorld", new String(objectContent.readAllBytes()));
+    assertEquals(Parts.large("Hello") + "World", new String(objectContent.readAllBytes()));
   }
 
   @Test
@@ -99,11 +99,11 @@ public class MultipartUploadIntegrationTest {
     UploadPartResponse uploadPartRequest1 = s3.uploadPart(b -> b.bucket(bucketName)
         .key("a.txt")
         .uploadId(initiateMultipartUploadResult.uploadId())
-        .partNumber(1), RequestBody.fromString("Hello"));
+        .partNumber(1), RequestBody.fromString(Parts.large("Hello")));
     UploadPartResponse uploadPartRequest2 = s3.uploadPart(b -> b.bucket(bucketName)
         .key("a.txt")
         .uploadId(initiateMultipartUploadResult.uploadId())
-        .partNumber(2), RequestBody.fromString("World"));
+        .partNumber(2), RequestBody.fromString(Parts.large("World")));
     UploadPartResponse uploadPartRequest3 = s3.uploadPart(b -> b.bucket(bucketName)
         .key("a.txt")
         .uploadId(initiateMultipartUploadResult.uploadId())
@@ -153,7 +153,7 @@ public class MultipartUploadIntegrationTest {
     CreateMultipartUploadResponse multipartUpload = s3.createMultipartUpload(builder -> builder.bucket("my-bucket").key("a.txt")
         .tagging(Tagging.builder().tagSet(tag1, tag2).build()));
     UploadPartResponse part1 = s3.uploadPart(b -> b.bucket("my-bucket")
-            .uploadId(multipartUpload.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString("Hello"));
+            .uploadId(multipartUpload.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString(Parts.large("Hello")));
     UploadPartResponse part2 = s3.uploadPart(b -> b.bucket("my-bucket").uploadId(multipartUpload.uploadId()).key("a.txt").partNumber(2),
             RequestBody.fromString("World"));
 
@@ -164,7 +164,7 @@ public class MultipartUploadIntegrationTest {
 
     ResponseInputStream<GetObjectResponse> completedObject =
         s3.getObject(b -> b.bucket("my-bucket").key("a.txt"));
-    assertEquals("HelloWorld", new String(completedObject.readAllBytes()));
+    assertEquals(Parts.large("Hello") + "World", new String(completedObject.readAllBytes()));
     Integer tagCount = completedObject.response().tagCount();
     assertEquals(2, tagCount);
 
@@ -181,7 +181,7 @@ public class MultipartUploadIntegrationTest {
     s3Client.putBucketVersioning(builder -> builder.bucket("my-bucket").versioningConfiguration(c -> c.status("Enabled")));
     CreateMultipartUploadResponse multipartUploadV1 = s3Client.createMultipartUpload(builder -> builder.bucket("my-bucket").key("a.txt"));
     UploadPartResponse part1V1 = s3Client.uploadPart(b -> b.bucket("my-bucket")
-            .uploadId(multipartUploadV1.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString("v1"));
+            .uploadId(multipartUploadV1.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString(Parts.large("v1")));
     UploadPartResponse part2V1 = s3Client.uploadPart(b -> b.bucket("my-bucket").uploadId(multipartUploadV1.uploadId()).key("a.txt").partNumber(2),
             RequestBody .fromString("v1"));
     CompleteMultipartUploadResponse multipartUploadResponseV1 = s3Client.completeMultipartUpload(b -> b
@@ -195,7 +195,7 @@ public class MultipartUploadIntegrationTest {
     CreateMultipartUploadResponse multipartUploadV2 =
         s3Client.createMultipartUpload(builder -> builder.bucket("my-bucket").key("a.txt"));
     UploadPartResponse part1V2 = s3Client.uploadPart(b -> b.bucket("my-bucket")
-            .uploadId(multipartUploadV2.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString("v2"));
+            .uploadId(multipartUploadV2.uploadId()).key("a.txt").partNumber(1), RequestBody.fromString(Parts.large("v2")));
     UploadPartResponse part2V2 = s3Client.uploadPart(b -> b.bucket("my-bucket").uploadId(multipartUploadV2.uploadId()).key("a.txt").partNumber(2),
             RequestBody.fromString("v2"));
     CompleteMultipartUploadResponse multipartUploadResponseV2 = s3Client.completeMultipartUpload(b -> b
@@ -211,10 +211,10 @@ public class MultipartUploadIntegrationTest {
     assertEquals(multipartUploadResponseV2.versionId(), versions.get(0).versionId());
     ResponseInputStream<GetObjectResponse> objectV1 =
         s3Client.getObject(builder -> builder.bucket("my-bucket").key("a.txt").versionId(multipartUploadResponseV1.versionId()));
-    assertEquals("v1v1", new String(objectV1.readAllBytes()));
+    assertEquals(Parts.large("v1") + "v1", new String(objectV1.readAllBytes()));
     ResponseInputStream<GetObjectResponse> objectV2 =
         s3Client.getObject(builder -> builder.bucket("my-bucket").key("a.txt").versionId(multipartUploadResponseV2.versionId()));
-    assertEquals("v2v2", new String(objectV2.readAllBytes()));
+    assertEquals(Parts.large("v2") + "v2", new String(objectV2.readAllBytes()));
   }
 
 }

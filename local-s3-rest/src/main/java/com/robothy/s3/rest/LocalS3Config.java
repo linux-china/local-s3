@@ -40,8 +40,6 @@ import org.jspecify.annotations.Nullable;
  * @param requestBodyFileThreshold the size in bytes above which a request body is buffered in a file, not negative.
  * @param maxRequestHeaderSize the max size in bytes of the header section of a request, positive.
  * @param idleConnectionTimeoutSeconds the seconds after which an idle connection is closed; {@code 0} for never.
- * @param strictBucketNames whether the names of new buckets must follow the naming rules of Amazon S3.
- * @param strictPartSizes whether the parts of a multipart upload but the last one must be at least 5 MiB.
  * @param compositeMultipartEtags whether a completed multipart upload gets the entity tag of Amazon S3.
  * @param virtualHostDomains the base domains of virtual-hosted-style requests, besides the default ones.
  * @param requestRecorder receives every request once its response is written, besides the statistics of the service,
@@ -69,8 +67,6 @@ public record LocalS3Config(
     long requestBodyFileThreshold,
     int maxRequestHeaderSize,
     long idleConnectionTimeoutSeconds,
-    boolean strictBucketNames,
-    boolean strictPartSizes,
     boolean compositeMultipartEtags,
     List<String> virtualHostDomains,
     RequestRecorder requestRecorder) {
@@ -168,7 +164,6 @@ public record LocalS3Config(
         + ", maxRequestBodySize=" + maxRequestBodySize + ", requestBodyFileThreshold=" + requestBodyFileThreshold
         + ", maxRequestHeaderSize=" + maxRequestHeaderSize
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
-        + ", strictBucketNames=" + strictBucketNames + ", strictPartSizes=" + strictPartSizes
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains + "]";
   }
 

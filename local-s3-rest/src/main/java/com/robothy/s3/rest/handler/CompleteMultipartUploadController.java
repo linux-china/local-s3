@@ -35,7 +35,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     // A router built from a bare service factory, e.g. in a test, applies the default policy.
     this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
         ? serviceFactory.getInstance(MultipartUploadPolicy.class)
-        : MultipartUploadPolicy.of(false);
+        : MultipartUploadPolicy.of(true);
   }
 
   @Override

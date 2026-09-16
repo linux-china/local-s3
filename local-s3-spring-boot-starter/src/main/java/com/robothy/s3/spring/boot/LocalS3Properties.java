@@ -52,16 +52,6 @@ public class LocalS3Properties {
   private boolean initialDataCacheEnabled = true;
 
   /**
-   * Whether the names of new buckets must follow the naming rules of Amazon S3.
-   */
-  private boolean strictBucketNames;
-
-  /**
-   * Whether every part of a multipart upload but the last one must be at least 5 MiB, like Amazon S3 requires.
-   */
-  private boolean strictPartSizes;
-
-  /**
    * Whether the object of a completed multipart upload gets the entity tag of Amazon S3, with a -parts suffix.
    */
   private boolean compositeMultipartEtags = true;
@@ -135,22 +125,6 @@ public class LocalS3Properties {
 
   public void setInitialDataCacheEnabled(boolean initialDataCacheEnabled) {
     this.initialDataCacheEnabled = initialDataCacheEnabled;
-  }
-
-  public boolean isStrictBucketNames() {
-    return strictBucketNames;
-  }
-
-  public void setStrictBucketNames(boolean strictBucketNames) {
-    this.strictBucketNames = strictBucketNames;
-  }
-
-  public boolean isStrictPartSizes() {
-    return strictPartSizes;
-  }
-
-  public void setStrictPartSizes(boolean strictPartSizes) {
-    this.strictPartSizes = strictPartSizes;
   }
 
   public boolean isCompositeMultipartEtags() {

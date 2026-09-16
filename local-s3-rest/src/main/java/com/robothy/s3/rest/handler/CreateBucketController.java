@@ -29,10 +29,9 @@ class CreateBucketController extends BucketHttpRequestHandler {
 
   CreateBucketController(ServiceFactory serviceFactory) {
     super(serviceFactory);
-    // Without a registered validator, any non-blank bucket name is accepted.
     this.bucketNameValidator = serviceFactory.containsInstance(BucketNameValidator.class)
         ? serviceFactory.getInstance(BucketNameValidator.class)
-        : new BucketNameValidator(false);
+        : new BucketNameValidator();
   }
 
   @Override

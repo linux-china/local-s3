@@ -70,10 +70,9 @@ final class LocalS3Services {
     serviceFactory.register(BucketService.class, () -> bucketService);
     serviceFactory.register(ObjectService.class, () -> objectService);
 
-    BucketNameValidator bucketNameValidator = new BucketNameValidator(config.strictBucketNames());
+    BucketNameValidator bucketNameValidator = new BucketNameValidator();
     serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
-    MultipartUploadPolicy multipartUploadPolicy =
-        MultipartUploadPolicy.of(config.strictPartSizes(), config.compositeMultipartEtags());
+    MultipartUploadPolicy multipartUploadPolicy = MultipartUploadPolicy.of(config.compositeMultipartEtags());
     serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
     VirtualHostParser virtualHostParser = new VirtualHostParser(config.virtualHostDomains());
     serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);

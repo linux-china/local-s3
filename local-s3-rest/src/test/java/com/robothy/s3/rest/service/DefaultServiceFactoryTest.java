@@ -18,17 +18,17 @@ class DefaultServiceFactoryTest {
   void registriesOfTwoFactoriesAreIndependent() {
     DefaultServiceFactory first = new DefaultServiceFactory();
     DefaultServiceFactory second = new DefaultServiceFactory();
-    BucketNameValidator strict = new BucketNameValidator(true);
-    BucketNameValidator lenient = new BucketNameValidator(false);
+    BucketNameValidator firstValidator = new BucketNameValidator();
+    BucketNameValidator secondValidator = new BucketNameValidator();
 
-    first.register(BucketNameValidator.class, () -> strict);
+    first.register(BucketNameValidator.class, () -> firstValidator);
     assertFalse(second.containsInstance(BucketNameValidator.class),
         "A service registered in one factory must not appear in another one.");
 
-    second.register(BucketNameValidator.class, () -> lenient);
-    assertSame(strict, first.getInstance(BucketNameValidator.class),
+    second.register(BucketNameValidator.class, () -> secondValidator);
+    assertSame(firstValidator, first.getInstance(BucketNameValidator.class),
         "Registering in one factory must not replace the service of another one.");
-    assertSame(lenient, second.getInstance(BucketNameValidator.class));
+    assertSame(secondValidator, second.getInstance(BucketNameValidator.class));
   }
 
   @Test
@@ -50,7 +50,7 @@ class DefaultServiceFactoryTest {
     assertFalse(factory.containsInstance(BucketNameValidator.class));
     assertThrows(IllegalArgumentException.class, () -> factory.getInstance(BucketNameValidator.class));
 
-    factory.register(BucketNameValidator.class, () -> new BucketNameValidator(false));
+    factory.register(BucketNameValidator.class, () -> new BucketNameValidator());
     assertTrue(factory.containsInstance(BucketNameValidator.class));
   }
 
@@ -64,7 +64,7 @@ class DefaultServiceFactoryTest {
 
     factory.register(BucketNameValidator.class, () -> {
       calls.incrementAndGet();
-      return new BucketNameValidator(false);
+      return new BucketNameValidator();
     });
     assertEquals(0, calls.get());
 

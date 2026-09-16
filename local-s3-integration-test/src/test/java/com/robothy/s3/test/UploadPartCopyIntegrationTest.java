@@ -50,25 +50,30 @@ public class UploadPartCopyIntegrationTest {
   }
 
   /**
-   * Two ranges of the source object are copied into two parts, which complete to the source object again.
+   * Two ranges of the source object are copied into two parts, which complete to the source object again. The
+   * first part is 5 MiB, the minimum size of a part that other parts follow.
    */
   @Test
   @LocalS3
   void copiesRangesOfSourceObjectIntoParts(S3Client s3) {
-    prepare(s3);
+    String firstRange = Parts.large("0123456789");
+    String sourceContent = firstRange + "abcdefghij";
+    s3.createBucket(b -> b.bucket(BUCKET));
+    s3.putObject(b -> b.bucket(BUCKET).key(SOURCE_KEY), RequestBody.fromString(sourceContent));
     String uploadId = startUpload(s3);
 
     UploadPartCopyResponse first = s3.uploadPartCopy(b -> b.bucket(BUCKET).key(TARGET_KEY)
         .uploadId(uploadId).partNumber(1)
-        .sourceBucket(BUCKET).sourceKey(SOURCE_KEY).copySourceRange("bytes=0-9"));
+        .sourceBucket(BUCKET).sourceKey(SOURCE_KEY).copySourceRange("bytes=0-" + (Parts.MIN_PART_SIZE - 1)));
     UploadPartCopyResponse second = s3.uploadPartCopy(b -> b.bucket(BUCKET).key(TARGET_KEY)
         .uploadId(uploadId).partNumber(2)
-        .sourceBucket(BUCKET).sourceKey(SOURCE_KEY).copySourceRange("bytes=10-19"));
+        .sourceBucket(BUCKET).sourceKey(SOURCE_KEY)
+        .copySourceRange("bytes=" + Parts.MIN_PART_SIZE + "-" + (Parts.MIN_PART_SIZE + 9)));
 
     // The ETag of a part is the one of the copied bytes, not the one of the whole source object.
     assertNotNull(first.copyPartResult().eTag());
     assertNotNull(first.copyPartResult().lastModified());
-    assertEquals(Etags.md5("0123456789"), first.copyPartResult().eTag());
+    assertEquals(Etags.md5(firstRange), first.copyPartResult().eTag());
     assertEquals(Etags.md5("abcdefghij"), second.copyPartResult().eTag());
 
     s3.completeMultipartUpload(b -> b.bucket(BUCKET).key(TARGET_KEY).uploadId(uploadId)
@@ -76,7 +81,7 @@ public class UploadPartCopyIntegrationTest {
             CompletedPart.builder().partNumber(1).eTag(first.copyPartResult().eTag()).build(),
             CompletedPart.builder().partNumber(2).eTag(second.copyPartResult().eTag()).build()).build()));
 
-    assertEquals(SOURCE_CONTENT, download(s3, TARGET_KEY));
+    assertEquals(sourceContent, download(s3, TARGET_KEY));
   }
 
   /**

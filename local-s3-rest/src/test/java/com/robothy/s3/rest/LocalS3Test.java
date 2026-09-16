@@ -373,7 +373,6 @@ class LocalS3Test {
     assertEquals("127.0.0.1", localS3.getBindHost(), "An embedded service stays local by default.");
     assertEquals(LocalS3Mode.IN_MEMORY, localS3.getMode());
     assertNull(localS3.getDataPath());
-    assertFalse(localS3.isStrictBucketNames());
     assertTrue(localS3.isDaemonThreads());
   }
 
@@ -408,14 +407,12 @@ class LocalS3Test {
   @Test
   void fromEnvironmentReadsTheBucketsAndTheVirtualHostDomains() {
     Map<String, String> variables = Map.of(
-        LocalS3Environment.LOCAL_S3_STRICT_BUCKET_NAMES, "true",
         LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
         LocalS3Environment.AWS_BUCKETS, "a, b,",
         LocalS3Environment.AWS_ACCESS_KEY_ID, "access-key-id",
         LocalS3Environment.AWS_SECRET_ACCESS_KEY, "secret-access-key");
     LocalS3 localS3 = LocalS3.builder().port(-1).fromEnvironment(variables::get).build();
 
-    assertTrue(localS3.isStrictBucketNames());
     assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
   }
 
@@ -574,26 +571,19 @@ class LocalS3Test {
   }
 
   @Test
-  void validatesBucketNamesStrictlyWhenEnabled() throws Exception {
+  void validatesBucketNames() throws Exception {
     assertThrows(InvalidBucketNameException.class,
-        () -> LocalS3.builder().port(-1).strictBucketNames(true).buckets("My_Bucket").build().start());
+        () -> LocalS3.builder().port(-1).buckets("My_Bucket").build().start());
 
-    LocalS3 strict = LocalS3.builder().port(-1).strictBucketNames(true).build();
-    strict.start();
-    LocalS3 lenient = LocalS3.builder().port(-1).build();
-    lenient.start();
+    LocalS3 localS3 = LocalS3.builder().port(-1).build();
+    localS3.start();
     try {
-      assertTrue(strict.isStrictBucketNames());
-      HttpResponse<String> rejected = createBucket(strict.getPort(), "My_Bucket");
+      HttpResponse<String> rejected = createBucket(localS3.getPort(), "My_Bucket");
       assertEquals(400, rejected.statusCode());
       assertTrue(rejected.body().contains("<Code>InvalidBucketName</Code>"), rejected.body());
-      assertEquals(200, createBucket(strict.getPort(), "my-bucket").statusCode());
-
-      assertFalse(lenient.isStrictBucketNames());
-      assertEquals(200, createBucket(lenient.getPort(), "My_Bucket").statusCode());
+      assertEquals(200, createBucket(localS3.getPort(), "my-bucket").statusCode());
     } finally {
-      strict.shutdown();
-      lenient.shutdown();
+      localS3.shutdown();
     }
   }
 

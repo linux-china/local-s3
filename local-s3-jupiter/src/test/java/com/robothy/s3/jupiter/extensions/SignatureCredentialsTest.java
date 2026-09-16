@@ -109,16 +109,6 @@ class SignatureCredentialsTest {
       }
 
       @Override
-      public boolean strictBucketNames() {
-        return defaults.strictBucketNames();
-      }
-
-      @Override
-      public boolean strictPartSizes() {
-        return defaults.strictPartSizes();
-      }
-
-      @Override
       public boolean compositeMultipartEtags() {
         return defaults.compositeMultipartEtags();
       }

@@ -46,8 +46,7 @@ class BucketNamingRulesTest {
   }
 
   /**
-   * A bucket name becomes a file name in the data path, so it must not reach out of it, whether or not
-   * strict validation is enabled.
+   * A bucket name becomes a file name in the data path, so it must not reach out of it.
    */
   @ParameterizedTest
   @ValueSource(strings = {"../escaped", "../../tmp/x", "..\\escaped", "a/b", "/etc/passwd", ".", ".."})

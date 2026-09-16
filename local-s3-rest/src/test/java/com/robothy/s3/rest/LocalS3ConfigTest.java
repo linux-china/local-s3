@@ -52,15 +52,14 @@ class LocalS3ConfigTest {
   @Test
   void aServiceIsCreatedFromItsConfig() {
     LocalS3Config config = LocalS3.builder().port(-1).mode(LocalS3Mode.PERSISTENCE).dataPath("/tmp/local-s3")
-        .strictBucketNames(true).buildConfig();
+        .buildConfig();
     LocalS3 localS3 = LocalS3.create(config);
 
     assertSame(config, localS3.getConfig());
     assertEquals(LocalS3Mode.PERSISTENCE, localS3.getMode());
     assertEquals(Path.of("/tmp/local-s3"), localS3.getDataPath());
-    assertTrue(localS3.isStrictBucketNames());
     assertEquals(config, LocalS3.builder().port(-1).mode(LocalS3Mode.PERSISTENCE).dataPath("/tmp/local-s3")
-        .strictBucketNames(true).buildConfig(), "Configs with the same values are equal.");
+        .buildConfig(), "Configs with the same values are equal.");
   }
 
   @Test
@@ -73,8 +72,8 @@ class LocalS3ConfigTest {
         valid.initialDataCacheEnabled(), valid.daemonThreads(), valid.registerShutdownHook(),
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
-        valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(), valid.strictBucketNames(),
-        valid.strictPartSizes(), valid.compositeMultipartEtags(), valid.virtualHostDomains(), null));
+        valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
+        valid.compositeMultipartEtags(), valid.virtualHostDomains(), null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
@@ -82,7 +81,7 @@ class LocalS3ConfigTest {
         valid.registerShutdownHook(), valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(),
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
-        valid.strictBucketNames(), valid.strictPartSizes(), valid.compositeMultipartEtags(),
+        valid.compositeMultipartEtags(),
         valid.virtualHostDomains(), null);
     buckets.add("b");
     assertEquals(List.of("a"), copied.buckets());
@@ -131,7 +130,7 @@ class LocalS3ConfigTest {
         config.nettyParentEventGroupThreadNum(), config.nettyChildEventGroupThreadNum(), config.s3ExecutorThreadNum(),
         config.virtualThreads(), config.accessKeyId(), config.secretAccessKey(), config.maxRequestBodySize(),
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),
-        config.strictBucketNames(), config.strictPartSizes(), config.compositeMultipartEtags(),
+        config.compositeMultipartEtags(),
         config.virtualHostDomains(), config.requestRecorder());
   }
 

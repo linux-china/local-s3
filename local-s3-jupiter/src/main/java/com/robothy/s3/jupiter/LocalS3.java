@@ -104,23 +104,6 @@ public @interface LocalS3 {
   boolean initialDataCacheEnabled() default true;
 
   /**
-   * Set whether the names of new buckets must follow the naming rules of Amazon S3 general purpose
-   * buckets, so that tests don't pass with bucket names that Amazon S3 rejects.
-   *
-   * @return if strict bucket name validation is enabled.
-   */
-  boolean strictBucketNames() default false;
-
-  /**
-   * Set whether every part of a multipart upload but the last one must be at least 5 MiB, the minimum part
-   * size of Amazon S3, so that tests don't pass with a part layout that Amazon S3 rejects. The default is
-   * {@code false}, which accepts parts of any size.
-   *
-   * @return if strict part size validation is enabled.
-   */
-  boolean strictPartSizes() default false;
-
-  /**
    * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an object
    * uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by {@code -} and
    * the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The {@code -<parts>} suffix is what

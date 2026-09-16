@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -26,6 +28,11 @@ import software.amazon.awssdk.services.s3.model.UploadPartResponse;
  */
 public class MultipartUploadEtagIntegrationTest {
 
+  /**
+   * The content of a part that other parts follow, which must be at least 5 MiB.
+   */
+  private static final String FIRST = Parts.large("Hello");
+
   @Test
   @LocalS3
   void completeMultipartUploadAnswersACompositeEtag(S3Client s3) {
@@ -33,12 +40,13 @@ public class MultipartUploadEtagIntegrationTest {
     String key = "example.txt";
     s3.createBucket(b -> b.bucket(bucket));
 
-    CompleteMultipartUploadResponse completed = upload(s3, bucket, key, "Hello", "World");
+    CompleteMultipartUploadResponse completed = upload(s3, bucket, key, FIRST, "World");
 
-    // md5(md5("Hello") + md5("World")) + "-2", the digests concatenated as bytes; computed outside of LocalS3.
-    assertEquals(Etags.quoted("64d1e57a34042883053ec1c5d8d60167-2"), completed.eTag());
+    // md5(md5(FIRST) + md5("World")) + "-2", the digests concatenated as bytes; computed outside of LocalS3.
+    byte[] digests = ByteBuffer.allocate(32).put(DigestUtils.md5(FIRST)).put(DigestUtils.md5("World")).array();
+    assertEquals(Etags.quoted(DigestUtils.md5Hex(digests) + "-2"), completed.eTag());
     // Not the digest of the concatenated content, which is what LocalS3 answered before 2.5.
-    assertNotEquals(Etags.md5("HelloWorld"), completed.eTag());
+    assertNotEquals(Etags.md5(FIRST + "World"), completed.eTag());
   }
 
   /**
@@ -53,7 +61,7 @@ public class MultipartUploadEtagIntegrationTest {
     String key = "example.txt";
     s3.createBucket(b -> b.bucket(bucket));
 
-    String etag = upload(s3, bucket, key, "Hello", "World").eTag();
+    String etag = upload(s3, bucket, key, FIRST, "World").eTag();
 
     assertEquals(etag, s3.headObject(b -> b.bucket(bucket).key(key)).eTag());
     assertEquals(etag, s3.getObject(b -> b.bucket(bucket).key(key)).response().eTag());
@@ -125,13 +133,13 @@ public class MultipartUploadEtagIntegrationTest {
   void aCopyOfAnObjectUploadedInPartsGetsTheDigestOfTheContent(S3Client s3) {
     String bucket = "copy-etag-bucket";
     s3.createBucket(b -> b.bucket(bucket));
-    String uploaded = upload(s3, bucket, "source.txt", "Hello", "World").eTag();
+    String uploaded = upload(s3, bucket, "source.txt", FIRST, "World").eTag();
     assertTrue(Etags.unquoted(uploaded).endsWith("-2"), uploaded);
 
     String copied = s3.copyObject(b -> b.sourceBucket(bucket).sourceKey("source.txt")
         .destinationBucket(bucket).destinationKey("copy.txt")).copyObjectResult().eTag();
 
-    assertEquals(Etags.md5("HelloWorld"), copied);
+    assertEquals(Etags.md5(FIRST + "World"), copied);
   }
 
   /**
@@ -145,9 +153,9 @@ public class MultipartUploadEtagIntegrationTest {
     String key = "example.txt";
     s3.createBucket(b -> b.bucket(bucket));
 
-    CompleteMultipartUploadResponse completed = upload(s3, bucket, key, "Hello", "World");
+    CompleteMultipartUploadResponse completed = upload(s3, bucket, key, FIRST, "World");
 
-    assertEquals(Etags.md5("HelloWorld"), completed.eTag());
+    assertEquals(Etags.md5(FIRST + "World"), completed.eTag());
     assertEquals(completed.eTag(), s3.headObject(b -> b.bucket(bucket).key(key)).eTag());
   }
 

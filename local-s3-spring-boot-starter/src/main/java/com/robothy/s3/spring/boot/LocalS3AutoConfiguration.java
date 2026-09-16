@@ -98,8 +98,6 @@ public class LocalS3AutoConfiguration {
     map.from(properties::getDataPath).whenHasText().to(builder::dataPath);
     map.from(properties::getBuckets).to(buckets -> builder.buckets(buckets.toArray(String[]::new)));
     map.from(properties::isInitialDataCacheEnabled).to(builder::initialDataCacheEnabled);
-    map.from(properties::isStrictBucketNames).to(builder::strictBucketNames);
-    map.from(properties::isStrictPartSizes).to(builder::strictPartSizes);
     map.from(properties::isCompositeMultipartEtags).to(builder::compositeMultipartEtags);
     map.from(properties::getVirtualHostDomains)
         .to(domains -> builder.virtualHostDomains(domains.toArray(String[]::new)));
