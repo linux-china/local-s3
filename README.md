@@ -92,3 +92,5 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 * [H2 MVStore](https://h2database.com/html/mvstore.html): a persistent, log structured key-value store
 * S3 compatibility tests: https://github.com/ceph/s3-tests
+* [warp](https://github.com/minio/warp): S3 benchmarking tool
+* [s5cmd](https://github.com/peak/s5cmd): Parallel S3 and local filesystem execution tool.
