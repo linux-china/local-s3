@@ -108,9 +108,7 @@ final class NettyServer {
             this.serverSocketChannel = new ServerBootstrap().group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
-                    .childHandler(new LocalS3ServerInitializer(executor, router, xmlMapper,
-                            config.maxRequestBodySize(), config.requestBodyFileThreshold(),
-                            config.idleConnectionTimeoutSeconds(), config.maxRequestHeaderSize(),
+                    .childHandler(new LocalS3ServerInitializer(config, executor, router, xmlMapper,
                             requestBodyFileDirectory, inFlightRequests, requestRecorder))
                     .bind(config.bindHost(), port)
                     .sync()
