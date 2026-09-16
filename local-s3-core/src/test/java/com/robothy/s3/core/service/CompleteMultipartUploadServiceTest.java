@@ -21,7 +21,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -105,7 +105,7 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
 
     assertEquals("49c24cf3c5af9ba03cec39ee4aac4f77-1", completeAns.getEtag());
     // The entity tag of the same content stored at once, which the composite entity tag must not be.
-    assertNotEquals(DigestUtils.md5Hex("Hello"), completeAns.getEtag());
+    assertNotEquals(Digests.md5Hex("Hello"), completeAns.getEtag());
   }
 
   /**
@@ -154,7 +154,7 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
     CompleteMultipartUploadAns completeAns = objectService.completeMultipartUpload(bucket, key, uploadId,
         completeParts(2), 0, false);
 
-    assertEquals(DigestUtils.md5Hex("HelloWorld"), completeAns.getEtag());
+    assertEquals(Digests.md5Hex("HelloWorld"), completeAns.getEtag());
   }
 
   /**
@@ -171,8 +171,8 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
     String uploadId = upload(objectService, bucket, key, "Hello", "World");
 
     objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
-        CompleteMultipartUploadPartOption.builder().partNumber(1).etag(DigestUtils.md5Hex("Hello")).build(),
-        CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"" + DigestUtils.md5Hex("World") + "\"").build()));
+        CompleteMultipartUploadPartOption.builder().partNumber(1).etag(Digests.md5Hex("Hello")).build(),
+        CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"" + Digests.md5Hex("World") + "\"").build()));
 
     assertEquals("HelloWorld", new String(objectService.getObject(bucket, key, GetObjectOptions.builder().build())
         .getContent().readAllBytes()));
@@ -193,7 +193,7 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
 
     InvalidPartException thrown = assertThrows(InvalidPartException.class, () ->
         objectService.completeMultipartUpload(bucket, key, uploadId, List.of(
-            CompleteMultipartUploadPartOption.builder().partNumber(1).etag(DigestUtils.md5Hex("Hello")).build(),
+            CompleteMultipartUploadPartOption.builder().partNumber(1).etag(Digests.md5Hex("Hello")).build(),
             CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"00000000000000000000000000000000\"").build())));
     assertEquals(S3ErrorCode.InvalidPart, thrown.getS3ErrorCode());
     assertThrows(ObjectNotExistException.class,

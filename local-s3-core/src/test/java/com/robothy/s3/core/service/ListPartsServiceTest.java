@@ -11,7 +11,7 @@ import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import java.io.ByteArrayInputStream;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -53,7 +53,7 @@ class ListPartsServiceTest extends LocalS3ServiceTestBase {
     assertFalse(listPartsAns2.isTruncated());
     assertEquals(1, listPartsAns2.getParts().size());
     ListPartsAns.Part fetchedPart1 = listPartsAns2.getParts().get(0);
-    assertEquals(DigestUtils.md5Hex("Hello"), fetchedPart1.getETag());
+    assertEquals(Digests.md5Hex("Hello"), fetchedPart1.getETag());
     assertEquals(1, fetchedPart1.getPartNumber());
     assertEquals(5, fetchedPart1.getSize());
     assertTrue(fetchedPart1.getLastModified() > 0 && fetchedPart1.getLastModified() <= System.currentTimeMillis());

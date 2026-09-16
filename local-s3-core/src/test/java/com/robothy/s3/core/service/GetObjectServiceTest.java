@@ -29,7 +29,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Optional;
 
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -94,7 +94,7 @@ class GetObjectServiceTest extends LocalS3ServiceTestBase {
     assertEquals(ObjectMetadata.NULL_VERSION, getObjectAns.getVersionId());
     assertEquals("plain/text", getObjectAns.getContentType());
     assertEquals("Hello", new String(getObjectAns.getContent().readAllBytes()));
-    assertEquals(DigestUtils.md5Hex("Hello"), getObjectAns.getEtag());
+    assertEquals(Digests.md5Hex("Hello"), getObjectAns.getEtag());
     assertFalse(getObjectAns.isDeleteMarker());
 
     // Get first version of key1 without specify version ID.

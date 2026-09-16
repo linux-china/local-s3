@@ -8,7 +8,10 @@ import com.robothy.s3.jupiter.supplier.DataPathSupplier;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.io.File;
 import java.io.IOException;
-import org.apache.commons.io.FileUtils;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
@@ -102,7 +105,13 @@ public class LocalS3WithDataPathTest {
 
   @AfterAll
   public static void cleanup() throws IOException {
-    FileUtils.deleteDirectory(tmpDir);
+    if (tmpDir.exists()) {
+      try (Stream<Path> paths = Files.walk(tmpDir.toPath())) {
+        for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+          Files.deleteIfExists(path);
+        }
+      }
+    }
   }
 
 }

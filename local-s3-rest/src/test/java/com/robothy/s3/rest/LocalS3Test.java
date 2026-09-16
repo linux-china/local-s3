@@ -26,6 +26,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -42,8 +46,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.reflect.FieldUtils;
 import org.junit.jupiter.api.Test;
 
 class LocalS3Test {
@@ -121,7 +123,7 @@ class LocalS3Test {
   void shutdownRemovesShutdownHook() throws Exception {
     LocalS3 localS3 = LocalS3.builder().port(-1).build();
     localS3.start();
-    Thread hook = (Thread) FieldUtils.readField(localS3, "shutdownHook", true);
+    Thread hook = (Thread) shutdownHook(localS3);
     assertNotNull(hook);
 
     localS3.shutdown();
@@ -138,7 +140,7 @@ class LocalS3Test {
         .build();
     localS3.start();
     try {
-      assertNull(FieldUtils.readField(localS3, "shutdownHook", true));
+      assertNull(shutdownHook(localS3));
     } finally {
       localS3.shutdown();
     }
@@ -191,7 +193,7 @@ class LocalS3Test {
       assertTrue(Files.isRegularFile(dataPath.resolve(LocalS3Store.FILE_NAME)));
     } finally {
       localS3.shutdown();
-      FileUtils.deleteDirectory(dataPath.toFile());
+      deleteDirectory(dataPath);
     }
   }
 
@@ -232,7 +234,7 @@ class LocalS3Test {
         restarted.shutdown();
       }
     } finally {
-      FileUtils.deleteDirectory(dataPath.toFile());
+      deleteDirectory(dataPath);
     }
   }
 
@@ -262,7 +264,7 @@ class LocalS3Test {
       assertEquals("2345", get.body());
     } finally {
       localS3.shutdown();
-      FileUtils.deleteDirectory(dataPath.toFile());
+      deleteDirectory(dataPath);
     }
   }
 
@@ -610,7 +612,7 @@ class LocalS3Test {
       assertFalse(Files.exists(directory.resolve("escaped.bucket.meta")));
     } finally {
       localS3.shutdown();
-      FileUtils.deleteDirectory(directory.toFile());
+      deleteDirectory(directory);
     }
   }
 
@@ -702,4 +704,27 @@ class LocalS3Test {
       assertTrue(elapsedMillis < 5_000, "shutdown() took " + elapsedMillis + " ms");
     }
   }
+  /**
+   * The shutdown hook that a service registered, which it doesn't expose.
+   */
+  private static Object shutdownHook(LocalS3 localS3) throws ReflectiveOperationException {
+    Field field = LocalS3.class.getDeclaredField("shutdownHook");
+    field.setAccessible(true);
+    return field.get(localS3);
+  }
+
+  /**
+   * Delete a directory and everything in it; nothing if it doesn't exist.
+   */
+  private static void deleteDirectory(Path directory) throws IOException {
+    if (!Files.exists(directory)) {
+      return;
+    }
+    try (Stream<Path> paths = Files.walk(directory)) {
+      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+        Files.deleteIfExists(path);
+      }
+    }
+  }
+
 }

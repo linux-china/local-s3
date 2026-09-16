@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -58,8 +58,8 @@ class MultipartObjectContentTest {
 
     assertEquals(3, storage.puts.get(), "No content is stored.");
     assertEquals(0, storage.reads.get(), "No content is read.");
-    assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Hello"), DigestUtils.md5("Local"),
-        DigestUtils.md5("S3!"))), etag);
+    assertEquals(S3ObjectUtils.compositeEtag(List.of(Digests.md5("Hello"), Digests.md5("Local"),
+        Digests.md5("S3!"))), etag);
     assertEquals("HelloLocalS3!", read(objectService, null));
     assertEquals(13, objectService.headObject(BUCKET, KEY, GetObjectOptions.builder().build()).getSize());
   }
@@ -178,7 +178,7 @@ class MultipartObjectContentTest {
       String etag = objectService.copyObject(BUCKET, "copied", CopyObjectOptions.builder()
           .sourceBucket(BUCKET).sourceKey(KEY).build()).getEtag();
 
-      assertEquals(DigestUtils.md5Hex("HelloWorld"), etag);
+      assertEquals(Digests.md5Hex("HelloWorld"), etag);
       try (InputStream in = objectService.getObject(BUCKET, "copied", GetObjectOptions.builder().build()).getContent()) {
         assertEquals("HelloWorld", new String(in.readAllBytes(), StandardCharsets.UTF_8));
       }
@@ -200,7 +200,7 @@ class MultipartObjectContentTest {
 
     String etag = objectService.completeMultipartUpload(BUCKET, KEY, uploadId, completeParts(1, 2)).getEtag();
 
-    assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Hello"), DigestUtils.md5("World"))), etag);
+    assertEquals(S3ObjectUtils.compositeEtag(List.of(Digests.md5("Hello"), Digests.md5("World"))), etag);
     assertEquals(1, storage.reads.get(), "Only the part without a digest is read.");
   }
 

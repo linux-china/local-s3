@@ -6,7 +6,7 @@ import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.util.ContinuationTokenUtils;
 import java.util.Objects;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 public interface ListObjectsV2Service extends ListObjectsService {
 
@@ -31,7 +31,7 @@ public interface ListObjectsV2Service extends ListObjectsService {
           BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
 
           // The continuation token is opaque to the client; it carries the key that the listing continues at.
-          String marker = StringUtils.isNotBlank(continuationToken)
+          String marker = Strings.isNotBlank(continuationToken)
               ? ContinuationTokenUtils.decode(continuationToken) : startAfter;
           // The listing is encoded only once the continuation token is computed: the token must carry the key that
           // the listing continues at, not its URL encoding, which sorts differently. E.g. "a%3D1/" sorts before
@@ -49,7 +49,7 @@ public interface ListObjectsV2Service extends ListObjectsService {
               .keyCount(listObjectsAns.getObjects().size() + listObjectsAns.getCommonPrefixes().size())
               .maxKeys(listObjectsAns.getMaxKeys())
               .prefix(listObjectsAns.getPrefix())
-              .startAfter(StringUtils.isBlank(startAfter) || StringUtils.isNotBlank(continuationToken) ? null : startAfter)
+              .startAfter(Strings.isBlank(startAfter) || Strings.isNotBlank(continuationToken) ? null : startAfter)
               .objects(listObjectsAns.getObjects())
               .commonPrefixes(listObjectsAns.getCommonPrefixes())
               .nextContinuationToken(nextContinuationToken)

@@ -16,6 +16,7 @@ import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
 
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -196,14 +197,15 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   private void checkRequestingMd5Header(PutObjectOptions options, String etag) {
     // Validate Content-MD5 header if present.
     if (Objects.nonNull(options.getContentMd5())) {
+      byte[] md5Bytes;
       try {
-        byte[] md5Bytes = org.apache.commons.codec.binary.Hex.decodeHex(etag);
-        String computedBase64 = Base64.getEncoder().encodeToString(md5Bytes);
-        if (!computedBase64.equals(options.getContentMd5())) {
-          throw new LocalS3BadDigestException("The Content-MD5 you specified did not match what we received.");
-        }
-      } catch (org.apache.commons.codec.DecoderException e) {
+        md5Bytes = HexFormat.of().parseHex(etag);
+      } catch (IllegalArgumentException e) {
         throw new LocalS3BadDigestException("Invalid Content-MD5 header.");
+      }
+      String computedBase64 = Base64.getEncoder().encodeToString(md5Bytes);
+      if (!computedBase64.equals(options.getContentMd5())) {
+        throw new LocalS3BadDigestException("The Content-MD5 you specified did not match what we received.");
       }
     }
   }

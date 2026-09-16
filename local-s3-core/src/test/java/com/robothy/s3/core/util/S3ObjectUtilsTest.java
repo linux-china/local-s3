@@ -6,8 +6,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.util.List;
-import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.codec.digest.DigestUtils;
+import java.util.HexFormat;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -57,8 +57,8 @@ class S3ObjectUtilsTest {
    */
   @Test
   void compositeEtagConcatenatesTheDigestsAsBytes() {
-    String hexOfHexes = DigestUtils.md5Hex(
-        DigestUtils.md5Hex("Hello") + DigestUtils.md5Hex("World")) + "-2";
+    String hexOfHexes = Digests.md5Hex(
+        Digests.md5Hex("Hello") + Digests.md5Hex("World")) + "-2";
     assertNotEquals(hexOfHexes, S3ObjectUtils.compositeEtag(List.of(md5("Hello"), md5("World"))));
   }
 
@@ -68,8 +68,8 @@ class S3ObjectUtilsTest {
    */
   @Test
   void compositeEtagDiffersFromTheDigestOfTheWholeContent() {
-    assertEquals("68e109f0f40ca72a15e05cc22786f8e6", DigestUtils.md5Hex("HelloWorld"));
-    assertNotEquals(DigestUtils.md5Hex("HelloWorld"),
+    assertEquals("68e109f0f40ca72a15e05cc22786f8e6", Digests.md5Hex("HelloWorld"));
+    assertNotEquals(Digests.md5Hex("HelloWorld"),
         S3ObjectUtils.compositeEtag(List.of(md5("Hello"), md5("World"))));
   }
 
@@ -78,11 +78,11 @@ class S3ObjectUtilsTest {
     DigestInputStream stream = S3ObjectUtils.digestingStream(
         new ByteArrayInputStream("Hello".getBytes(StandardCharsets.UTF_8)));
     assertEquals("Hello", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
-    assertEquals(DigestUtils.md5Hex("Hello"), Hex.encodeHexString(stream.getMessageDigest().digest()));
+    assertEquals(Digests.md5Hex("Hello"), HexFormat.of().formatHex(stream.getMessageDigest().digest()));
   }
 
   private static byte[] md5(String content) {
-    return DigestUtils.md5(content);
+    return Digests.md5(content);
   }
 
 }

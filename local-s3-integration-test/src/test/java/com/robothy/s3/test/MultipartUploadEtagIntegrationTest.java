@@ -8,7 +8,6 @@ import com.robothy.s3.jupiter.LocalS3;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -43,8 +42,8 @@ public class MultipartUploadEtagIntegrationTest {
     CompleteMultipartUploadResponse completed = upload(s3, bucket, key, FIRST, "World");
 
     // md5(md5(FIRST) + md5("World")) + "-2", the digests concatenated as bytes; computed outside of LocalS3.
-    byte[] digests = ByteBuffer.allocate(32).put(DigestUtils.md5(FIRST)).put(DigestUtils.md5("World")).array();
-    assertEquals(Etags.quoted(DigestUtils.md5Hex(digests) + "-2"), completed.eTag());
+    byte[] digests = ByteBuffer.allocate(32).put(Digests.md5(FIRST)).put(Digests.md5("World")).array();
+    assertEquals(Etags.quoted(Digests.md5Hex(digests) + "-2"), completed.eTag());
     // Not the digest of the concatenated content, which is what LocalS3 answered before 2.5.
     assertNotEquals(Etags.md5(FIRST + "World"), completed.eTag());
   }

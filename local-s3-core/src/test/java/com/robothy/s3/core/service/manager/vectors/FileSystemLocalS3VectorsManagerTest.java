@@ -31,7 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -183,7 +183,7 @@ class FileSystemLocalS3VectorsManagerTest {
     } finally {
       // Cleanup: Delete temporary directory
       if (tempDirectory != null && Files.exists(tempDirectory)) {
-        FileUtils.deleteDirectory(tempDirectory.toFile());
+        TestFiles.deleteDirectory(tempDirectory);
       }
     }
   }

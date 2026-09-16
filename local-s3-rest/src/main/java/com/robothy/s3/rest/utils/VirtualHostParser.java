@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
 import com.robothy.s3.rest.model.request.BucketRegion;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 import java.util.Collection;
 import java.util.Comparator;
@@ -74,7 +74,7 @@ public class VirtualHostParser {
     Map<String, String> allDomains = new LinkedHashMap<>(SERVICE_DOMAINS);
     DEFAULT_DOMAINS.forEach(domain -> allDomains.putIfAbsent(domain, LOCAL_REGION));
     for (String domain : domains) {
-      String normalized = StringUtils.strip(StringUtils.trimToEmpty(domain), ".").toLowerCase(Locale.ROOT);
+      String normalized = stripDots(domain == null ? "" : domain.trim()).toLowerCase(Locale.ROOT);
       if (!normalized.isEmpty()) {
         allDomains.putIfAbsent(normalized, LOCAL_REGION);
       }
@@ -83,6 +83,21 @@ public class VirtualHostParser {
         .map(entry -> new BaseDomain("." + entry.getKey(), entry.getValue()))
         .sorted(Comparator.comparingInt((BaseDomain domain) -> domain.suffix().length()).reversed())
         .toList();
+  }
+
+  /**
+   * Remove the dots at the start and at the end of a domain, e.g. of {@code .s3.local.}.
+   */
+  private static String stripDots(String domain) {
+    int start = 0;
+    int end = domain.length();
+    while (start < end && domain.charAt(start) == '.') {
+      start++;
+    }
+    while (end > start && domain.charAt(end - 1) == '.') {
+      end--;
+    }
+    return domain.substring(start, end);
   }
 
   /**
@@ -111,7 +126,7 @@ public class VirtualHostParser {
    * @return the bucket and region; empty for path-style requests.
    */
   public Optional<BucketRegion> parse(String host) {
-    if (StringUtils.isBlank(host)) {
+    if (Strings.isBlank(host)) {
       return Optional.empty();
     }
 
@@ -184,7 +199,7 @@ public class VirtualHostParser {
 
     String region = "oss".equals(endpoint) || endpoint.startsWith("oss-accelerate")
         ? "local"
-        : StringUtils.removeEnd(endpoint, "-internal");
+        : endpoint.endsWith("-internal") ? endpoint.substring(0, endpoint.length() - "-internal".length()) : endpoint;
     String bucketName = endpointStart > 1 ? hostWithoutDomain.substring(0, endpointStart - 1) : null;
     return Optional.of(new BucketRegion(region, bucketName));
   }

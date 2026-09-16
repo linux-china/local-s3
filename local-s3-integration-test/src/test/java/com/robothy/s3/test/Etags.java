@@ -2,7 +2,6 @@ package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.apache.commons.codec.digest.DigestUtils;
 
 /**
  * The entity tags that Amazon S3 answers, which the AWS SDK hands over as they are: a quoted string, e.g.
@@ -26,14 +25,14 @@ final class Etags {
    * The entity tag of an object stored at once, i.e. the quoted MD5 digest of its content.
    */
   static String md5(String content) {
-    return quoted(DigestUtils.md5Hex(content));
+    return quoted(Digests.md5Hex(content));
   }
 
   /**
    * The entity tag of an object stored at once, i.e. the quoted MD5 digest of its content.
    */
   static String md5(byte[] content) {
-    return quoted(DigestUtils.md5Hex(content));
+    return quoted(Digests.md5Hex(content));
   }
 
   /**

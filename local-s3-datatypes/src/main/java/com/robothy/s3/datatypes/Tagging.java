@@ -14,7 +14,6 @@ import java.util.stream.Stream;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.apache.commons.collections4.CollectionUtils;
 import tools.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 
 /**
@@ -56,7 +55,7 @@ public class Tagging {
   public Collection<Map<String, String>> toCollection() {
     Collection<Map<String, String>> collection = new ArrayList<>(tagSets.size());
 
-    if (CollectionUtils.isNotEmpty(tagSets)) {
+    if (Objects.nonNull(tagSets) && !tagSets.isEmpty()) {
       tagSets.forEach(tagSet -> {
         Map<String, String> tags = new HashMap<>();
         if (Objects.nonNull(tagSet.tags)) {

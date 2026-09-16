@@ -4,7 +4,7 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -37,7 +37,7 @@ public class ContinuationParameters {
         String joined = Stream.of(encodeDelimiter(), encodeEncodingType(),
                 encodeFetchOwner(), encodeMaxKeys(),
                 encodePrefix(), encodeStartAfter())
-            .filter(StringUtils::isNotBlank)
+            .filter(Strings::isNotBlank)
             .collect(Collectors.joining("/"));
 
         String hashAppended = joined + "/" + joined.hashCode();
@@ -109,7 +109,7 @@ public class ContinuationParameters {
         }
         ContinuationParametersBuilder builder = ContinuationParameters.builder();
         Arrays.stream(parts).forEach(part -> {
-            if (StringUtils.isBlank(part)) return;
+            if (Strings.isBlank(part)) return;
             switch (part.charAt(0)) {
                 case '1':
                     builder.delimiter(URLDecoder.decode(part.substring(1), StandardCharsets.UTF_8).charAt(0));

@@ -18,7 +18,6 @@ dependencies {
     // Test projects bring their own JUnit; don't impose a JUnit version or engine on them.
     compileOnly(libs.junit5JupiterApi)
 
-    testImplementation(libs.commonsIo)
     // Runs fixture test classes, e.g. with @Nested classes or in parallel, to check how services are shut down.
     testImplementation(libs.junitPlatformLauncher)
     // A logging backend for the tests of this module only; users choose their own.

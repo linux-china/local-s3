@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -49,7 +49,7 @@ class BucketCorsServiceTest extends LocalS3ServiceTestBase {
       BucketService restarted = LocalS3Manager.createFileSystemS3Manager(dataPath).bucketService();
       assertEquals(configuration(), restarted.getBucketCors(BUCKET).get());
     } finally {
-      FileUtils.deleteDirectory(dataPath.toFile());
+      TestFiles.deleteDirectory(dataPath);
     }
   }
 

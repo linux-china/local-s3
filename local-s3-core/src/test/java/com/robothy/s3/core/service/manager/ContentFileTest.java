@@ -18,7 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,7 +46,7 @@ class ContentFileTest {
         .build()).getEtag();
 
     assertFalse(Files.exists(body), "The file is renamed into the storage.");
-    assertEquals(DigestUtils.md5Hex("Hello"), etag);
+    assertEquals(Digests.md5Hex("Hello"), etag);
     assertEquals("Hello", read(objectService, "a.txt"));
     assertEquals(1, countObjects(storageDirectory));
   }
@@ -68,7 +68,7 @@ class ContentFileTest {
         List.of(CompleteMultipartUploadPartOption.builder().partNumber(1).build()));
 
     assertFalse(Files.exists(body));
-    assertEquals(DigestUtils.md5Hex("Hello"), etag);
+    assertEquals(Digests.md5Hex("Hello"), etag);
     assertEquals("Hello", read(objectService, "a.txt"));
   }
 

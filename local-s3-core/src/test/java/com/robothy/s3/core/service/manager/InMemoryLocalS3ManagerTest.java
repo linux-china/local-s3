@@ -22,7 +22,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
 
 class InMemoryLocalS3ManagerTest {
@@ -37,7 +37,7 @@ class InMemoryLocalS3ManagerTest {
     InMemoryLocalS3Manager managerWithInitData = new InMemoryLocalS3Manager(tempDirectory, true);
     assertInstanceOf(BucketService.class, managerWithInitData.bucketService());
     assertInstanceOf(ObjectService.class, managerWithInitData.objectService());
-    FileUtils.deleteDirectory(tempDirectory.toFile());
+    TestFiles.deleteDirectory(tempDirectory);
   }
 
   @Test
@@ -78,7 +78,7 @@ class InMemoryLocalS3ManagerTest {
     LocalS3Manager.clearInitialDataCache();
     assertEquals(0, InMemoryLocalS3Manager.initialDataCacheSize());
 
-    FileUtils.deleteDirectory(dataPath.toFile());
+    TestFiles.deleteDirectory(dataPath);
   }
 
   private static InitialDataCache.CacheValue cacheValue() {
@@ -127,7 +127,7 @@ class InMemoryLocalS3ManagerTest {
     assertEquals("plain/text", object1.getContentType());
     assertEquals(7L, object1.getSize());
 
-    FileUtils.deleteDirectory(dataPath.toFile());
+    TestFiles.deleteDirectory(dataPath);
   }
 
 
@@ -185,7 +185,7 @@ class InMemoryLocalS3ManagerTest {
             () -> objectService.getObject("bucket", "added.txt", GetObjectOptions.builder().build()));
       }
     } finally {
-      FileUtils.deleteDirectory(dataPath.toFile());
+      TestFiles.deleteDirectory(dataPath);
     }
   }
 

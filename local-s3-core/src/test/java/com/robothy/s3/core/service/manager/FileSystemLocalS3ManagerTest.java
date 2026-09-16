@@ -36,7 +36,7 @@ import java.nio.file.Path;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,7 +57,7 @@ class FileSystemLocalS3ManagerTest {
   @AfterEach
   void tearDown() throws IOException {
     dataPath.toFile().setWritable(true);
-    FileUtils.deleteDirectory(dataPath.toFile());
+    TestFiles.deleteDirectory(dataPath);
   }
 
   @Test

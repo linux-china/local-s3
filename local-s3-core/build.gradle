@@ -13,8 +13,5 @@ dependencies {
     // metadata converters extend StdConverter.
     api(libs.jacksonDatabind)
 
-    implementation(libs.commonsIo)
-    implementation(libs.apacheCommonsLang3)
-    implementation(libs.apacheCommonsCodec)
     implementation(libs.h2MvStore)
 }

@@ -14,7 +14,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 /**
  * Bucket related assertions.
@@ -31,7 +31,7 @@ public class BucketAssertions {
    * @return valid bucket name.
    */
   public static String assertBucketNameIsValid(String bucketName) {
-    if (StringUtils.isBlank(bucketName) || escapesDataDirectory(bucketName)) {
+    if (Strings.isBlank(bucketName) || escapesDataDirectory(bucketName)) {
       throw new InvalidBucketNameException(bucketName);
     }
     if(RESERVED_NAMES.contains(bucketName)){

@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -84,7 +84,7 @@ class BucketLifecycleServiceTest extends LocalS3ServiceTestBase {
         restarted.close();
       }
     } finally {
-      FileUtils.deleteDirectory(dataPath.toFile());
+      TestFiles.deleteDirectory(dataPath);
     }
   }
 

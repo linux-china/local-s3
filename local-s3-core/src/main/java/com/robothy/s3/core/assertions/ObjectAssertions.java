@@ -4,12 +4,12 @@ import com.robothy.s3.core.exception.InvalidObjectKeyException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 public class ObjectAssertions {
 
   public static void assertObjectKeyIsValid(String key) {
-    if (StringUtils.isBlank(key)) {
+    if (Strings.isBlank(key)) {
       throw new InvalidObjectKeyException(key);
     }
   }

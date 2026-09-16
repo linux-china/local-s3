@@ -19,7 +19,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 
 /**
  * HTTP Request related utils.
@@ -100,7 +100,7 @@ public class RequestUtils {
   public static Optional<String[][]> extractTagging(HttpRequest request) {
     Optional<String> taggingOpt = request.header(AmzHeaderNames.X_AMZ_TAGGING);
     String tagging;
-    if (taggingOpt.isEmpty() || StringUtils.isBlank(tagging = taggingOpt.get())) {
+    if (taggingOpt.isEmpty() || Strings.isBlank(tagging = taggingOpt.get())) {
       return Optional.empty();
     }
 

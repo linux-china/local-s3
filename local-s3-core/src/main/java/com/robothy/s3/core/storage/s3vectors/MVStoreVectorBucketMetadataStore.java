@@ -10,7 +10,7 @@ import com.robothy.s3.core.util.JsonUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 
@@ -85,7 +85,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
 
   @Override
   public String store(String vectorBucketName, VectorBucketMetadata vectorBucketMetadata) {
-    if (StringUtils.isBlank(vectorBucketMetadata.getVectorBucketName())) {
+    if (Strings.isBlank(vectorBucketMetadata.getVectorBucketName())) {
       throw new IllegalArgumentException("Invalid vector bucket name '"
           + vectorBucketMetadata.getVectorBucketName() + "'.");
     }
@@ -119,7 +119,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
    * it, whether or not the name happens to be usable as a key here.
    */
   private static String requireVectorBucketName(String vectorBucketName) {
-    if (StringUtils.isBlank(vectorBucketName) || vectorBucketName.indexOf('/') >= 0) {
+    if (Strings.isBlank(vectorBucketName) || vectorBucketName.indexOf('/') >= 0) {
       throw new InvalidBucketNameException(String.valueOf(vectorBucketName));
     }
     return vectorBucketName;

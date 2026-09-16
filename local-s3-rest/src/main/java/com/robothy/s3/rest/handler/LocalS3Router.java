@@ -27,7 +27,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.WeakHashMap;
 
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * Routes the requests of LocalS3 to their handlers.
@@ -279,7 +278,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     String bucketName;
     String objectKey = null;
     if (bucketNameInPath) {
-      int slashCount = StringUtils.countMatches(path, '/');
+      long slashCount = path.chars().filter(c -> c == '/').count();
       if (slashCount == 1 || (slashCount == 2 && path.endsWith("/"))) { // bucket operation.
         bucketName = trimmedPath.substring(1);
       } else { // object operation.

@@ -2,34 +2,61 @@ package com.robothy.s3.core.util;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.codec.digest.DigestUtils;
 
 public class S3ObjectUtils {
+
+  /**
+   * A new MD5 digest, which every JVM provides.
+   *
+   * @return the digest.
+   */
+  public static MessageDigest md5() {
+    try {
+      return MessageDigest.getInstance("MD5");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("The JVM provides no MD5 digest.", e);
+    }
+  }
 
   /**
    * Calculate the etag of the given input stream.
    */
   public static String etag(InputStream inputStream) {
+    DigestInputStream digesting = digestingStream(inputStream);
     try {
-      return DigestUtils.md5Hex(inputStream);
+      digesting.transferTo(OutputStream.nullOutputStream());
     } catch (IOException e) {
       throw new IllegalStateException(e);
     }
+    return etag(digesting.getMessageDigest());
+  }
+
+  /**
+   * Update a digest with the content of a stream, which is read to its end.
+   *
+   * @param digest the digest.
+   * @param inputStream the content.
+   * @throws IOException if the content can't be read.
+   */
+  public static void updateDigest(MessageDigest digest, InputStream inputStream) throws IOException {
+    new DigestInputStream(inputStream, digest).transferTo(OutputStream.nullOutputStream());
   }
 
   /**
    * Calculate the etag from a digest that has consumed the whole object content.
    */
   public static String etag(MessageDigest md5) {
-    return Hex.encodeHexString(md5.digest());
+    return HexFormat.of().formatHex(md5.digest());
   }
 
   /**
@@ -63,7 +90,7 @@ public class S3ObjectUtils {
    * @return the entity tag of the object that the parts were concatenated into.
    */
   public static String compositeEtag(List<byte[]> partDigests) {
-    MessageDigest md5 = DigestUtils.getMd5Digest();
+    MessageDigest md5 = md5();
     partDigests.forEach(md5::update);
     return etag(md5) + "-" + partDigests.size();
   }
@@ -77,7 +104,7 @@ public class S3ObjectUtils {
    * @return a stream that digests the content it reads.
    */
   public static DigestInputStream digestingStream(InputStream inputStream) {
-    return new DigestInputStream(inputStream, DigestUtils.getMd5Digest());
+    return new DigestInputStream(inputStream, md5());
   }
 
   /**
@@ -103,7 +130,7 @@ public class S3ObjectUtils {
     private long size;
 
     private MeasuredInputStream(InputStream in) {
-      super(in, DigestUtils.getMd5Digest());
+      super(in, md5());
     }
 
     @Override

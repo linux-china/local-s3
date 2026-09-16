@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -57,7 +57,7 @@ class PutObjectServiceTest extends LocalS3ServiceTestBase {
       });
 
       content.release();
-      assertEquals(DigestUtils.md5Hex("World"), uploading.get(5, TimeUnit.SECONDS).getEtag());
+      assertEquals(Digests.md5Hex("World"), uploading.get(5, TimeUnit.SECONDS).getEtag());
     } finally {
       content.release();
       executor.shutdownNow();
@@ -139,7 +139,7 @@ class PutObjectServiceTest extends LocalS3ServiceTestBase {
         .build());
     assertEquals(key1, putObjectAns1.getKey());
     assertEquals(ObjectMetadata.NULL_VERSION, putObjectAns1.getVersionId());
-    assertEquals(DigestUtils.md5Hex("Hello"), putObjectAns1.getEtag());
+    assertEquals(Digests.md5Hex("Hello"), putObjectAns1.getEtag());
 
     LocalS3Metadata s3Metadata = objectService.localS3Metadata();
     Optional<BucketMetadata> bucketMetadataOpt = s3Metadata.getBucketMetadata(bucketName);

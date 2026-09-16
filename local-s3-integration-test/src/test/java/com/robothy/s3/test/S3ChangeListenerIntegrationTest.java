@@ -19,7 +19,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -97,7 +96,7 @@ public class S3ChangeListenerIntegrationTest {
     assertEquals("PutObject", put.operation());
     assertEquals("a.txt", put.key());
     assertEquals(5L, put.size());
-    assertEquals(DigestUtils.md5Hex("Hello"), put.etag());
+    assertEquals(Digests.md5Hex("Hello"), put.etag());
     assertNull(put.versionId());
 
     s3.copyObject(request -> request.sourceBucket(BUCKET).sourceKey("a.txt").destinationBucket(BUCKET).destinationKey("b.txt"));
@@ -105,7 +104,7 @@ public class S3ChangeListenerIntegrationTest {
     assertEquals("CopyObject", copy.operation());
     assertEquals("b.txt", copy.key());
     assertEquals(5L, copy.size());
-    assertEquals(DigestUtils.md5Hex("Hello"), copy.etag());
+    assertEquals(Digests.md5Hex("Hello"), copy.etag());
 
     byte[] firstPart = new byte[5 * 1024 * 1024];
     byte[] lastPart = "tail".getBytes();

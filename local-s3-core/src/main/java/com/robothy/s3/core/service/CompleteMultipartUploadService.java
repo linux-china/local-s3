@@ -26,14 +26,12 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.codec.digest.DigestUtils;
 
 /**
  * Complete a multipart upload.
@@ -188,13 +186,13 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       String contentMd5 = part.getValue().getContentMd5();
       if (Objects.nonNull(contentMd5)) {
         try {
-          digests.add(Hex.decodeHex(contentMd5));
+          digests.add(HexFormat.of().parseHex(contentMd5));
           continue;
-        } catch (DecoderException e) {
+        } catch (IllegalArgumentException e) {
           // Not a digest; compute it from the content.
         }
       }
-      MessageDigest md5 = DigestUtils.getMd5Digest();
+      MessageDigest md5 = S3ObjectUtils.md5();
       digestPart(part.getKey(), part.getValue(), md5);
       digests.add(md5.digest());
     }
@@ -205,7 +203,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
    * The MD5 digest of the whole content of the object that the parts complete, which is read from the parts.
    */
   private String contentDigest(NavigableMap<Integer, UploadPartMetadata> partsToComplete) {
-    MessageDigest md5 = DigestUtils.getMd5Digest();
+    MessageDigest md5 = S3ObjectUtils.md5();
     partsToComplete.forEach((partNumber, part) -> digestPart(partNumber, part, md5));
     return S3ObjectUtils.etag(md5);
   }
@@ -218,7 +216,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       throw partGone(partNumber, e);
     }
     try (InputStream in = content) {
-      DigestUtils.updateDigest(md5, in);
+      S3ObjectUtils.updateDigest(md5, in);
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read part " + partNumber + ".", e);
     }

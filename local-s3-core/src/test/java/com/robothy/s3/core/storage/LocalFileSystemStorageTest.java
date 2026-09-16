@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class LocalFileSystemStorageTest {
 
   @AfterEach
   void tearDown() throws IOException {
-    FileUtils.deleteDirectory(directory.toFile());
+    TestFiles.deleteDirectory(directory);
   }
 
   @Test

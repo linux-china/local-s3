@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.BooleanSupplier;
-import org.apache.commons.lang3.StringUtils;
+import com.robothy.s3.core.util.Strings;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 import tools.jackson.core.JacksonException;
@@ -206,7 +206,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
 
   @Override
   public String store(String bucketName, BucketMetadata bucketMetadata) {
-    if (StringUtils.isBlank(bucketMetadata.getBucketName())) {
+    if (Strings.isBlank(bucketMetadata.getBucketName())) {
       throw new IllegalArgumentException("Invalid bucket name '" + bucketMetadata.getBucketName() + "'.");
     }
     String name = requireBucketName(bucketMetadata.getBucketName());
@@ -431,7 +431,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
    * like a blank one. Amazon S3 rejects such names too.
    */
   private static String requireBucketName(String bucketName) {
-    if (StringUtils.isBlank(bucketName) || bucketName.indexOf('/') >= 0) {
+    if (Strings.isBlank(bucketName) || bucketName.indexOf('/') >= 0) {
       throw new InvalidBucketNameException(String.valueOf(bucketName));
     }
     return bucketName;

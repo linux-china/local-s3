@@ -18,7 +18,7 @@ import com.robothy.s3.datatypes.response.ObjectVersion;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
 
 class DefaultFileSystemS3MetadataLoaderTest {
@@ -53,7 +53,7 @@ class DefaultFileSystemS3MetadataLoaderTest {
     assertEquals(putObjectAns.getVersionId(), latest.getVersionId());
     assertTrue(latest.isLatest());
 
-    FileUtils.deleteDirectory(dataPath.toFile());
+    TestFiles.deleteDirectory(dataPath);
   }
 
   /**
@@ -79,7 +79,7 @@ class DefaultFileSystemS3MetadataLoaderTest {
     assertTrue(Long.parseLong(putObjectAns.getVersionId()) > LEGACY_VERSION_ID,
         "The new version " + putObjectAns.getVersionId() + " doesn't follow the loaded " + LEGACY_VERSION_ID);
 
-    FileUtils.deleteDirectory(dataPath.toFile());
+    TestFiles.deleteDirectory(dataPath);
   }
 
   /**

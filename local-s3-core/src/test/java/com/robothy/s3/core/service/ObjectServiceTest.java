@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.LinkedList;
 import java.util.List;
-import org.apache.commons.io.FileUtils;
+import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -29,7 +29,7 @@ class ObjectServiceTest extends LocalS3ServiceTestBase {
   static void cleanUp() {
     tmpDirs.forEach(it -> {
       try {
-        FileUtils.deleteDirectory(it.toFile());
+        TestFiles.deleteDirectory(it);
       } catch (Throwable e) {
         e.printStackTrace();
       }

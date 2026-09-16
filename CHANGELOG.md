@@ -124,6 +124,9 @@ imported either.
 
 ### Changed
 
++ LocalS3 no longer depends on `commons-codec`, `commons-io`, `commons-lang3` and `commons-collections4`: the JDK
+  does what they did. An application that used them through LocalS3 needs to declare them itself. The executable jar
+  is about 2.6 MB smaller.
 + All metadata of a data directory, of S3 and S3 Vectors alike, is kept in `buckets.mvstore`, and a change writes only
   the object keys it changed rather than the whole bucket.
 + Object content files are spread over two levels of subdirectories, `.storage/ab/cd/<id>`; vectors are stored in one

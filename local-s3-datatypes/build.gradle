@@ -10,7 +10,4 @@ dependencies {
     api(libs.jacksonDatabind)
 
     implementation(libs.jacksonDataformatXml)
-    implementation(libs.commonsIo)
-    implementation(libs.apacheCommonsLang3)
-    implementation(libs.apacheCommonsCollections4)
 }

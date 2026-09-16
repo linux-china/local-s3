@@ -3,11 +3,7 @@ logback = "1.5.38"
 awssdkS3 = "2.54.14"
 jackson = "3.2.2"
 nettyHttpRouter = "1.15"
-apacheCommonsCodec = "1.22.1"
 netty = "4.2.18.Final"
-apacheCommonsCollections4 = "4.6.0"
-commonsIo = "2.22.0"
-apacheCommonsLang3 = "3.20.0"
 junit5 = "6.1.3"
 junitPlatform = "6.1.3"
 mockito = "5.23.0"
@@ -33,14 +29,10 @@ awss3ApacheClient = { group = "software.amazon.awssdk", name = "apache-client", 
 jacksonDatabind = { group = "tools.jackson.core", name = "jackson-databind", version.ref = "jackson" }
 jacksonDataformatXml = { group = "tools.jackson.dataformat", name = "jackson-dataformat-xml", version.ref = "jackson" }
 nettyHttpRouter = { group = "io.github.robothy", name = "netty-http-router", version.ref = "nettyHttpRouter" }
-apacheCommonsCodec = { group = "commons-codec", name = "commons-codec", version.ref = "apacheCommonsCodec" }
 nettyBom = { group = "io.netty", name = "netty-bom", version.ref = "netty" }
 nettyCodecHttp = { group = "io.netty", name = "netty-codec-http", version.ref = "netty" }
 nettyHandler = { group = "io.netty", name = "netty-handler", version.ref = "netty" }
 nettyTransport = { group = "io.netty", name = "netty-transport", version.ref = "netty" }
-apacheCommonsCollections4 = { group = "org.apache.commons", name = "commons-collections4", version.ref = "apacheCommonsCollections4" }
-commonsIo = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
-apacheCommonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "apacheCommonsLang3" }
 h2MvStore = { group = "com.h2database", name = "h2-mvstore", version.ref = "h2MvStore" }
 junit5 = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit5" }
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junitPlatform" }

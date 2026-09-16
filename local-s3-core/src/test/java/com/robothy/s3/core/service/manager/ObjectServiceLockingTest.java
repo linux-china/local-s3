@@ -33,7 +33,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
-import org.apache.commons.codec.digest.DigestUtils;
+import com.robothy.s3.core.Digests;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -63,7 +63,7 @@ class ObjectServiceLockingTest {
           () -> putText(objectService, "destination-bucket", "another", "!"));
 
       blocked.release();
-      assertEquals(DigestUtils.md5Hex("Robothy"), copying.get(5, TimeUnit.SECONDS).getEtag());
+      assertEquals(Digests.md5Hex("Robothy"), copying.get(5, TimeUnit.SECONDS).getEtag());
     } finally {
       storage.releaseBlockedRead();
       executor.shutdownNow();
@@ -93,7 +93,7 @@ class ObjectServiceLockingTest {
       CompleteMultipartUploadAns completed = assertTimeoutPreemptively(Duration.ofSeconds(5),
           () -> objectService.completeMultipartUpload(bucket, key, uploadId, completeParts(2)));
       // The entity tag of an object uploaded in parts, i.e. the digest of the digests of "Robo" and "thy".
-      assertEquals(S3ObjectUtils.compositeEtag(List.of(DigestUtils.md5("Robo"), DigestUtils.md5("thy"))),
+      assertEquals(S3ObjectUtils.compositeEtag(List.of(Digests.md5("Robo"), Digests.md5("thy"))),
           completed.getEtag());
     } finally {
       storage.releaseBlockedRead();
@@ -129,7 +129,7 @@ class ObjectServiceLockingTest {
       assertTimeoutPreemptively(Duration.ofSeconds(5), () -> putText(objectService, bucket, "another", "!"));
 
       blocked.release();
-      assertEquals(DigestUtils.md5Hex("Robothy"), completing.get(5, TimeUnit.SECONDS).getEtag());
+      assertEquals(Digests.md5Hex("Robothy"), completing.get(5, TimeUnit.SECONDS).getEtag());
     } finally {
       storage.releaseBlockedRead();
       executor.shutdownNow();
