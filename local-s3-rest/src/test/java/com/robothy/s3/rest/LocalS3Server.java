@@ -12,7 +12,7 @@ public class LocalS3Server {
                 .credentials("admin","admin")
                 .buckets("msst-test","demo1", "demo2", "demo3")
                 .changeListener(change -> {
-                    System.out.println(change.type() + ":s3://" + change.bucketName() + "/" + change.key());
+                    System.out.println(change.type() + " " + change.getObjectS3Url());
                 })
                 .build();
         localS3.start();

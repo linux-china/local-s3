@@ -85,6 +85,11 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
     return s3EventName(type, operation, deleteMarker);
   }
 
+
+  public String getObjectS3Url() {
+    return "s3://" + bucketName + "/" + key;
+  }
+
   /**
    * The name of the Amazon S3 event notification type of a change, see {@linkplain #s3EventName()}.
    *
