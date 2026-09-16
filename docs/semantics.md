@@ -11,6 +11,7 @@ Amazon S3 would refuse.
 - [Versioning](#versioning)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
 - [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
+- [Access control lists](#access-control-lists)
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Change events](#change-events)
 
@@ -170,6 +171,30 @@ the bucket allows `POST` from it and exposes those headers.
 
 Accepted but not applied, like the headers of `PutObject`: `acl`, `x-amz-storage-class` and the server-side
 encryption fields. They still have to be named by the policy.
+
+## Access control lists
+
+`PutBucketAcl` and `PutObjectAcl` store an ACL, which `GetBucketAcl` and `GetObjectAcl` return; LocalS3 doesn't enforce
+it. Like Amazon S3, a request gives the ACL in exactly one of three ways:
+
++ **A canned ACL**, the `x-amz-acl` header, which grants the owner `FULL_CONTROL`, and `private` nothing more;
+  `public-read` and `public-read-write` grant the `AllUsers` group `READ`, and `WRITE`; `authenticated-read` grants the
+  `AuthenticatedUsers` group `READ`; `aws-exec-read` grants Amazon EC2 `READ`. `bucket-owner-read` and
+  `bucket-owner-full-control` grant the owner of the bucket `READ` or `FULL_CONTROL`, and only apply to objects;
+  `log-delivery-write` grants the `LogDelivery` group `WRITE` and `READ_ACP`, and only applies to buckets.
++ **Grant headers**, `x-amz-grant-read`, `x-amz-grant-write`, `x-amz-grant-read-acp`, `x-amz-grant-write-acp` and
+  `x-amz-grant-full-control`, each a comma-separated list of grantees: `id="..."`, `uri="..."` or `emailAddress="..."`.
++ **An `AccessControlPolicy` document** in the body.
+
+An ACL of headers keeps the owner that the bucket or object has. The rejected requests:
+
+| Request | Error |
+|---|---|
+| A canned ACL together with grant headers | `400 InvalidRequest` |
+| A canned ACL or grant headers together with a body | `400 UnexpectedContent` |
+| No canned ACL, no grant headers and no body | `400 MissingSecurityHeader` |
+| An unknown canned ACL, one that doesn't apply to the resource, or a malformed grant header | `400 InvalidArgument` |
+| A body that isn't an `AccessControlPolicy` document | `400 MalformedACLError` |
 
 ## Lifecycle configuration
 

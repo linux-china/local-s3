@@ -9,14 +9,11 @@ import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import com.robothy.s3.rest.netty.RequestBodies;
-import java.io.InputStream;
-import java.util.Map;
-import java.util.Optional;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html">PutBucketAcl</a>.
+ * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html">PutBucketAcl</a>, whose ACL
+ * is a canned ACL, grant headers or a document in the body; see {@linkplain AccessControlPolicyRequests}.
  * LocalS3 only stores the Acl information for the specified bucket;
  * it doesn't do granting actions.
  */
@@ -31,34 +28,19 @@ class PutBucketAclController implements HttpRequestHandler {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
 
-//  private static final Map<String, String> HEADER_PERMISSION_MAP = Map.of(
-//      "x-amz-grant-full-control", "FULL_CONTROL",
-//      "x-amz-grant-read", "READ",
-//      "x-amz-grant-read-acp","READ_ACP",
-//      "x-amz-grant-write", "WRITE",
-//      "x-amz-grant-write-acp", "WRITE_ACP"
-//  );
-
   @Override
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
 
-    try(InputStream in = RequestBodies.inputStream(request.getBody())) {
-      AccessControlPolicy acl = getAclFromHeader(request).orElse(xmlMapper
-          .readValue(in, AccessControlPolicy.class));
-      aclService.putBucketAcl(bucketName, acl);
-    }
+    AccessControlPolicy acl = AccessControlPolicyRequests.read(request, xmlMapper,
+        AccessControlPolicyRequests.Resource.BUCKET,
+        () -> aclService.getBucketAcl(bucketName).getOwner(),
+        () -> aclService.getBucketAcl(bucketName).getOwner());
+    aclService.putBucketAcl(bucketName, acl);
 
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);
   }
-
-  private Optional<AccessControlPolicy> getAclFromHeader(HttpRequest request) {
-    // todo parse acl from header.
-    return Optional.empty();
-  }
-
-
 
 }

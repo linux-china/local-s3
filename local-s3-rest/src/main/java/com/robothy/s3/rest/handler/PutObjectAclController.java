@@ -2,23 +2,27 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.service.BucketAclService;
+import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
-import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.io.InputStream;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html">PutObjectAcl</a>.
+ * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html">PutObjectAcl</a>, whose ACL
+ * is a canned ACL, grant headers or a document in the body; see {@linkplain AccessControlPolicyRequests}.
  * LocalS3 stores the ACL information without enforcing permissions.
  */
 class PutObjectAclController extends ObjectHttpRequestHandler {
 
+  private final BucketAclService bucketAclService;
+
   PutObjectAclController(ServiceFactory serviceFactory) {
     super(serviceFactory);
+    this.bucketAclService = serviceFactory.getInstance(BucketService.class);
   }
 
   @Override
@@ -27,11 +31,11 @@ class PutObjectAclController extends ObjectHttpRequestHandler {
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String versionId = request.parameter("versionId").orElse(null);
 
-    String returnedVersionId;
-    try (InputStream in = RequestBodies.inputStream(request.getBody())) {
-      AccessControlPolicy acl = xmlMapper.readValue(in, AccessControlPolicy.class);
-      returnedVersionId = objectService.putObjectAcl(bucketName, key, versionId, acl);
-    }
+    AccessControlPolicy acl = AccessControlPolicyRequests.read(request, xmlMapper,
+        AccessControlPolicyRequests.Resource.OBJECT,
+        () -> objectService.getObjectAcl(bucketName, key, versionId).getAcl().getOwner(),
+        () -> bucketAclService.getBucketAcl(bucketName).getOwner());
+    String returnedVersionId = objectService.putObjectAcl(bucketName, key, versionId, acl);
 
     ResponseUtils.addCommonHeaders(response)
         .status(HttpResponseStatus.OK);

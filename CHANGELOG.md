@@ -137,6 +137,10 @@ imported either.
 
 ### Fixed
 
++ `PutObjectAcl` and `PutBucketAcl` accept a canned ACL (`x-amz-acl`) or grant headers (`x-amz-grant-*`) without a
+  body, e.g. `aws s3api put-object-acl --acl public-read`, instead of failing with `500 InternalError`; a request
+  without any ACL fails with `MissingSecurityHeader`, and a malformed one with `MalformedACLError`, like Amazon S3.
+  See [semantics](docs/semantics.md#access-control-lists).
 + The content files that a `PERSISTENCE` data directory no longer references, e.g. after a crash or a failed delete, are
   deleted in the background when a service opens the directory, rather than kept forever. See
   [architecture](docs/architecture.md#a-change).
