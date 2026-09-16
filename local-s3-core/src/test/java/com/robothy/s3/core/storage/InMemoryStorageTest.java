@@ -5,8 +5,13 @@ import com.robothy.s3.core.exception.TotalSizeExceedException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -108,6 +113,71 @@ class InMemoryStorageTest {
     InMemoryStorage storage = new InMemoryStorage(10, 4);
     assertThrows(TotalSizeExceedException.class, () -> storage.put(new ByteArrayInputStream(new byte[11])));
     assertDoesNotThrow(() -> storage.put(new ByteArrayInputStream(new byte[10])));
+  }
+
+  /**
+   * The space of content is reserved atomically, so of the uploads that race for the last space, only as many are
+   * stored as fit.
+   */
+  @Test
+  void concurrentPutsNeverExceedTheTotalSize() throws Exception {
+    int size = 1024;
+    int fitting = 10;
+    int uploads = 64;
+    InMemoryStorage storage = new InMemoryStorage((long) size * fitting, 256);
+    CountDownLatch start = new CountDownLatch(1);
+    AtomicInteger stored = new AtomicInteger();
+    AtomicInteger rejected = new AtomicInteger();
+    try (ExecutorService executor = Executors.newFixedThreadPool(uploads)) {
+      for (int i = 0; i < uploads; i++) {
+        boolean stream = i % 2 == 0;
+        executor.submit(() -> {
+          start.await();
+          try {
+            if (stream) {
+              storage.put(new ByteArrayInputStream(new byte[size]));
+            } else {
+              storage.put(new byte[size]);
+            }
+            stored.incrementAndGet();
+          } catch (TotalSizeExceedException e) {
+            rejected.incrementAndGet();
+          }
+          return null;
+        });
+      }
+      start.countDown();
+    }
+
+    assertEquals(uploads, stored.get() + rejected.get());
+    assertTrue(stored.get() <= fitting, "Stored " + stored.get() + " uploads of " + size + " bytes.");
+    // A rejected stream may have held space while it was read, so fewer may be stored; what is left is free again.
+    int free = fitting - stored.get();
+    for (int i = 0; i < free; i++) {
+      storage.put(new byte[size]);
+    }
+    assertThrows(TotalSizeExceedException.class, () -> storage.put(new byte[1]));
+  }
+
+  /**
+   * A stream that fails to be read releases the space it reserved while it was read.
+   */
+  @Test
+  void aFailedStreamReleasesItsSpace() {
+    InMemoryStorage storage = new InMemoryStorage(10, 4);
+    InputStream failing = new InputStream() {
+      private int remaining = 8;
+
+      @Override
+      public int read() throws IOException {
+        if (remaining-- == 0) {
+          throw new IOException("connection reset");
+        }
+        return 0;
+      }
+    };
+    assertThrows(UncheckedIOException.class, () -> storage.put(failing));
+    assertDoesNotThrow(() -> storage.put(new byte[10]));
   }
 
   @Test

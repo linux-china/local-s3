@@ -18,6 +18,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>The content of an object is kept in chunks of at most {@linkplain #DEFAULT_CHUNK_SIZE} bytes rather than in a
  * single array, so that an object may be larger than the largest array of the JVM, i.e. about 2 GiB, and storing a
  * large object doesn't need a contiguous block of heap as large as the object.
+ *
+ * <p>The total size of the content is limited. The space of the content is reserved atomically before it is stored,
+ * chunk by chunk while a stream is read, and released if storing fails, so that concurrent uploads never store more than
+ * the limit together.
  */
 class InMemoryStorage implements Storage {
 
@@ -33,9 +37,12 @@ class InMemoryStorage implements Storage {
 
   private final Map<Long, Content> store = new ConcurrentHashMap<>();
 
+  /**
+   * The bytes of the stored content, and of the content being stored, which is reserved before it is stored.
+   */
   private final AtomicLong totalSize = new AtomicLong(0);
 
-  private final AtomicLong maxTotalSize = new AtomicLong(Long.MAX_VALUE);
+  private final long maxTotalSize;
 
   private final int chunkSize;
 
@@ -65,34 +72,45 @@ class InMemoryStorage implements Storage {
     if (chunkSize <= 0) {
       throw new IllegalArgumentException("chunkSize must be positive.");
     }
-    this.maxTotalSize.set(maxTotalSize);
+    this.maxTotalSize = maxTotalSize;
     this.chunkSize = chunkSize;
   }
 
   @Override
   public Long put(Long id, byte[] data) {
-    // Copy the data, since the caller may change the array afterwards.
-    List<byte[]> chunks = new ArrayList<>();
-    for (int offset = 0; offset < data.length; offset += chunkSize) {
-      chunks.add(Arrays.copyOfRange(data, offset, Math.min(data.length, offset + chunkSize)));
+    reserve(data.length);
+    try {
+      // Copy the data, since the caller may change the array afterwards.
+      List<byte[]> chunks = new ArrayList<>();
+      for (int offset = 0; offset < data.length; offset += chunkSize) {
+        chunks.add(Arrays.copyOfRange(data, offset, Math.min(data.length, offset + chunkSize)));
+      }
+      return putContent(id, new Content(chunks.toArray(byte[][]::new), data.length));
+    } catch (RuntimeException | Error e) {
+      release(data.length);
+      throw e;
     }
-    return putContent(id, new Content(chunks.toArray(byte[][]::new), data.length));
   }
 
   @Override
   public Long put(Long id, InputStream data) {
+    // The bytes read so far, which are reserved.
+    long length = 0;
     try {
       List<byte[]> chunks = new ArrayList<>();
-      long length = 0;
       byte[] chunk;
       while ((chunk = readChunk(data)) != null) {
-        ensureNotExceedTotalSize(length + chunk.length);
-        chunks.add(chunk);
+        reserve(chunk.length);
         length += chunk.length;
+        chunks.add(chunk);
       }
       return putContent(id, new Content(chunks.toArray(byte[][]::new), length));
     } catch (IOException e) {
+      release(length);
       throw new UncheckedIOException("Failed to store object " + id + ".", e);
+    } catch (RuntimeException | Error e) {
+      release(length);
+      throw e;
     }
   }
 
@@ -125,10 +143,14 @@ class InMemoryStorage implements Storage {
     return filled == buffer.length ? buffer : Arrays.copyOf(buffer, filled);
   }
 
+  /**
+   * Store content whose space is reserved. The space of the content it replaces, if any, is released.
+   */
   private Long putContent(Long id, Content content) {
-    ensureNotExceedTotalSize(content.length());
     Content previous = store.put(id, content);
-    totalSize.addAndGet(content.length() - (previous == null ? 0 : previous.length()));
+    if (previous != null) {
+      release(previous.length());
+    }
     return id;
   }
 
@@ -176,7 +198,7 @@ class InMemoryStorage implements Storage {
     if (removed == null) {
       throw notExist(id);
     }
-    totalSize.addAndGet(-removed.length());
+    release(removed.length());
     return id;
   }
 
@@ -197,10 +219,30 @@ class InMemoryStorage implements Storage {
     return new IllegalArgumentException("Object id='" + id + "' not exists.");
   }
 
-  private void ensureNotExceedTotalSize(long incrementalSize) {
-    if (totalSize.get() + incrementalSize > maxTotalSize.get()) {
-      throw new TotalSizeExceedException(maxTotalSize.get(), totalSize.get() + incrementalSize);
+  /**
+   * Reserve space for content to be stored, unless the total size would exceed the limit. The check and the reservation
+   * are one atomic step, so that concurrent reservations can't exceed the limit together.
+   *
+   * @param bytes the number of bytes to reserve.
+   * @throws TotalSizeExceedException if the total size would exceed the limit; nothing is reserved then.
+   */
+  private void reserve(long bytes) {
+    while (true) {
+      long current = totalSize.get();
+      if (bytes > maxTotalSize - current) {
+        throw new TotalSizeExceedException(maxTotalSize, current + bytes);
+      }
+      if (totalSize.compareAndSet(current, current + bytes)) {
+        return;
+      }
     }
+  }
+
+  /**
+   * Release space that {@linkplain #reserve reserved}, e.g. of content that is deleted or failed to be stored.
+   */
+  private void release(long bytes) {
+    totalSize.addAndGet(-bytes);
   }
 
   /**
