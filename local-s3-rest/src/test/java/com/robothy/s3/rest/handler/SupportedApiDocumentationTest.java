@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 /**
- * Keeps the API lists of the README in step with the routes that {@linkplain LocalS3RouterFactory} builds.
+ * Keeps the API lists of {@code docs/apis.md} in step with the routes that {@linkplain LocalS3RouterFactory} builds.
  *
  * <p>Users decide whether LocalS3 is enough for their tests by reading those lists, so a list that drifts
  * from the router misleads them: an operation that is missing from "Supported" looks unavailable, and one
@@ -30,17 +30,17 @@ import org.mockito.Mockito;
  */
 class SupportedApiDocumentationTest {
 
-  private static final Path README = Path.of("../README.md");
+  private static final Path APIS = Path.of("../docs/apis.md");
 
   /**
-   * Routes that aren't Amazon S3 operations, so the README describes them in prose instead of listing
+   * Routes that aren't Amazon S3 operations, so the documentation describes them in prose instead of listing
    * them by name: the health check of the container, and the CORS preflight of a bucket and an object.
    */
   private static final Set<String> ROUTES_NOT_LISTED_BY_NAME =
       Set.of("HealthCheck", "HeadHealthCheck", "BucketCorsPreflight", "ObjectCorsPreflight");
 
   /**
-   * An entry of a list of the README, e.g. {@code + PutObject}. An entry that carries a description
+   * An entry of a list of the documentation, e.g. {@code + PutObject}. An entry that carries a description
    * rather than only a name, e.g. the CORS preflight one, is not a name and is left out.
    */
   private static final Pattern DOCUMENTED_OPERATION = Pattern.compile("^\\+ (\\w+)$", Pattern.MULTILINE);
@@ -72,20 +72,20 @@ class SupportedApiDocumentationTest {
   }
 
   /**
-   * The operations that a {@code <details>} section of the README lists by name.
+   * The operations that a {@code ## } section of the documentation lists by name, up to the next such section.
    */
   private static Set<String> documented(String sectionTitle) throws IOException {
-    assertTrue(Files.exists(README), README.toAbsolutePath() + " doesn't exist.");
-    String readme = Files.readString(README);
+    assertTrue(Files.exists(APIS), APIS.toAbsolutePath() + " doesn't exist.");
+    String apis = Files.readString(APIS).replace("\r\n", "\n");
 
-    String summary = "<summary><b>" + sectionTitle + "</b></summary>";
-    int start = readme.indexOf(summary);
-    assertTrue(start >= 0, "The README has no '" + sectionTitle + "' section.");
-    int end = readme.indexOf("</details>", start);
-    assertTrue(end > start, "The '" + sectionTitle + "' section of the README isn't closed.");
+    String heading = "\n## " + sectionTitle + "\n";
+    int start = apis.indexOf(heading);
+    assertTrue(start >= 0, APIS + " has no '" + sectionTitle + "' section.");
+    int end = apis.indexOf("\n## ", start + heading.length());
+    end = end < 0 ? apis.length() : end;
 
     Set<String> operations = new LinkedHashSet<>();
-    Matcher entries = DOCUMENTED_OPERATION.matcher(readme.substring(start + summary.length(), end));
+    Matcher entries = DOCUMENTED_OPERATION.matcher(apis.substring(start + heading.length(), end));
     while (entries.find()) {
       operations.add(entries.group(1));
     }
@@ -107,22 +107,22 @@ class SupportedApiDocumentationTest {
   }
 
   @Test
-  void theReadmeListsEveryImplementedOperation() throws IOException {
+  void theDocumentationListsEveryImplementedOperation() throws IOException {
     assertEquals(implementedS3Routes, new TreeSet<>(documented("Supported Amazon S3 APIs")),
-        "The 'Supported Amazon S3 APIs' list of the README and the implemented routes differ.");
+        "The 'Supported Amazon S3 APIs' list of docs/apis.md and the implemented routes differ.");
   }
 
   @Test
-  void theReadmeListsEveryOperationThatAnswersNotImplemented() throws IOException {
+  void theDocumentationListsEveryOperationThatAnswersNotImplemented() throws IOException {
     assertEquals(notImplementedRoutes, new TreeSet<>(documented("Known unimplemented Amazon S3 APIs")),
-        "The 'Known unimplemented Amazon S3 APIs' list of the README and the routes that answer "
+        "The 'Known unimplemented Amazon S3 APIs' list of docs/apis.md and the routes that answer "
             + "501 NotImplemented differ.");
   }
 
   @Test
-  void theReadmeListsEveryImplementedVectorOperation() throws IOException {
+  void theDocumentationListsEveryImplementedVectorOperation() throws IOException {
     assertEquals(implementedVectorRoutes, new TreeSet<>(documented("Supported Amazon S3 Vectors APIs")),
-        "The 'Supported Amazon S3 Vectors APIs' list of the README and the implemented routes differ.");
+        "The 'Supported Amazon S3 Vectors APIs' list of docs/apis.md and the implemented routes differ.");
   }
 
   /**
@@ -133,7 +133,7 @@ class SupportedApiDocumentationTest {
     Set<String> supported = new TreeSet<>(documented("Supported Amazon S3 APIs"));
     supported.addAll(documented("Supported Amazon S3 Vectors APIs"));
     supported.retainAll(documented("Known unimplemented Amazon S3 APIs"));
-    assertEquals(Set.of(), supported, "The README lists these operations as both supported and "
+    assertEquals(Set.of(), supported, "docs/apis.md lists these operations as both supported and "
         + "unimplemented.");
   }
 

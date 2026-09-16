@@ -1,0 +1,149 @@
+# Changelog
+
+All notable changes to LocalS3 are documented in this file. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+Every module is released with the same version, to Maven Central under `io.github.robothy`, and as the Docker image
+`luofuxiang/local-s3`.
+
+## [2.5.0] - Unreleased
+
+2.5 is a large release. Most of its changes add to what 2.4 did, but several change defaults, and **the data directory
+of a `PERSISTENCE` service has a new format that 2.5 doesn't migrate**. Read [Upgrading from 2.4](#upgrading-from-24)
+before upgrading.
+
+### Upgrading from 2.4
+
+#### Data directory
+
+The metadata of the buckets moved from one JSON file per bucket, `<bucket>.bucket.meta` and
+`vectors/<bucket>.vectorbucket.meta`, into a single [H2 MVStore](https://www.h2database.com/html/mvstore.html) file,
+`buckets.mvstore`; see [the persistence layout](docs/architecture.md#persistence-layout).
+
+**2.5 does not read the `*.bucket.meta` files.** A data directory of 2.4 opened by 2.5 shows no buckets, although the
+content of its objects is still under `.storage/` (2.5 moves those files into subdirectories on start, which 2.4 can no
+longer read either). Back up the data directory before opening it with 2.5.
+
+To carry the objects over, copy them through the S3 API from a 2.4 service to a 2.5 service, e.g. with
+[s5cmd](https://github.com/peak/s5cmd):
+
+```shell
+export AWS_ACCESS_KEY_ID=any AWS_SECRET_ACCESS_KEY=any AWS_REGION=us-east-1
+OLD=http://localhost:8080   # 2.4 serving a copy of the old data directory
+NEW=http://localhost:29090  # 2.5 serving a new, empty data directory
+
+for bucket in $(s5cmd --endpoint-url "$OLD" ls | awk '{print $NF}' | sed 's|s3://||;s|/$||'); do
+  s5cmd --endpoint-url "$OLD" cp "s3://$bucket/*" "export/$bucket/"
+  s5cmd --endpoint-url "$NEW" mb "s3://$bucket"
+  s5cmd --endpoint-url "$NEW" cp "export/$bucket/*" "s3://$bucket/"
+done
+```
+
+This copies the current version of every object. It doesn't carry over older versions, delete markers, tags, ACLs,
+user-defined metadata, the settings of the buckets (versioning, CORS, policies, …), multipart uploads in progress, or
+vector buckets; set those up again, e.g. with the code that created them in the first place. An `IN_MEMORY` service
+that starts from a 2.4 data directory has the same problem, so recreate its initial data with 2.5.
+
+The vectors of 2.4 were written to `.storage/` of the working directory rather than to the data directory, and are not
+imported either.
+
+#### Defaults and configuration
+
+| | 2.4 | 2.5 |
+|---|---|---|
+| Java | 17 | **21** |
+| Port of an embedded service | `8080` | `29090` |
+| Host that an embedded service binds | all interfaces | `127.0.0.1`; use `acceptFromAnyHost()` or `bindHost("0.0.0.0")` |
+| Port of the Docker image | `80` | `29090` |
+| Mode variable of the Docker image | `MODE` | `LOCAL_S3_MODE` |
+| User of the Docker image | `root` | `locals3`; a bind-mounted data directory must be writable by it |
+| Threads of an embedded service | non-daemon | daemon, so a service doesn't keep the JVM alive; `daemonThreads(false)` restores the old behavior |
+| Request handling | 4 platform threads | a virtual thread per request (`virtualThreads`) |
+| Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `compositeMultipartEtags(false)` restores the old one |
+| Bucket names | not validated | the naming rules of Amazon S3; invalid names fail with `InvalidBucketName` |
+| Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
+
+`LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
+
+#### API
+
++ The builder is the top-level class `LocalS3Builder`, still returned by `LocalS3.builder()`. Code that names the type
+  `LocalS3.Builder` needs to use `LocalS3Builder`.
++ `local-s3-jupiter` no longer injects the AWS SDK v1 `AmazonS3`, and no longer depends on the v1 SDK. Use `S3Client`.
++ `@LocalS3(inmemory = ...)`, deprecated before, is removed. Use `mode`.
++ The module `local-s3-docker` is renamed to `local-s3-standalone`, and `local-s3-integrationtest` to
+  `local-s3-integration-test`.
+
+### Added
+
++ **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and
+  `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of a request is received.
++ **Conditional requests**: `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` for reads;
+  conditional writes for `PutObject`, `CopyObject` and `CompleteMultipartUpload`; conditional deletes for
+  `DeleteObject` and `DeleteObjects`; `x-amz-copy-source-if-*` for `CopyObject` and `UploadPartCopy`. See
+  [semantics](docs/semantics.md#conditional-requests).
++ **Operations**: `UploadPartCopy`, `GetObjectAttributes`, `GetObjectAcl`, `PutObjectAcl`, `ListMultipartUploads`,
+  `GetBucketCors`, `PutBucketCors`, `DeleteBucketCors`, `GetBucketPolicyStatus`, and CORS preflight requests.
+  Paginated `ListBuckets`. Operations that LocalS3 knows but doesn't implement answer `501 NotImplemented` naming the
+  operation; see [the API list](docs/apis.md).
++ **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
+  and for the domains of `virtualHostDomains` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
++ **Change listeners**: `changeListener` and `changeListenerExecutor` deliver an `S3Change` for every committed change
+  of a bucket or an object. See [semantics](docs/semantics.md#change-events).
++ **Operations endpoints**: the health check `GET /_health`, and `GET /_admin/stats`, `GET /_admin/requests` and
+  `POST /_admin/reset`, also available as `LocalS3#statistics()` and `LocalS3#reset()`. See
+  [deployment](docs/deployment.md#admin-endpoints).
++ **Configuration from the environment**: `LocalS3Builder.fromEnvironment()` and the `LOCAL_S3_*` variables, also as
+  system properties; `buckets(...)` / `AWS_BUCKETS` create buckets on startup. The immutable `LocalS3Config` holds the
+  configuration of a service.
++ **Persistence**: `persistencePolicy(DURABLE | FAST)` / `LOCAL_S3_PERSISTENCE_POLICY`; object metadata is read lazily
+  from the store, bounded by `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`, so large data directories open quickly.
++ **Limits**: `maxRequestBodySize` (5 GiB by default), `requestBodyFileThreshold`, `maxRequestHeaderSize` and
+  `idleConnectionTimeoutSeconds`. Large request bodies are buffered in files rather than on the heap.
++ **`local-s3-spring-boot-starter`** for Spring Boot 4 applications.
++ **`local-s3-standalone`** is published to Maven Central as an executable jar.
++ **Docker image**: a `HEALTHCHECK`, `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`, and a non-root user.
++ **JUnit 5**: `@LocalS3` attributes `buckets`, `compositeMultipartEtags`, `virtualHostDomains`, `accessKey` and
+  `secretKey`; `@Nested` classes get the service of their enclosing class, and services work with parallel tests.
++ `LocalS3` is `AutoCloseable`.
++ `QueryVectors` returns the `distanceMetric` of the index.
+
+### Changed
+
++ All metadata of a data directory, of S3 and S3 Vectors alike, is kept in `buckets.mvstore`, and a change writes only
+  the object keys it changed rather than the whole bucket.
++ Object content files are spread over two levels of subdirectories, `.storage/ab/cd/<id>`; vectors are stored in one
+  file per dimension, `vectors/.storage/vectors-<d>.vec`.
++ The change of a bucket, its persistence and the deletion of the content it replaced form a transaction: a failed
+  change leaves neither metadata nor content behind.
++ The locks of the buckets belong to a service instead of the JVM, so services in the same JVM don't block each other.
++ Error responses use the error codes and status codes of Amazon S3.
++ Netty's event loops only parse and write; requests are handled on an executor, and a connection isn't read while
+  its request is in flight.
+
+### Fixed
+
++ The data of S3 Vectors is written to the data directory instead of the working directory.
++ Continuation tokens of `ListObjectsV2` with `encoding-type=url` no longer repeat pages.
++ `max-keys`, opaque continuation tokens, `x-amz-version-id: null`, and `Last-Modified` and `ETag` headers behave like
+  Amazon S3.
++ Reading an object on Windows no longer holds a lock that prevents deleting it.
+
+## [2.4] - 2026-04-03
+
+### Added
+
++ Multi-platform Docker images for `linux/amd64` and `linux/arm64`.
++ Byte range requests for `GetObject` and `HeadObject`.
+
+### Fixed
+
++ `ListObjects` with a `delimiter`.
+
+## Earlier versions
+
+The changes of 2.3 and earlier are recorded in the
+[commit history](https://github.com/Robothy/local-s3/commits/main).
+
+[2.5.0]: https://github.com/Robothy/local-s3/compare/726c4b5...main
+[2.4]: https://github.com/Robothy/local-s3/commits/726c4b5
