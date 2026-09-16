@@ -6,11 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.rest.LocalS3;
-import com.robothy.s3.rest.listener.BucketEvent;
-import com.robothy.s3.rest.listener.ObjectEvent;
-import com.robothy.s3.rest.listener.S3EventType;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.util.List;
@@ -35,13 +34,13 @@ import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 
-public class S3EventListenerIntegrationTest {
+public class S3ChangeListenerIntegrationTest {
 
   private static final String BUCKET = "events";
 
-  private final List<BucketEvent> bucketEvents = new CopyOnWriteArrayList<>();
+  private final List<S3Change> bucketChanges = new CopyOnWriteArrayList<>();
 
-  private final List<ObjectEvent> objectEvents = new CopyOnWriteArrayList<>();
+  private final List<S3Change> objectChanges = new CopyOnWriteArrayList<>();
 
   private LocalS3 localS3;
 
@@ -51,8 +50,7 @@ public class S3EventListenerIntegrationTest {
   void setUp() {
     localS3 = LocalS3.builder()
         .port(-1)
-        .bucketEventListener(bucketEvents::add)
-        .objectEventListener(objectEvents::add)
+        .changeListener(this::record)
         .build();
     localS3.start();
     s3 = client(localS3.getPort());
@@ -73,33 +71,41 @@ public class S3EventListenerIntegrationTest {
         .build();
   }
 
-  private ObjectEvent lastObjectEvent() {
-    return objectEvents.get(objectEvents.size() - 1);
+  /**
+   * Sort a committed change into the changes of the buckets and those of the objects; only a change of a bucket names
+   * no object key.
+   */
+  private void record(S3Change change) {
+    (change.key() == null ? bucketChanges : objectChanges).add(change);
+  }
+
+  private S3Change lastObjectChange() {
+    return objectChanges.get(objectChanges.size() - 1);
   }
 
   @Test
-  void firesEventsWithObjectDetails() {
+  void firesChangesWithObjectDetails() {
     s3.createBucket(request -> request.bucket(BUCKET));
-    assertEquals(1, bucketEvents.size());
-    assertEquals(S3EventType.BUCKET_CREATED, bucketEvents.get(0).getEventType());
-    assertEquals("CreateBucket", bucketEvents.get(0).getSource());
-    assertEquals(BUCKET, bucketEvents.get(0).getBucketName());
+    assertEquals(1, bucketChanges.size());
+    assertEquals(S3ChangeType.BUCKET_CREATED, bucketChanges.get(0).type());
+    assertEquals("CreateBucket", bucketChanges.get(0).operation());
+    assertEquals(BUCKET, bucketChanges.get(0).bucketName());
 
     s3.putObject(request -> request.bucket(BUCKET).key("a.txt"), RequestBody.fromString("Hello"));
-    ObjectEvent put = lastObjectEvent();
-    assertEquals(S3EventType.OBJECT_CREATED, put.getEventType());
-    assertEquals("PutObject", put.getSource());
-    assertEquals("a.txt", put.getObjectKey());
-    assertEquals(5L, put.getSize());
-    assertEquals(DigestUtils.md5Hex("Hello"), put.getEtag());
-    assertNull(put.getVersionId());
+    S3Change put = lastObjectChange();
+    assertEquals(S3ChangeType.OBJECT_CREATED, put.type());
+    assertEquals("PutObject", put.operation());
+    assertEquals("a.txt", put.key());
+    assertEquals(5L, put.size());
+    assertEquals(DigestUtils.md5Hex("Hello"), put.etag());
+    assertNull(put.versionId());
 
     s3.copyObject(request -> request.sourceBucket(BUCKET).sourceKey("a.txt").destinationBucket(BUCKET).destinationKey("b.txt"));
-    ObjectEvent copy = lastObjectEvent();
-    assertEquals("CopyObject", copy.getSource());
-    assertEquals("b.txt", copy.getObjectKey());
-    assertEquals(5L, copy.getSize());
-    assertEquals(DigestUtils.md5Hex("Hello"), copy.getEtag());
+    S3Change copy = lastObjectChange();
+    assertEquals("CopyObject", copy.operation());
+    assertEquals("b.txt", copy.key());
+    assertEquals(5L, copy.size());
+    assertEquals(DigestUtils.md5Hex("Hello"), copy.etag());
 
     byte[] firstPart = new byte[5 * 1024 * 1024];
     byte[] lastPart = "tail".getBytes();
@@ -108,29 +114,29 @@ public class S3EventListenerIntegrationTest {
         RequestBody.fromBytes(firstPart)).eTag();
     String etag2 = s3.uploadPart(request -> request.bucket(BUCKET).key("big.bin").uploadId(uploadId).partNumber(2),
         RequestBody.fromBytes(lastPart)).eTag();
-    int eventsBeforeComplete = objectEvents.size();
+    int changesBeforeComplete = objectChanges.size();
     CompleteMultipartUploadResponse completed = s3.completeMultipartUpload(request -> request.bucket(BUCKET).key("big.bin")
         .uploadId(uploadId)
         .multipartUpload(upload -> upload.parts(
             CompletedPart.builder().partNumber(1).eTag(etag1).build(),
             CompletedPart.builder().partNumber(2).eTag(etag2).build())));
-    assertEquals(eventsBeforeComplete + 1, objectEvents.size());
-    ObjectEvent multipart = lastObjectEvent();
-    assertEquals(S3EventType.OBJECT_CREATED, multipart.getEventType());
-    assertEquals("CompleteMultipartUpload", multipart.getSource());
-    assertEquals("big.bin", multipart.getObjectKey());
-    assertEquals((long) firstPart.length + lastPart.length, multipart.getSize());
-    // An event reports the entity tag without its quotes, like the eTag of an Amazon S3 event notification.
-    assertEquals(Etags.unquoted(completed.eTag()), multipart.getEtag());
+    assertEquals(changesBeforeComplete + 1, objectChanges.size());
+    S3Change multipart = lastObjectChange();
+    assertEquals(S3ChangeType.OBJECT_CREATED, multipart.type());
+    assertEquals("CompleteMultipartUpload", multipart.operation());
+    assertEquals("big.bin", multipart.key());
+    assertEquals((long) firstPart.length + lastPart.length, multipart.size());
+    // A change reports the entity tag without its quotes, like the eTag of an Amazon S3 event notification.
+    assertEquals(Etags.unquoted(completed.eTag()), multipart.etag());
 
     s3.deleteObject(request -> request.bucket(BUCKET).key("a.txt"));
-    ObjectEvent delete = lastObjectEvent();
-    assertEquals(S3EventType.OBJECT_DELETED, delete.getEventType());
-    assertEquals("DeleteObject", delete.getSource());
-    assertEquals("a.txt", delete.getObjectKey());
-    assertFalse(delete.isDeleteMarker());
-    assertNull(delete.getSize());
-    assertNull(delete.getEtag());
+    S3Change delete = lastObjectChange();
+    assertEquals(S3ChangeType.OBJECT_DELETED, delete.type());
+    assertEquals("DeleteObject", delete.operation());
+    assertEquals("a.txt", delete.key());
+    assertFalse(delete.deleteMarker());
+    assertNull(delete.size());
+    assertNull(delete.etag());
   }
 
   /**
@@ -138,36 +144,36 @@ public class S3EventListenerIntegrationTest {
    * notified like a client of the HTTP API.
    */
   @Test
-  void firesEventsForChangesMadeThroughTheServices() {
+  void firesChangesMadeThroughTheServices() {
     localS3.getS3Manager().bucketService().createBucket(BUCKET);
-    assertEquals(1, bucketEvents.size());
-    assertEquals("CreateBucket", bucketEvents.get(0).getSource());
+    assertEquals(1, bucketChanges.size());
+    assertEquals("CreateBucket", bucketChanges.get(0).operation());
 
     localS3.getS3Manager().objectService().putObject(BUCKET, "embedded.txt", PutObjectOptions.builder()
         .content(new ByteArrayInputStream("Hello".getBytes()))
         .build());
-    ObjectEvent put = lastObjectEvent();
-    assertEquals(S3EventType.OBJECT_CREATED, put.getEventType());
-    assertEquals("PutObject", put.getSource());
-    assertEquals("embedded.txt", put.getObjectKey());
-    assertEquals(5L, put.getSize());
-    assertEquals("s3:ObjectCreated:Put", put.getS3EventName());
+    S3Change put = lastObjectChange();
+    assertEquals(S3ChangeType.OBJECT_CREATED, put.type());
+    assertEquals("PutObject", put.operation());
+    assertEquals("embedded.txt", put.key());
+    assertEquals(5L, put.size());
+    assertEquals("s3:ObjectCreated:Put", put.s3EventName());
 
-    // The object is visible to clients by the time its event is delivered, and a client's delete is delivered too.
+    // The object is visible to clients by the time its change is delivered, and a client's delete is delivered too.
     s3.deleteObject(request -> request.bucket(BUCKET).key("embedded.txt"));
-    assertEquals(S3EventType.OBJECT_DELETED, lastObjectEvent().getEventType());
-    assertEquals(2, objectEvents.size());
+    assertEquals(S3ChangeType.OBJECT_DELETED, lastObjectChange().type());
+    assertEquals(2, objectChanges.size());
   }
 
   @Test
-  void firesEventsForTaggingAclAndAbortedUploads() {
+  void firesChangesForTaggingAclAndAbortedUploads() {
     s3.createBucket(request -> request.bucket(BUCKET));
     s3.putBucketVersioning(request -> request.bucket(BUCKET)
         .versioningConfiguration(config -> config.status(BucketVersioningStatus.ENABLED)));
     String versionId = s3.putObject(request -> request.bucket(BUCKET).key("a.txt"), RequestBody.fromString("Hello"))
         .versionId();
 
-    objectEvents.clear();
+    objectChanges.clear();
     s3.putObjectTagging(request -> request.bucket(BUCKET).key("a.txt")
         .tagging(tagging -> tagging.tagSet(tag -> tag.key("k").value("v"))));
     s3.deleteObjectTagging(request -> request.bucket(BUCKET).key("a.txt"));
@@ -175,40 +181,40 @@ public class S3EventListenerIntegrationTest {
         .accessControlPolicy(policy -> policy.owner(owner -> owner.id("001").displayName("LocalS3"))
             .grants(grant -> grant.permission("FULL_CONTROL")
                 .grantee(grantee -> grantee.type("CanonicalUser").id("001")))));
-    assertEquals(List.of(S3EventType.OBJECT_TAGGING_PUT, S3EventType.OBJECT_TAGGING_DELETED, S3EventType.OBJECT_ACL_PUT),
-        objectEvents.stream().map(ObjectEvent::getEventType).toList());
+    assertEquals(List.of(S3ChangeType.OBJECT_TAGGING_PUT, S3ChangeType.OBJECT_TAGGING_DELETED, S3ChangeType.OBJECT_ACL_PUT),
+        objectChanges.stream().map(S3Change::type).toList());
     assertEquals(List.of("PutObjectTagging", "DeleteObjectTagging", "PutObjectAcl"),
-        objectEvents.stream().map(ObjectEvent::getSource).toList());
+        objectChanges.stream().map(S3Change::operation).toList());
     assertEquals(List.of("s3:ObjectTagging:Put", "s3:ObjectTagging:Delete", "s3:ObjectAcl:Put"),
-        objectEvents.stream().map(ObjectEvent::getS3EventName).toList());
-    assertTrue(objectEvents.stream().allMatch(event -> versionId.equals(event.getVersionId())));
+        objectChanges.stream().map(S3Change::s3EventName).toList());
+    assertTrue(objectChanges.stream().allMatch(change -> versionId.equals(change.versionId())));
 
-    objectEvents.clear();
+    objectChanges.clear();
     String uploadId = s3.createMultipartUpload(request -> request.bucket(BUCKET).key("big.bin")).uploadId();
     s3.uploadPart(request -> request.bucket(BUCKET).key("big.bin").uploadId(uploadId).partNumber(1),
         RequestBody.fromString("part"));
-    assertTrue(objectEvents.isEmpty(), "Neither creating an upload nor uploading a part fires an event.");
+    assertTrue(objectChanges.isEmpty(), "Neither creating an upload nor uploading a part fires a change.");
     s3.abortMultipartUpload(request -> request.bucket(BUCKET).key("big.bin").uploadId(uploadId));
-    assertEquals(1, objectEvents.size());
-    assertEquals(S3EventType.MULTIPART_UPLOAD_ABORTED, lastObjectEvent().getEventType());
-    assertEquals(uploadId, lastObjectEvent().getUploadId());
+    assertEquals(1, objectChanges.size());
+    assertEquals(S3ChangeType.MULTIPART_UPLOAD_ABORTED, lastObjectChange().type());
+    assertEquals(uploadId, lastObjectChange().uploadId());
   }
 
   @Test
-  void firesEventsForTheDefaultBuckets() {
-    List<BucketEvent> events = new CopyOnWriteArrayList<>();
-    LocalS3 withBuckets = LocalS3.builder().port(-1).buckets("first", "second").bucketEventListener(events::add).build();
+  void firesChangesForTheDefaultBuckets() {
+    List<S3Change> changes = new CopyOnWriteArrayList<>();
+    LocalS3 withBuckets = LocalS3.builder().port(-1).buckets("first", "second").changeListener(changes::add).build();
     withBuckets.start();
     try {
-      assertEquals(List.of("first", "second"), events.stream().map(BucketEvent::getBucketName).toList());
-      assertTrue(events.stream().allMatch(event -> "CreateBucket".equals(event.getSource())));
+      assertEquals(List.of("first", "second"), changes.stream().map(S3Change::bucketName).toList());
+      assertTrue(changes.stream().allMatch(change -> "CreateBucket".equals(change.operation())));
     } finally {
       withBuckets.shutdown();
     }
   }
 
   @Test
-  void deleteObjectsFiresEventsOnlyForDeletedKeys() {
+  void deleteObjectsFiresChangesOnlyForDeletedKeys() {
     s3.createBucket(request -> request.bucket(BUCKET));
     s3.putBucketVersioning(request -> request.bucket(BUCKET)
         .versioningConfiguration(config -> config.status(BucketVersioningStatus.SUSPENDED)));
@@ -216,36 +222,33 @@ public class S3EventListenerIntegrationTest {
     s3.putObject(request -> request.bucket(BUCKET).key("b.txt"), RequestBody.fromString("World"));
     ObjectIdentifier missingVersion = ObjectIdentifier.builder().key("missing.txt").versionId("123").build();
 
-    objectEvents.clear();
+    objectChanges.clear();
     DeleteObjectsResponse response = s3.deleteObjects(request -> request.bucket(BUCKET)
         .delete(delete -> delete.objects(ObjectIdentifier.builder().key("a.txt").build(), missingVersion)));
     assertEquals(1, response.deleted().size());
     assertEquals(1, response.errors().size());
-    assertEquals(1, objectEvents.size());
-    ObjectEvent deleted = objectEvents.get(0);
-    assertEquals(S3EventType.OBJECT_DELETED, deleted.getEventType());
-    assertEquals("DeleteObjects", deleted.getSource());
-    assertEquals("a.txt", deleted.getObjectKey());
-    assertTrue(deleted.isDeleteMarker());
+    assertEquals(1, objectChanges.size());
+    S3Change deleted = objectChanges.get(0);
+    assertEquals(S3ChangeType.OBJECT_DELETED, deleted.type());
+    assertEquals("DeleteObjects", deleted.operation());
+    assertEquals("a.txt", deleted.key());
+    assertTrue(deleted.deleteMarker());
 
-    objectEvents.clear();
+    objectChanges.clear();
     DeleteObjectsResponse quietResponse = s3.deleteObjects(request -> request.bucket(BUCKET)
         .delete(delete -> delete.quiet(true).objects(ObjectIdentifier.builder().key("b.txt").build(), missingVersion)));
     assertTrue(quietResponse.deleted().isEmpty());
     assertEquals(1, quietResponse.errors().size());
-    assertEquals(1, objectEvents.size());
-    assertEquals("b.txt", objectEvents.get(0).getObjectKey());
+    assertEquals(1, objectChanges.size());
+    assertEquals("b.txt", objectChanges.get(0).key());
   }
 
   @Test
   void failingListenerDoesNotFailRequest() {
     LocalS3 failing = LocalS3.builder()
         .port(-1)
-        .bucketEventListener(event -> {
-          throw new IllegalStateException("bucket listener failed");
-        })
-        .objectEventListener(event -> {
-          throw new IllegalStateException("object listener failed");
+        .changeListener(change -> {
+          throw new IllegalStateException("change listener failed");
         })
         .build();
     failing.start();
@@ -259,18 +262,18 @@ public class S3EventListenerIntegrationTest {
   }
 
   @Test
-  void deliversEventsOnConfiguredExecutor() throws InterruptedException {
-    ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "s3-event-listener"));
+  void deliversChangesOnConfiguredExecutor() throws InterruptedException {
+    ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "s3-change-listener"));
     BlockingQueue<String> listenerThreads = new LinkedBlockingQueue<>();
     LocalS3 async = LocalS3.builder()
         .port(-1)
-        .eventListenerExecutor(executor)
-        .bucketEventListener(event -> listenerThreads.add(Thread.currentThread().getName()))
+        .changeListenerExecutor(executor)
+        .changeListener(change -> listenerThreads.add(Thread.currentThread().getName()))
         .build();
     async.start();
     try (S3Client client = client(async.getPort())) {
       client.createBucket(request -> request.bucket(BUCKET));
-      assertEquals("s3-event-listener", listenerThreads.poll(5, TimeUnit.SECONDS));
+      assertEquals("s3-change-listener", listenerThreads.poll(5, TimeUnit.SECONDS));
     } finally {
       async.shutdown();
       executor.shutdownNow();

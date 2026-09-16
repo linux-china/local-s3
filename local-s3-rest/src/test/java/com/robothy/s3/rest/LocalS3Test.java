@@ -148,7 +148,11 @@ class LocalS3Test {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
         .buckets("thread-bucket")
-        .objectEventListener(event -> handlerThread.set(Thread.currentThread().getName()))
+        .changeListener(change -> {
+          if (change.key() != null) {
+            handlerThread.set(Thread.currentThread().getName());
+          }
+        })
         .build();
     localS3.start();
     try {
@@ -157,7 +161,7 @@ class LocalS3Test {
               URI.create("http://127.0.0.1:" + localS3.getPort() + "/thread-bucket/a.txt"))
           .PUT(HttpRequest.BodyPublishers.ofString("hello")).build(), HttpResponse.BodyHandlers.ofString());
       assertEquals(200, response.statusCode());
-      // Object event listeners run synchronously on the thread handling the request.
+      // Change listeners run synchronously on the thread handling the request.
       assertTrue(handlerThread.get().startsWith("locals3-executor-group"),
           "Request handled on " + handlerThread.get() + " instead of the executor group.");
     } finally {

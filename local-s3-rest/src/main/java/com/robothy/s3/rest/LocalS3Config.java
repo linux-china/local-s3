@@ -1,8 +1,7 @@
 package com.robothy.s3.rest;
 
+import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
-import com.robothy.s3.rest.listener.BucketEventListener;
-import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,9 +21,8 @@ import org.jspecify.annotations.Nullable;
  * @param dataPath the data directory, or the initial data of an {@code IN_MEMORY} service; {@code null} for none.
  * @param mode whether the data is kept in memory or persisted to {@code dataPath}.
  * @param buckets the buckets that are created when the service starts, and again when it is reset.
- * @param bucketEventListener receives the bucket events; {@code null} for none.
- * @param objectEventListener receives the object events; {@code null} for none.
- * @param eventListenerExecutor runs the event listeners.
+ * @param changeListeners receive the changes that the services commit; empty for none.
+ * @param changeListenerExecutor runs the change listeners.
  * @param initialDataCacheEnabled whether the initial data of an {@code IN_MEMORY} service is cached.
  * @param daemonThreads whether the threads that serve the requests are daemon threads.
  * @param registerShutdownHook whether starting the service registers a JVM shutdown hook.
@@ -52,9 +50,8 @@ public record LocalS3Config(
     @Nullable Path dataPath,
     LocalS3Mode mode,
     List<String> buckets,
-    @Nullable BucketEventListener bucketEventListener,
-    @Nullable ObjectEventListener objectEventListener,
-    Executor eventListenerExecutor,
+    List<S3ChangeListener> changeListeners,
+    Executor changeListenerExecutor,
     boolean initialDataCacheEnabled,
     boolean daemonThreads,
     boolean registerShutdownHook,
@@ -131,7 +128,8 @@ public record LocalS3Config(
     requireThat(port >= 0 && port <= 65535, "port must be between 0 and 65535.");
     Objects.requireNonNull(mode, "mode");
     buckets = List.copyOf(buckets);
-    Objects.requireNonNull(eventListenerExecutor, "eventListenerExecutor");
+    changeListeners = List.copyOf(changeListeners);
+    Objects.requireNonNull(changeListenerExecutor, "changeListenerExecutor");
     requireThat((accessKeyId == null) == (secretAccessKey == null),
         "accessKeyId and secretAccessKey must be configured together.");
     requireMaxRequestBodySize(maxRequestBodySize);

@@ -114,7 +114,7 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 + PutBucketNotificationConfiguration
 
 (The deprecated `GetBucketNotification` and `PutBucketNotification` send the same requests, and get the same
-answer. LocalS3 has its own listener API instead; see [Listen to bucket and object events](#listen-to-bucket-and-object-events).)
+answer. LocalS3 has its own listener API instead; see [Listen to bucket and object changes](#listen-to-bucket-and-object-changes).)
 
 **Object Lock and retention**
 + GetObjectLegalHold
@@ -327,66 +327,64 @@ class AppTest {
 Both attributes must be set together; setting neither, which is the default, leaves verification off and
 injects an anonymous client.
 
-#### Listen to bucket and object events
+#### Listen to bucket and object changes
 
-`bucketEventListener` and `objectEventListener` are functional interfaces that receive an event whenever a
-bucket or an object changes, e.g. to trigger an indexer or to assert in a test that an upload happened.
+`changeListener` subscribes an `S3ChangeListener`, which receives an `S3Change` whenever a bucket or an object
+changes, e.g. to trigger an indexer or to assert in a test that an upload happened. Several listeners may be
+subscribed; each receives every change.
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .bucketEventListener(event ->
-        System.out.println(event.getEventType() + " " + event.getBucketName()))
-    .objectEventListener(event ->
-        System.out.println(event.getEventType() + " " + event.getObjectUrl() + " " + event.getSize()))
+    .changeListener(change ->
+        System.out.println(change.type() + " " + change.bucketName() + " " + change.key()))
     .build();
 
 localS3.start();
 ```
 
-Events are published by the services of LocalS3 rather than by its HTTP handlers, so a change is delivered however
+Changes are published by the services of LocalS3 rather than by its HTTP handlers, so a change is delivered however
 it is made: by a client of the HTTP API, or by the application itself through `localS3.getS3Manager()`, e.g.
 `getS3Manager().objectService().putObject(...)`. The buckets of `buckets(...)` / `AWS_BUCKETS` fire
-`BUCKET_CREATED` too. An event is only delivered once its change is persisted and the lock of its bucket is released,
+`BUCKET_CREATED` too. A change is only delivered once it is persisted and the lock of its bucket is released,
 so a listener never hears of a change that was rejected or failed, and may call LocalS3 again. A `reset()` doesn't
-fire events for the data it drops.
+fire changes for the data it drops.
 
-Every event carries `getEventId()`, `getEventType()`, `getTimestamp()` and `getSource()`, the S3 operation that
-triggered it, e.g. `PutObject`, `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, `DeleteObjects` or
-`CreateBucket`. `getS3EventName()` names the event like an
+Every change carries `type()`, `bucketName()` and `operation()`, the S3 operation that made it, e.g. `PutObject`,
+`CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, `DeleteObjects` or `CreateBucket`. `s3EventName()` names the
+change like an
 [Amazon S3 event notification](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-how-to-event-types-and-destinations.html),
-e.g. `s3:ObjectCreated:Copy` or `s3:ObjectRemoved:DeleteMarkerCreated`, and is `null` for the events that Amazon S3
+e.g. `s3:ObjectCreated:Copy` or `s3:ObjectRemoved:DeleteMarkerCreated`, and is `null` for the changes that Amazon S3
 doesn't notify of.
 
-| Event type | Source | `getS3EventName()` | Details |
+| Change type | Operation | `s3EventName()` | Details |
 |---|---|---|---|
-| `BUCKET_CREATED`, `BUCKET_DELETED` | `CreateBucket`, `DeleteBucket` | `null` | Delivered to `bucketEventListener`: `getBucketName()`, `getBucketRegion()` |
-| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `getObjectKey()`, `getObjectUrl()` (`s3://bucket/key`), `getSize()`, `getEtag()`, `getVersionId()` |
-| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects` | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `getObjectKey()`, `getObjectUrl()`, `getVersionId()`, `isDeleteMarker()`; `getSize()` and `getEtag()` are `null` |
-| `OBJECT_TAGGING_PUT`, `OBJECT_TAGGING_DELETED` | `PutObjectTagging`, `DeleteObjectTagging` | `s3:ObjectTagging:Put`, `:Delete` | `getObjectKey()`, `getVersionId()`, `getSize()`, `getEtag()` of the version |
-| `OBJECT_ACL_PUT` | `PutObjectAcl` | `s3:ObjectAcl:Put` | `getObjectKey()`, `getVersionId()`, `getSize()`, `getEtag()` of the version |
-| `MULTIPART_UPLOAD_ABORTED` | `AbortMultipartUpload` | `null` | `getObjectKey()`, `getUploadId()`; fired only if the upload existed |
+| `BUCKET_CREATED`, `BUCKET_DELETED` | `CreateBucket`, `DeleteBucket` | `null` | `bucketName()`, `bucketRegion()`; `key()` is `null` |
+| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `key()`, `size()`, `etag()`, `versionId()` |
+| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects` | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `key()`, `versionId()`, `deleteMarker()`; `size()` and `etag()` are `null` |
+| `OBJECT_TAGGING_PUT`, `OBJECT_TAGGING_DELETED` | `PutObjectTagging`, `DeleteObjectTagging` | `s3:ObjectTagging:Put`, `:Delete` | `key()`, `versionId()`, `size()`, `etag()` of the version |
+| `OBJECT_ACL_PUT` | `PutObjectAcl` | `s3:ObjectAcl:Put` | `key()`, `versionId()`, `size()`, `etag()` of the version |
+| `MULTIPART_UPLOAD_ABORTED` | `AbortMultipartUpload` | `null` | `key()`, `uploadId()`; fired only if the upload existed |
 
-All but the bucket events are delivered to `objectEventListener`. `getVersionId()` is `null` if the bucket has never
-been versioned.
+Only a change of a bucket leaves `key()` `null`, which tells the two apart. `versionId()` is `null` if the bucket has
+never been versioned.
 
-
-By default, the listeners run **synchronously on the thread that made the change**, so the event of a request is
-delivered before the S3 response is sent. Pass an executor to deliver events asynchronously, so that slow listeners don't
-hold up request handling; a single-threaded executor keeps the events in order.
+By default, the listeners run **synchronously on the thread that made the change**, so the change of a request is
+delivered before the S3 response is sent. Pass an executor to deliver changes asynchronously, so that slow listeners
+don't hold up request handling; a single-threaded executor keeps the changes in order.
 
 ```java
 ExecutorService executor = Executors.newSingleThreadExecutor();
 
 LocalS3 localS3 = LocalS3.builder()
-    .eventListenerExecutor(executor)
-    .objectEventListener(event -> index(event.getObjectUrl()))
+    .changeListenerExecutor(executor)
+    .changeListener(change -> index("s3://" + change.bucketName() + "/" + change.key()))
     .build();
 
 localS3.start();
 ```
 
 LocalS3 does not shut the executor down; that stays with the code that created it. Either way, an exception
-thrown by a listener is logged and never fails the S3 request, and an event that the executor rejects is
+thrown by a listener is logged and never fails the S3 request, and a change that the executor rejects is
 dropped with a log entry.
 
 ### LocalS3 for Spring Boot

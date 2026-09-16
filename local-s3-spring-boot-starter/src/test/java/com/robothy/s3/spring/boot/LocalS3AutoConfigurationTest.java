@@ -129,7 +129,7 @@ class LocalS3AutoConfigurationTest {
       assertEquals(1024L * 1024, config.requestBodyFileThreshold());
       assertEquals(32 * 1024, config.maxRequestHeaderSize());
       assertEquals(45, config.idleConnectionTimeoutSeconds());
-      assertEquals(null, config.bucketEventListener(), "Events are disabled.");
+      assertEquals(List.of(), config.changeListeners(), "Events are disabled.");
       assertFalse(context.containsBean("s3Client"), "Clients are disabled.");
       assertTrue(context.getBean(LocalS3.class).isRunning(), "The lifecycle starts the service without clients.");
     });
@@ -186,7 +186,7 @@ class LocalS3AutoConfigurationTest {
         .run(context -> {
           LocalS3Config config = context.getBean(LocalS3.class).getConfig();
           assertEquals(List.of("from-properties", "from-customizer"), config.buckets());
-          assertSame(Customizers.EXECUTOR, config.eventListenerExecutor());
+          assertSame(Customizers.EXECUTOR, config.changeListenerExecutor());
         });
   }
 
@@ -231,7 +231,7 @@ class LocalS3AutoConfigurationTest {
 
     @Bean
     LocalS3BuilderCustomizer bucketsCustomizer() {
-      return builder -> builder.buckets("from-customizer").eventListenerExecutor(EXECUTOR);
+      return builder -> builder.buckets("from-customizer").changeListenerExecutor(EXECUTOR);
     }
 
   }

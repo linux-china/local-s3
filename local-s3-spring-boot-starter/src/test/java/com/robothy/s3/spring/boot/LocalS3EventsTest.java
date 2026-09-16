@@ -3,11 +3,10 @@ package com.robothy.s3.spring.boot;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.rest.LocalS3;
-import com.robothy.s3.rest.listener.BucketEvent;
-import com.robothy.s3.rest.listener.ObjectEvent;
-import com.robothy.s3.rest.listener.S3EventType;
 import java.io.ByteArrayInputStream;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -31,7 +30,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 
 /**
- * The events of LocalS3 reach the {@code @EventListener} and {@code @TransactionalEventListener} methods of the
+ * The changes of LocalS3 reach the {@code @EventListener} and {@code @TransactionalEventListener} methods of the
  * application.
  */
 class LocalS3EventsTest {
@@ -45,20 +44,20 @@ class LocalS3EventsTest {
   void anEventListenerReceivesTheEventsOfTheRequestsAndOfTheEmbeddedCalls() {
     runner.run(context -> {
       Listeners listeners = context.getBean(Listeners.class);
-      assertEquals(List.of("events"), listeners.buckets.stream().map(BucketEvent::getBucketName).toList(),
-          "The event of the default bucket, which is created before the listeners are registered, is kept for them.");
+      assertEquals(List.of("events"), listeners.buckets.stream().map(S3Change::bucketName).toList(),
+          "The change of the default bucket, which is made before the listeners are registered, is kept for them.");
 
       context.getBean(S3Client.class).putObject(request -> request.bucket("events").key("by-client.txt"),
           RequestBody.fromString("Hello"));
       put(context.getBean(LocalS3.class), "embedded.txt");
 
       assertEquals(List.of("by-client.txt", "embedded.txt"),
-          listeners.objects.stream().map(ObjectEvent::getObjectKey).toList());
-      ObjectEvent event = listeners.objects.getFirst();
-      assertEquals(S3EventType.OBJECT_CREATED, event.getEventType());
-      assertEquals("PutObject", event.getSource());
-      assertEquals("s3:ObjectCreated:Put", event.getS3EventName());
-      assertEquals(5L, event.getSize());
+          listeners.objects.stream().map(S3Change::key).toList());
+      S3Change change = listeners.objects.getFirst();
+      assertEquals(S3ChangeType.OBJECT_CREATED, change.type());
+      assertEquals("PutObject", change.operation());
+      assertEquals("s3:ObjectCreated:Put", change.s3EventName());
+      assertEquals(5L, change.size());
     });
   }
 
@@ -76,17 +75,17 @@ class LocalS3EventsTest {
 
       transactions.executeWithoutResult(status -> {
         put(localS3, "committed.txt");
-        assertEquals(List.of("committed.txt"), listeners.objects.stream().map(ObjectEvent::getObjectKey).toList(),
-            "An @EventListener receives the event right away.");
+        assertEquals(List.of("committed.txt"), listeners.objects.stream().map(S3Change::key).toList(),
+            "An @EventListener receives the change right away.");
         assertTrue(listeners.committed.isEmpty(), "A @TransactionalEventListener waits for the commit.");
       });
-      assertEquals(List.of("committed.txt"), listeners.committed.stream().map(ObjectEvent::getObjectKey).toList());
+      assertEquals(List.of("committed.txt"), listeners.committed.stream().map(S3Change::key).toList());
 
       transactions.executeWithoutResult(status -> {
         put(localS3, "rolled-back.txt");
         status.setRollbackOnly();
       });
-      assertEquals(List.of("committed.txt"), listeners.committed.stream().map(ObjectEvent::getObjectKey).toList());
+      assertEquals(List.of("committed.txt"), listeners.committed.stream().map(S3Change::key).toList());
 
       // A request of a client is handled outside any transaction of the application.
       context.getBean(S3Client.class).putObject(request -> request.bucket("events").key("by-client.txt"),
@@ -97,20 +96,20 @@ class LocalS3EventsTest {
   }
 
   /**
-   * The events of the changes that beans make while they are initialized, before the application context registers the
+   * The changes that beans make while they are initialized, before the application context registers the
    * {@code @EventListener} methods, are published in their order once it is refreshed.
    */
   @Test
-  void theEventsOfTheChangesMadeWhileTheContextIsRefreshedAreKept() {
+  void theChangesMadeWhileTheContextIsRefreshedAreKept() {
     runner.withUserConfiguration(InitializingUploader.class).run(context -> {
       put(context.getBean(LocalS3.class), "after-refresh.txt");
       assertEquals(List.of("while-initializing.txt", "after-refresh.txt"),
-          context.getBean(Listeners.class).objects.stream().map(ObjectEvent::getObjectKey).toList());
+          context.getBean(Listeners.class).objects.stream().map(S3Change::key).toList());
     });
   }
 
   @Test
-  void theEventsCanBeDisabled() {
+  void theChangesCanBeDisabled() {
     runner.withPropertyValues("local-s3.events.enabled=false").run(context -> {
       put(context.getBean(LocalS3.class), "silent.txt");
       Listeners listeners = context.getBean(Listeners.class);
@@ -128,25 +127,23 @@ class LocalS3EventsTest {
   @Configuration(proxyBeanMethods = false)
   static class Listeners {
 
-    final List<BucketEvent> buckets = new CopyOnWriteArrayList<>();
+    final List<S3Change> buckets = new CopyOnWriteArrayList<>();
 
-    final List<ObjectEvent> objects = new CopyOnWriteArrayList<>();
+    final List<S3Change> objects = new CopyOnWriteArrayList<>();
 
-    final List<ObjectEvent> committed = new CopyOnWriteArrayList<>();
-
-    @EventListener
-    void onBucket(BucketEvent event) {
-      buckets.add(event);
-    }
+    final List<S3Change> committed = new CopyOnWriteArrayList<>();
 
     @EventListener
-    void onObject(ObjectEvent event) {
-      objects.add(event);
+    void onChange(S3Change change) {
+      // A change of a bucket names no object key.
+      (change.key() == null ? buckets : objects).add(change);
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    void afterCommit(ObjectEvent event) {
-      committed.add(event);
+    void afterCommit(S3Change change) {
+      if (change.key() != null) {
+        committed.add(change);
+      }
     }
 
   }

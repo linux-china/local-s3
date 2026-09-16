@@ -10,7 +10,6 @@ import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.LocalS3Constants;
-import com.robothy.s3.rest.listener.BucketEventListener;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;

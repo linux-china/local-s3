@@ -10,8 +10,9 @@ package com.robothy.s3.core.event;
 public interface S3ChangeListener {
 
   /**
-   * Receive a committed change. Called on the thread that made the change, once the change is persisted and the lock
-   * of its bucket is released, so a listener may call the services again. An exception that it throws is logged and
+   * Receive a committed change, once it is persisted and the lock of its bucket is released, so a listener may call
+   * the services again. Called on the {@linkplain S3ChangePublisher#executor(java.util.concurrent.Executor) executor}
+   * of the publisher, which is the thread that made the change by default. An exception that it throws is logged and
    * doesn't fail the operation, which has completed already.
    *
    * @param change the change.

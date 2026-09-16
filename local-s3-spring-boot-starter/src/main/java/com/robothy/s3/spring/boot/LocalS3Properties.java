@@ -387,12 +387,12 @@ public class LocalS3Properties {
   }
 
   /**
-   * The bucket and object events of LocalS3, published as application events.
+   * The changes that LocalS3 commits, published as application events.
    */
   public static class Events {
 
     /**
-     * Whether to publish the BucketEvent and ObjectEvent of LocalS3 to the application context.
+     * Whether to publish the S3Change of LocalS3 to the application context.
      */
     private boolean enabled = true;
 

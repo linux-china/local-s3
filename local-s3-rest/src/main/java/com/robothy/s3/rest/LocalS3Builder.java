@@ -1,8 +1,7 @@
 package com.robothy.s3.rest;
 
+import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
-import com.robothy.s3.rest.listener.BucketEventListener;
-import com.robothy.s3.rest.listener.ObjectEventListener;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,11 +39,9 @@ public class LocalS3Builder {
 
     private final List<String> defaultBuckets = new ArrayList<>();
 
-    private BucketEventListener bucketEventListener;
+    private final List<S3ChangeListener> changeListeners = new ArrayList<>();
 
-    private ObjectEventListener objectEventListener;
-
-    private Executor eventListenerExecutor = Runnable::run;
+    private Executor changeListenerExecutor = Runnable::run;
 
     private boolean initialDataCacheEnabled = true;
 
@@ -162,43 +159,35 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set the executor that delivers events to the bucket and object event listeners.
+     * Set the executor that delivers the changes to the {@linkplain #changeListener change listeners}.
      *
-     * <p>By default, listeners run synchronously on the thread handling the request, so an event is
+     * <p>By default, listeners run synchronously on the thread handling the request, so a change is
      * delivered before the S3 response is sent. Pass an executor, e.g.
-     * {@code Executors.newSingleThreadExecutor()}, to deliver events asynchronously so that slow listeners
-     * don't hold up request handling; a single-threaded executor keeps the events in order. LocalS3 does not
+     * {@code Executors.newSingleThreadExecutor()}, to deliver changes asynchronously so that slow listeners
+     * don't hold up request handling; a single-threaded executor keeps the changes in order. LocalS3 does not
      * shut the executor down.
      *
      * <p>Either way, an exception thrown by a listener is logged and does not fail the S3 request.
      *
-     * @param eventListenerExecutor executor that runs the event listeners.
+     * @param changeListenerExecutor executor that runs the change listeners.
      * @return builder.
      */
-    public LocalS3Builder eventListenerExecutor(@NonNull Executor eventListenerExecutor) {
-        this.eventListenerExecutor = Objects.requireNonNull(eventListenerExecutor);
+    public LocalS3Builder changeListenerExecutor(@NonNull Executor changeListenerExecutor) {
+        this.changeListenerExecutor = Objects.requireNonNull(changeListenerExecutor);
         return this;
     }
 
     /**
-     * Set bucket event listener
+     * Subscribe a listener to the {@linkplain com.robothy.s3.core.event.S3Change changes} that the services commit:
+     * buckets created and deleted, objects created and deleted, object tagging and ACLs changed, and multipart uploads
+     * aborted. The changes are delivered however the services are called, by an HTTP request or directly through
+     * {@linkplain LocalS3#getS3Manager()}. Several listeners may be subscribed; each receives every change.
      *
-     * @param bucketEventListener bucket event listener
+     * @param changeListener receives the committed changes.
      * @return builder.
      */
-    public LocalS3Builder bucketEventListener(@NonNull BucketEventListener bucketEventListener) {
-        this.bucketEventListener = bucketEventListener;
-        return this;
-    }
-
-    /**
-     * Set object event listener
-     *
-     * @param objectEventListener bucket event listener
-     * @return builder.
-     */
-    public LocalS3Builder objectEventListener(@NonNull ObjectEventListener objectEventListener) {
-        this.objectEventListener = objectEventListener;
+    public LocalS3Builder changeListener(@NonNull S3ChangeListener changeListener) {
+        this.changeListeners.add(Objects.requireNonNull(changeListener));
         return this;
     }
 
@@ -535,8 +524,8 @@ public class LocalS3Builder {
      * @return the configuration.
      */
     public LocalS3Config buildConfig() {
-        return new LocalS3Config(bindHost, port, dataPath, mode, defaultBuckets, bucketEventListener,
-                objectEventListener, eventListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
+        return new LocalS3Config(bindHost, port, dataPath, mode, defaultBuckets, changeListeners,
+                changeListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, strictBucketNames, strictPartSizes, compositeMultipartEtags,

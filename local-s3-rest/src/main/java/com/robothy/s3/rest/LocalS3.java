@@ -10,7 +10,6 @@ import com.robothy.s3.rest.admin.RequestStatistics;
 import com.robothy.s3.rest.admin.ServiceStatistics;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
-import com.robothy.s3.rest.listener.S3EventDispatcher;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.service.BucketNameValidator;
@@ -231,10 +230,8 @@ public class LocalS3 implements AutoCloseable {
             LocalS3Manager manager = createLocalS3Manager();
             // The services publish their changes however they are called, so the listeners also hear of the changes
             // made through getS3Manager(). Subscribed once, together with the manager that is kept across restarts.
-            if (config.bucketEventListener() != null || config.objectEventListener() != null) {
-                manager.addChangeListener(new S3EventDispatcher(config.bucketEventListener(),
-                        config.objectEventListener(), config.eventListenerExecutor()));
-            }
+            manager.changeListenerExecutor(config.changeListenerExecutor());
+            config.changeListeners().forEach(manager::addChangeListener);
             s3Manager = manager;
         }
         if (localS3VectorsManager == null) {

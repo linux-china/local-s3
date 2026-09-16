@@ -11,8 +11,8 @@ public class LocalS3Server {
                 .dataPath("temp/local-s3-data")
                 .credentials("admin","admin")
                 .buckets("msst-test","demo1", "demo2", "demo3")
-                .objectEventListener(event -> {
-                    System.out.println(event.getEventType() + ":" + event.getObjectUrl());
+                .changeListener(change -> {
+                    System.out.println(change.type() + ":s3://" + change.bucketName() + "/" + change.key());
                 })
                 .build();
         localS3.start();

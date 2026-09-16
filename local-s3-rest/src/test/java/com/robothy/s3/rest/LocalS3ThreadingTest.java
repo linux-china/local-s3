@@ -69,10 +69,13 @@ class LocalS3ThreadingTest {
           .port(-1)
           .buckets("threads")
           .virtualThreads(virtualThreads)
-          .objectEventListener(event -> {
+          .changeListener(change -> {
+            if (change.key() == null) {
+              return;
+            }
             // A listener runs synchronously on the thread that handles the request.
-            virtualByKey.put(event.getObjectKey(), Thread.currentThread().isVirtual());
-            threadByKey.put(event.getObjectKey(), Thread.currentThread().getName());
+            virtualByKey.put(change.key(), Thread.currentThread().isVirtual());
+            threadByKey.put(change.key(), Thread.currentThread().getName());
           })
           .build();
       localS3.start();
@@ -101,9 +104,12 @@ class LocalS3ThreadingTest {
         .buckets("threads")
         .virtualThreads(false)
         .s3ExecutorThreadNum(2)
-        .objectEventListener(event -> {
-          threadByKey.put(event.getObjectKey(), Thread.currentThread().getName());
-          if ("slow".equals(event.getObjectKey())) {
+        .changeListener(change -> {
+          if (change.key() == null) {
+            return;
+          }
+          threadByKey.put(change.key(), Thread.currentThread().getName());
+          if ("slow".equals(change.key())) {
             slowStarted.countDown();
             try {
               releaseSlow.await(30, TimeUnit.SECONDS);

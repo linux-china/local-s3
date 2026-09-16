@@ -4,6 +4,7 @@ import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import java.nio.file.Path;
+import java.util.concurrent.Executor;
 
 /**
  * A manager abstraction that manages data and services of local-s3.
@@ -84,7 +85,8 @@ public interface LocalS3Manager {
    * once each change is persisted and the lock of its bucket is released. A {@linkplain #reset()} doesn't publish the
    * deletion of the data it drops.
    *
-   * @param listener receives the changes on the thread that made them.
+   * @param listener receives the changes on the {@linkplain #changeListenerExecutor(Executor) change listener
+   *     executor}, which is the thread that made them by default.
    */
   default void addChangeListener(S3ChangeListener listener) {
     bucketService().bucketGuard().changePublisher().addListener(listener);
@@ -97,6 +99,18 @@ public interface LocalS3Manager {
    */
   default void removeChangeListener(S3ChangeListener listener) {
     bucketService().bucketGuard().changePublisher().removeListener(listener);
+  }
+
+  /**
+   * Set the executor that runs the {@linkplain #addChangeListener subscribed} change listeners. By default a listener
+   * runs on the thread that made the change, before the operation returns; another executor runs the listeners apart
+   * from the operations, so that a slow listener doesn't hold them up.
+   *
+   * @param executor runs the change listeners.
+   * @see com.robothy.s3.core.event.S3ChangePublisher#executor(Executor)
+   */
+  default void changeListenerExecutor(Executor executor) {
+    bucketService().bucketGuard().changePublisher().executor(executor);
   }
 
   /**

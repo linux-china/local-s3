@@ -29,9 +29,9 @@ The starter defines:
   credentials of the service. Creating one starts the service, so a bean can use it while it is initialized, even with a
   random port. The starter backs off from a client that the application defines itself, and from all of them with
   `local-s3.clients.enabled=false`;
-+ the `BucketEvent`s and `ObjectEvent`s of the service as application events. They are published on the thread that
++ the `S3Change`s that the service commits as application events. They are published on the thread that
   made the change, so a change that the application makes through `localS3.getS3Manager()` in a transaction reaches a
-  `@TransactionalEventListener` once the transaction commits. Events of changes made while the context is refreshed,
+  `@TransactionalEventListener` once the transaction commits. Changes made while the context is refreshed,
   e.g. of the default buckets, are published once it is refreshed;
 + with Actuator, a `localS3` health indicator (`management.health.local-s3.enabled`), which checks `/_health` and
   reports the endpoint and the amount of data;
@@ -43,9 +43,9 @@ The starter defines:
 class UploadIndexer {
 
   @EventListener
-  void onObjectCreated(ObjectEvent event) {
-    if (event.getEventType() == S3EventType.OBJECT_CREATED) {
-      index(event.getObjectUrl());
+  void onObjectCreated(S3Change change) {
+    if (change.type() == S3ChangeType.OBJECT_CREATED) {
+      index("s3://" + change.bucketName() + "/" + change.key());
     }
   }
 }

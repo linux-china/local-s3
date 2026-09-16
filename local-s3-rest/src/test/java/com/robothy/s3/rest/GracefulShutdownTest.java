@@ -29,7 +29,10 @@ class GracefulShutdownTest {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
         .buckets("bucket")
-        .objectEventListener(event -> {
+        .changeListener(change -> {
+          if (change.key() == null) {
+            return;
+          }
           handling.countDown();
           await(release);
         })
@@ -107,7 +110,10 @@ class GracefulShutdownTest {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
         .buckets("bucket")
-        .objectEventListener(event -> {
+        .changeListener(change -> {
+          if (change.key() == null) {
+            return;
+          }
           service.get().shutdown();
           stopped.countDown();
         })

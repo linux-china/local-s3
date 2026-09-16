@@ -33,7 +33,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  *   <li>a {@linkplain LocalS3} bean configured by {@linkplain LocalS3Properties local-s3.*} and the
  *   {@linkplain LocalS3BuilderCustomizer customizers}, which {@linkplain LocalS3Lifecycle} starts and stops with the
  *   application context;</li>
- *   <li>the {@code BucketEvent}s and {@code ObjectEvent}s of the service, published to the application context, where
+ *   <li>the {@code S3Change}s that the service commits, published to the application context, where
  *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
  *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
  *   service, unless the application defines its own.</li>
@@ -66,7 +66,7 @@ public class LocalS3AutoConfiguration {
     if (events != null) {
       // Published on the thread that made the change, so that a listener of a change made in a transaction takes part
       // in it, e.g. a @TransactionalEventListener of a put through getS3Manager() in a @Transactional method.
-      builder.bucketEventListener(events::onBucketEvent).objectEventListener(events::onObjectEvent);
+      builder.changeListener(events);
     }
     List<RequestRecorder> recorders = requestRecorders.orderedStream().toList();
     if (!recorders.isEmpty()) {

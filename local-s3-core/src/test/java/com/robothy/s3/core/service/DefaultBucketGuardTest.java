@@ -291,6 +291,36 @@ class DefaultBucketGuardTest {
     assertEquals(1, delivered.size());
   }
 
+  /**
+   * The listeners run on the executor of the publisher, which lets a slow listener run apart from the operation that
+   * made the change.
+   */
+  @Test
+  void theListenersRunOnTheExecutorOfThePublisher() throws Exception {
+    ExecutorService listenerExecutor = Executors.newSingleThreadExecutor(
+        runnable -> new Thread(runnable, "change-listener"));
+    List<String> threads = Collections.synchronizedList(new ArrayList<>());
+    CountDownLatch delivered = new CountDownLatch(2);
+    guard.changePublisher().executor(listenerExecutor);
+    guard.changePublisher().addListener(change -> {
+      threads.add(Thread.currentThread().getName());
+      delivered.countDown();
+    });
+
+    try {
+      guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+        guard.changePublisher().publish(objectCreated("PutObject", "a.txt"));
+        guard.changePublisher().publish(objectCreated("PutObject", "b.txt"));
+        return null;
+      });
+
+      assertTrue(delivered.await(5, TimeUnit.SECONDS));
+      assertEquals(List.of("change-listener", "change-listener"), threads);
+    } finally {
+      listenerExecutor.shutdownNow();
+    }
+  }
+
   private static S3Change objectCreated(String operation, String key) {
     return S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, operation, "bucket", key, null, 0, "etag");
   }

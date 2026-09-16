@@ -6,6 +6,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,11 +21,19 @@ import lombok.extern.slf4j.Slf4j;
  * a change that succeeded, i.e. was persisted, are then delivered, and those of a change that failed are dropped. So a
  * listener never hears of a change that didn't happen, and runs once the locks of the buckets are released, which lets
  * it call the services again.
+ *
+ * <p>The listeners run on the {@linkplain #executor(Executor) executor}, which delivers on the thread that made the
+ * change by default.
  */
 @Slf4j
 public final class S3ChangePublisher {
 
   private final List<S3ChangeListener> listeners = new CopyOnWriteArrayList<>();
+
+  /**
+   * Runs the listeners; delivers on the thread that made the change by default.
+   */
+  private volatile Executor executor = Runnable::run;
 
   /**
    * The changes of the thread that are held back, while it runs a change.
@@ -41,6 +51,28 @@ public final class S3ChangePublisher {
 
   public void removeListener(S3ChangeListener listener) {
     listeners.remove(listener);
+  }
+
+  /**
+   * The executor that runs the listeners.
+   *
+   * @return the executor.
+   */
+  public Executor executor() {
+    return executor;
+  }
+
+  /**
+   * Set the executor that runs the listeners. With the default direct executor, a listener runs on the thread that
+   * made the change, before the operation returns. Another executor, e.g.
+   * {@code Executors.newSingleThreadExecutor()}, runs the listeners apart from the operation, so that a slow listener
+   * doesn't hold it up; a single-threaded executor keeps the changes in the order they were committed. The publisher
+   * doesn't shut the executor down.
+   *
+   * @param executor the executor.
+   */
+  public void executor(Executor executor) {
+    this.executor = Objects.requireNonNull(executor, "executor");
   }
 
   /**
@@ -122,15 +154,24 @@ public final class S3ChangePublisher {
 
   private void deliver(List<S3Change> changes) {
     for (S3Change change : changes) {
-      for (S3ChangeListener listener : listeners) {
-        try {
-          listener.onChange(change);
-        } catch (VirtualMachineError e) {
-          throw e;
-        } catch (Throwable e) {
-          log.error("Change listener failed to handle {} of {}/{}.", change.type(), change.bucketName(),
-              Objects.toString(change.key(), ""), e);
-        }
+      try {
+        executor.execute(() -> notifyListeners(change));
+      } catch (RejectedExecutionException e) {
+        log.error("Dropped {} of {}/{}: the change listener executor rejected it.", change.type(),
+            change.bucketName(), Objects.toString(change.key(), ""), e);
+      }
+    }
+  }
+
+  private void notifyListeners(S3Change change) {
+    for (S3ChangeListener listener : listeners) {
+      try {
+        listener.onChange(change);
+      } catch (VirtualMachineError e) {
+        throw e;
+      } catch (Throwable e) {
+        log.error("Change listener failed to handle {} of {}/{}.", change.type(), change.bucketName(),
+            Objects.toString(change.key(), ""), e);
       }
     }
   }
