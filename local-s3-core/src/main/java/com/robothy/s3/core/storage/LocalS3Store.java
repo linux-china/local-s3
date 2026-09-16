@@ -21,6 +21,11 @@ import org.h2.mvstore.MVStore;
  * service and another one that starts from its directory, share one open store, which is closed once they all
  * {@linkplain #close()} it. Sharing it is also what keeps them consistent: they read and write the same metadata
  * rather than overwrite each other's.
+ *
+ * <p>The one store of a file is open either for reading or for writing, and stays that way while a holder still reads
+ * it. {@linkplain #readOnly(Path)} therefore shares a store that {@linkplain #persistent(Path)} opened, but not the
+ * other way around: opening a data directory for writing while it is open read-only is rejected, see
+ * {@linkplain #persistent(Path)}.
  */
 public final class LocalS3Store implements AutoCloseable {
 
@@ -66,6 +71,9 @@ public final class LocalS3Store implements AutoCloseable {
    *
    * @param dataPath the data directory.
    * @return the store over {@code dataPath/}{@value #FILE_NAME}, shared with the other holders of the same file.
+   * @throws IllegalStateException if the file is already open read-only, e.g. by an {@code IN_MEMORY} service that is
+   *     loading its initial data from the same directory. Such a store can't be written, and can't become writable
+   *     while its holder still reads it.
    */
   public static LocalS3Store persistent(Path dataPath) {
     Objects.requireNonNull(dataPath, "dataPath");
@@ -77,8 +85,8 @@ public final class LocalS3Store implements AutoCloseable {
    * Open the store of a data directory for reading, e.g. to load the initial data of an {@code IN_MEMORY} service.
    *
    * @param dataPath the data directory.
-   * @return the store over {@code dataPath/}{@value #FILE_NAME}, shared with the other holders of the same file; an
-   *     empty in-memory store if the directory holds no {@value #FILE_NAME}.
+   * @return the store over {@code dataPath/}{@value #FILE_NAME}, shared with the other holders of the same file, which
+   *     is writable if one of them writes it; an empty in-memory store if the directory holds no {@value #FILE_NAME}.
    */
   public static LocalS3Store readOnly(Path dataPath) {
     Objects.requireNonNull(dataPath, "dataPath");
@@ -96,10 +104,30 @@ public final class LocalS3Store implements AutoCloseable {
     return dataPath.toAbsolutePath().normalize().resolve(FILE_NAME);
   }
 
+  /**
+   * Open the store of a file, or share the one that is already open.
+   *
+   * <p>MVStore locks the file it opens, so a file has a single open store, which every holder shares. The store was
+   * opened for reading or for writing, and can't become the other afterwards while a holder still reads it: a caller
+   * that needs to write a store that is open read-only is rejected here, where the reason is known, rather than by
+   * MVStore at the first write, long after the store was handed out. A caller that only reads shares a writable store,
+   * which reads the same metadata.
+   *
+   * @param file the file of the store.
+   * @param readOnly whether the caller only reads the store.
+   * @return the store, whose holder the caller now is.
+   * @throws IllegalStateException if the caller writes the store and it is open read-only.
+   */
   private static LocalS3Store open(Path file, boolean readOnly) {
     synchronized (OPEN_FILES) {
       LocalS3Store open = OPEN_FILES.get(file);
       if (open != null) {
+        if (!readOnly && open.store.isReadOnly()) {
+          throw new IllegalStateException("The metadata store " + file + " is open read-only, e.g. to load the"
+              + " initial data of an IN_MEMORY service, so it can't be opened for writing at the same time."
+              + " Give the service that writes it a data directory of its own, or open it once the read-only"
+              + " holder has closed it.");
+        }
         open.holders++;
         return open;
       }
