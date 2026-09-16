@@ -379,6 +379,59 @@ class VectorSearchEngineTest {
     assertTrue(results.get(1).distance() <= results.get(2).distance());
   }
 
+  /**
+   * The components are multiplied and subtracted as doubles: as floats, a product or difference is rounded to 24 bits
+   * of mantissa before it is summed.
+   */
+  @Test
+  void calculateDistance_doesNotRoundTheTermsToFloat() {
+    // 16777216 - 1.5 is 16777214.5, which isn't a float: a float subtraction answers 16777214.
+    assertEquals(16777214.5, searchEngine.calculateDistance(
+        new float[] {16777216f, 0f}, new float[] {1.5f, 0f}, DistanceMetric.EUCLIDEAN));
+  }
+
+  /**
+   * The cosine distance of {@code b} is smaller than that of {@code c}, which is {@code b} with its first component one
+   * float step greater, as exact arithmetic shows. Float products rounded the terms enough to rank {@code c} first.
+   */
+  @Test
+  void findNearestVectors_ranksCloseCosineDistancesExactly() {
+    float[] query = {818f / 7f, 506f / 7f};
+    float[] b = {646f / 7f, 234f / 7f};
+    float[] c = {Math.nextUp(646f / 7f), 234f / 7f};
+    VectorObjectMetadata vectorB = new VectorObjectMetadata("b", 2, vectorStorage.putVectorData(b), null);
+    VectorObjectMetadata vectorC = new VectorObjectMetadata("c", 2, vectorStorage.putVectorData(c), null);
+
+    for (List<VectorObjectMetadata> candidates : List.of(List.of(vectorB, vectorC), List.of(vectorC, vectorB))) {
+      List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
+          query, candidates, vectorStorage, DistanceMetric.COSINE, 2, null);
+      assertEquals(List.of("b", "c"), results.stream().map(result -> result.vectorMetadata().getVectorId()).toList());
+      assertTrue(results.get(0).distance() < results.get(1).distance());
+    }
+  }
+
+  /**
+   * Candidates at the same distance, e.g. vectors of the same values, are ranked by vector ID, so that a query answers
+   * the same vectors in the same order whatever order the index hands the candidates out in.
+   */
+  @Test
+  void findNearestVectors_ranksEqualDistancesByVectorId() {
+    List<VectorObjectMetadata> candidates = new java.util.ArrayList<>();
+    for (String vectorId : List.of("e", "b", "a", "d", "c", "f")) {
+      candidates.add(new VectorObjectMetadata(vectorId, 2, vectorStorage.putVectorData(new float[] {1.0f, 1.0f}), null));
+    }
+    java.util.Random random = new java.util.Random(1);
+    for (DistanceMetric metric : DistanceMetric.values()) {
+      for (int i = 0; i < 20; i++) {
+        Collections.shuffle(candidates, random);
+        List<VectorSearchEngine.VectorSearchResult> results = searchEngine.findNearestVectors(
+            new float[] {1.0f, 2.0f}, candidates, vectorStorage, metric, 3, null);
+        assertEquals(List.of("a", "b", "c"),
+            results.stream().map(result -> result.vectorMetadata().getVectorId()).toList(), candidates::toString);
+      }
+    }
+  }
+
   @Test
   void testMissingVectorData() {
     // Create metadata pointing to non-existent storage ID

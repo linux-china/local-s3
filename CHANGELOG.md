@@ -153,6 +153,11 @@ imported either.
 + A single `PutObject` or `UploadPart` of more than 2 GiB and up to `maxRequestBodySize` (5 GiB) is stored instead of
   failing with `InternalError`: such a body is read from its temporary file rather than memory-mapped.
 + The data of S3 Vectors is written to the data directory instead of the working directory.
++ `QueryVectors` computes distances in double precision rather than rounding every product and difference of two
+  components to a float, which ranked candidates of close distances in the wrong order, and ranks candidates at the
+  same distance by vector key, so that a query answers the same vectors in the same order every time.
++ `ListObjectVersions` no longer answers every version with an empty `<CheckSumAlgorithm/>`, an element that Amazon S3
+  spells `ChecksumAlgorithm`, and leaves it out for a version stored without a checksum.
 + Continuation tokens of `ListObjectsV2` with `encoding-type=url` no longer repeat pages.
 + `max-keys`, opaque continuation tokens, `x-amz-version-id: null`, and `Last-Modified` and `ETag` headers behave like
   Amazon S3.

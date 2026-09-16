@@ -1,5 +1,6 @@
 package com.robothy.s3.datatypes.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
@@ -14,6 +15,7 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 @Builder
 @Getter
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @JacksonXmlRootElement(localName = "Version")
 public class ObjectVersion implements VersionItem {
 
@@ -34,7 +36,11 @@ public class ObjectVersion implements VersionItem {
   @JacksonXmlProperty(localName = "VersionId")
   protected String versionId;
 
-  @JacksonXmlProperty(localName = "CheckSumAlgorithm")
+  /**
+   * The algorithm of the checksum of the version; {@code null}, and left out, for a version stored without a checksum.
+   * An empty element would be read by the AWS SDK as an algorithm it doesn't know.
+   */
+  @JacksonXmlProperty(localName = "ChecksumAlgorithm")
   private CheckSumAlgorithm checkSumAlgorithm;
 
   @JacksonXmlProperty(localName = "ETag")

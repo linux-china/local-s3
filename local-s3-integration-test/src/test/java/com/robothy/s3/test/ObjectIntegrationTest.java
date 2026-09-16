@@ -189,6 +189,9 @@ public class ObjectIntegrationTest {
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());
     assertEquals(5, versionListing1.versions().get(0).size());
     assertEquals(putObjectResult3.versionId(), versionListing1.versions().get(0).versionId());
+    // The object was put without a checksum: no algorithm, rather than one that the SDK doesn't know.
+    assertTrue(versionListing1.versions().get(0).checksumAlgorithm().isEmpty(),
+        () -> "algorithms: " + versionListing1.versions().get(0).checksumAlgorithmAsStrings().size());
 
     assertTrue(versionListing1.versions().get(0).isLatest());
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());

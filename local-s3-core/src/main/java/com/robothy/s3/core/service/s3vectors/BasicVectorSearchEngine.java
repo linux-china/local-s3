@@ -20,6 +20,15 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 class BasicVectorSearchEngine implements VectorSearchEngine {
 
+  /**
+   * Nearest first. Candidates at the same distance, e.g. vectors of the same values, are ranked by vector ID, which is
+   * unique within an index, so that a query answers the same vectors in the same order whatever order the index hands
+   * out its candidates in.
+   */
+  private static final Comparator<VectorSearchResult> NEAREST_FIRST = Comparator
+      .comparingDouble(VectorSearchResult::distance)
+      .thenComparing(result -> result.vectorMetadata().getVectorId());
+
   @Override
   public double calculateDistance(float[] vector1, float[] vector2, DistanceMetric metric) {
 
@@ -73,10 +82,8 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
       return List.of();
     }
 
-    // Use a max-heap to maintain the K nearest vectors efficiently
-    PriorityQueue<VectorSearchResult> maxHeap = new PriorityQueue<>(
-        Comparator.comparing(VectorSearchResult::distance).reversed()
-    );
+    // A max-heap of the K nearest vectors so far, whose head is the farthest of them.
+    PriorityQueue<VectorSearchResult> maxHeap = new PriorityQueue<>(NEAREST_FIRST.reversed());
 
     double queryNorm = distanceMetric == DistanceMetric.COSINE ? norm(queryVector) : 0.0;
     for (VectorObjectMetadata vectorMetadata : filteredVectors) {
@@ -89,7 +96,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
 
       if (maxHeap.size() < k) {
         maxHeap.offer(new VectorSearchResult(vectorMetadata, distance));
-      } else if (distance < maxHeap.peek().distance()) {
+      } else if (isNearer(distance, vectorMetadata.getVectorId(), maxHeap.peek())) {
         maxHeap.poll();
         maxHeap.offer(new VectorSearchResult(vectorMetadata, distance));
       }
@@ -97,11 +104,20 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
 
     // Convert heap to sorted list (closest first)
     List<VectorSearchResult> results = maxHeap.stream()
-        .sorted(Comparator.comparing(VectorSearchResult::distance))
+        .sorted(NEAREST_FIRST)
         .collect(Collectors.toList());
 
     log.debug("Found {} nearest vectors", results.size());
     return results;
+  }
+
+  /**
+   * Whether a candidate ranks before a result, in the order of {@linkplain #NEAREST_FIRST}, without creating a result
+   * for every candidate that doesn't.
+   */
+  private static boolean isNearer(double distance, String vectorId, VectorSearchResult result) {
+    int byDistance = Double.compare(distance, result.distance());
+    return byDistance < 0 || (byDistance == 0 && vectorId.compareTo(result.vectorMetadata().getVectorId()) < 0);
   }
 
   /**
@@ -129,12 +145,16 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
 
   /**
    * Calculate Euclidean distance: √(∑(ai - bi)²)
+   *
+   * <p>The components are subtracted as doubles, here and in the other distances: a float difference or product is
+   * rounded to the 24 bits of mantissa of a float before it is summed, and over many dimensions such errors rank
+   * candidates of close distances in the wrong order.
    */
   private static double calculateEuclideanDistance(float[] vector1, FloatBuffer vector2) {
     double sumSquaredDiffs = 0.0;
 
     for (int i = 0; i < vector1.length; i++) {
-      double diff = vector1[i] - vector2.get(i);
+      double diff = (double) vector1[i] - vector2.get(i);
       sumSquaredDiffs += diff * diff;
     }
 
@@ -152,7 +172,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     double normB = 0.0;
 
     for (int i = 0; i < vector1.length; i++) {
-      float b = vector2.get(i);
+      double b = vector2.get(i);
       dotProduct += vector1[i] * b;
       normB += b * b;
     }
@@ -174,7 +194,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
   private static double norm(float[] vector) {
     double sum = 0.0;
     for (float value : vector) {
-      sum += value * value;
+      sum += (double) value * value;
     }
     return Math.sqrt(sum);
   }
