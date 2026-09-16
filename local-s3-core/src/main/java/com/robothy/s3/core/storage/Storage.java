@@ -34,7 +34,7 @@ public interface Storage {
    * @param maxTotalSize max total size.
    * @return a {@linkplain Storage} instance.
    */
-  static Storage createInMemory(int maxTotalSize) {
+  static Storage createInMemory(long maxTotalSize) {
     return new InMemoryStorage(maxTotalSize);
   }
 
