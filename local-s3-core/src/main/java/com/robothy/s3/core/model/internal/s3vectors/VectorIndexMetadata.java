@@ -2,8 +2,11 @@ package com.robothy.s3.core.model.internal.s3vectors;
 
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -68,6 +71,30 @@ public class VectorIndexMetadata {
   private Map<String, VectorObjectMetadata> vectorObjects;
 
   /**
+   * Whether a metadata store writes this index a vector at a time, and so needs to be told which vectors changed; see
+   * {@linkplain #trackChanges()}. An index that no store tracks, e.g. of a service that keeps its vectors in memory,
+   * records nothing, so that the IDs it would record don't pile up.
+   */
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile boolean tracksChanges;
+
+  /**
+   * The IDs of the vectors that were added, replaced or removed since the metadata store last wrote this index.
+   */
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private final transient Set<String> changedVectorIds = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Whether the vectors were changed as a whole, e.g. cleared or replaced by another map, since the metadata store last
+   * wrote this index, so that it writes all of them rather than {@linkplain #changedVectorIds}.
+   */
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile boolean allVectorsChanged;
+
+  /**
    * Create a VectorIndexMetadata instance.
    */
   public VectorIndexMetadata() {
@@ -127,7 +154,9 @@ public class VectorIndexMetadata {
   public VectorObjectMetadata addVectorObject(VectorObjectMetadata vectorObject) {
     // Validate dimension compatibility
     vectorObject.validateDimension(this.dimension);
-    return vectorObjects.put(vectorObject.getVectorId(), vectorObject);
+    VectorObjectMetadata replaced = vectorObjects.put(vectorObject.getVectorId(), vectorObject);
+    recordChanged(vectorObject.getVectorId());
+    return replaced;
   }
 
   /**
@@ -147,7 +176,11 @@ public class VectorIndexMetadata {
    * @return the removed vector object metadata, or null if not found
    */
   public VectorObjectMetadata removeVectorObject(String vectorId) {
-    return vectorObjects.remove(vectorId);
+    VectorObjectMetadata removed = vectorObjects.remove(vectorId);
+    if (removed != null) {
+      recordChanged(vectorId);
+    }
+    return removed;
   }
 
   /**
@@ -174,6 +207,77 @@ public class VectorIndexMetadata {
    */
   public void clearVectorObjects() {
     vectorObjects.clear();
+    recordAllChanged();
+  }
+
+  /**
+   * Replace the vectors of this index, e.g. when the index is read.
+   *
+   * @param vectorObjects the vectors, by vector ID.
+   */
+  public void setVectorObjects(Map<String, VectorObjectMetadata> vectorObjects) {
+    this.vectorObjects = vectorObjects;
+    recordAllChanged();
+  }
+
+  /**
+   * Start recording the vectors that change, so that a metadata store that has written this index, or read it, writes
+   * only those; see {@linkplain #drainChangedVectorIds()}. The vectors are changed through the methods of this index,
+   * not through the map of {@linkplain #getVectorObjects()}, whose changes aren't recorded.
+   */
+  public void trackChanges() {
+    changedVectorIds.clear();
+    allVectorsChanged = false;
+    tracksChanges = true;
+  }
+
+  /**
+   * Whether a metadata store tracks the changes of this index, see {@linkplain #trackChanges()}.
+   *
+   * @return {@code true} if the changes are recorded.
+   */
+  public boolean tracksChanges() {
+    return tracksChanges;
+  }
+
+  /**
+   * Take whether the vectors were changed as a whole since this was last called, and forget it. A store that gets
+   * {@code true} writes every vector, and forgets the IDs of {@linkplain #drainChangedVectorIds()} as well.
+   *
+   * @return {@code true} if every vector needs to be written.
+   */
+  public boolean drainAllVectorsChanged() {
+    boolean all = allVectorsChanged;
+    allVectorsChanged = false;
+    return all;
+  }
+
+  /**
+   * Take the IDs of the vectors that were added, replaced or removed since this was last called, and forget them.
+   * Called by the metadata store when it writes the index, which writes the vector an ID holds now, or deletes it.
+   *
+   * @return the IDs of the changed vectors.
+   */
+  public List<String> drainChangedVectorIds() {
+    if (changedVectorIds.isEmpty()) {
+      return List.of();
+    }
+    List<String> drained = List.copyOf(changedVectorIds);
+    drained.forEach(changedVectorIds::remove);
+    return drained;
+  }
+
+  private void recordChanged(String vectorId) {
+    if (tracksChanges) {
+      changedVectorIds.add(vectorId);
+    }
+  }
+
+  private void recordAllChanged() {
+    if (tracksChanges) {
+      allVectorsChanged = true;
+      changedVectorIds.clear();
+    }
   }
 
   /**

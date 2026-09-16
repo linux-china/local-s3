@@ -159,10 +159,16 @@ of a bucket after a failed change.
 | `buckets` | bucket name | the settings of the bucket, e.g. region, versioning, ACL, CORS, without its objects |
 | `objects/<bucket>` | object key | the metadata of the object, with all of its versions |
 | `uploads/<bucket>` | object key | the multipart uploads in progress for that key |
-| `vectors/buckets` | vector bucket name | the vector bucket, with its indexes and the metadata of its vectors |
+| `vectors/buckets` | vector bucket name | the settings of the vector bucket, e.g. encryption and policy, without its indexes |
+| `vectors/indexes/<bucket>` | index name | the configuration of the index, without its vectors |
+| `vectors/objects/<bucket>/<index>` | vector ID | the metadata of the vector: its storage ID, dimension and metadata |
 
 The values are JSON, so the metadata model needs no `Serializable`, and a later version that adds fields still reads
-the store. A vector bucket is written whole, unlike an S3 bucket.
+the store. A vector bucket is spread the same way (`MVStoreVectorBucketMetadataStore`): an index records the vectors
+that change, so a `PutVectors` or `DeleteVectors` writes the vectors of the request rather than the whole bucket. Unlike
+the objects of an S3 bucket, the metadata of the vectors is read whole when the store is opened, since a `QueryVectors`
+filters all vectors of an index anyway. A store of an earlier 2.5 snapshot, which kept a vector bucket as one value of
+`vectors/buckets`, is spread over these maps when it is opened for writing.
 
 **Lazy loading.** Opening a persistent store reads the keys of the objects, not their metadata. Each key gets an
 `ObjectMetadataRef`, which reads the metadata from `objects/<bucket>` on first use; `ObjectMetadataCache` bounds how

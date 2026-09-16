@@ -129,6 +129,9 @@ imported either.
   is about 2.6 MB smaller.
 + All metadata of a data directory, of S3 and S3 Vectors alike, is kept in `buckets.mvstore`, and a change writes only
   the object keys it changed rather than the whole bucket.
++ A change of a vector bucket writes only the vectors and indexes it changed, rather than the whole bucket: putting
+  vectors into a large index no longer costs time and heap in proportion to the index. A `buckets.mvstore` of an
+  earlier 2.5 snapshot is converted when it is opened for writing.
 + Object content files are spread over two levels of subdirectories, `.storage/ab/cd/<id>`; vectors are stored in one
   file per dimension, `vectors/.storage/vectors-<d>.vec`.
 + The change of a bucket, its persistence and the deletion of the content it replaced form a transaction: a failed
