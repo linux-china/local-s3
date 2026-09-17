@@ -37,12 +37,6 @@ dependencies {
         exclude(group: "io.netty", module: "netty-all")
     }
 
-    // Maven doesn't apply the netty-bom above to the consumers of the POM, and picks the version of a module that is the
-    // nearest to the consumer. A project that declares the AWS SDK before LocalS3 would get the Netty 4.1 modules of its
-    // netty-nio-client, e.g. netty-codec and netty-buffer, next to the Netty 4.2 of LocalS3, and LocalS3 fails to start
-    // with a NoClassDefFoundError. Declaring every Netty module of netty-nio-client makes Maven pick LocalS3's version.
-    runtimeOnly(libs.bundles.nettyOfAwsSdk)
-
     implementation(libs.jspecify)
     testImplementation(libs.mockitoCore)
     // Tests assert the levels that LocalS3 logs at.

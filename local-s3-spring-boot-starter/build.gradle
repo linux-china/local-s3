@@ -15,7 +15,7 @@ dependencies {
     implementation(libs.awssdkNettyNioClient)
 
     // The Netty modules of the netty-nio-client of the AWS SDK at LocalS3's version, nearer to a Maven consumer than
-    // the ones of the AWS SDK; see local-s3-rest/build.gradle.
+    // the ones of the AWS SDK; see the nettyOfAwsSdk bundle in gradle/libs.versions.toml.
     runtimeOnly(platform(libs.nettyBom))
     runtimeOnly(libs.bundles.nettyOfAwsSdk)
 
