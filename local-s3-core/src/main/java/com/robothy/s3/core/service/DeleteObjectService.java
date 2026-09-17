@@ -107,7 +107,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
         objectMetadata.putVersionedObjectMetadata(versionId, deleteMarker);
         if (objectMetadata.getVirtualVersion().isPresent()) {
           VersionedObjectMetadata removed =
-              objectMetadata.getVersionedObjectMap().remove(objectMetadata.getVirtualVersion().get());
+              objectMetadata.removeVersionedObjectMetadata(objectMetadata.getVirtualVersion().get());
           if (!removed.isDeleted()) {
             ObjectContentUtils.delete(storage, removed);
           }
@@ -154,7 +154,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
     if (ObjectMetadata.NULL_VERSION.equals(versionId)) {
       Optional<String> virtualVersionOpt = objectMetadata.getVirtualVersion();
       if (virtualVersionOpt.isPresent()) {
-        VersionedObjectMetadata toRemove = objectMetadata.getVersionedObjectMap().remove(virtualVersionOpt.get());
+        VersionedObjectMetadata toRemove = objectMetadata.removeVersionedObjectMetadata(virtualVersionOpt.get());
         isDeleteMarker = toRemove.isDeleted();
         if (!isDeleteMarker) {
           ObjectContentUtils.delete(storage, toRemove);
@@ -165,7 +165,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
       Optional<VersionedObjectMetadata> versionedObjectMetadataOpt = objectMetadata.getVersionedObjectMetadata(versionId);
       if (versionedObjectMetadataOpt.isPresent()
           && !objectMetadata.getVirtualVersion().map(versionId::equals).orElse(false)) {
-        VersionedObjectMetadata removed = objectMetadata.getVersionedObjectMap().remove(versionId);
+        VersionedObjectMetadata removed = objectMetadata.removeVersionedObjectMetadata(versionId);
         isDeleteMarker = removed.isDeleted();
         if (!isDeleteMarker) {
           ObjectContentUtils.delete(storage, removed);

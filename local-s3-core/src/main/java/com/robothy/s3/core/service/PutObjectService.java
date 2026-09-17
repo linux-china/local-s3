@@ -185,7 +185,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       Optional<String> virtualVersionOpt = objectMetadata.getVirtualVersion();
       if (virtualVersionOpt.isPresent()) {
         String lastVirtualVersion = virtualVersionOpt.get();
-        VersionedObjectMetadata previousVersion = objectMetadata.getVersionedObjectMap().remove(lastVirtualVersion);
+        VersionedObjectMetadata previousVersion = objectMetadata.removeVersionedObjectMetadata(lastVirtualVersion);
         // Nothing is deleted for a delete marker.
         ObjectContentUtils.delete(storage, previousVersion);
 

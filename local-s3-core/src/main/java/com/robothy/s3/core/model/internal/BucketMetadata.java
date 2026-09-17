@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import tools.jackson.databind.annotation.JsonDeserialize;
@@ -70,6 +71,15 @@ public class BucketMetadata {
    */
   @JsonIgnore
   private final transient Set<String> changedObjectKeys = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Whether every version of every changed object must be written, rather than only the versions that changed, e.g.
+   * to seed another store, which holds none of them. Set by {@linkplain #markAllChanged()}.
+   */
+  @JsonIgnore
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile boolean allVersionsChanged;
 
   /**
    * The keys whose multipart uploads changed since the metadata store last wrote the bucket.
@@ -204,6 +214,7 @@ public class BucketMetadata {
    * bucket, e.g. to seed a store with a bucket that was read from another one.
    */
   public void markAllChanged() {
+    allVersionsChanged = true;
     changedObjectKeys.addAll(objectMap.keySet());
     objectMap.values().forEach(ObjectMetadataRef::pin);
     changedUploadKeys.addAll(uploads.keySet());
@@ -228,6 +239,18 @@ public class BucketMetadata {
    */
   public List<String> drainChangedObjectKeys() {
     return drain(changedObjectKeys);
+  }
+
+  /**
+   * Take whether every version of the changed objects must be written, see {@linkplain #markAllChanged()}, and forget
+   * it.
+   *
+   * @return {@code true} if the store must write every version of the changed objects.
+   */
+  public boolean drainAllVersionsChanged() {
+    boolean all = allVersionsChanged;
+    allVersionsChanged = false;
+    return all;
   }
 
   /**

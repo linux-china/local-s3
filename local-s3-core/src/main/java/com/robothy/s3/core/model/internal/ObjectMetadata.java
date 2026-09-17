@@ -2,9 +2,15 @@ package com.robothy.s3.core.model.internal;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.robothy.s3.core.converters.deserializer.VersionedObjectMetadataMapConverter;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.List;
+import java.util.NavigableMap;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import tools.jackson.databind.annotation.JsonDeserialize;
@@ -16,6 +22,12 @@ import tools.jackson.databind.annotation.JsonDeserialize;
  * <p>Like {@linkplain BucketMetadata}, it carries no {@code equals} and {@code hashCode} of its own, so
  * two of them are the same object only if they are the same instance: the versions of a key are mutable
  * state that a request adds to, and a generated pair would walk all of them on each call.
+ *
+ * <p>It records which of its versions changed since a metadata store last wrote it, so that the store writes those
+ * rather than every version of the key: a key that is overwritten over and over in a versioned bucket would otherwise
+ * cost a write of its whole history each time. The versions are changed through {@linkplain
+ * #putVersionedObjectMetadata} and {@linkplain #removeVersionedObjectMetadata}, which record the change; a caller that
+ * changes a version in place, e.g. sets its tagging, records it with {@linkplain #markVersionChanged}.
  */
 @Getter
 @Setter
@@ -72,6 +84,23 @@ public class ObjectMetadata {
    */
   private String virtualVersion;
 
+  /**
+   * The IDs of the versions that were put, changed or removed since a metadata store last wrote this object. Not part
+   * of the persisted state.
+   */
+  @JsonIgnore
+  @Getter(AccessLevel.NONE)
+  private final transient Set<String> changedVersionIds = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Whether every version must be written, because this instance has never been written as it is, e.g. it was just
+   * created or read from a whole JSON document. Cleared by {@linkplain #markPersisted()}.
+   */
+  @JsonIgnore
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile boolean allVersionsChanged = true;
+
 
   /**
    * Construct an {@linkplain ObjectMetadata} instance. A new {@linkplain ObjectMetadata} instance must
@@ -111,6 +140,71 @@ public class ObjectMetadata {
    */
   public void putVersionedObjectMetadata(String versionId, VersionedObjectMetadata versionedObjectMetadata) {
     this.versionedObjectMap.put(versionId, versionedObjectMetadata);
+    changedVersionIds.add(versionId);
+  }
+
+  /**
+   * Remove a version of this object.
+   *
+   * @param versionId version ID.
+   * @return the removed version; {@code null} if the object holds no such version.
+   */
+  public VersionedObjectMetadata removeVersionedObjectMetadata(String versionId) {
+    VersionedObjectMetadata removed = versionedObjectMap.remove(versionId);
+    changedVersionIds.add(versionId);
+    return removed;
+  }
+
+  /**
+   * The versions of this object, the most recent one first. The view can't be changed: change the versions through
+   * {@linkplain #putVersionedObjectMetadata} and {@linkplain #removeVersionedObjectMetadata}, which record the change.
+   *
+   * @return a read-only view of the versions by version ID.
+   */
+  public NavigableMap<String, VersionedObjectMetadata> getVersionedObjectMap() {
+    return Collections.unmodifiableNavigableMap(versionedObjectMap);
+  }
+
+  /**
+   * Record that a version was changed in place, e.g. its tagging was set, so that a metadata store writes it.
+   *
+   * @param versionId version ID.
+   */
+  public void markVersionChanged(String versionId) {
+    changedVersionIds.add(versionId);
+  }
+
+  /**
+   * Whether every version must be written, rather than only {@linkplain #drainChangedVersionIds() the changed ones}.
+   *
+   * @return {@code true} if this instance has never been written or read as it is by a metadata store.
+   */
+  @JsonIgnore
+  public boolean isAllVersionsChanged() {
+    return allVersionsChanged;
+  }
+
+  /**
+   * Take the IDs of the versions that changed since this was last called, and forget them.
+   *
+   * @return the changed version IDs, which may name versions that were removed since.
+   */
+  public List<String> drainChangedVersionIds() {
+    if (changedVersionIds.isEmpty()) {
+      return List.of();
+    }
+    List<String> drained = List.copyOf(changedVersionIds);
+    drained.forEach(changedVersionIds::remove);
+    return drained;
+  }
+
+  /**
+   * Record that a metadata store holds this object as it is now, so that only the versions that change from here on
+   * are written.
+   */
+  public void markPersisted() {
+    changedVersionIds.clear();
+    allVersionsChanged = false;
   }
 
   /**

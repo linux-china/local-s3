@@ -164,21 +164,25 @@ of a bucket after a failed change.
 | Map | Key | Value |
 |---|---|---|
 | `buckets` | bucket name | the settings of the bucket, e.g. region, versioning, ACL, CORS, without its objects |
-| `objects/<bucket>` | object key | the metadata of the object, with all of its versions |
+| `objects/<bucket>` | object key | the metadata of the object without its versions, e.g. its virtual version |
+| `versions/<bucket>` | object key + `\0` + version ID | the metadata of that version of the object |
 | `uploads/<bucket>` | object key | the multipart uploads in progress for that key |
 | `vectors/buckets` | vector bucket name | the settings of the vector bucket, e.g. encryption and policy, without its indexes |
 | `vectors/indexes/<bucket>` | index name | the configuration of the index, without its vectors |
 | `vectors/objects/<bucket>/<index>` | vector ID | the metadata of the vector: its storage ID, dimension and metadata |
 
 The values are JSON, so the metadata model needs no `Serializable`, and a later version that adds fields still reads
-the store. A vector bucket is spread the same way (`MVStoreVectorBucketMetadataStore`): an index records the vectors
+the store. An object records the versions that change, so adding a version to a key that holds a thousand writes one
+version rather than all of them; the versions of a key are adjacent in `versions/<bucket>` and read by a range scan. A
+store written before the versions had a map of their own holds every version of a key in `objects/<bucket>`, which is
+still read, and is moved to `versions/<bucket>` the first time the key is written. A vector bucket is spread the same way (`MVStoreVectorBucketMetadataStore`): an index records the vectors
 that change, so a `PutVectors` or `DeleteVectors` writes the vectors of the request rather than the whole bucket. Unlike
 the objects of an S3 bucket, the metadata of the vectors is read whole when the store is opened, since a `QueryVectors`
 filters all vectors of an index anyway. A store of an earlier 2.5 snapshot, which kept a vector bucket as one value of
 `vectors/buckets`, is spread over these maps when it is opened for writing.
 
 **Lazy loading.** Opening a persistent store reads the keys of the objects, not their metadata. Each key gets an
-`ObjectMetadataRef`, which reads the metadata from `objects/<bucket>` on first use; `ObjectMetadataCache` bounds how
+`ObjectMetadataRef`, which reads the metadata from `objects/<bucket>` and `versions/<bucket>` on first use; `ObjectMetadataCache` bounds how
 many are in heap (`LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`) and evicts the least recently read. A reference that a
 change holds is pinned until the change is written.
 

@@ -260,7 +260,10 @@ public final class ObjectMetadataRef {
 
   private ObjectMetadata parse(String json) {
     persistedSize = json.length();
-    return JsonUtils.fromJson(json, ObjectMetadata.class);
+    ObjectMetadata parsed = JsonUtils.fromJson(json, ObjectMetadata.class);
+    // Read from where it is kept, so only what changes from here on needs writing.
+    parsed.markPersisted();
+    return parsed;
   }
 
   @Override

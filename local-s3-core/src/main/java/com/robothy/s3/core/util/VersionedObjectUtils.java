@@ -28,6 +28,24 @@ public class VersionedObjectUtils {
   }
 
   /**
+   * The ID that a version is held by in {@linkplain ObjectMetadata#getVersionedObjectMap()}, for a version that
+   * {@linkplain #getVersionedObjectMetadata} found.
+   *
+   * @param objectMetadata object metadata that contains the versioned object.
+   * @param inputVersionId version ID. May be {@code null}, for the latest version.
+   * @return the ID of the version in the object.
+   */
+  public static String resolveVersionKey(ObjectMetadata objectMetadata, String inputVersionId) {
+    if (Objects.isNull(inputVersionId)) {
+      return objectMetadata.getLatestVersion();
+    }
+    if (ObjectMetadata.NULL_VERSION.equals(inputVersionId)) {
+      return objectMetadata.getVirtualVersion().orElse(inputVersionId);
+    }
+    return inputVersionId;
+  }
+
+  /**
    * Resolve the version to report for an object of {@code bucketMetadata}.
    *
    * <p>An object of a bucket that was never versioned has no version at all, so {@code null} is returned and

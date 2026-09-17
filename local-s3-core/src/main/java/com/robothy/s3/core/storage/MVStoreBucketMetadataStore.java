@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -22,7 +23,9 @@ import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import com.robothy.s3.core.util.Strings;
+import org.h2.mvstore.Cursor;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 import tools.jackson.core.JacksonException;
@@ -32,13 +35,18 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Keeps the metadata of the buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values.
  *
- * <p>The metadata of a bucket is spread over three kinds of map, so that a change writes only what it changed rather
- * than the whole bucket. A put of one object into a bucket of a million objects writes one record.
+ * <p>The metadata of a bucket is spread over four kinds of map, so that a change writes only what it changed rather
+ * than the whole bucket. A put of one object into a bucket of a million objects writes one record, and a put of a
+ * version of a key that holds a thousand versions writes that version rather than all of them.
  *
  * <ul>
  *   <li>{@value #BUCKETS_MAP}: the name of a bucket to its own settings, e.g. its region, versioning, ACL and CORS,
  *   without the objects and uploads it holds;</li>
- *   <li>{@code objects/&lt;bucket&gt;}: an object key to the metadata of the object, with all of its versions;</li>
+ *   <li>{@code objects/&lt;bucket&gt;}: an object key to the metadata of the object without its versions, e.g. its
+ *   virtual version, which is small; a store written before the versions had a map of their own holds every version
+ *   of the key here, which is still read, and is replaced the first time the key is written;</li>
+ *   <li>{@code versions/&lt;bucket&gt;}: an object key, {@code '\0'} and a version ID to the metadata of that version
+ *   of the object. The versions of a key are adjacent, so they are read by a range scan;</li>
  *   <li>{@code uploads/&lt;bucket&gt;}: an object key to the multipart uploads in progress for that key.</li>
  * </ul>
  *
@@ -67,7 +75,38 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
 
   private static final String OBJECTS_MAP_PREFIX = "objects/";
 
+  private static final String VERSIONS_MAP_PREFIX = "versions/";
+
   private static final String UPLOADS_MAP_PREFIX = "uploads/";
+
+  /**
+   * Separates the object key from the version ID in the keys of a {@code versions/} map. A version ID never holds it.
+   */
+  private static final char VERSION_SEPARATOR = '\0';
+
+  /**
+   * The property that holds the versions in the JSON of a whole {@linkplain ObjectMetadata}, which a value of an
+   * {@code objects/} map holds only if it was written before the versions had a map of their own.
+   */
+  private static final String VERSIONS_PROPERTY = "versionedObjectMap";
+
+  /**
+   * Writes an object without its versions, which are stored on their own.
+   */
+  private static final JsonMapper OBJECT_HEADER_MAPPER = JsonMapper.builderWithJackson2Defaults()
+      .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+      .addMixIn(ObjectMetadata.class, ObjectHeader.class)
+      .build();
+
+  /**
+   * Hides the versions of an object from {@linkplain #OBJECT_HEADER_MAPPER}.
+   */
+  private abstract static class ObjectHeader {
+
+    @JsonIgnore
+    abstract NavigableMap<String, VersionedObjectMetadata> getVersionedObjectMap();
+
+  }
 
   /**
    * Writes the settings of a bucket without the objects and the uploads it holds, which are stored on their own.
@@ -174,6 +213,10 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     return store.openMap(OBJECTS_MAP_PREFIX + bucketName);
   }
 
+  private MVMap<String, String> versions(String bucketName) {
+    return store.openMap(VERSIONS_MAP_PREFIX + bucketName);
+  }
+
   private MVMap<String, String> uploads(String bucketName) {
     return store.openMap(UPLOADS_MAP_PREFIX + bucketName);
   }
@@ -189,8 +232,9 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     // opening a bucket of a million objects costs its keys rather than all of their metadata. The multipart uploads
     // in progress are read whole, being few and short lived.
     MVMap<String, String> objects = objects(bucketName);
+    Function<String, String> source = objectSource(objects, versions(bucketName));
     for (String key : objects.keySet()) {
-      bucketMetadata.putObjectMetadataRef(key, ObjectMetadataRef.lazy(key, objects::get, objectMetadataCache));
+      bucketMetadata.putObjectMetadataRef(key, ObjectMetadataRef.lazy(key, source, objectMetadataCache));
     }
     uploads(bucketName).forEach((key, json) -> bucketMetadata.getUploads().put(key, readUploads(json)));
     // A bucket that was just read has nothing left to write.
@@ -211,23 +255,23 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     }
     String name = requireBucketName(bucketMetadata.getBucketName());
 
+    boolean allVersionsChanged = bucketMetadata.drainAllVersionsChanged();
     List<String> changedObjects = bucketMetadata.drainChangedObjectKeys();
     if (!changedObjects.isEmpty()) {
       MVMap<String, String> objects = objects(name);
+      MVMap<String, String> versions = versions(name);
+      Function<String, String> source = objectSource(objects, versions);
       for (String key : changedObjects) {
         ObjectMetadataRef ref = bucketMetadata.getObjectMap().get(key);
         if (ref == null) {
           objects.remove(key);
+          removeVersions(versions, key);
         } else {
-          ObjectMetadata objectMetadata = ref.persisted();
-          String json = JsonUtils.toJson(objectMetadata);
-          objects.put(key, json);
-          ref.persistedSize(json.length());
-          recordMaxId(bucketMetadata, objectMetadata);
+          writeObject(bucketMetadata, objects, versions, key, ref, allVersionsChanged);
           // Written, so the metadata may now be dropped from heap and read back from here. An object that was created
           // in heap gets its source here, and is tracked from here on, so that storing many objects in one session
           // doesn't end up holding the metadata of all of them.
-          ref.attach(key, objects::get, objectMetadataCache);
+          ref.attach(key, source, objectMetadataCache);
           ref.unpin();
           objectMetadataCache.recordRead(ref);
         }
@@ -261,6 +305,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
       throw new IllegalStateException("Failed to delete metadata of bucket " + bucketName);
     }
     store.removeMap(objects(name));
+    store.removeMap(versions(name));
     store.removeMap(uploads(name));
     commit();
   }
@@ -278,9 +323,139 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   }
 
   /**
-   * A snapshot of the maps of a store that reference content in the storage, i.e. the {@code objects/} and
-   * {@code uploads/} maps of every bucket, as they are now: read-only maps that later changes of the store don't change,
-   * as long as the caller keeps the current version of the store in use, see {@linkplain MVStore#registerVersionUsage()}.
+   * Write the metadata of an object: every version of it if the store may not hold them as they are, e.g. the object
+   * is new, or was read from a whole JSON document, or its key was written before the versions had a map of their
+   * own; otherwise only the versions that changed, so that a key with many versions costs the versions that a change
+   * touched.
+   * The metadata of the object without its versions is always written, being small.
+   */
+  private void writeObject(BucketMetadata bucketMetadata, MVMap<String, String> objects,
+                           MVMap<String, String> versions, String key, ObjectMetadataRef ref,
+                           boolean allVersionsChanged) {
+    ObjectMetadata objectMetadata = ref.persisted();
+    List<String> changedVersionIds = objectMetadata.drainChangedVersionIds();
+    String header = writeObjectHeader(objectMetadata);
+    String previousHeader = objects.put(key, header);
+    boolean rewrite = allVersionsChanged || objectMetadata.isAllVersionsChanged() || previousHeader == null
+        || holdsVersions(previousHeader);
+
+    if (rewrite) {
+      removeVersions(versions, key);
+      int size = header.length();
+      for (Map.Entry<String, VersionedObjectMetadata> version : objectMetadata.getVersionedObjectMap().entrySet()) {
+        String json = JsonUtils.toJson(version.getValue());
+        versions.put(versionKey(key, version.getKey()), json);
+        size += json.length();
+        recordMaxId(bucketMetadata, version.getKey(), version.getValue());
+      }
+      ref.persistedSize(size);
+    } else {
+      long size = ref.persistedSize() + header.length() - previousHeader.length();
+      for (String versionId : changedVersionIds) {
+        VersionedObjectMetadata version = objectMetadata.getVersionedObjectMap().get(versionId);
+        String previous;
+        if (version == null) {
+          previous = versions.remove(versionKey(key, versionId));
+        } else {
+          String json = JsonUtils.toJson(version);
+          previous = versions.put(versionKey(key, versionId), json);
+          size += json.length();
+          recordMaxId(bucketMetadata, versionId, version);
+        }
+        size -= previous == null ? 0 : previous.length();
+      }
+      ref.persistedSize((int) Math.max(0, Math.min(Integer.MAX_VALUE, size)));
+    }
+    objectMetadata.markPersisted();
+  }
+
+  /**
+   * Reads the metadata of an object key of a bucket as the JSON of a whole {@linkplain ObjectMetadata}, from the
+   * metadata without the versions and the versions of the key, which are joined as they are stored rather than read and
+   * written again.
+   */
+  private static Function<String, String> objectSource(MVMap<String, String> objects,
+                                                       MVMap<String, String> versions) {
+    return key -> {
+      String header = objects.get(key);
+      if (header == null || holdsVersions(header)) {
+        return header;
+      }
+      StringBuilder json = new StringBuilder(256).append("{\"").append(VERSIONS_PROPERTY).append("\":{");
+      String prefix = versionPrefix(key);
+      boolean first = true;
+      for (Cursor<String, String> cursor = versions.cursor(prefix); cursor.hasNext(); ) {
+        String versionKey = cursor.next();
+        if (!versionKey.startsWith(prefix)) {
+          break;
+        }
+        if (versionKey.indexOf(VERSION_SEPARATOR, prefix.length()) >= 0) {
+          // A version of another key, which starts with this key and the separator.
+          continue;
+        }
+        if (!first) {
+          json.append(',');
+        }
+        first = false;
+        json.append(JsonUtils.toJson(versionKey.substring(prefix.length()))).append(':').append(cursor.getValue());
+      }
+      json.append('}');
+      String properties = header.substring(1, header.length() - 1).strip();
+      if (!properties.isEmpty()) {
+        json.append(',').append(properties);
+      }
+      return json.append('}').toString();
+    };
+  }
+
+  /**
+   * Remove every version of an object key from a {@code versions/} map.
+   */
+  private static void removeVersions(MVMap<String, String> versions, String key) {
+    String prefix = versionPrefix(key);
+    List<String> versionKeys = new ArrayList<>();
+    for (Iterator<String> keys = versions.keyIterator(prefix); keys.hasNext(); ) {
+      String versionKey = keys.next();
+      if (!versionKey.startsWith(prefix)) {
+        break;
+      }
+      if (versionKey.indexOf(VERSION_SEPARATOR, prefix.length()) < 0) {
+        versionKeys.add(versionKey);
+      }
+    }
+    versionKeys.forEach(versions::remove);
+  }
+
+  private static String versionPrefix(String key) {
+    return key + VERSION_SEPARATOR;
+  }
+
+  private static String versionKey(String key, String versionId) {
+    return versionPrefix(key) + versionId;
+  }
+
+  /**
+   * Whether a value of an {@code objects/} map is a whole {@linkplain ObjectMetadata}, with its versions, which is
+   * what a store written before the versions had a map of their own holds.
+   */
+  private static boolean holdsVersions(String objectJson) {
+    return objectJson.contains("\"" + VERSIONS_PROPERTY + "\"");
+  }
+
+  private static String writeObjectHeader(ObjectMetadata objectMetadata) {
+    try {
+      return OBJECT_HEADER_MAPPER.writeValueAsString(objectMetadata);
+    } catch (JacksonException e) {
+      throw new UncheckedIOException("Failed to write the metadata of an object as JSON.",
+          new IOException(e.getMessage(), e));
+    }
+  }
+
+  /**
+   * A snapshot of the maps of a store that reference content in the storage, i.e. the {@code objects/},
+   * {@code versions/} and {@code uploads/} maps of every bucket, as they are now: read-only maps that later changes of
+   * the store don't change, as long as the caller keeps the current version of the store in use, see
+   * {@linkplain MVStore#registerVersionUsage()}.
    *
    * @param store the MVStore of a {@linkplain LocalS3Store}.
    * @return the maps, whether or not a bucket of their name exists, so that anything a map references is counted.
@@ -289,7 +464,8 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     long version = store.getCurrentVersion();
     List<MVMap<String, String>> maps = new ArrayList<>();
     for (String mapName : store.getMapNames()) {
-      if (mapName.startsWith(OBJECTS_MAP_PREFIX) || mapName.startsWith(UPLOADS_MAP_PREFIX)) {
+      if (mapName.startsWith(OBJECTS_MAP_PREFIX) || mapName.startsWith(VERSIONS_MAP_PREFIX)
+          || mapName.startsWith(UPLOADS_MAP_PREFIX)) {
         maps.add(store.<String, String>openMap(mapName).openVersion(version));
       }
     }
@@ -313,18 +489,22 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     ContentIds ids = new ContentIds();
     for (MVMap<String, String> map : maps) {
       boolean objects = map.getName().startsWith(OBJECTS_MAP_PREFIX);
+      boolean versions = map.getName().startsWith(VERSIONS_MAP_PREFIX);
       for (String json : map.values()) {
         if (cancelled.getAsBoolean()) {
           throw new CancellationException();
         }
         if (objects) {
+          if (!holdsVersions(json)) {
+            // Its versions are in the versions/ map of the bucket.
+            continue;
+          }
           ObjectMetadata objectMetadata = JsonUtils.fromJson(json, ObjectMetadata.class);
           for (VersionedObjectMetadata version : objectMetadata.getVersionedObjectMap().values()) {
-            ids.add(version.getFileId());
-            for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
-              ids.add(part.getFileId());
-            }
+            ids.add(version);
           }
+        } else if (versions) {
+          ids.add(JsonUtils.fromJson(json, VersionedObjectMetadata.class));
         } else {
           for (UploadMetadata upload : readUploads(json).values()) {
             for (UploadPartMetadata part : upload.getParts().values()) {
@@ -346,6 +526,13 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     private long[] ids = new long[1024];
 
     private int size;
+
+    void add(VersionedObjectMetadata version) {
+      add(version.getFileId());
+      for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
+        add(part.getFileId());
+      }
+    }
 
     void add(Long id) {
       if (id == null) {
@@ -371,19 +558,17 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   }
 
   /**
-   * Record the greatest generated ID that an object references, so that a service which opens this store again can
-   * seed its ID generator without reading the metadata of every object to find the IDs in use. Only the objects that
-   * are written are walked, so it costs what the change costs.
+   * Record the greatest generated ID that a version of an object references, so that a service which opens this store
+   * again can seed its ID generator without reading the metadata of every object to find the IDs in use. Only the
+   * versions that are written are walked, so it costs what the change costs.
    */
-  private static void recordMaxId(BucketMetadata bucketMetadata, ObjectMetadata objectMetadata) {
-    objectMetadata.getVersionedObjectMap().forEach((versionId, version) -> {
-      bucketMetadata.recordMaxId(toId(versionId));
-      bucketMetadata.recordMaxId(toId(version.getFileId()));
-      // The content of a version completed from a multipart upload is stored in its parts.
-      for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
-        bucketMetadata.recordMaxId(toId(part.getFileId()));
-      }
-    });
+  private static void recordMaxId(BucketMetadata bucketMetadata, String versionId, VersionedObjectMetadata version) {
+    bucketMetadata.recordMaxId(toId(versionId));
+    bucketMetadata.recordMaxId(toId(version.getFileId()));
+    // The content of a version completed from a multipart upload is stored in its parts.
+    for (ObjectPartMetadata part : version.getParts().orElse(List.of())) {
+      bucketMetadata.recordMaxId(toId(part.getFileId()));
+    }
   }
 
   private static void recordMaxId(BucketMetadata bucketMetadata, String uploadId, UploadMetadata upload) {

@@ -1,5 +1,6 @@
 package com.robothy.s3.core.storage;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -9,15 +10,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.InvalidBucketNameException;
+import com.robothy.s3.core.model.internal.BucketChangeScope;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.util.JsonUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ConcurrentSkipListMap;
+import org.h2.mvstore.MVMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -249,6 +253,110 @@ class MVStoreBucketMetadataStoreTest {
     bucket.putObjectMetadata("b.txt", new ObjectMetadata("9999", newer));
     store.store("my-bucket", bucket);
     assertEquals(9999L, store.fetch("my-bucket").getMaxId(), "The greatest ID seen is kept.");
+  }
+
+  /**
+   * Each version of a key is a record of its own, so adding a version to a key that holds many writes that version
+   * rather than every version of the key again.
+   */
+  @Test
+  void writesOnlyTheVersionsThatChanged() {
+    BucketMetadata bucket = bucket("my-bucket");
+    bucket.setVersioningEnabled(true);
+    ObjectMetadata object = object("1", 5L, "etag-1");
+    for (int i = 2; i <= 100; i++) {
+      object.putVersionedObjectMetadata(String.valueOf(i), version("etag-" + i));
+    }
+    bucket.putObjectMetadata("a.txt", object);
+    store.store("my-bucket", bucket);
+
+    MVMap<String, String> versions = localS3Store.store().openMap("versions/my-bucket");
+    assertEquals(100, versions.size());
+    MVMap<String, String> objects = localS3Store.store().openMap("objects/my-bucket");
+    assertFalse(objects.get("a.txt").contains("versionedObjectMap"), "The versions are stored on their own.");
+
+    BucketMetadata loaded = store.fetch("my-bucket");
+    ObjectMetadata loadedObject = loaded.getObjectMap().get("a.txt").get();
+    assertEquals(100, loadedObject.getVersionedObjectMap().size());
+    assertEquals("100", loadedObject.getLatestVersion());
+
+    changing("my-bucket", () -> {
+      ObjectMetadata changed = loaded.getObjectMetadata("a.txt").orElseThrow();
+      changed.putVersionedObjectMetadata("101", version("etag-101"));
+      changed.removeVersionedObjectMetadata("50");
+      // Another version of the key, changed in memory but not recorded, which a write of the whole key would carry.
+      changed.getVersionedObjectMap().get("7").setEtag("not-written");
+    });
+    store.store("my-bucket", loaded);
+
+    assertEquals(100, versions.size());
+    assertNull(versions.get("a.txt\0" + "50"));
+    ObjectMetadata reread = store.fetch("my-bucket").getObjectMap().get("a.txt").get();
+    assertEquals("101", reread.getLatestVersion());
+    assertEquals("etag-101", reread.getLatest().getEtag());
+    assertEquals("etag-7", reread.getVersionedObjectMap().get("7").getEtag(), "Only the changed versions are written.");
+  }
+
+  /**
+   * A key whose name starts with another key and the separator keeps its versions apart from that key's.
+   */
+  @Test
+  void keepsTheVersionsOfKeysThatShareAPrefixApart() {
+    BucketMetadata bucket = bucket("my-bucket");
+    bucket.putObjectMetadata("a", object("1", 1L, "etag-a"));
+    bucket.putObjectMetadata("a\0b", object("2", 1L, "etag-ab"));
+    store.store("my-bucket", bucket);
+
+    BucketMetadata loaded = store.fetch("my-bucket");
+    assertEquals(List.of("1"), List.copyOf(loaded.getObjectMap().get("a").get().getVersionedObjectMap().keySet()));
+
+    loaded.removeObjectMetadata("a");
+    store.store("my-bucket", loaded);
+    assertEquals("etag-ab", store.fetch("my-bucket").getObjectMap().get("a\0b").get().getLatest().getEtag());
+  }
+
+  /**
+   * A store written before the versions had a map of their own holds every version of a key with the key, which is
+   * still read, and is moved to the versions map the first time the key is written.
+   */
+  @Test
+  void readsAndRewritesAKeyThatHoldsItsVersions() {
+    store.store("my-bucket", bucket("my-bucket"));
+    ObjectMetadata legacy = object("1", 5L, "etag-1");
+    legacy.putVersionedObjectMetadata("2", version("etag-2"));
+    MVMap<String, String> objects = localS3Store.store().openMap("objects/my-bucket");
+    objects.put("a.txt", JsonUtils.toJson(legacy));
+
+    BucketMetadata loaded = store.fetch("my-bucket");
+    ObjectMetadata object = loaded.getObjectMap().get("a.txt").get();
+    assertEquals(List.of("2", "1"), List.copyOf(object.getVersionedObjectMap().keySet()));
+    assertArrayEquals(new long[] {1L}, MVStoreBucketMetadataStore.referencedContentIds(
+        MVStoreBucketMetadataStore.contentReferencingMaps(localS3Store.store()), () -> false));
+
+    changing("my-bucket", () -> loaded.getObjectMetadata("a.txt").orElseThrow()
+        .putVersionedObjectMetadata("3", version("etag-3")));
+    store.store("my-bucket", loaded);
+
+    assertFalse(objects.get("a.txt").contains("versionedObjectMap"));
+    assertEquals(3, localS3Store.store().openMap("versions/my-bucket").size(), "Every version is moved.");
+    ObjectMetadata reread = store.fetch("my-bucket").getObjectMap().get("a.txt").get();
+    assertEquals(List.of("3", "2", "1"), List.copyOf(reread.getVersionedObjectMap().keySet()));
+  }
+
+  private static void changing(String bucketName, Runnable change) {
+    BucketChangeScope.begin(bucketName);
+    try {
+      change.run();
+    } finally {
+      BucketChangeScope.end(bucketName);
+    }
+  }
+
+  private static VersionedObjectMetadata version(String etag) {
+    VersionedObjectMetadata version = new VersionedObjectMetadata();
+    version.setEtag(etag);
+    version.setSize(1L);
+    return version;
   }
 
   private static ObjectMetadata objectMetadata(String versionId, String etag) {
