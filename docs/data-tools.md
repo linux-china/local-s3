@@ -7,6 +7,19 @@ How to point DuckDB and Apache Iceberg at LocalS3, e.g. a LocalS3 started with
 A local endpoint has no DNS name for each bucket, so every client uses **path-style** addressing,
 `http://localhost:29090/bucket/key`, and plain HTTP.
 
+> [!IMPORTANT]
+> **LocalS3 doesn't support TLS yet, and DuckDB uses HTTPS unless you turn it off.** If a DuckDB secret has no
+> `USE_SSL false`, or `s3_use_ssl` isn't set to `false`, every query fails with a connection error such as:
+>
+> ```text
+> IO Error: SSL connect error error for HTTP HEAD to 'https://localhost:29090/demo1/family.parquet'
+> ```
+>
+> The `https://` in the URL shows the cause. Add `USE_SSL false` to the secret, or run `SET s3_use_ssl = false;`, and
+> run the query again. Because DuckDB picks the secret with the longest matching scope, check that you changed the
+> secret it actually uses; `SELECT name, scope FROM duckdb_secrets();` lists them. The exact wording of the error
+> depends on the version of DuckDB; the message above is from DuckDB 1.5.
+
 ## DuckDB
 
 With a secret, DuckDB 0.10 and later:
