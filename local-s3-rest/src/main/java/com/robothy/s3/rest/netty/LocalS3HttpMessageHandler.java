@@ -10,9 +10,11 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.ssl.NotSslRecordException;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.Locale;
@@ -21,6 +23,7 @@ import java.util.Queue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.net.ssl.SSLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -371,6 +374,13 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       ctx.close();
       return;
     }
+    if (isTlsFailure(cause)) {
+      // A TLS handshake failed, e.g. a plain HTTP request to an HTTPS service or a client that doesn't trust the
+      // certificate; the SslHandler already answered with an alert, if anything.
+      log.debug("Closing connection {} after a TLS failure: {}", ctx.channel().id(), cause.toString());
+      ctx.close();
+      return;
+    }
 
     log.error("Caught exception.", cause);
     if (!ctx.channel().isActive()) {
@@ -388,6 +398,11 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     response.putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
     ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+  }
+
+  private static boolean isTlsFailure(Throwable cause) {
+    return cause instanceof SSLException || cause instanceof NotSslRecordException
+        || (cause instanceof DecoderException && cause.getCause() instanceof SSLException);
   }
 
 }

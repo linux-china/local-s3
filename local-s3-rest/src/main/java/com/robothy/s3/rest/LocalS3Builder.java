@@ -78,6 +78,8 @@ public class LocalS3Builder {
 
     private RequestRecorder requestRecorder = RequestRecorder.NONE;
 
+    private LocalS3Tls tls;
+
     /**
      * Set the host that local-s3 service listens on.
      * The default value is {@code 127.0.0.1}, and local only,
@@ -469,6 +471,43 @@ public class LocalS3Builder {
     }
 
     /**
+     * Serve HTTPS instead of plain HTTP, with a certificate and its private key in PEM format. Clients that use HTTPS
+     * by default, e.g. DuckDB, Hadoop S3A or the {@code object_store} crate, then connect without turning TLS off.
+     *
+     * <p>For local development, <a href="https://github.com/FiloSottile/mkcert">mkcert</a> creates a certificate that
+     * the machine trusts: {@code mkcert -install} once, then {@code mkcert localhost 127.0.0.1} creates
+     * {@code localhost+1.pem} and {@code localhost+1-key.pem}. A JVM client trusts it only once the CA of mkcert,
+     * {@code $(mkcert -CAROOT)/rootCA.pem}, is in its trust store.
+     *
+     * <p>The files are read, and the certificate and key validated, when this method is called. The service serves only
+     * HTTPS on its port; plain HTTP requests to it fail.
+     *
+     * @param certPem the certificate, optionally followed by its intermediate certificates: the path of a PEM file, or
+     *     the PEM content itself.
+     * @param keyPem the unencrypted PKCS#8 private key of the certificate, {@code -----BEGIN PRIVATE KEY-----}: the path
+     *     of a PEM file, or the PEM content itself.
+     * @return builder.
+     * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
+     */
+    public LocalS3Builder tls(@NonNull String certPem, @NonNull String keyPem) {
+        this.tls = LocalS3Tls.of(certPem, keyPem);
+        return this;
+    }
+
+    /**
+     * Serve HTTPS instead of plain HTTP with the certificate and private key of PEM files; see
+     * {@linkplain #tls(String, String)}.
+     *
+     * @param certPemFile the PEM file of the certificate chain.
+     * @param keyPemFile the PEM file of the unencrypted PKCS#8 private key.
+     * @return builder.
+     * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
+     */
+    public LocalS3Builder tls(@NonNull Path certPemFile, @NonNull Path keyPemFile) {
+        return tls(certPemFile.toString(), keyPemFile.toString());
+    }
+
+    /**
      * Configure the builder from the environment variables that the Docker image is configured with, read
      * from the environment or, if a variable isn't set there, from the system property of the same name.
      *
@@ -479,7 +518,8 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Environment#LOCAL_S3_MODE},
      * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
-     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#AWS_BUCKETS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_CERT},
+     * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#AWS_BUCKETS},
      * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
      *
      * @return builder.
@@ -516,7 +556,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,
-                virtualHostDomains, requestRecorder);
+                virtualHostDomains, requestRecorder, tls);
     }
 
     /**
@@ -526,8 +566,9 @@ public class LocalS3Builder {
      */
     public LocalS3 build() {
         LocalS3Config config = buildConfig();
-        log.debug("Build LocalS3 on {}:{} in {} mode, data path: {}, authentication: {}.", config.bindHost(),
-                config.port(), config.mode(), config.dataPath(), config.authenticationEnabled() ? "enabled" : "disabled");
+        log.debug("Build LocalS3 on {}:{} in {} mode, data path: {}, authentication: {}, TLS: {}.", config.bindHost(),
+                config.port(), config.mode(), config.dataPath(), config.authenticationEnabled() ? "enabled" : "disabled",
+                config.tlsEnabled() ? "enabled" : "disabled");
         return new LocalS3(config);
     }
 

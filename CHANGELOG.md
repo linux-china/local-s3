@@ -87,6 +87,9 @@ imported either.
   `GetCallerIdentity`, like the one of MinIO, and requests signed with the temporary credentials it issues are accepted,
   with their session token in `x-amz-security-token`, a presigned URL or a form upload. The credentials survive restarts
   and are revoked by changing the secret access key. See [temporary credentials](docs/embedding.md#temporary-credentials-sts).
++ **HTTPS**: `tls(certPem, keyPem)` and `LOCAL_S3_TLS_CERT` / `LOCAL_S3_TLS_KEY` serve TLS with a PEM certificate and
+  key, e.g. created by [mkcert](https://github.com/FiloSottile/mkcert), so clients that use HTTPS by default, such as
+  DuckDB, Hadoop S3A or the `object_store` crate, connect without turning it off. See [HTTPS](docs/deployment.md#https).
 + **Conditional requests**: `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` for reads;
   conditional writes for `PutObject`, `CopyObject` and `CompleteMultipartUpload`; conditional deletes for
   `DeleteObject` and `DeleteObjects`; `x-amz-copy-source-if-*` for `CopyObject` and `UploadPartCopy`. See

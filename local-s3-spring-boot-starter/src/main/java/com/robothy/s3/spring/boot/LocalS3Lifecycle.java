@@ -65,7 +65,7 @@ public class LocalS3Lifecycle implements SmartLifecycle {
    * The endpoint that clients in the same JVM reach the service at, starting the service if it isn't running yet: the
    * host that it is bound to, or the loopback address if it is bound to every interface, and the port it listens on.
    *
-   * @return the endpoint, e.g. {@code http://127.0.0.1:29090}.
+   * @return the endpoint, e.g. {@code http://127.0.0.1:29090}, or {@code https://127.0.0.1:29090} if it serves TLS.
    */
   public URI endpoint() {
     start();
@@ -75,7 +75,7 @@ public class LocalS3Lifecycle implements SmartLifecycle {
     } else if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
       host = "[" + host + "]";
     }
-    return URI.create("http://" + host + ":" + localS3.getPort());
+    return URI.create((localS3.isTlsEnabled() ? "https://" : "http://") + host + ":" + localS3.getPort());
   }
 
 }

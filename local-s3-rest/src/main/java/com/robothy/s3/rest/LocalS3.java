@@ -165,7 +165,7 @@ public class LocalS3 implements AutoCloseable {
                 serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics));
         // The actual port, in case a random one was requested.
         this.port = server.port();
-        log.info("LocalS3 listens on {}:{}.", config.bindHost(), port);
+        log.info("LocalS3 listens on {}://{}:{}.", config.tlsEnabled() ? "https" : "http", config.bindHost(), port);
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
     }
@@ -527,6 +527,15 @@ public class LocalS3 implements AutoCloseable {
 
     public List<String> getVirtualHostDomains() {
         return config.virtualHostDomains();
+    }
+
+    /**
+     * Whether the service serves HTTPS rather than plain HTTP; see {@linkplain LocalS3Builder#tls(String, String)}.
+     *
+     * @return {@code true} if TLS is configured.
+     */
+    public boolean isTlsEnabled() {
+        return config.tlsEnabled();
     }
 
     /**

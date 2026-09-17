@@ -11,6 +11,7 @@ import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Tagging;
 import com.robothy.s3.datatypes.response.PostResponse;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -72,6 +73,11 @@ class PostObjectController implements HttpRequestHandler {
 
   private final Clock clock;
 
+  /**
+   * The scheme of the URLs that the service is reached at: {@code https} if it serves TLS.
+   */
+  private final String scheme;
+
   PostObjectController(ServiceFactory serviceFactory, AwsSignatureV4Verifier signatureVerifier) {
     this(serviceFactory, signatureVerifier, Clock.systemUTC());
   }
@@ -81,6 +87,8 @@ class PostObjectController implements HttpRequestHandler {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
     this.signatureVerifier = signatureVerifier;
     this.clock = Objects.requireNonNull(clock);
+    this.scheme = serviceFactory.containsInstance(LocalS3Config.class)
+        && serviceFactory.getInstance(LocalS3Config.class).tlsEnabled() ? "https" : "http";
   }
 
   @Override
@@ -187,11 +195,11 @@ class PostObjectController implements HttpRequestHandler {
    * The URL of the stored object, addressed like the form was: at the bucket of the path, or at the bucket of the host
    * of a virtual-hosted-style request.
    */
-  private static String objectLocation(HttpRequest request, String bucketName, String key) {
+  private String objectLocation(HttpRequest request, String bucketName, String key) {
     String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
     String path = request.getPath() == null ? "/" : request.getPath();
     boolean bucketInPath = !path.replace("/", "").isEmpty();
-    return "http://" + host + "/" + (bucketInPath ? encodePathSegment(bucketName) + "/" : "") + encodeKey(key);
+    return scheme + "://" + host + "/" + (bucketInPath ? encodePathSegment(bucketName) + "/" : "") + encodeKey(key);
   }
 
   /**

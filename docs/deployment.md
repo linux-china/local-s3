@@ -83,6 +83,7 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
+| `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS instead of plain HTTP with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
 The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them
@@ -96,6 +97,84 @@ LocalS3 localS3 = LocalS3.builder()
     .port(29090)
     .fromEnvironment()
     .build();
+```
+
+## HTTPS
+
+LocalS3 serves plain HTTP unless it is given a certificate and its private key in PEM format. Several clients use, or
+require, HTTPS by default, and then connect to LocalS3 without turning TLS off:
+
+| Client | Default that expects HTTPS |
+|---|---|
+| DuckDB `httpfs` | `USE_SSL true` in a secret, `s3_use_ssl = true` |
+| Hadoop S3A | `fs.s3a.connection.ssl.enabled=true` |
+| Snowflake | S3-compatible storage must be reached over HTTPS |
+| `object_store` (Rust) and some Go clients | an `http://` endpoint is refused unless e.g. `allow_http` is set |
+
+With TLS configured, the port serves **only** HTTPS; plain HTTP requests to it fail. The
+[health check](#health-check) is then `https://…/_health`.
+
+### Create a certificate with mkcert
+
+[mkcert](https://github.com/FiloSottile/mkcert) creates a certificate that the machine trusts, without a warning
+in browsers, curl or DuckDB:
+
+```shell
+brew install mkcert        # or see the installation of mkcert for Linux and Windows
+mkcert -install            # once: adds the CA of mkcert to the trust stores of the system and of browsers
+mkcert localhost 127.0.0.1 # creates localhost+1.pem and localhost+1-key.pem in the current directory
+```
+
+List every name that clients reach LocalS3 by, e.g. `mkcert localhost 127.0.0.1 s3 s3.local "*.s3.local"` for the
+service name in docker-compose and for [virtual-hosted-style](#configuration) requests. The key that mkcert writes is
+an unencrypted PKCS#8 key (`-----BEGIN PRIVATE KEY-----`), which is what LocalS3 expects.
+
+### Start LocalS3 with the certificate
+
+```shell
+# Executable jar
+LOCAL_S3_TLS_CERT=localhost+1.pem LOCAL_S3_TLS_KEY=localhost+1-key.pem java -jar local-s3-standalone-2.5.0.jar
+
+# Docker
+docker run -d -p 29090:29090 -v "$PWD:/certs:ro" \
+  -e LOCAL_S3_TLS_CERT=/certs/localhost+1.pem -e LOCAL_S3_TLS_KEY=/certs/localhost+1-key.pem \
+  luofuxiang/local-s3
+
+curl https://localhost:29090/_health
+```
+
+mkcert writes the key readable by its owner only, and the image runs as the user `locals3`: make the key readable in
+the container, e.g. `chmod 644 localhost+1-key.pem` for a local certificate, or start it with
+`--user "$(id -u):$(id -g)"`.
+
+Embedded, `LocalS3.builder().tls("localhost+1.pem", "localhost+1-key.pem")`; see
+[embedding.md](embedding.md#serve-https). The files are read when the service is configured, and an unreadable file,
+or a key that doesn't belong to the certificate, fails right away.
+
+### Trust the certificate in clients
+
+`mkcert -install` makes the system trust the certificate, which covers curl, DuckDB, and most Go and Rust clients.
+Other clients need the CA of mkcert, `"$(mkcert -CAROOT)/rootCA.pem"`, explicitly:
+
++ **JVM** (AWS SDK for Java, Hadoop S3A, Iceberg, Spark): the JVM has its own trust store. Import the CA once, e.g.
+  `keytool -importcert -noprompt -alias mkcert -cacerts -storepass changeit -file "$(mkcert -CAROOT)/rootCA.pem"`,
+  or pass a trust store with `-Djavax.net.ssl.trustStore=…`.
++ **AWS CLI and boto3**: `AWS_CA_BUNDLE="$(mkcert -CAROOT)/rootCA.pem"`, or `--ca-bundle`.
++ **Python requests / Node.js**: `REQUESTS_CA_BUNDLE` / `NODE_EXTRA_CA_CERTS` set to the same file.
++ **Containers**: a client in another container doesn't see the trust store of the host; mount `rootCA.pem` into it
+  and point the client at it.
+
+DuckDB, with the defaults of a secret, which uses HTTPS:
+
+```sql
+CREATE SECRET local_s3 (
+    TYPE s3,
+    ENDPOINT 'localhost:29090',
+    URL_STYLE 'path',
+    KEY_ID 'admin',
+    SECRET 'admin',
+    REGION 'us-east-1'
+);
 ```
 
 ## Data directory

@@ -5,10 +5,12 @@ How to point DuckDB, DuckLake and Apache Iceberg at LocalS3, e.g. a LocalS3 star
 [`local-s3-integration-test`](../local-s3-integration-test/README.md).
 
 A local endpoint has no DNS name for each bucket, so every client uses **path-style** addressing,
-`http://localhost:29090/bucket/key`, and plain HTTP.
+`http://localhost:29090/bucket/key`. The examples below use plain HTTP, which LocalS3 serves by default; a LocalS3
+started with a certificate serves [HTTPS](deployment.md#https) instead, and the clients then keep their TLS defaults.
 
 > [!IMPORTANT]
-> **LocalS3 doesn't support TLS yet, and DuckDB uses HTTPS unless you turn it off.** If a DuckDB secret has no
+> **DuckDB uses HTTPS unless you turn it off, and LocalS3 serves plain HTTP unless it is
+> [configured with a certificate](deployment.md#https).** Against a plain HTTP LocalS3, if a DuckDB secret has no
 > `USE_SSL false`, or `s3_use_ssl` isn't set to `false`, every query fails with a connection error such as:
 >
 > ```text
@@ -16,8 +18,8 @@ A local endpoint has no DNS name for each bucket, so every client uses **path-st
 > ```
 >
 > The `https://` in the URL shows the cause. Add `USE_SSL false` to the secret, or run `SET s3_use_ssl = false;`, and
-> run the query again. Because DuckDB picks the secret with the longest matching scope, check that you changed the
-> secret it actually uses; `SELECT name, scope FROM duckdb_secrets();` lists them. The exact wording of the error
+> run the query again, or start LocalS3 with a [certificate](deployment.md#https) that DuckDB trusts. Because DuckDB
+> picks the secret with the longest matching scope, check that you changed the secret it actually uses; `SELECT name, scope FROM duckdb_secrets();` lists them. The exact wording of the error
 > depends on the version of DuckDB; the message above is from DuckDB 1.5.
 
 ## DuckDB

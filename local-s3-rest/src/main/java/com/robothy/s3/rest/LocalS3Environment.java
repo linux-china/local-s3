@@ -39,6 +39,19 @@ public final class LocalS3Environment {
 
   public static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
 
+  /**
+   * The certificate that the service serves HTTPS with: the path of a PEM file, or the PEM content itself. Set together
+   * with {@linkplain #LOCAL_S3_TLS_KEY}.
+   *
+   * @see LocalS3Builder#tls(String, String)
+   */
+  public static final String LOCAL_S3_TLS_CERT = "LOCAL_S3_TLS_CERT";
+
+  /**
+   * The private key of {@linkplain #LOCAL_S3_TLS_CERT}: the path of a PEM file, or the PEM content itself.
+   */
+  public static final String LOCAL_S3_TLS_KEY = "LOCAL_S3_TLS_KEY";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
@@ -71,6 +84,15 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
         .ifPresent(domains -> builder.virtualHostDomains(domains.split(",")));
     variable(variables, AWS_BUCKETS).ifPresent(names -> builder.buckets(names.split(",")));
+
+    String tlsCert = variable(variables, LOCAL_S3_TLS_CERT).orElse(null);
+    String tlsKey = variable(variables, LOCAL_S3_TLS_KEY).orElse(null);
+    if ((tlsCert == null) != (tlsKey == null)) {
+      throw new IllegalArgumentException(LOCAL_S3_TLS_CERT + " and " + LOCAL_S3_TLS_KEY + " must be configured together.");
+    }
+    if (tlsCert != null) {
+      builder.tls(tlsCert, tlsKey);
+    }
 
     String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
     String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);

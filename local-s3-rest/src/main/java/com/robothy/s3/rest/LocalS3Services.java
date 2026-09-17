@@ -70,6 +70,8 @@ final class LocalS3Services {
     serviceFactory.register(BucketNameValidator.class, () -> bucketNameValidator);
     MultipartUploadPolicy multipartUploadPolicy = MultipartUploadPolicy.of(config.compositeMultipartEtags());
     serviceFactory.register(MultipartUploadPolicy.class, () -> multipartUploadPolicy);
+    // The configuration itself, for the handlers that answer URLs of the service, whose scheme depends on its TLS.
+    serviceFactory.register(LocalS3Config.class, () -> config);
     VirtualHostParser virtualHostParser = new VirtualHostParser(config.virtualHostDomains());
     serviceFactory.register(VirtualHostParser.class, () -> virtualHostParser);
 

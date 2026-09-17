@@ -45,6 +45,7 @@ import org.jspecify.annotations.Nullable;
  * @param virtualHostDomains the base domains of virtual-hosted-style requests, besides the default ones.
  * @param requestRecorder receives every request once its response is written, besides the statistics of the service,
  *     e.g. to record metrics; {@code null} is {@linkplain RequestRecorder#NONE}.
+ * @param tls the certificate and private key that the service serves HTTPS with; {@code null} to serve plain HTTP.
  */
 public record LocalS3Config(
     String bindHost,
@@ -70,7 +71,8 @@ public record LocalS3Config(
     long idleConnectionTimeoutSeconds,
     boolean compositeMultipartEtags,
     List<String> virtualHostDomains,
-    RequestRecorder requestRecorder) {
+    RequestRecorder requestRecorder,
+    @Nullable LocalS3Tls tls) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -152,6 +154,15 @@ public record LocalS3Config(
   }
 
   /**
+   * Whether the service serves HTTPS rather than plain HTTP.
+   *
+   * @return {@code true} if a {@linkplain #tls() certificate and private key} are configured.
+   */
+  public boolean tlsEnabled() {
+    return tls != null;
+  }
+
+  /**
    * Names the configuration without the secret access key, so that logging it doesn't reveal the key.
    */
   @Override
@@ -166,7 +177,8 @@ public record LocalS3Config(
         + ", maxRequestBodySize=" + maxRequestBodySize + ", requestBodyFileThreshold=" + requestBodyFileThreshold
         + ", maxRequestHeaderSize=" + maxRequestHeaderSize
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
-        + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains + "]";
+        + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
+        + ", tls=" + tlsEnabled() + "]";
   }
 
   /*

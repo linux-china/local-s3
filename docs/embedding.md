@@ -91,6 +91,25 @@ localS3.start();
 
 The [health check](deployment.md#health-check) needs no authentication, so probes keep working.
 
+### Serve HTTPS
+
+`tls(certPem, keyPem)` serves HTTPS instead of plain HTTP. Each argument is the path of a PEM file, or the PEM content
+itself, e.g. read from a secret; `tls(Path, Path)` takes the files as paths. Create the certificate and key with
+[mkcert](https://github.com/FiloSottile/mkcert), e.g. `mkcert localhost 127.0.0.1`:
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .tls("localhost+1.pem", "localhost+1-key.pem")
+    .build();
+
+localS3.start();
+// localS3.isTlsEnabled() == true; clients use https://localhost:29090
+```
+
+The key must be an unencrypted PKCS#8 key (`-----BEGIN PRIVATE KEY-----`), which mkcert writes. A JVM client trusts the
+certificate once the CA of mkcert is in its trust store; see [HTTPS](deployment.md#https) for that, and for the clients
+that need TLS.
+
 ### Temporary credentials (STS)
 
 LocalS3 answers the STS actions `AssumeRole`, `GetSessionToken` and `GetCallerIdentity` on its own port, so a client

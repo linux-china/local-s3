@@ -7,6 +7,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpDecoderConfig;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.ssl.SslContext;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -22,6 +23,9 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * of the next request for a busy thread. Routing and handling run on {@code executor}, which all connections
  * share; see {@linkplain LocalS3HttpMessageHandler}. So do the writes of the request bodies that are buffered in
  * temporary files, so that an event loop never waits for the disk; see {@linkplain LocalS3HttpRequestDecoder}.
+ *
+ * <p>With {@linkplain LocalS3Config#tls() TLS} configured, every connection starts with an {@code SslHandler}, which the
+ * rest of the pipeline reads plain HTTP from.
  */
 public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -38,6 +42,11 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     private final InFlightRequests inFlightRequests;
 
     private final RequestRecorder requestRecorder;
+
+    /**
+     * The context that the connections are encrypted with; {@code null} to serve plain HTTP.
+     */
+    private final @Nullable SslContext sslContext;
 
     /**
      * Create a channel initializer.
@@ -64,10 +73,15 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         this.requestBodyFileDirectory = requestBodyFileDirectory;
         this.inFlightRequests = Objects.requireNonNull(inFlightRequests);
         this.requestRecorder = Objects.requireNonNull(requestRecorder);
+        // Created once, as it parses the certificate and key; its engines are created per connection.
+        this.sslContext = config.tls() == null ? null : config.tls().newServerSslContext();
     }
 
     @Override
     protected void initChannel(SocketChannel ch) {
+        if (sslContext != null) {
+            ch.pipeline().addLast("ssl", sslContext.newHandler(ch.alloc()));
+        }
         ch.pipeline()
                 .addLast("http-request-decoder", new HttpRequestDecoder(new HttpDecoderConfig()
                         .setMaxHeaderSize(config.maxRequestHeaderSize())))
