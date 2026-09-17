@@ -120,4 +120,76 @@ public class AmzHeaderNames {
    * {@code ENABLED} asks GetObject and HeadObject for the checksum of the object.
    */
   public static final String X_AMZ_CHECKSUM_MODE = "x-amz-checksum-mode";
+
+  /**
+   * {@code true} creates a bucket with Object Lock enabled.
+   */
+  public static final String X_AMZ_BUCKET_OBJECT_LOCK_ENABLED = "x-amz-bucket-object-lock-enabled";
+
+  /**
+   * The retention mode of an object, {@code GOVERNANCE} or {@code COMPLIANCE}.
+   */
+  public static final String X_AMZ_OBJECT_LOCK_MODE = "x-amz-object-lock-mode";
+
+  /**
+   * The ISO 8601 date and time that an object is retained until.
+   */
+  public static final String X_AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE = "x-amz-object-lock-retain-until-date";
+
+  /**
+   * The legal hold of an object, {@code ON} or {@code OFF}.
+   */
+  public static final String X_AMZ_OBJECT_LOCK_LEGAL_HOLD = "x-amz-object-lock-legal-hold";
+
+  /**
+   * {@code true} bypasses the governance mode retention of the versions that a request deletes or changes.
+   */
+  public static final String X_AMZ_BYPASS_GOVERNANCE_RETENTION = "x-amz-bypass-governance-retention";
+
+  /**
+   * The algorithm of a customer-provided encryption key (SSE-C), which is always {@code AES256}.
+   */
+  public static final String X_AMZ_SSE_CUSTOMER_ALGORITHM = "x-amz-server-side-encryption-customer-algorithm";
+
+  /**
+   * The base64 encoded customer-provided encryption key.
+   */
+  public static final String X_AMZ_SSE_CUSTOMER_KEY = "x-amz-server-side-encryption-customer-key";
+
+  /**
+   * The base64 encoded MD5 digest of the customer-provided encryption key.
+   */
+  public static final String X_AMZ_SSE_CUSTOMER_KEY_MD5 = "x-amz-server-side-encryption-customer-key-MD5";
+
+  /**
+   * The prefix of the headers that provide the customer key of the source object of a copy, e.g.
+   * {@code x-amz-copy-source-server-side-encryption-customer-key}.
+   */
+  public static final String X_AMZ_COPY_SOURCE_PREFIX = "x-amz-copy-source-";
+
+  /**
+   * The offset that {@code PutObject} appends its content at, which must be the size of the object.
+   */
+  public static final String X_AMZ_WRITE_OFFSET_BYTES = "x-amz-write-offset-bytes";
+
+  /**
+   * The size of the object that an append stored.
+   */
+  public static final String X_AMZ_OBJECT_SIZE = "x-amz-object-size";
+
+  /**
+   * The object that {@code RenameObject} renames, as {@code /bucket/key}.
+   */
+  public static final String X_AMZ_RENAME_SOURCE = "x-amz-rename-source";
+
+  /**
+   * The conditions of the object that {@code RenameObject} renames, e.g. {@code x-amz-rename-source-if-match}.
+   */
+  public static final String X_AMZ_RENAME_SOURCE_IF_MATCH = "x-amz-rename-source-if-match";
+
+  public static final String X_AMZ_RENAME_SOURCE_IF_NONE_MATCH = "x-amz-rename-source-if-none-match";
+
+  public static final String X_AMZ_RENAME_SOURCE_IF_MODIFIED_SINCE = "x-amz-rename-source-if-modified-since";
+
+  public static final String X_AMZ_RENAME_SOURCE_IF_UNMODIFIED_SINCE = "x-amz-rename-source-if-unmodified-since";
 }

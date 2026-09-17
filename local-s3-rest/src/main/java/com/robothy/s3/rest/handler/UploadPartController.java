@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
@@ -11,6 +12,7 @@ import com.robothy.s3.core.service.UploadPartService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -34,17 +36,20 @@ class UploadPartController implements HttpRequestHandler {
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
     DecodedAmzRequestBody decodedBody = RequestUtils.getBody(request);
+    CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
     UploadPartAns uploadPartAns = uploadPartService.uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
         .contentLength(decodedBody.getDecodedContentLength())
         .data(decodedBody.getDecodedBody())
         .dataFile(decodedBody.getBodyFile())
         .etag(RequestUtils.getETag(request).orElse(null))
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
+        .customerEncryption(customerEncryption)
         .build());
 
     ResponseUtils.addCommonHeaders(response);
     ResponseUtils.addETag(response, uploadPartAns.getEtag());
     ChecksumHeaders.addHeaders(response, uploadPartAns.getChecksum());
+    CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
   }
 
 }

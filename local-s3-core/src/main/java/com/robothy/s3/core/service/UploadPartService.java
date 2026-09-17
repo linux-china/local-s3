@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.CustomerEncryptionAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -39,6 +40,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     UploadAssertions.assertPartNumberIsValid(partNumber);
     UploadMetadata upload = UploadAssertions.assertUploadExists(
         BucketAssertions.assertBucketExists(localS3Metadata(), bucket), key, uploadId);
+    CustomerEncryptionAssertions.assertKeyProvided(upload.getCustomerEncryption(), options.getCustomerEncryption());
     RequestChecksum checksum = partChecksum(upload, options.getChecksum());
 
     StoredContent data = storeContent(options.getData(), options.getDataFile(),

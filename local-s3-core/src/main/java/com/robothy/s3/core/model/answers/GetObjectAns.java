@@ -1,6 +1,8 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
+import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
@@ -71,4 +73,14 @@ public class GetObjectAns {
    * the content, which the checksum isn't the one of.
    */
   private ObjectChecksum checksum;
+
+  /**
+   * The Object Lock retention and legal hold of the version; {@code null} if it has neither.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key that the version was stored with; {@code null} if it wasn't stored with one.
+   */
+  private CustomerEncryption customerEncryption;
 }

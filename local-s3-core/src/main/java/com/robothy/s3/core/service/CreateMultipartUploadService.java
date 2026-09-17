@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
@@ -28,9 +29,13 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
    */
   default String createMultipartUpload(String bucket, String key, CreateMultipartUploadOptions options) {
     ChecksumType checksumType = checksumType(options);
+    ObjectLockAssertions.assertRequestedObjectLockIsValid(options.getObjectLock(), System.currentTimeMillis());
     return changeBucket(bucket, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
       ObjectAssertions.assertObjectKeyIsValid(key);
+      if (options.getObjectLock() != null && !options.getObjectLock().isEmpty()) {
+        ObjectLockAssertions.assertObjectLockEnabled(bucketMetadata);
+      }
       String uploadId = IdUtils.defaultGenerator().nextStrId();
       NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
       uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
@@ -42,6 +47,8 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
           .userMetadata(options.getUserMetadata())
           .checksumAlgorithm(options.getChecksumAlgorithm())
           .checksumType(checksumType)
+          .objectLock(options.getObjectLock())
+          .customerEncryption(options.getCustomerEncryption())
           .build());
       bucketMetadata.markUploadsChanged(key);
       return uploadId;

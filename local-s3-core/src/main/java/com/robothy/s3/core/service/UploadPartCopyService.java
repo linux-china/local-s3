@@ -43,7 +43,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
     // evaluated; the content is read without the lock.
     GetObjectAns source = getCopySource(options.getSourceBucket(), options.getSourceKey(),
         options.getSourceVersion().orElse(null), options.getCopySourceRange().orElse(null),
-        options.getSourcePreconditions());
+        options.getSourcePreconditions(), options.getSourceCustomerEncryption());
 
     if (source.isDeleteMarker()) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
@@ -57,6 +57,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
       part = uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
           .contentLength(source.getSize())
           .data(source.getContent())
+          .customerEncryption(options.getCustomerEncryption())
           .build());
     } catch (Throwable e) {
       // The content is closed once it is stored; close it if it never got that far, e.g. because the upload

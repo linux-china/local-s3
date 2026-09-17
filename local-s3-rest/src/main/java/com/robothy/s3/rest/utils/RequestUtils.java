@@ -182,6 +182,34 @@ public class RequestUtils {
   }
 
   /**
+   * Extract the conditions of the object that {@code RenameObject} renames from its {@code x-amz-rename-source-if-*}
+   * headers. Like the conditions of a read, a date that isn't an HTTP date is left out.
+   *
+   * @param request HTTP request.
+   * @return the conditions of the object to rename.
+   */
+  public static ObjectPreconditions extractRenameSourcePreconditions(HttpRequest request) {
+    return ObjectPreconditions.builder()
+        .ifMatch(request.header(AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_MATCH).orElse(null))
+        .ifNoneMatch(request.header(AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_NONE_MATCH).orElse(null))
+        .ifModifiedSince(httpDate(request, AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_MODIFIED_SINCE))
+        .ifUnmodifiedSince(httpDate(request, AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_UNMODIFIED_SINCE))
+        .build();
+  }
+
+  /**
+   * Whether a request bypasses the governance mode retention of the object versions it deletes or changes.
+   *
+   * @param request HTTP request.
+   * @return {@code true} if the request sends {@code x-amz-bypass-governance-retention: true}.
+   */
+  public static boolean isBypassGovernanceRetention(HttpRequest request) {
+    return request.header(AmzHeaderNames.X_AMZ_BYPASS_GOVERNANCE_RETENTION)
+        .map(value -> "true".equalsIgnoreCase(value.trim()))
+        .orElse(false);
+  }
+
+  /**
    * Extract the conditions of a
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html">conditional delete</a>
    * from the {@code If-Match}, {@code x-amz-if-match-last-modified-time} and {@code x-amz-if-match-size} headers of

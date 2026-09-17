@@ -12,6 +12,8 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.utils.ByteBufUtils;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
+import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
@@ -41,6 +43,7 @@ class GetObjectController implements HttpRequestHandler {
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
         .preconditions(RequestUtils.extractPreconditions(request))
+        .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
         .build();
     GetObjectAns getObjectAns = objectService.getObject(bucket, key, options);
 
@@ -75,6 +78,8 @@ class GetObjectController implements HttpRequestHandler {
       }
 
       getObjectAns.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
+      ObjectLockHeaders.addHeaders(response, getObjectAns.getObjectLock());
+      CustomerEncryptionHeaders.addHeaders(response, getObjectAns.getCustomerEncryption());
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {
         // A client verifies the content it reads against it; a range has none.
         ChecksumHeaders.addHeaders(response, getObjectAns.getChecksum());

@@ -190,6 +190,10 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     versionedObjectMetadata.setParts(layout);
     versionedObjectMetadata.setChecksum(checksum);
     uploadMetadata.getTagging().ifPresent(versionedObjectMetadata::setTagging);
+    // The default retention of the bucket, if the upload wasn't created with a retention, is applied when the version
+    // is added.
+    versionedObjectMetadata.setObjectLock(uploadMetadata.getObjectLock());
+    versionedObjectMetadata.setCustomerEncryption(uploadMetadata.getCustomerEncryption());
     if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
       versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
     }
@@ -406,6 +410,8 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .userMetadata(uploadMetadata.getUserMetadata())
           .checksumAlgorithm(uploadMetadata.getChecksumAlgorithm())
           .checksumType(uploadMetadata.getChecksumType())
+          .objectLock(uploadMetadata.getObjectLock())
+          .customerEncryption(uploadMetadata.getCustomerEncryption())
           .parts(partsToComplete)
           .build();
     });

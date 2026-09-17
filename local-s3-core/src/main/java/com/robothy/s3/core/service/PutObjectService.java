@@ -1,10 +1,15 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.CustomerEncryptionAssertions;
+import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
+import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
@@ -18,6 +23,13 @@ import com.robothy.s3.core.util.Checksums;
 import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
 
+import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.SequenceInputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Objects;
@@ -55,6 +67,10 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   default PutObjectAns putObject(String bucketName, String key, PutObjectOptions options) {
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+    ObjectLockAssertions.assertRequestedObjectLockIsValid(options.getObjectLock(), System.currentTimeMillis());
+    if (Objects.nonNull(options.getWriteOffsetBytes())) {
+      return appendObject(bucketName, key, options);
+    }
 
     RequestChecksum checksum = options.getChecksum();
     StoredContent content = storeContent(options.getContent(), options.getContentFile(),
@@ -80,6 +96,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
               ObjectChecksum.fullObject(checksum.algorithm(), Checksums.encode(content.checksum())));
         }
         options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
+        versionedObjectMetadata.setObjectLock(options.getObjectLock());
+        versionedObjectMetadata.setCustomerEncryption(options.getCustomerEncryption());
 
         // Its change is delivered after this block, so a listener that fails doesn't get here.
         return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions(),
@@ -89,6 +107,148 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         throw e;
       }
     });
+  }
+
+  /**
+   * Append content to an object, like the {@code PutObject} of an S3 Express One Zone directory bucket that sends
+   * {@code x-amz-write-offset-bytes}: the offset must be the size of the object the key holds, or {@code 0} if it holds
+   * none, which creates the object.
+   *
+   * <p>The object isn't changed in place: a new version is stored whose content is the content of the object followed
+   * by the content of the request, so that a reader of the object never sees half an append, and whose metadata, e.g.
+   * the content type, is the one of the object. Its entity tag is the MD5 digest of the whole content, and its
+   * checksum, if the request or the object has an algorithm, the full object checksum of the whole content. A
+   * {@code Content-MD5} or a checksum of the request is verified against the appended content. The object is read, and
+   * the new content stored, without a lock; if another request changed the object in the meantime, the append fails
+   * with {@code InvalidWriteOffset} rather than losing that change.
+   *
+   * @param bucketName the bucket name.
+   * @param key the object key.
+   * @param options the content to append, and the offset to append it at.
+   * @return result of the put object operation, whose size is the size of the whole object.
+   * @throws LocalS3RequestException {@code InvalidWriteOffset} if the offset isn't the size of the object.
+   */
+  private PutObjectAns appendObject(String bucketName, String key, PutObjectOptions options) {
+    long offset = options.getWriteOffsetBytes();
+    if (offset < 0) {
+      throw new LocalS3InvalidArgumentException("x-amz-write-offset-bytes", String.valueOf(offset),
+          "The write offset must not be negative.");
+    }
+    // The object that is appended to, with its content open unless there is none: read under the read lock, like the
+    // source of a copy, and read without it.
+    record AppendTarget(VersionedObjectMetadata version, InputStream content) {
+    }
+    AppendTarget target = withBucketReadLock(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      VersionedObjectMetadata current = currentVersion(bucketMetadata, key);
+      if (offset != (Objects.isNull(current) ? 0 : current.getSize())) {
+        throw new LocalS3RequestException(S3ErrorCode.InvalidWriteOffset);
+      }
+      if (Objects.isNull(current)) {
+        return new AppendTarget(null, null);
+      }
+      CustomerEncryptionAssertions.assertKeyProvided(current.getCustomerEncryption(), options.getCustomerEncryption());
+      return new AppendTarget(current, ObjectContentUtils.open(storage(), current));
+    });
+    VersionedObjectMetadata appendedTo = target.version();
+
+    RequestChecksum requestChecksum = options.getChecksum();
+    Checksums.Calculator appendedChecksum = Objects.isNull(requestChecksum) ? null
+        : Checksums.calculator(requestChecksum.algorithm());
+    S3ObjectUtils.MeasuredInputStream appended;
+    try {
+      InputStream content = Objects.nonNull(options.getContent()) ? options.getContent()
+          : Files.newInputStream(options.getContentFile());
+      appended = S3ObjectUtils.measuringStream(Objects.isNull(appendedChecksum) ? content
+          : Checksums.checksumStream(content, appendedChecksum));
+    } catch (IOException e) {
+      UncheckedIOException failure = new UncheckedIOException("Failed to read the content to append.", e);
+      if (Objects.nonNull(target.content())) {
+        try {
+          target.content().close();
+        } catch (IOException closeFailure) {
+          failure.addSuppressed(closeFailure);
+        }
+      }
+      throw failure;
+    }
+    CheckSumAlgorithm algorithm = Objects.nonNull(requestChecksum) ? requestChecksum.algorithm()
+        : Optional.ofNullable(appendedTo).map(VersionedObjectMetadata::getChecksum).map(ObjectChecksum::getAlgorithm)
+        .orElse(null);
+    StoredContent content = storeContent(Objects.isNull(target.content()) ? appended
+        : new SequenceInputStream(target.content(), appended), null, algorithm);
+    Long fileId = content.fileId();
+    return deliverChangesAfter(() -> {
+      try {
+        checkRequestingMd5Header(options, appended.etag());
+        if (Objects.nonNull(requestChecksum)) {
+          Checksums.verify(requestChecksum, appendedChecksum.digest());
+        }
+        VersionedObjectMetadata version = new VersionedObjectMetadata();
+        version.setCreationDate(System.currentTimeMillis());
+        if (Objects.isNull(appendedTo)) {
+          version.setContentType(options.getContentType());
+          version.setSystemMetadata(options.getSystemMetadata());
+          if (Objects.nonNull(options.getUserMetadata())) {
+            version.setUserMetadata(options.getUserMetadata());
+          }
+          options.getTagging().ifPresent(version::setTagging);
+          version.setCustomerEncryption(options.getCustomerEncryption());
+        } else {
+          version.setContentType(appendedTo.getContentType());
+          version.setSystemMetadata(appendedTo.getSystemMetadata());
+          version.setUserMetadata(appendedTo.getUserMetadata());
+          appendedTo.getTagging().ifPresent(version::setTagging);
+          version.setCustomerEncryption(appendedTo.getCustomerEncryption());
+        }
+        version.setObjectLock(options.getObjectLock());
+        version.setSize(content.size());
+        version.setFileId(fileId);
+        version.setEtag(content.md5());
+        if (Objects.nonNull(algorithm)) {
+          version.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(content.checksum())));
+        }
+
+        return changeBucket(bucketName, () -> {
+          BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+          if (!isSameVersion(currentVersion(bucketMetadata, key), appendedTo)) {
+            throw new LocalS3RequestException(S3ErrorCode.InvalidWriteOffset);
+          }
+          PreconditionAssertions.assertWritePreconditionsHold(options.getPreconditions(), key,
+              bucketMetadata.getObjectMetadata(key).orElse(null));
+          PutObjectAns ans = addVersion(bucketMetadata, storage(), key, version);
+          publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, options.getOperation(), bucketName, key,
+              ans.getVersionId(), ans.getSize(), ans.getEtag()));
+          return ans;
+        });
+      } catch (Throwable e) {
+        discardStoredContent(fileId, e);
+        throw e;
+      }
+    });
+  }
+
+  /**
+   * The current version of an object.
+   *
+   * @return the current version; {@code null} if the key holds no object, or its current version is a delete marker.
+   */
+  private static VersionedObjectMetadata currentVersion(BucketMetadata bucketMetadata, String key) {
+    return bucketMetadata.getObjectMetadataRef(key)
+        .map(ref -> ref.get().getLatest())
+        .filter(version -> !version.isDeleted())
+        .orElse(null);
+  }
+
+  /**
+   * Whether two versions are the same one, which may have been read into two instances.
+   */
+  private static boolean isSameVersion(VersionedObjectMetadata left, VersionedObjectMetadata right) {
+    if (Objects.isNull(left) || Objects.isNull(right)) {
+      return left == right;
+    }
+    return left.getCreationDate() == right.getCreationDate() && left.getSize() == right.getSize()
+        && Objects.equals(left.getEtag(), right.getEtag());
   }
 
   /**
@@ -168,6 +328,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
    */
   static PutObjectAns addVersion(BucketMetadata bucketMetadata, Storage storage, String key,
                                  VersionedObjectMetadata versionedObjectMetadata) {
+    // Rejects Object Lock settings for a bucket without Object Lock before anything changes.
+    ObjectLockAssertions.applyBucketObjectLock(bucketMetadata, versionedObjectMetadata);
     String versionId = IdUtils.defaultGenerator().nextStrId();
     ObjectMetadata objectMetadata;
     if (bucketMetadata.getObjectMetadata(key).isPresent()) {
@@ -205,7 +367,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .build();
   }
 
-  private void checkRequestingMd5Header(PutObjectOptions options, String etag) {
+  private static void checkRequestingMd5Header(PutObjectOptions options, String etag) {
     // Validate Content-MD5 header if present.
     if (Objects.nonNull(options.getContentMd5())) {
       byte[] md5Bytes;

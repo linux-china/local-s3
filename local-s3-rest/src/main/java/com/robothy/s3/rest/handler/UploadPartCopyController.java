@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
@@ -13,6 +14,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.response.CopyPartResult;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.XmlUtils;
@@ -42,6 +44,7 @@ class UploadPartCopyController implements HttpRequestHandler {
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
     CopySource copySource = CopySource.of(request);
+    CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
     Range copySourceRange = request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE_RANGE).map(Range::parse).orElse(null);
 
     UploadPartCopyAns ans = uploadPartCopyService.uploadPartCopy(bucket, key, uploadId, partNumber,
@@ -51,6 +54,8 @@ class UploadPartCopyController implements HttpRequestHandler {
             .sourceVersion(copySource.versionId())
             .copySourceRange(copySourceRange)
             .sourcePreconditions(RequestUtils.extractCopySourcePreconditions(request))
+            .customerEncryption(customerEncryption)
+            .sourceCustomerEncryption(CustomerEncryptionHeaders.fromCopySourceRequest(request))
             .build());
 
     CopyPartResult result = CopyPartResult.builder()
@@ -65,6 +70,7 @@ class UploadPartCopyController implements HttpRequestHandler {
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
         ans.getSourceVersionId());
+    CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
     ResponseUtils.addCommonHeaders(response);
   }
 

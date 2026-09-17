@@ -106,7 +106,9 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
         case "PostObject" -> "s3:ObjectCreated:Post";
         default -> "s3:ObjectCreated:Put";
       };
-      case OBJECT_DELETED -> deleteMarker ? "s3:ObjectRemoved:DeleteMarkerCreated" : "s3:ObjectRemoved:Delete";
+      case OBJECT_DELETED -> "LifecycleExpiration".equals(operation)
+          ? (deleteMarker ? "s3:LifecycleExpiration:DeleteMarkerCreated" : "s3:LifecycleExpiration:Delete")
+          : (deleteMarker ? "s3:ObjectRemoved:DeleteMarkerCreated" : "s3:ObjectRemoved:Delete");
       case OBJECT_TAGGING_PUT -> "s3:ObjectTagging:Put";
       case OBJECT_TAGGING_DELETED -> "s3:ObjectTagging:Delete";
       case OBJECT_ACL_PUT -> "s3:ObjectAcl:Put";

@@ -1,5 +1,7 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -60,6 +62,23 @@ public class PutObjectOptions {
    * for a browser form upload; {@code null} for {@code PutObject}.
    */
   private String operation;
+
+  /**
+   * The Object Lock settings to store the object with; {@code null} for none, which stores it with the default
+   * retention of the bucket, if any.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key to store the object with; {@code null} for none.
+   */
+  private CustomerEncryption customerEncryption;
+
+  /**
+   * The {@code x-amz-write-offset-bytes} of a request that appends the content to the object the key holds, which
+   * must be the size of that object; {@code null} to replace the object.
+   */
+  private Long writeOffsetBytes;
 
   /**
    * Get tagging in the put object request.

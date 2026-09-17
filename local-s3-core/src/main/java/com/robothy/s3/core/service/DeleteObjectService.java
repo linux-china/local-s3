@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
+import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
@@ -10,6 +11,7 @@ import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.storage.Storage;
@@ -49,6 +51,21 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
    */
   default DeleteObjectAns deleteObject(String bucketName, String key, String versionId,
                                        ObjectPreconditions preconditions) {
+    return deleteObject(bucketName, key, versionId, preconditions, false);
+  }
+
+  /**
+   * Delete an object, or a version of it, like {@linkplain #deleteObject(String, String, String, ObjectPreconditions)}.
+   * A version that Object Lock protects, i.e. that has a legal hold on or a retention that hasn't expired, can't be
+   * deleted permanently; deleting the object without a version ID still adds a delete marker.
+   *
+   * @param bypassGovernanceRetention whether the request sends {@code x-amz-bypass-governance-retention: true}, which
+   *     deletes a version whose retention is in {@code GOVERNANCE} mode.
+   * @throws com.robothy.s3.core.exception.LocalS3RequestException {@code AccessDenied} if Object Lock protects the
+   *     version to delete.
+   */
+  default DeleteObjectAns deleteObject(String bucketName, String key, String versionId,
+                                       ObjectPreconditions preconditions, boolean bypassGovernanceRetention) {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       PreconditionAssertions.assertDeletePreconditionsHold(preconditions, key,
@@ -57,6 +74,15 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
       if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
         ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
       } else {
+        if (Objects.nonNull(versionId)) {
+          long now = System.currentTimeMillis();
+          bucketMetadata.getObjectMetadataRef(key).map(ObjectMetadataRef::get)
+              .flatMap(objectMetadata -> ObjectMetadata.NULL_VERSION.equals(versionId)
+                  ? objectMetadata.getVirtualVersion().flatMap(objectMetadata::getVersionedObjectMetadata)
+                  : objectMetadata.getVersionedObjectMetadata(versionId))
+              .ifPresent(version ->
+                  ObjectLockAssertions.assertVersionIsDeletable(version, now, bypassGovernanceRetention));
+        }
         ans = Objects.isNull(versionId) ? deleteWithoutVersionId(storage(), bucketMetadata, key)
             : deleteWithVersionId(storage(), bucketMetadata, key, versionId);
       }

@@ -38,7 +38,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
     // getCopySource read locks the source bucket while the source object is resolved and its conditions are
     // evaluated; the content is read without the lock.
     GetObjectAns srcObjectAns = getCopySource(options.getSourceBucket(), options.getSourceKey(), srcVersion, null,
-        options.getSourcePreconditions());
+        options.getSourcePreconditions(), options.getSourceCustomerEncryption());
 
     if (srcObjectAns.isDeleteMarker()) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
@@ -69,6 +69,9 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
         .preconditions(options.getPreconditions())
         .checksum(copyChecksum(options, srcObjectAns))
+        // Neither the Object Lock settings nor the encryption of the source are copied, like Amazon S3 does.
+        .objectLock(options.getObjectLock())
+        .customerEncryption(options.getCustomerEncryption())
         .build());
 
     return CopyObjectAns.builder()

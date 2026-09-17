@@ -1,5 +1,7 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import com.robothy.s3.datatypes.enums.ChecksumType;
@@ -36,4 +38,16 @@ public class CreateMultipartUploadOptions {
    * The type of the checksum of the object that the upload stores; {@code null} for the default of the algorithm.
    */
   private ChecksumType checksumType;
+
+  /**
+   * The Object Lock settings to store the object with; {@code null} for none, which stores it with the default
+   * retention of the bucket, if any.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key to store the object with; {@code null} for none.
+   */
+  private CustomerEncryption customerEncryption;
+
 }

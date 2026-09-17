@@ -1,6 +1,7 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.CustomerEncryptionAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
@@ -10,6 +11,7 @@ import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.VersionedObjectNotExistException;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
@@ -53,6 +55,19 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
    */
   default GetObjectAns getCopySource(String bucketName, String key, String versionId, Range range,
                                      ObjectPreconditions preconditions) {
+    return getCopySource(bucketName, key, versionId, range, preconditions, null);
+  }
+
+  /**
+   * Resolve the source object of a copy like {@linkplain #getCopySource(String, String, String, Range,
+   * ObjectPreconditions)}, providing the customer key that the source object was stored with.
+   *
+   * @param sourceCustomerEncryption the {@code x-amz-copy-source-server-side-encryption-customer-*} key of the request;
+   *     {@code null} for none.
+   * @return the source object, with its content open unless it is a delete marker.
+   */
+  default GetObjectAns getCopySource(String bucketName, String key, String versionId, Range range,
+                                     ObjectPreconditions preconditions, CustomerEncryption sourceCustomerEncryption) {
     ObjectPreconditions conditions = Objects.requireNonNullElseGet(preconditions, ObjectPreconditions::none);
     GetObjectAns source;
     try {
@@ -60,6 +75,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .versionId(versionId)
           .range(range)
           .preconditions(conditions)
+          .customerEncryption(sourceCustomerEncryption)
           .build());
     } catch (PreconditionFailedException e) {
       throw PreconditionAssertions.copySourceConditionFailed(e.getCondition());
@@ -80,6 +96,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
     }
 
     VersionedObjectMetadata latestObject = objectMetadata.getLatest();
+    CustomerEncryptionAssertions.assertKeyProvided(latestObject.getCustomerEncryption(),
+        options.getCustomerEncryption());
     if (PreconditionAssertions.assertReadPreconditionsHold(options.getPreconditions(),
         latestObject.getEtag(), latestObject.getCreationDate())) {
       return notModified(bucketName, key, null, latestObject);
@@ -118,6 +136,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .parts(latestObject.getParts().orElse(null))
         // The checksum is the one of the whole content, not of a range of it.
         .checksum(Objects.isNull(contentRange) ? latestObject.getChecksum() : null)
+        .objectLock(latestObject.getObjectLock())
+        .customerEncryption(latestObject.getCustomerEncryption())
         .build();
   }
 
@@ -168,6 +188,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .lastModified(versionedObjectMetadata.getCreationDate())
           .build();
     } else {
+      CustomerEncryptionAssertions.assertKeyProvided(versionedObjectMetadata.getCustomerEncryption(),
+          options.getCustomerEncryption());
       if (PreconditionAssertions.assertReadPreconditionsHold(options.getPreconditions(),
           versionedObjectMetadata.getEtag(), versionedObjectMetadata.getCreationDate())) {
         return notModified(bucketName, key, returnedVersionId, versionedObjectMetadata);
@@ -207,6 +229,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .parts(versionedObjectMetadata.getParts().orElse(null))
           // The checksum is the one of the whole content, not of a range of it.
           .checksum(Objects.isNull(contentRange) ? versionedObjectMetadata.getChecksum() : null)
+          .objectLock(versionedObjectMetadata.getObjectLock())
+          .customerEncryption(versionedObjectMetadata.getCustomerEncryption())
           .build();
     }
   }

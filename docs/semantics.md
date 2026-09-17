@@ -13,6 +13,9 @@ Amazon S3 would refuse.
 - [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
 - [Access control lists](#access-control-lists)
 - [Lifecycle configuration](#lifecycle-configuration)
+- [Object Lock](#object-lock)
+- [Appends and renames](#appends-and-renames)
+- [Server-side encryption with customer-provided keys (SSE-C)](#server-side-encryption-with-customer-provided-keys-sse-c)
 - [Change events](#change-events)
 
 ## Request validation
@@ -202,9 +205,38 @@ An ACL of headers keeps the owner that the bucket or object has. The rejected re
 delete the lifecycle configuration of a bucket, so that frameworks that set one when they start, e.g. to clean up
 temporary files, work against LocalS3 instead of failing with `501 NotImplemented`.
 
-**The configuration is saved, but never takes effect.** LocalS3 doesn't expire objects or noncurrent versions,
-doesn't remove expired delete markers, doesn't transition anything to another storage class, and doesn't abort
-incomplete multipart uploads. A test that relies on a rule being applied needs to delete the objects itself.
+**The configuration never takes effect by itself**: nothing expires while a test runs. A test that exercises
+expiration asks LocalS3 to apply the configurations at a time of its choosing, which may be in the future, so that it
+doesn't wait for days to pass:
+
+```shell
+# Apply every bucket's configuration as if it were 31 days from now.
+curl -s -X POST "http://localhost:29090/_admin/lifecycle?days=31"
+# Apply one bucket's configuration at a given instant.
+curl -s -X POST "http://localhost:29090/_admin/lifecycle?bucket=my-bucket&now=2030-01-01T00:00:00Z"
+```
+
+```java
+List<LifecycleActionAns> actions = localS3.applyLifecycle(Instant.now().plus(Duration.ofDays(31)));
+// or, without the HTTP server: localS3.getS3Manager().objectService().applyLifecycle("my-bucket", instant)
+```
+
+The answer lists the actions taken, each with the bucket, the rule `ID`, the type, the key and the version or upload.
+The enabled rules are applied the way Amazon S3 applies them:
+
+| Rule | Action |
+|---|---|
+| `Expiration` with `Days` or `Date` | The current version of an object that the filter selects expires: it is deleted in a bucket whose versioning was never enabled (`OBJECT_EXPIRED`), and gets a delete marker in a versioned bucket (`DELETE_MARKER_CREATED`). |
+| `NoncurrentVersionExpiration` | The versions and delete markers that have been noncurrent for `NoncurrentDays` are deleted, keeping the `NewerNoncurrentVersions` most recent noncurrent ones (`NONCURRENT_VERSION_EXPIRED`). A version that [Object Lock](#object-lock) protects is kept. |
+| `Expiration` with `ExpiredObjectDeleteMarker` | A delete marker that is the only version left of its object is removed (`EXPIRED_DELETE_MARKER_REMOVED`). |
+| `AbortIncompleteMultipartUpload` | The uploads of the keys that the prefix selects, created `DaysAfterInitiation` ago, are aborted (`MULTIPART_UPLOAD_ABORTED`). |
+| `Transition`, `NoncurrentVersionTransition` | Nothing: LocalS3 has one storage class. |
+
+A filter selects by `Prefix`, `Tag`, `ObjectSizeGreaterThan` and `ObjectSizeLessThan`, alone or in an `And`; a rule
+with the legacy `Prefix` outside a `Filter` selects by it. A number of days counts from the creation of the object, the
+time a version became noncurrent, i.e. the creation of the next version, or the creation of the upload, and is rounded
+up to the next midnight UTC, like Amazon S3 does. The changes are published with the operation `LifecycleExpiration`,
+see [change events](#change-events).
 
 What is checked is the structure that Amazon S3 checks, so a configuration that Amazon S3 rejects isn't accepted:
 
@@ -217,10 +249,72 @@ What is checked is the structure that Amazon S3 checks, so a configuration that 
 | An `ID` longer than 255 characters, or the same `ID` in two rules | `400 InvalidArgument` |
 | An `x-amz-transition-default-minimum-object-size` other than `all_storage_classes_128K` or `varies_by_storage_class` | `400 InvalidArgument` |
 
-The contents of the filters and actions aren't checked, since nothing reads them. The document is stored as it was
-put, and `GetBucketLifecycleConfiguration` returns it as is, with the `x-amz-transition-default-minimum-object-size` it
+The contents of the filters and actions aren't checked beyond that. The document is stored as it was put, and `GetBucketLifecycleConfiguration` returns it as is, with the `x-amz-transition-default-minimum-object-size` it
 was put with, `all_storage_classes_128K` by default. A bucket without a configuration answers
 `404 NoSuchLifecycleConfiguration`; deleting the configuration of such a bucket succeeds.
+
+## Object Lock
+
+[Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html) protects object versions from
+being deleted, for testing compliance code, e.g. that a retention is set on what is stored, or that a delete is refused.
+
++ A bucket gets Object Lock when it is created with `x-amz-bucket-object-lock-enabled: true`, which enables its
+  versioning too, or when `PutObjectLockConfiguration` is sent to a bucket whose versioning is enabled; otherwise it
+  answers `409 InvalidBucketState`. Object Lock can't be disabled, and `PutBucketVersioning` can't suspend the
+  versioning of such a bucket (`409 InvalidBucketState`). `GetObjectLockConfiguration` of a bucket without it answers
+  `404 ObjectLockConfigurationNotFoundError`.
++ The configuration may have a default retention, a `Mode` with either `Days` (at most 36500) or `Years` (at most
+  100), which every new version stored without a retention of its own gets.
++ `PutObject`, `CopyObject` and `CreateMultipartUpload` store a version with `x-amz-object-lock-mode`,
+  `x-amz-object-lock-retain-until-date` (both or neither, in the future) and `x-amz-object-lock-legal-hold`. They answer
+  `400 InvalidRequest` for a bucket without Object Lock. A copy doesn't copy the settings of its source.
+  `GetObject` and `HeadObject` answer the same headers.
++ `PutObjectRetention`/`GetObjectRetention` and `PutObjectLegalHold`/`GetObjectLegalHold` address the current version,
+  or the one of `versionId`. A version whose retention or legal hold was never set answers
+  `404 NoSuchObjectLockConfiguration`.
++ A retention that hasn't expired can be extended, and a `GOVERNANCE` one turned into a `COMPLIANCE` one; shortening,
+  removing or relaxing it answers `403 AccessDenied`, unless it is in `GOVERNANCE` mode and the request sends
+  `x-amz-bypass-governance-retention: true`.
++ Deleting a version for good, with `DeleteObject` or `DeleteObjects` and a `versionId`, answers `403 AccessDenied` while
+  its legal hold is on, or its retention hasn't expired, unless the retention is in `GOVERNANCE` mode and the request
+  bypasses it. A delete without a version ID still adds a delete marker, like in Amazon S3.
+
+Unlike Amazon S3, LocalS3 doesn't require a `Content-MD5` or checksum on the requests that store a version with Object
+Lock settings.
+
+## Appends and renames
+
+Amazon S3 offers these two for the directory buckets of S3 Express One Zone. LocalS3 offers them for the buckets whose
+versioning was never enabled, which directory buckets are like; a versioned bucket answers `400 InvalidRequest` to a
+rename.
+
++ **Append**: a `PutObject` with `x-amz-write-offset-bytes` appends its content to the object, if the offset is the size
+  of the object, or is `0` for a key that holds no object, which creates it; otherwise it answers
+  `400 InvalidWriteOffset`, as it does if another request changed the object while the content was being stored. The
+  object keeps its content type, metadata and tags. Its entity tag is the MD5 of the whole content, and a checksum or
+  `Content-MD5` of the request is verified against the appended bytes. The response carries `x-amz-object-size`.
++ **RenameObject**: `PUT /bucket/new-key?renameObject` with `x-amz-rename-source: /bucket/old-key` moves the object,
+  without copying its content, and replaces the object the new key holds. `If-Match`, `If-None-Match`,
+  `If-Modified-Since` and `If-Unmodified-Since` are evaluated against the destination, and the
+  `x-amz-rename-source-if-*` headers against the source; either answers `412 PreconditionFailed`. The source is in the
+  same bucket, named as `/bucket/key` or as the key alone. `x-amz-client-token` is accepted and ignored.
+
+## Server-side encryption with customer-provided keys (SSE-C)
+
+`PutObject`, `CopyObject`, `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`, `GetObject`, `HeadObject` and
+`GetObjectAttributes` accept the `x-amz-server-side-encryption-customer-algorithm`, `-customer-key` and
+`-customer-key-MD5` headers, and the `x-amz-copy-source-server-side-encryption-customer-*` ones for the source of a
+copy. **Nothing is encrypted**: LocalS3 stores the MD5 of the key, never the key, so that client code that uses SSE-C
+runs as it does against Amazon S3.
+
++ The headers are validated like Amazon S3 validates them: all three, `AES256` (`400 InvalidEncryptionAlgorithmError`
+  otherwise), a base64 256-bit key, and its MD5 (`400 InvalidArgument` otherwise).
++ The responses that store or serve such an object echo the algorithm and the MD5 of the key.
++ Reading an object stored with a key, or uploading a part to an upload created with one, without the key answers
+  `400 InvalidRequest`, and with another key `403 AccessDenied`. Sending a key for an object stored without one answers
+  `400 InvalidRequest`.
+
+Unlike Amazon S3, LocalS3 doesn't require HTTPS for SSE-C requests.
 
 ## Change events
 
@@ -245,11 +339,12 @@ doesn't notify of.
 | Change type | Operation | `s3EventName()` | Details |
 |---|---|---|---|
 | `BUCKET_CREATED`, `BUCKET_DELETED` | `CreateBucket`, `DeleteBucket` | `null` | `bucketName()`, `bucketRegion()`; `key()` is `null` |
-| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `key()`, `size()`, `etag()`, `versionId()` |
-| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects` | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `key()`, `versionId()`, `deleteMarker()`; `size()` and `etag()` are `null` |
+| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload`, `RenameObject` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `key()`, `size()`, `etag()`, `versionId()` |
+| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects`, `RenameObject` (the old key) | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `key()`, `versionId()`, `deleteMarker()`; `size()` and `etag()` are `null` |
+| `OBJECT_DELETED` | `LifecycleExpiration` | `s3:LifecycleExpiration:Delete`, `:DeleteMarkerCreated` | as above, for what an [applied lifecycle rule](#lifecycle-configuration) expired |
 | `OBJECT_TAGGING_PUT`, `OBJECT_TAGGING_DELETED` | `PutObjectTagging`, `DeleteObjectTagging` | `s3:ObjectTagging:Put`, `:Delete` | `key()`, `versionId()`, `size()`, `etag()` of the version |
 | `OBJECT_ACL_PUT` | `PutObjectAcl` | `s3:ObjectAcl:Put` | `key()`, `versionId()`, `size()`, `etag()` of the version |
-| `MULTIPART_UPLOAD_ABORTED` | `AbortMultipartUpload` | `null` | `key()`, `uploadId()`; fired only if the upload existed |
+| `MULTIPART_UPLOAD_ABORTED` | `AbortMultipartUpload`, `LifecycleExpiration` | `null` | `key()`, `uploadId()`; fired only if the upload existed |
 
 Only a change of a bucket leaves `key()` `null`, which tells the two apart. `versionId()` is `null` if the bucket has
 never been versioned.

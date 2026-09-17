@@ -32,7 +32,8 @@ class DeleteObjectsController extends ObjectHttpRequestHandler {
             DeleteObjectsRequest deleteObjectsRequest =
                     xmlMapper.readValue(decodedBody, DeleteObjectsRequest.class);
             // The service leaves the deleted objects out of a quiet result, and publishes their events either way.
-            List<Object> results = this.deleteObjectsService.deleteObjects(bucketName, deleteObjectsRequest);
+            List<Object> results = this.deleteObjectsService.deleteObjects(bucketName, deleteObjectsRequest,
+                    RequestUtils.isBypassGovernanceRetention(request));
             String xml = xmlMapper.writeValueAsString(new DeleteResult(results));
             response.status(HttpResponseStatus.OK)
                     .write(xml);

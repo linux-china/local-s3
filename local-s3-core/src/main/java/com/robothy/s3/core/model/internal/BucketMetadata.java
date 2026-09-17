@@ -5,6 +5,7 @@ import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
+import com.robothy.s3.core.model.BucketObjectLockConfiguration;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
@@ -127,6 +128,12 @@ public class BucketMetadata {
    * The lifecycle configuration of the bucket, which LocalS3 stores but never applies; {@code null} for none.
    */
   private BucketLifecycleConfiguration lifecycle;
+
+  /**
+   * The object lock configuration of the bucket; {@code null} if the bucket doesn't have Object Lock enabled. Once
+   * enabled, Object Lock can't be disabled, and the versioning of the bucket can't be suspended.
+   */
+  private BucketObjectLockConfiguration objectLock;
 
   /**
    * Get metadata of the specified object.
@@ -345,6 +352,15 @@ public class BucketMetadata {
    */
   public Optional<BucketLifecycleConfiguration> getLifecycle() {
     return Optional.ofNullable(lifecycle);
+  }
+
+  /**
+   * Get the object lock configuration.
+   *
+   * @return the object lock configuration of the bucket; empty if the bucket doesn't have Object Lock enabled.
+   */
+  public Optional<BucketObjectLockConfiguration> getObjectLock() {
+    return Optional.ofNullable(objectLock);
   }
 
   /**

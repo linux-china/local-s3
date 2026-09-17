@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.admin;
 
+import com.robothy.s3.core.model.answers.LifecycleActionAns;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -30,5 +32,16 @@ public interface LocalS3Admin {
    * @throws UnsupportedOperationException if the service persists its data.
    */
   void reset();
+
+  /**
+   * Apply the lifecycle configurations of the buckets at a time, which LocalS3 never does by itself.
+   *
+   * @param bucketName the bucket whose configuration to apply; {@code null} for every bucket that has one.
+   * @param now the time to apply the rules at.
+   * @return the actions taken.
+   * @throws com.robothy.s3.core.exception.BucketNotExistException if the bucket doesn't exist.
+   * @see com.robothy.s3.core.service.LifecycleExecutionService
+   */
+  List<LifecycleActionAns> applyLifecycle(String bucketName, Instant now);
 
 }

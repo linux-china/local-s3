@@ -16,6 +16,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.response.GetObjectAttributesResult;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -58,6 +59,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
 
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
+        .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
         .build();
     GetObjectAns object = objectService.headObject(bucket, key, options);
 

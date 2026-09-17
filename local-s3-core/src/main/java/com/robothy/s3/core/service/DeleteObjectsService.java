@@ -38,6 +38,20 @@ public interface DeleteObjectsService extends DeleteObjectService {
    *     {@value #MAX_OBJECTS}.
    */
   default List<Object> deleteObjects(String bucketName, DeleteObjectsRequest request) {
+    return deleteObjects(bucketName, request, false);
+  }
+
+  /**
+   * Delete objects from a specified bucket, like {@linkplain #deleteObjects(String, DeleteObjectsRequest)}. A version
+   * that Object Lock protects is reported as an {@code AccessDenied} error of its own.
+   *
+   * @param bucketName bucket name.
+   * @param request delete objects request.
+   * @param bypassGovernanceRetention whether the request bypasses the governance mode retention of the versions.
+   * @return delete results.
+   */
+  default List<Object> deleteObjects(String bucketName, DeleteObjectsRequest request,
+                                     boolean bypassGovernanceRetention) {
     List<ObjectIdentifier> objects = request.getObjects();
     if (objects == null || objects.isEmpty() || objects.size() > MAX_OBJECTS) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
@@ -50,8 +64,9 @@ public interface DeleteObjectsService extends DeleteObjectService {
         String versionId = id.getVersionId().orElse(null);
         try {
           ObjectPreconditions preconditions = preconditions(id);
-          DeleteObjectAns deleteObjectAns = preconditions.isEmpty() ? deleteObject(bucketName, key, versionId)
-              : deleteObject(bucketName, key, versionId, preconditions);
+          DeleteObjectAns deleteObjectAns = preconditions.isEmpty() && !bypassGovernanceRetention
+              ? deleteObject(bucketName, key, versionId)
+              : deleteObject(bucketName, key, versionId, preconditions, bypassGovernanceRetention);
           if (request.isQuiet()) {
             continue;
           }

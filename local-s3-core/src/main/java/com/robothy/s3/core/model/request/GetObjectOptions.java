@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
@@ -23,6 +24,12 @@ public class GetObjectOptions {
    * request is unconditional.
    */
   private ObjectPreconditions preconditions;
+
+  /**
+   * The customer-provided key of the request, which must be the one the object was stored with; {@code null} for
+   * none.
+   */
+  private CustomerEncryption customerEncryption;
 
   public Optional<String> getVersionId() {
     return Optional.ofNullable(versionId);

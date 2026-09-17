@@ -12,6 +12,8 @@ import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
+import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
@@ -39,6 +41,7 @@ class HeadObjectController implements HttpRequestHandler {
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
         .preconditions(RequestUtils.extractPreconditions(request))
+        .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
         .build();
     GetObjectAns object = objectService.headObject(bucket, key, options);
 
@@ -65,6 +68,8 @@ class HeadObjectController implements HttpRequestHandler {
       SystemMetadataHeaders.addResponseHeaders(request, response, object.getContentType(), object.getSystemMetadata());
       ResponseUtils.addETag(response, object.getEtag());
       object.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
+      ObjectLockHeaders.addHeaders(response, object.getObjectLock());
+      CustomerEncryptionHeaders.addHeaders(response, object.getCustomerEncryption());
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {
         ChecksumHeaders.addHeaders(response, object.getChecksum());
       }

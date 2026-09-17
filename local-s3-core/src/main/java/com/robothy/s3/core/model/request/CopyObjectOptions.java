@@ -1,5 +1,7 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.util.Collections;
 import java.util.Map;
@@ -75,6 +77,22 @@ public class CopyObjectOptions {
    * one.
    */
   private CheckSumAlgorithm checksumAlgorithm;
+
+  /**
+   * The Object Lock settings to store the object with; {@code null} for none, which stores it with the default
+   * retention of the bucket, if any.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key to store the object with; {@code null} for none.
+   */
+  private CustomerEncryption customerEncryption;
+
+  /**
+   * The customer-provided key that the source object was stored with; {@code null} for none.
+   */
+  private CustomerEncryption sourceCustomerEncryption;
 
   /**
    * The {@code If-Match} and {@code If-None-Match} conditions that the object the destination key holds must satisfy;

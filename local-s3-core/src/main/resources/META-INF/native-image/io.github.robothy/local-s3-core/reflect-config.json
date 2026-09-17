@@ -41,7 +41,9 @@
       {"name":"setReplication","parameterTypes":["java.lang.String"] },
       {"name":"setTagging","parameterTypes":["java.util.Collection"] },
       {"name":"setUploads","parameterTypes":["java.util.NavigableMap"] },
-      {"name":"setVersioningEnabled","parameterTypes":["java.lang.Boolean"] }
+      {"name":"setVersioningEnabled","parameterTypes":["java.lang.Boolean"] },
+      {"name":"getObjectLock","parameterTypes":[] },
+      {"name":"setObjectLock","parameterTypes":["com.robothy.s3.core.model.BucketObjectLockConfiguration"] }
     ]
   },
   {
@@ -83,7 +85,11 @@
       {"name":"setCreateDate","parameterTypes":["long"] },
       {"name":"getSystemMetadata","parameterTypes":[] },
       {"name":"setParts","parameterTypes":["java.util.NavigableMap"] },
-      {"name":"setSystemMetadata","parameterTypes":["com.robothy.s3.core.model.internal.SystemMetadata"] }
+      {"name":"setSystemMetadata","parameterTypes":["com.robothy.s3.core.model.internal.SystemMetadata"] },
+      {"name":"getObjectLock","parameterTypes":[] },
+      {"name":"setObjectLock","parameterTypes":["com.robothy.s3.core.model.internal.ObjectLock"] },
+      {"name":"getCustomerEncryption","parameterTypes":[] },
+      {"name":"setCustomerEncryption","parameterTypes":["com.robothy.s3.core.model.internal.CustomerEncryption"] }
     ]
   },
   {
@@ -144,7 +150,11 @@
       {"name":"setFileId","parameterTypes":["java.lang.Long"] },
       {"name":"setSize","parameterTypes":["long"] },
       {"name":"setSystemMetadata","parameterTypes":["com.robothy.s3.core.model.internal.SystemMetadata"] },
-      {"name":"setTagging","parameterTypes":["java.lang.String[][]"] }
+      {"name":"setTagging","parameterTypes":["java.lang.String[][]"] },
+      {"name":"getObjectLock","parameterTypes":[] },
+      {"name":"setObjectLock","parameterTypes":["com.robothy.s3.core.model.internal.ObjectLock"] },
+      {"name":"getCustomerEncryption","parameterTypes":[] },
+      {"name":"setCustomerEncryption","parameterTypes":["com.robothy.s3.core.model.internal.CustomerEncryption"] }
     ]
   },
   {
@@ -234,5 +244,53 @@
   {
     "name":"com.robothy.s3.core.service.UploadPartService",
     "methods":[{"name":"uploadPart","parameterTypes":["java.lang.String","java.lang.String","java.lang.String","java.lang.Integer","com.robothy.s3.core.model.request.UploadPartOptions"] }]
+  },
+  {
+    "name":"com.robothy.s3.core.model.BucketLifecycleConfiguration",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.BucketObjectLockConfiguration",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.DefaultRetention",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.ObjectLockMode",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.internal.ObjectLock",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.internal.CustomerEncryption",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.answers.LifecycleActionAns",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.model.answers.LifecycleActionAns$Type",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
   }
 ]

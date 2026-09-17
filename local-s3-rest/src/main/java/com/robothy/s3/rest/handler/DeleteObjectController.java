@@ -31,7 +31,7 @@ class DeleteObjectController extends ObjectHttpRequestHandler {
     String key = RequestAssertions.assertObjectKeyProvided(httpRequest);
     String versionId = httpRequest.parameter("versionId").orElse(null);
     DeleteObjectAns deleteObjectAns = deleteObjectService.deleteObject(bucketName, key, versionId,
-        RequestUtils.extractDeletePreconditions(httpRequest));
+        RequestUtils.extractDeletePreconditions(httpRequest), RequestUtils.isBypassGovernanceRetention(httpRequest));
     httpResponse.status(HttpResponseStatus.NO_CONTENT)
         .putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, deleteObjectAns.isDeleteMarker());
     ResponseUtils.putHeaderIfPresent(httpResponse, AmzHeaderNames.X_AMZ_VERSION_ID, deleteObjectAns.getVersionId());

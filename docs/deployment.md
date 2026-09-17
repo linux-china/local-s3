@@ -237,6 +237,7 @@ A running service answers a few endpoints for local development and tests, with 
 |---|---|
 | `GET /_admin/stats` | The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), how much object metadata the service keeps in heap (`loadedObjects` and `loadedObjectMetadataBytes`, see [Opening a large data path](#opening-a-large-data-path)), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. |
 | `GET /_admin/requests?limit=n` | The last 100 requests, the most recent first: time, method, URI, operation, status, latency and `x-amz-request-id`. The values of the credentials of presigned URLs are hidden. |
+| `POST /_admin/lifecycle` | Apply the lifecycle configurations of the buckets, which LocalS3 never does by itself, and answer the actions taken. `bucket=name` applies one bucket's only; `now=2030-01-01T00:00:00Z` applies them at that instant, or `days=31` that many days from now, instead of the current time. See [lifecycle configuration](semantics.md#lifecycle-configuration). |
 | `POST /_admin/reset` | Replace the data of an `IN_MEMORY` service with the data it started with, i.e. none, or the initial data of its data path, and create the `AWS_BUCKETS` again. The requests recorded for the statistics are forgotten too. A `PERSISTENCE` service answers `409 Conflict`, since a reset would delete its data path. |
 
 Resetting a service between the tests that share it is much quicker than restarting it. The requests in progress
@@ -246,6 +247,7 @@ are finished first, and the requests that arrive meanwhile wait for the reset. A
 ```shell
 curl -s http://localhost:29090/_admin/stats
 curl -s -X POST http://localhost:29090/_admin/reset
+curl -s -X POST "http://localhost:29090/_admin/lifecycle?days=31"
 ```
 
 The latency of a request is measured from when its body is received until its response is written. The health check

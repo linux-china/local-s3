@@ -29,6 +29,9 @@ versioning, see [semantics.md](semantics.md).
 + GetObjectAcl
 + PutObjectAcl
 + GetObjectAttributes
++ GetObjectLegalHold
++ GetObjectLockConfiguration
++ GetObjectRetention
 + GetBucketAcl
 + GetBucketCors
 + GetBucketEncryption
@@ -58,6 +61,10 @@ versioning, see [semantics.md](semantics.md).
 + PostObject
 + PutObject
 + PutObjectTagging
++ PutObjectLegalHold
++ PutObjectLockConfiguration
++ PutObjectRetention
++ RenameObject
 + UploadPart
 + UploadPartCopy
 + PutPublicAccessBlock
@@ -65,10 +72,21 @@ versioning, see [semantics.md](semantics.md).
 + DeletePublicAccessBlock
 + OPTIONS object (CORS preflight requests, answered without authentication)
 
-The lifecycle configuration of a bucket is **stored but not applied**: `GetBucketLifecycleConfiguration` returns what
-was put, but no object expires or transitions, and no incomplete multipart upload is aborted because of it. See
+The lifecycle configuration of a bucket is **stored, and applied only when a test asks for it**, with
+`POST /_admin/lifecycle` or `LocalS3#applyLifecycle(Instant)`, at a time of its choosing, e.g. 30 days from now. See
 [semantics.md](semantics.md#lifecycle-configuration). The deprecated `PutBucketLifecycle` and `GetBucketLifecycle`
 send the same requests, and are answered the same way.
+
+Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` headers of `PutObject`, `CopyObject` and
+`CreateMultipartUpload`, retention and legal holds) protects object versions from being deleted, see
+[semantics.md](semantics.md#object-lock).
+
+`RenameObject` and appends (`PutObject` with `x-amz-write-offset-bytes`), which Amazon S3 offers for S3 Express One Zone
+directory buckets, work on the buckets whose versioning was never enabled, see
+[semantics.md](semantics.md#appends-and-renames).
+
+Server-side encryption with customer-provided keys (SSE-C) is accepted and echoed, but nothing is encrypted, see
+[semantics.md](semantics.md#server-side-encryption-with-customer-provided-keys-sse-c).
 
 `PostObject` is the upload of a file by an HTML form that a browser posts to a bucket, with its policy document and
 signature; see [semantics.md](semantics.md#browser-form-uploads-post-object).
@@ -124,14 +142,6 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 
 (The deprecated `GetBucketNotification` and `PutBucketNotification` send the same requests, and get the same
 answer. LocalS3 has its own listener API instead; see [change events](semantics.md#change-events).)
-
-**Object Lock and retention**
-+ GetObjectLegalHold
-+ GetObjectLockConfiguration
-+ GetObjectRetention
-+ PutObjectLegalHold
-+ PutObjectLockConfiguration
-+ PutObjectRetention
 
 **Object retrieval and transformation**
 + GetObjectTorrent

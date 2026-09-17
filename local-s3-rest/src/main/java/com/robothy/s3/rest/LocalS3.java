@@ -1,6 +1,7 @@
 package com.robothy.s3.rest;
 
 import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.model.answers.LifecycleActionAns;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
@@ -289,6 +290,32 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Apply the lifecycle configurations of the buckets that have one at a time, which LocalS3 never does by itself: e.g.
+     * {@code applyLifecycle(Instant.now().plus(Duration.ofDays(31)))} expires what a rule would have expired 31 days from
+     * now. The same is requested with {@code POST /_admin/lifecycle}.
+     *
+     * @param now the time to apply the rules at.
+     * @return the actions taken.
+     * @throws IllegalStateException if the service has never been started.
+     * @see com.robothy.s3.core.service.LifecycleExecutionService
+     */
+    public List<LifecycleActionAns> applyLifecycle(Instant now) {
+        return getS3Manager().objectService().applyLifecycle(now);
+    }
+
+    /**
+     * Apply the lifecycle configuration of a bucket at a time, like {@linkplain #applyLifecycle(Instant)}.
+     *
+     * @param bucketName the bucket name.
+     * @param now the time to apply the rules at.
+     * @return the actions taken; empty if the bucket has no lifecycle configuration.
+     * @throws BucketNotExistException if the bucket doesn't exist.
+     */
+    public List<LifecycleActionAns> applyLifecycle(String bucketName, Instant now) {
+        return getS3Manager().objectService().applyLifecycle(bucketName, now);
+    }
+
+    /**
      * The administration of the service, which the {@code /_admin} endpoints answer through.
      */
     private final class Admin implements LocalS3Admin {
@@ -307,6 +334,11 @@ public class LocalS3 implements AutoCloseable {
         @Override
         public void reset() {
             LocalS3.this.reset();
+        }
+
+        @Override
+        public List<LifecycleActionAns> applyLifecycle(String bucketName, Instant now) {
+            return bucketName == null ? LocalS3.this.applyLifecycle(now) : LocalS3.this.applyLifecycle(bucketName, now);
         }
     }
 

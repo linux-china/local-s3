@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import java.util.Optional;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -22,6 +23,17 @@ public class UploadPartCopyOptions {
   private String sourceVersion;
 
   private Range copySourceRange;
+
+  /**
+   * The customer-provided key of the request, which must be the one the upload was created with; {@code null} for
+   * none.
+   */
+  private CustomerEncryption customerEncryption;
+
+  /**
+   * The customer-provided key that the source object was stored with; {@code null} for none.
+   */
+  private CustomerEncryption sourceCustomerEncryption;
 
   /**
    * The {@code x-amz-copy-source-if-*} conditions that the source object must satisfy; {@code null} if the request

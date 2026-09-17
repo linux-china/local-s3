@@ -13,6 +13,8 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.response.CopyObjectResult;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
+import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
@@ -54,6 +56,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, copyObjectAns.getVersionId());
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
         copyObjectAns.getSourceVersionId());
+    CustomerEncryptionHeaders.addHeaders(response, copyObjectOptions.getCustomerEncryption());
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
@@ -94,6 +97,9 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .preconditions(RequestUtils.extractPreconditions(request))
         .sourcePreconditions(RequestUtils.extractCopySourcePreconditions(request))
         .checksumAlgorithm(ChecksumHeaders.algorithm(request, AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM))
+        .objectLock(ObjectLockHeaders.fromRequest(request))
+        .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
+        .sourceCustomerEncryption(CustomerEncryptionHeaders.fromCopySourceRequest(request))
         .build();
   }
 

@@ -7,7 +7,8 @@ public interface ObjectService extends LocalS3MetadataApplicable, StorageApplica
     PutObjectService, GetObjectService, DeleteObjectService, ListObjectsService, ListObjectVersionsService,
     CreateMultipartUploadService, UploadPartService, UploadPartCopyService, CompleteMultipartUploadService, CopyObjectService,
     ObjectTaggingService, ObjectAclService, DeleteObjectsService, AbortMultipartUploadService, ListPartsService,
-    ListObjectsV2Service, ListMultipartUploadsService {
+    ListObjectsV2Service, ListMultipartUploadsService, ObjectLockService, RenameObjectService,
+    LifecycleExecutionService {
 
 
 }

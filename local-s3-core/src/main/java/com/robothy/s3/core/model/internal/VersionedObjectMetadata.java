@@ -60,6 +60,16 @@ public class VersionedObjectMetadata {
   private ObjectChecksum checksum;
 
   /**
+   * The Object Lock retention and legal hold of the version; {@code null} if it has neither.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key that the version was stored with; {@code null} if it wasn't stored with one.
+   */
+  private CustomerEncryption customerEncryption;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {

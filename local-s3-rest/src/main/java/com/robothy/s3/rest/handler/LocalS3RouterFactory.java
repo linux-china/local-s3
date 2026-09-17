@@ -55,7 +55,8 @@ public class LocalS3RouterFactory {
    * probe requests every few seconds, and the administration endpoints, which would record themselves.
    */
   public static final Set<String> UNRECORDED_OPERATIONS = Set.of("HealthCheck", "HeadHealthCheck",
-      AdminController.STATS_OPERATION, AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION);
+      AdminController.STATS_OPERATION, AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION,
+      AdminController.LIFECYCLE_OPERATION);
 
   /**
    * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
@@ -104,13 +105,6 @@ public class LocalS3RouterFactory {
           has("metrics").andHasNot("id")),
       new NotImplementedOperation("PutBucketMetricsConfiguration", PUT, BUCKET_PATH, has("metrics")),
       new NotImplementedOperation("DeleteBucketMetricsConfiguration", DELETE, BUCKET_PATH, has("metrics")),
-      // Object lock and retention.
-      new NotImplementedOperation("GetObjectLegalHold", GET, BUCKET_KEY_PATH, has("legal-hold")),
-      new NotImplementedOperation("PutObjectLegalHold", PUT, BUCKET_KEY_PATH, has("legal-hold")),
-      new NotImplementedOperation("GetObjectLockConfiguration", GET, BUCKET_KEY_PATH, has("object-lock")),
-      new NotImplementedOperation("PutObjectLockConfiguration", PUT, BUCKET_KEY_PATH, has("object-lock")),
-      new NotImplementedOperation("GetObjectRetention", GET, BUCKET_KEY_PATH, has("retention")),
-      new NotImplementedOperation("PutObjectRetention", PUT, BUCKET_KEY_PATH, has("retention")),
       // Object retrieval and transformation.
       new NotImplementedOperation("GetObjectTorrent", GET, BUCKET_KEY_PATH, has("torrent")),
       new NotImplementedOperation("RestoreObject", POST, BUCKET_KEY_PATH, has("restore")),
@@ -187,14 +181,16 @@ public class LocalS3RouterFactory {
                                    BucketReplicationController bucketReplication,
                                    BucketEncryptionController bucketEncryption,
                                    BucketLifecycleController bucketLifecycle,
-                                   ObjectTaggingController objectTagging) {
+                                   ObjectTaggingController objectTagging,
+                                   ObjectLockController objectLock) {
 
     static SharedControllers create(ServiceFactory serviceFactory) {
       return new SharedControllers(new BucketPolicyController(serviceFactory),
           new BucketReplicationController(serviceFactory),
           new BucketEncryptionController(serviceFactory),
           new BucketLifecycleController(serviceFactory),
-          new ObjectTaggingController(serviceFactory));
+          new ObjectTaggingController(serviceFactory),
+          new ObjectLockController(serviceFactory));
     }
   }
 
@@ -220,7 +216,8 @@ public class LocalS3RouterFactory {
       routes
           .add(AdminController.STATS_OPERATION, GET, AdminController.STATS_PATH, admin::stats)
           .add(AdminController.REQUESTS_OPERATION, GET, AdminController.REQUESTS_PATH, admin::requests)
-          .add(AdminController.RESET_OPERATION, POST, AdminController.RESET_PATH, admin::reset);
+          .add(AdminController.RESET_OPERATION, POST, AdminController.RESET_PATH, admin::reset)
+          .add(AdminController.LIFECYCLE_OPERATION, POST, AdminController.LIFECYCLE_PATH, admin::lifecycle);
     }
   }
 
@@ -235,6 +232,7 @@ public class LocalS3RouterFactory {
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
         .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
         .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
+        .add("GetObjectLockConfiguration", GET, BUCKET_PATH, has("object-lock"), shared.objectLock()::getConfiguration)
         .add("GetBucketPolicy", GET, BUCKET_PATH, has("policy"), shared.bucketPolicy()::get)
         .add("GetBucketPolicyStatus", GET, BUCKET_PATH, has("policyStatus"),
             new GetBucketPolicyStatusController(factory))
@@ -282,6 +280,7 @@ public class LocalS3RouterFactory {
         .add("PutBucketReplication", PUT, BUCKET_PATH, has("replication"), shared.bucketReplication()::put)
         .add("PutBucketTagging", PUT, BUCKET_PATH, has("tagging"), new PutBucketTaggingController(factory))
         .add("PutBucketVersioning", PUT, BUCKET_PATH, has("versioning"), new PutBucketVersioningController(factory))
+        .add("PutObjectLockConfiguration", PUT, BUCKET_PATH, has("object-lock"), shared.objectLock()::putConfiguration)
         .add("PutPublicAccessBlock", PUT, BUCKET_PATH, has("publicAccessBlock"),
             new PutPublicAccessBlockController(factory));
   }
@@ -297,6 +296,8 @@ public class LocalS3RouterFactory {
         .add("GetObjectAcl", GET, BUCKET_KEY_PATH, has("acl"), new GetObjectAclController(factory))
         .add("GetObjectAttributes", GET, BUCKET_KEY_PATH, HeaderCondition.has(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES),
             new GetObjectAttributesController(factory))
+        .add("GetObjectLegalHold", GET, BUCKET_KEY_PATH, has("legal-hold"), shared.objectLock()::getLegalHold)
+        .add("GetObjectRetention", GET, BUCKET_KEY_PATH, has("retention"), shared.objectLock()::getRetention)
         .add("GetObjectTagging", GET, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::get)
         .add("HeadObject", HEAD, BUCKET_KEY_PATH, new HeadObjectController(factory))
         .add("ListParts", GET, BUCKET_KEY_PATH, has("uploadId"), new ListPartsController(factory));
@@ -319,7 +320,10 @@ public class LocalS3RouterFactory {
         .add("DeleteObjectTagging", DELETE, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::delete)
         .add("PutObject", PUT, BUCKET_KEY_PATH, new PutObjectController(factory))
         .add("PutObjectAcl", PUT, BUCKET_KEY_PATH, has("acl"), new PutObjectAclController(factory))
+        .add("PutObjectLegalHold", PUT, BUCKET_KEY_PATH, has("legal-hold"), shared.objectLock()::putLegalHold)
+        .add("PutObjectRetention", PUT, BUCKET_KEY_PATH, has("retention"), shared.objectLock()::putRetention)
         .add("PutObjectTagging", PUT, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::put)
+        .add("RenameObject", PUT, BUCKET_KEY_PATH, has("renameObject"), new RenameObjectController(factory))
         .add("UploadPart", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), new UploadPartController(factory))
         .add("UploadPartCopy", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), copySource,
             new UploadPartCopyController(factory));

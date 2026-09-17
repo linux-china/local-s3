@@ -55,6 +55,17 @@ public class UploadMetadata {
    */
   private ChecksumType checksumType;
 
+  /**
+   * The Object Lock settings that the object the upload stores was requested with; {@code null} for none.
+   */
+  private ObjectLock objectLock;
+
+  /**
+   * The customer-provided key that the upload was created with, which every part must be uploaded with;
+   * {@code null} for none.
+   */
+  private CustomerEncryption customerEncryption;
+
   @JsonDeserialize(converter = UploadPartMetadataMapConverter.class)
   @Builder.Default
   private NavigableMap<Integer, UploadPartMetadata> parts = new ConcurrentSkipListMap<>();

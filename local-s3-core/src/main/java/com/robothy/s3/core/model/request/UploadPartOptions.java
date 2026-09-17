@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -27,6 +28,12 @@ public class UploadPartOptions {
    * The checksum to upload the part with; {@code null} for the one of the upload, if it has one.
    */
   private RequestChecksum checksum;
+
+  /**
+   * The customer-provided key of the request, which must be the one the upload was created with; {@code null} for
+   * none.
+   */
+  private CustomerEncryption customerEncryption;
 
   public Optional<String> getETag() {
     return Optional.ofNullable(etag);

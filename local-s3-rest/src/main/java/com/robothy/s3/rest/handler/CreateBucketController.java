@@ -8,6 +8,7 @@ import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
 import com.robothy.s3.rest.assertions.RequestAssertions;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -46,7 +47,10 @@ class CreateBucketController extends BucketHttpRequestHandler {
 
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     bucketNameValidator.validate(bucketName);
-    bucketService.createBucket(bucketName, locationConstraint);
+    boolean objectLockEnabled = request.header(AmzHeaderNames.X_AMZ_BUCKET_OBJECT_LOCK_ENABLED)
+        .map(value -> "true".equalsIgnoreCase(value.trim()))
+        .orElse(false);
+    bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled);
     CreateBucketResult createBucketResult = CreateBucketResult.builder()
         .bucketArn(IdUtils.nextUuid())
         .build();

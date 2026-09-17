@@ -2,6 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -93,6 +95,10 @@ public class DefaultBucketService implements BucketService {
     return changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      if (!versioningEnabled && bucketMetadata.getObjectLock().isPresent()) {
+        throw new LocalS3RequestException(S3ErrorCode.InvalidBucketState,
+            "An Object Lock configuration is present on this bucket, so the versioning state cannot be changed.");
+      }
       bucketMetadata.setVersioningEnabled(versioningEnabled);
       return Bucket.fromBucketMetadata(bucketMetadata);
     });
