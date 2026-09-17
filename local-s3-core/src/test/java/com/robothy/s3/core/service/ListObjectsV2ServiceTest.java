@@ -182,6 +182,56 @@ class ListObjectsV2ServiceTest extends LocalS3ServiceTestBase {
         assertTrue(listObjectsV2Ans.getNextContinuationToken().isEmpty());
     }
 
+    /**
+     * A page that ends at an object whose key begins other keys, e.g. {@code data.parquet} and {@code data.parquet.crc},
+     * continues at the next key: the token carries the key of the object, not the last key that starts with it.
+     */
+    @MethodSource("localS3Services")
+    @ParameterizedTest
+    void listObjectsV2PageAtAKeyThatPrefixesOtherKeys(BucketService bucketService, ObjectService objectService) {
+        String bucket = prepareKeys(bucketService, objectService,
+                "data.parquet",
+                "data.parquet.crc",
+                "data.parquet\uFFFF",
+                "logs");
+        assertEquals(List.of("data.parquet", "data.parquet.crc", "data.parquet\uFFFF", "logs"),
+            listAllKeys(objectService, bucket, null, null, 1));
+    }
+
+    /**
+     * A page that ends at a common prefix continues after every key that the prefix rolls up, also the keys that continue
+     * it with {@code Character.MAX_VALUE}.
+     */
+    @MethodSource("localS3Services")
+    @ParameterizedTest
+    void listObjectsV2PageAtACommonPrefixWithMaxCharacterKeys(BucketService bucketService, ObjectService objectService) {
+        String bucket = prepareKeys(bucketService, objectService,
+                "dir/a",
+                "dir/\uFFFF",
+                "dir/\uFFFFz",
+                "dir0");
+        assertEquals(List.of("dir/", "dir0"), listAllKeys(objectService, bucket, "/", null, 1));
+    }
+
+    /**
+     * The keys and common prefixes of every page, following the continuation tokens to the end.
+     */
+    private static List<String> listAllKeys(ObjectService objectService, String bucket, String delimiter, String prefix,
+                                            int maxKeys) {
+        List<String> listed = new java.util.ArrayList<>();
+        String token = null;
+        for (int page = 0; page < 100; page++) {
+            ListObjectsV2Ans ans = objectService.listObjectsV2(bucket, token, delimiter, null, false, maxKeys, prefix, null);
+            ans.getObjects().forEach(object -> listed.add(object.getKey()));
+            listed.addAll(ans.getCommonPrefixes());
+            if (ans.getNextContinuationToken().isEmpty()) {
+                return listed;
+            }
+            token = ans.getNextContinuationToken().get();
+        }
+        throw new AssertionError("The listing never ended: " + listed);
+    }
+
     String prepareKeys(BucketService bucketService, ObjectService objectService, String... keys) {
         String bucket = "test-list-objects-v2" + UUID.randomUUID();
         bucketService.createBucket(bucket);

@@ -68,7 +68,7 @@ public class ListItemUtils {
     }
 
     String fromKey = filteredByKeyMarker.floorKey(prefix);
-    String toKey = filteredByKeyMarker.floorKey(prefix + Character.MAX_VALUE);
+    String toKey = lastKeyNotAfterPrefix(filteredByKeyMarker, prefix);
     if (Objects.isNull(toKey)) {
       return emptyItemMap();
     }
@@ -97,6 +97,24 @@ public class ListItemUtils {
       return emptyItemMap();
     }
     return items.tailMap(fromKey, true);
+  }
+
+  /**
+   * The greatest key that is not greater than every key starting with {@code prefix}, e.g. the last key that a common
+   * prefix rolls up, if any key starts with it. Unlike {@code floorKey(prefix + Character.MAX_VALUE)}, it doesn't miss
+   * the keys that continue the prefix with {@code Character.MAX_VALUE}.
+   *
+   * @param items the items, e.g. a view of the items that are listed.
+   * @param prefix the prefix.
+   * @return the key, or {@code null} if there is none.
+   */
+  static <T> String lastKeyNotAfterPrefix(NavigableMap<String, T> items, String prefix) {
+    String successor = prefixSuccessor(prefix);
+    if (Objects.nonNull(successor)) {
+      // The lookup of the successor, unlike a view to it, tolerates a successor beyond the bounds of a view.
+      return items.lowerKey(successor);
+    }
+    return items.isEmpty() ? null : items.lastKey();
   }
 
   /**

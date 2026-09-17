@@ -39,7 +39,8 @@ public interface ListObjectsV2Service extends ListObjectsService {
           // page, and a client that follows the tokens, e.g. the glob of DuckDB, never got to the end.
           ListObjectsAns listObjectsAns = listObjects(bucket, delimiter, null, marker, maxKeys, prefix);
           String nextContinuationToken = ContinuationTokenUtils.encode(
-              calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata));
+              calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata,
+                  Objects.toString(prefix, ""), delimiter));
           ListObjectsService.encodeIfNeeded(listObjectsAns, encodingType);
           ListObjectsV2Ans listObjectsV2Ans = ListObjectsV2Ans.builder()
               .continuationToken(continuationToken)
@@ -62,12 +63,21 @@ public interface ListObjectsV2Service extends ListObjectsService {
       });
     }
 
-    static String calculateNextContinuationToken(String nextMarker, BucketMetadata bucketMetadata) {
+    /**
+     * The key that the next page continues after: the key of the last object of the page, or, if the page ends at a
+     * common prefix, the last key that the prefix rolls up. Taking the last key that starts with an object's key instead
+     * would skip the keys that continue it, e.g. {@code data.parquet.crc} after {@code data.parquet}.
+     */
+    static String calculateNextContinuationToken(String nextMarker, BucketMetadata bucketMetadata,
+                                                 String effectivePrefix, String delimiter) {
         if (Objects.isNull(nextMarker)) {
             return null;
         }
+        if (ListItemUtils.commonPrefix(nextMarker, effectivePrefix, delimiter).isEmpty()) {
+            return nextMarker;
+        }
 
-        return bucketMetadata.getObjectMap().floorKey(nextMarker + Character.MAX_VALUE);
+        return ListItemUtils.lastKeyNotAfterPrefix(bucketMetadata.getObjectMap(), nextMarker);
     }
 
     static void removeOwner(ListObjectsV2Ans listObjectsV2Ans) {

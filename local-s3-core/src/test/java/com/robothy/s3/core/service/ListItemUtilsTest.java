@@ -34,6 +34,34 @@ class ListItemUtilsTest {
     assertEquals(0, filtered4.size());
   }
 
+  /**
+   * Filtering by a prefix keeps the keys that continue it with {@code Character.MAX_VALUE}.
+   */
+  @Test
+  void filterByPrefixKeepsKeysThatContinueThePrefixWithTheMaxCharacter() {
+    ObjectMetadata object = new ObjectMetadata();
+    NavigableMap<String, ObjectMetadata> items = new ConcurrentSkipListMap<>(Map.of(
+        "a", object, "a\uFFFF", object, "a\uFFFFb", object, "b", object));
+    assertEquals(List.of("a", "a\uFFFF", "a\uFFFFb"),
+        List.copyOf(ListItemUtils.filterByPrefix(items, "a").keySet()));
+    assertEquals(List.of("a\uFFFF", "a\uFFFFb"),
+        List.copyOf(ListItemUtils.filterByPrefix(items, "a\uFFFF").keySet()));
+  }
+
+  @Test
+  void lastKeyNotAfterPrefix() {
+    ObjectMetadata object = new ObjectMetadata();
+    NavigableMap<String, ObjectMetadata> items = new ConcurrentSkipListMap<>(Map.of(
+        "a", object, "dir/a", object, "dir/\uFFFFz", object, "dir0", object));
+    assertEquals("dir/\uFFFFz", ListItemUtils.lastKeyNotAfterPrefix(items, "dir/"));
+    assertEquals("a", ListItemUtils.lastKeyNotAfterPrefix(items, "b"));
+    assertNull(ListItemUtils.lastKeyNotAfterPrefix(items, "0"));
+    assertEquals("dir0", ListItemUtils.lastKeyNotAfterPrefix(items, ""));
+    assertNull(ListItemUtils.lastKeyNotAfterPrefix(new ConcurrentSkipListMap<String, ObjectMetadata>(), ""));
+    NavigableMap<String, ObjectMetadata> view = items.headMap("dir/a", true);
+    assertEquals("dir/a", ListItemUtils.lastKeyNotAfterPrefix(view, "dir/"));
+  }
+
   @Test
   void prefixSuccessor() {
     assertEquals("dir0", ListItemUtils.prefixSuccessor("dir/"));
