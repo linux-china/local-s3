@@ -75,3 +75,34 @@ class UploadIndexer {
 ```
 
 Set `local-s3.enabled=false` to leave LocalS3 out, e.g. in the profile that runs against Amazon S3.
+
+## Tests
+
+Annotate a test class with `@AutoConfigureLocalS3` (with `spring-boot-test` on the test classpath, e.g. through
+`spring-boot-starter-test`):
+
+```java
+@SpringBootTest
+@AutoConfigureLocalS3
+class UploadServiceTest {
+
+  @Autowired
+  S3Client s3;
+
+  @Test
+  void uploads() {
+    // ...
+  }
+}
+```
+
++ the service listens on a random free port, whatever `local-s3.port` the application sets, so the contexts that the
+  test context framework caches side by side don't compete for a port;
++ the data is kept in memory;
++ the data is reset after each test method with `LocalS3.reset()`: the buckets, objects and vectors are dropped, and the
+  initial data and the `local-s3.buckets` are created again. Use `@AutoConfigureLocalS3(reset = false)` to keep the
+  data across the tests of the class;
++ the auto-configuration of the starter is imported, so the annotation also works with test slices, e.g. `@DataJpaTest`.
+
+`@AutoConfigureLocalS3(port = 29090, mode = LocalS3Mode.PERSISTENCE)` overrides the defaults; a `PERSISTENCE` service is
+never reset.

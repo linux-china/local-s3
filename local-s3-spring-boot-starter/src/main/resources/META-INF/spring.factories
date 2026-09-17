@@ -1,0 +1,2 @@
+org.springframework.test.context.TestExecutionListener=\
+com.robothy.s3.spring.boot.test.LocalS3ResetTestExecutionListener

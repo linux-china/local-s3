@@ -17,6 +17,9 @@ dependencies {
     // Optional integrations, which the application brings: Actuator health and Micrometer metrics.
     compileOnly(libs.springBootHealth)
     compileOnly(libs.micrometerCore)
+    // Optional: @AutoConfigureLocalS3 and the listener that resets the service between tests, for the tests of the
+    // application, which bring spring-boot-test.
+    compileOnly(libs.springBootTest)
 
     annotationProcessor(libs.springBootConfigurationProcessor)
 
