@@ -78,6 +78,7 @@ class BucketMetadataTest {
 
     bucketMetadata.setReplication("Replication Configuration");
     bucketMetadata.setEncryption("Encryption");
+    bucketMetadata.setNotification("<NotificationConfiguration/>");
     bucketMetadata.setLifecycle(new BucketLifecycleConfiguration("<LifecycleConfiguration/>", "varies_by_storage_class"));
 
     String json = JsonUtils.toJson(bucketMetadata);

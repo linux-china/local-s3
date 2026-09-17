@@ -71,8 +71,6 @@ public class LocalS3RouterFactory {
       new NotImplementedOperation("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate")),
       new NotImplementedOperation("GetBucketLogging", GET, BUCKET_PATH, has("logging")),
       new NotImplementedOperation("PutBucketLogging", PUT, BUCKET_PATH, has("logging")),
-      new NotImplementedOperation("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification")),
-      new NotImplementedOperation("PutBucketNotificationConfiguration", PUT, BUCKET_PATH, has("notification")),
       new NotImplementedOperation("GetBucketOwnershipControls", GET, BUCKET_PATH, has("ownershipControls")),
       new NotImplementedOperation("PutBucketOwnershipControls", PUT, BUCKET_PATH, has("ownershipControls")),
       new NotImplementedOperation("DeleteBucketOwnershipControls", DELETE, BUCKET_PATH, has("ownershipControls")),
@@ -186,6 +184,7 @@ public class LocalS3RouterFactory {
                                    BucketReplicationController bucketReplication,
                                    BucketEncryptionController bucketEncryption,
                                    BucketLifecycleController bucketLifecycle,
+                                   BucketNotificationController bucketNotification,
                                    ObjectTaggingController objectTagging,
                                    ObjectLockController objectLock) {
 
@@ -194,6 +193,7 @@ public class LocalS3RouterFactory {
           new BucketReplicationController(serviceFactory),
           new BucketEncryptionController(serviceFactory),
           new BucketLifecycleController(serviceFactory),
+          new BucketNotificationController(serviceFactory),
           new ObjectTaggingController(serviceFactory),
           new ObjectLockController(serviceFactory));
     }
@@ -237,6 +237,8 @@ public class LocalS3RouterFactory {
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
         .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
         .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
+        .add("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification"),
+            shared.bucketNotification()::get)
         .add("GetObjectLockConfiguration", GET, BUCKET_PATH, has("object-lock"), shared.objectLock()::getConfiguration)
         .add("GetBucketPolicy", GET, BUCKET_PATH, has("policy"), shared.bucketPolicy()::get)
         .add("GetBucketPolicyStatus", GET, BUCKET_PATH, has("policyStatus"),
@@ -281,6 +283,8 @@ public class LocalS3RouterFactory {
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
         .add("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::put)
+        .add("PutBucketNotificationConfiguration", PUT, BUCKET_PATH, has("notification"),
+            shared.bucketNotification()::put)
         .add("PutBucketPolicy", PUT, BUCKET_PATH, has("policy"), shared.bucketPolicy()::put)
         .add("PutBucketReplication", PUT, BUCKET_PATH, has("replication"), shared.bucketReplication()::put)
         .add("PutBucketTagging", PUT, BUCKET_PATH, has("tagging"), new PutBucketTaggingController(factory))

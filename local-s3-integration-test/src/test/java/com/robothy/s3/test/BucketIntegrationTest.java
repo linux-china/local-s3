@@ -173,6 +173,73 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void testBucketNotificationConfiguration(S3Client s3) {
+    String bucketName = "my-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+
+    // A bucket that was never configured has an empty configuration rather than none.
+    GetBucketNotificationConfigurationResponse empty = s3.getBucketNotificationConfiguration(
+        GetBucketNotificationConfigurationRequest.builder().bucket(bucketName).build());
+    assertTrue(empty.queueConfigurations().isEmpty());
+    assertTrue(empty.topicConfigurations().isEmpty());
+    assertTrue(empty.lambdaFunctionConfigurations().isEmpty());
+    assertNull(empty.eventBridgeConfiguration());
+
+    // The destinations don't exist; LocalS3 stores the configuration without checking them.
+    s3.putBucketNotificationConfiguration(PutBucketNotificationConfigurationRequest.builder()
+        .bucket(bucketName)
+        .skipDestinationValidation(true)
+        .notificationConfiguration(NotificationConfiguration.builder()
+            .queueConfigurations(QueueConfiguration.builder()
+                .id("uploads")
+                .queueArn("arn:aws:sqs:us-east-1:123456789012:uploads")
+                .events(Event.S3_OBJECT_CREATED)
+                .filter(NotificationConfigurationFilter.builder()
+                    .key(S3KeyFilter.builder()
+                        .filterRules(FilterRule.builder().name(FilterRuleName.PREFIX).value("incoming/").build())
+                        .build())
+                    .build())
+                .build())
+            .topicConfigurations(TopicConfiguration.builder()
+                .topicArn("arn:aws:sns:us-east-1:123456789012:deletes")
+                .events(Event.S3_OBJECT_REMOVED)
+                .build())
+            .lambdaFunctionConfigurations(LambdaFunctionConfiguration.builder()
+                .lambdaFunctionArn("arn:aws:lambda:us-east-1:123456789012:function:thumbnail")
+                .events(Event.S3_OBJECT_CREATED_PUT)
+                .build())
+            .eventBridgeConfiguration(EventBridgeConfiguration.builder().build())
+            .build())
+        .build());
+
+    GetBucketNotificationConfigurationResponse configured = s3.getBucketNotificationConfiguration(
+        GetBucketNotificationConfigurationRequest.builder().bucket(bucketName).build());
+    assertEquals(1, configured.queueConfigurations().size());
+    QueueConfiguration queue = configured.queueConfigurations().get(0);
+    assertEquals("uploads", queue.id());
+    assertEquals("arn:aws:sqs:us-east-1:123456789012:uploads", queue.queueArn());
+    assertEquals(List.of(Event.S3_OBJECT_CREATED), queue.events());
+    assertEquals("incoming/", queue.filter().key().filterRules().get(0).value());
+    assertEquals("arn:aws:sns:us-east-1:123456789012:deletes", configured.topicConfigurations().get(0).topicArn());
+    assertEquals("arn:aws:lambda:us-east-1:123456789012:function:thumbnail",
+        configured.lambdaFunctionConfigurations().get(0).lambdaFunctionArn());
+    assertNotNull(configured.eventBridgeConfiguration());
+
+    // An empty configuration turns notifications off.
+    s3.putBucketNotificationConfiguration(PutBucketNotificationConfigurationRequest.builder()
+        .bucket(bucketName)
+        .notificationConfiguration(NotificationConfiguration.builder().build())
+        .build());
+    GetBucketNotificationConfigurationResponse cleared = s3.getBucketNotificationConfiguration(
+        GetBucketNotificationConfigurationRequest.builder().bucket(bucketName).build());
+    assertTrue(cleared.queueConfigurations().isEmpty());
+
+    assertThrows(NoSuchBucketException.class, () -> s3.getBucketNotificationConfiguration(
+        GetBucketNotificationConfigurationRequest.builder().bucket("no-such-bucket").build()));
+  }
+
+  @Test
+  @LocalS3
   void testBucketEncryption(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());

@@ -131,6 +131,11 @@ public class BucketMetadata {
   private BucketLifecycleConfiguration lifecycle;
 
   /**
+   * The notification configuration of the bucket, which LocalS3 stores but never delivers to; {@code null} for none.
+   */
+  private String notification;
+
+  /**
    * The object lock configuration of the bucket; {@code null} if the bucket doesn't have Object Lock enabled. Once
    * enabled, Object Lock can't be disabled, and the versioning of the bucket can't be suspended.
    */
@@ -353,6 +358,15 @@ public class BucketMetadata {
    */
   public Optional<BucketLifecycleConfiguration> getLifecycle() {
     return Optional.ofNullable(lifecycle);
+  }
+
+  /**
+   * Get the notification configuration.
+   *
+   * @return the {@code NotificationConfiguration} document that was put; empty if none was.
+   */
+  public Optional<String> getNotification() {
+    return Optional.ofNullable(notification);
   }
 
   /**

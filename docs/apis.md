@@ -36,6 +36,7 @@ versioning, see [semantics.md](semantics.md).
 + GetBucketCors
 + GetBucketEncryption
 + GetBucketLifecycleConfiguration
++ GetBucketNotificationConfiguration
 + GetBucketPolicy
 + GetBucketPolicyStatus
 + GetBucketReplication
@@ -54,6 +55,7 @@ versioning, see [semantics.md](semantics.md).
 + PutBucketCors
 + PutBucketEncryption
 + PutBucketLifecycleConfiguration
++ PutBucketNotificationConfiguration
 + PutBucketPolicy
 + PutBucketReplication
 + PutBucketVersioning
@@ -76,6 +78,13 @@ The lifecycle configuration of a bucket is **stored, and applied only when a tes
 `POST /_admin/lifecycle` or `LocalS3#applyLifecycle(Instant)`, at a time of its choosing, e.g. 30 days from now. See
 [semantics.md](semantics.md#lifecycle-configuration). The deprecated `PutBucketLifecycle` and `GetBucketLifecycle`
 send the same requests, and are answered the same way.
+
+The notification configuration of a bucket is **stored and returned as it was put, but no event is sent** to the
+SNS topics, SQS queues, Lambda functions or EventBridge it names, and their ARNs aren't checked, so that code that
+configures notifications when it starts, e.g. Terraform, CDK or an application, works against LocalS3. A bucket that
+was never configured answers an empty `NotificationConfiguration`. To hear of changes, register a listener; see
+[change events](semantics.md#change-events). The deprecated `PutBucketNotification` and `GetBucketNotification` send
+the same requests, and are answered the same way.
 
 Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` headers of `PutObject`, `CopyObject` and
 `CreateMultipartUpload`, retention and legal holds) protects object versions from being deleted, see
@@ -147,13 +156,6 @@ the ones that configure a real bucket's billing, hosting and reporting alone. Th
 routed and answer `501 NotImplemented` with an `<Error>` document naming the operation, so a client fails
 with a clear error instead of appearing to succeed. If your tests need one of them, please
 [open an issue](https://github.com/Robothy/local-s3/issues/new).
-
-**Event notifications**
-+ GetBucketNotificationConfiguration
-+ PutBucketNotificationConfiguration
-
-(The deprecated `GetBucketNotification` and `PutBucketNotification` send the same requests, and get the same
-answer. LocalS3 has its own listener API instead; see [change events](semantics.md#change-events).)
 
 **Object retrieval and transformation**
 + GetObjectTorrent
