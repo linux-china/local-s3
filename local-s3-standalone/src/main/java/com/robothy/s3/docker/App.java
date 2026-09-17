@@ -2,9 +2,12 @@ package com.robothy.s3.docker;
 
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
-
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Runs LocalS3 in a container, configured by environment variables, or by system properties of the same names.
@@ -18,8 +21,17 @@ public class App {
 
     public static void main(String[] args) {
         LocalS3 localS3 = configure().build();
-        log.info("Starting LocalS3 in {} mode on port {} with data path {}.",
-                localS3.getMode(), localS3.getPort(), localS3.getDataPath());
+        LocalS3Config localS3Config = localS3.getConfig();
+        List<String> hint = new ArrayList<>();
+        hint.add("- Mode: " + localS3Config.mode());
+        hint.add("- Port: " + localS3Config.port());
+        if (localS3Config.dataPath() != null) {
+            hint.add("- Data Path: " + localS3Config.dataPath());
+        }
+        if (localS3Config.authenticationEnabled()) {
+            hint.add("- Authentication: Access Key(" + localS3Config.accessKeyId() + ")");
+        }
+        log.info("Starting LocalS3: {}", String.join("\n", hint));
         localS3.start();
     }
 
