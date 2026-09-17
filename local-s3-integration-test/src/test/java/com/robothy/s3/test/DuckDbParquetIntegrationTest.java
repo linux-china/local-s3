@@ -35,6 +35,7 @@ import org.duckdb.DuckDBConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -70,6 +71,7 @@ import tools.jackson.databind.ObjectMapper;
  * forever rather than fail. The test runs on a thread of its own, which the timeout abandons: a query of DuckDB runs in
  * native code, which an interrupt doesn't stop. LocalS3 is shut down first, which fails such a query.
  */
+@Tag("data-tools")
 @Timeout(value = 3, unit = TimeUnit.MINUTES, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class DuckDbParquetIntegrationTest {
 

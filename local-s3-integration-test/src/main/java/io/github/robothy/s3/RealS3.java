@@ -7,6 +7,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
@@ -51,9 +52,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *
  * <p>You can also override credentials directly in the annotation for testing purposes,
  * though environment variables are recommended for security.
+ *
+ * <p>The tests are tagged {@code real-s3}, which the {@code test} task of this module leaves out, since they need AWS
+ * credentials; {@code realS3Test} runs them.
  */
 @Target({ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
+@Tag("real-s3")
 @ExtendWith(RealS3Extension.class)
 @ExtendWith(RealS3ClientResolver.class)
 @ExtendWith(RealS3VectorsClientResolver.class)

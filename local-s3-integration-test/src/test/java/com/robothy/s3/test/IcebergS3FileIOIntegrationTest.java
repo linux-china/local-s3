@@ -55,6 +55,7 @@ import org.apache.iceberg.parquet.Parquet;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -91,6 +92,7 @@ import tools.jackson.databind.ObjectMapper;
  * {@link CommitFailedException} that makes Iceberg refresh the table and retry the commit on the newer version. Without
  * the condition, the last writer would silently replace the commit of the others.
  */
+@Tag("data-tools")
 @Timeout(value = 3, unit = TimeUnit.MINUTES)
 class IcebergS3FileIOIntegrationTest {
 

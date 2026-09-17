@@ -11,6 +11,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-latest]
+        # The end-to-end tests of local-s3-integration-test run on Linux, except the DuckDB and Iceberg ones, which the
+        # data-tools job runs next to this one. Windows leaves the module out.
+        include:
+          - os: ubuntu-24.04
+            exclude-tasks: -x :local-s3-integration-test:dataToolsTest
+          - os: windows-latest
+            exclude-tasks: -x :local-s3-integration-test:build
 
     runs-on: ${{ matrix.os }}
 
@@ -35,4 +42,31 @@ jobs:
       # The image tests are left to the Linux job. The rest of the suite runs, which is what covers the file
       # handling that Windows needs; `mergeReports` doesn't reach a Docker daemon.
       - name: Build
-        run: ./gradlew -x :local-s3-integration-test:build build
+        run: ./gradlew ${{ matrix.exclude-tasks }} build
+
+  data-tools:
+    # The end-to-end tests with DuckDB and Apache Iceberg, tagged `data-tools`: the slow ones, in a job of their own.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java 21 for Gradle
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # The httpfs extension that the DuckDB tests install, which they skip if it can't be downloaded.
+      - name: Cache DuckDB extensions
+        uses: actions/cache@v4
+        with:
+          path: ~/.duckdb/extensions
+          key: duckdb-extensions-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: DuckDB and Apache Iceberg tests
+        run: ./gradlew :local-s3-integration-test:dataToolsTest

@@ -32,3 +32,39 @@ dependencies {
     testRuntimeOnly(libs.hadoopClientRuntime)
     testRuntimeOnly(libs.logbackClassic)
 }
+
+// The tests fall into three groups, by JUnit tag:
+// - untagged: LocalS3 with the AWS SDK, which `test` runs, and the pull request builds with it;
+// - `data-tools`: DuckDB and Apache Iceberg, whose dependencies and native code make them the slow ones, which
+//   `dataToolsTest` runs, in a job of their own in CI;
+// - `real-s3`: the tests of `@RealS3`, which need AWS credentials, which only `realS3Test` runs.
+tasks.named('test', Test) {
+    useJUnitPlatform {
+        excludeTags 'data-tools', 'real-s3'
+    }
+}
+
+def dataToolsTest = tasks.register('dataToolsTest', Test) {
+    description = 'Runs the end-to-end tests with DuckDB and Apache Iceberg.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'data-tools'
+    }
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('check') {
+    dependsOn dataToolsTest
+}
+
+tasks.register('realS3Test', Test) {
+    description = 'Runs the tests of @RealS3 against Amazon S3, with the credentials of AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'real-s3'
+    }
+}
