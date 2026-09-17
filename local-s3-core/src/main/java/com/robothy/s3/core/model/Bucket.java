@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model;
 
+import com.robothy.s3.core.constants.ServiceConstants;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import java.util.Optional;
 import lombok.AllArgsConstructor;
@@ -30,6 +31,15 @@ public class Bucket {
 
   public Optional<String> getRegion() {
     return Optional.ofNullable(region);
+  }
+
+  /**
+   * Get the region that the bucket is in.
+   *
+   * @return the region of the bucket; {@linkplain ServiceConstants#DEFAULT_REGION} if it was created without one.
+   */
+  public String regionOrDefault() {
+    return ServiceConstants.effectiveRegion(region);
   }
 
   /**

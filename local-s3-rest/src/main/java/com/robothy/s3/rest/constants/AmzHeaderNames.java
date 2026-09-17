@@ -15,6 +15,8 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_BUCKET_REGION = "x-amz-bucket-region";
 
+  public static final String X_AMZ_BUCKET_ARN = "x-amz-bucket-arn";
+
   /**
    * The minimum size of the objects that the transitions of a lifecycle configuration apply to by default.
    */

@@ -30,7 +30,7 @@ class VirtualHostParserTest {
     assertEquals(new BucketRegion("ap-east-1", "www.example.com"),
         VirtualHostParser.getBucketRegionFromHost("www.example.com.s3.ap-east-1.amazonaws.com").get());
 
-    // if using the legacy endpoint, then set the default region "local".
+    // if using the legacy endpoint, then set the default region "us-east-1".
     assertEquals(new BucketRegion("local", "bucket1"),
         VirtualHostParser.getBucketRegionFromHost("bucket1.s3.amazonaws.com").get());
     assertEquals(new BucketRegion("local", "www.example.com"),

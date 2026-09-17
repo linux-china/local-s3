@@ -3,7 +3,6 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
-import com.robothy.s3.core.constants.ServiceConstants;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListBucketsAns;
 import com.robothy.s3.core.model.request.ListBucketsOptions;
@@ -45,7 +44,7 @@ class ListBucketsController implements HttpRequestHandler {
 
     List<S3Bucket> buckets = ans.buckets().stream()
         .map(bucket -> new S3Bucket(bucket.getName(), Instant.ofEpochMilli(bucket.getCreationDate()),
-            bucket.getRegion().orElse(ServiceConstants.DEFAULT_REGION)))
+            bucket.regionOrDefault()))
         .toList();
     ListAllMyBucketsResult result = new ListAllMyBucketsResult(buckets, Owner.DEFAULT_OWNER,
         ans.continuationToken(), prefix);

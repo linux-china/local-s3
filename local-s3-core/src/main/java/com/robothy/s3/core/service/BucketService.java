@@ -8,7 +8,6 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.request.ListBucketsOptions;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 
 public interface BucketService extends CreateBucketService, BucketVersioningService, BucketTaggingService,
@@ -78,7 +77,7 @@ public interface BucketService extends CreateBucketService, BucketVersioningServ
       if (options.prefix() != null && !bucket.getBucketName().startsWith(options.prefix())) {
         continue;
       }
-      String region = Objects.requireNonNullElse(bucket.getRegion(), ServiceConstants.DEFAULT_REGION);
+      String region = ServiceConstants.effectiveRegion(bucket.getRegion());
       if (options.bucketRegion() != null && !options.bucketRegion().equals(region)) {
         continue;
       }

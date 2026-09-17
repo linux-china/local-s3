@@ -3,6 +3,7 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -24,9 +25,9 @@ class HeadBucketController implements HttpRequestHandler {
   @Override
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
-    bucketService.getBucket(bucketName);
+    Bucket bucket = bucketService.getBucket(bucketName);
     response.status(HttpResponseStatus.OK)
-            .putHeader(AmzHeaderNames.X_AMZ_BUCKET_REGION, "local");
+            .putHeader(AmzHeaderNames.X_AMZ_BUCKET_REGION, bucket.regionOrDefault());
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);

@@ -60,7 +60,7 @@ class ListBucketsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(inOrder(all, "logs-2025", "data-b", "logs-2027"),
         names(bucketService.listBuckets(new ListBucketsOptions(null, "eu-west-1", null, null)).buckets()));
     assertEquals(inOrder(all, "data-a", "logs-2026"),
-        names(bucketService.listBuckets(new ListBucketsOptions(null, "local", null, null)).buckets()),
+        names(bucketService.listBuckets(new ListBucketsOptions(null, "us-east-1", null, null)).buckets()),
         "A bucket created without a location constraint is in the default region.");
     assertEquals(inOrder(all, "logs-2025", "logs-2027"),
         names(bucketService.listBuckets(new ListBucketsOptions("logs-", "eu-west-1", null, 10)).buckets()));

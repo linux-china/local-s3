@@ -4,7 +4,6 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.service.BucketService;
-import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -51,10 +50,12 @@ class CreateBucketController extends BucketHttpRequestHandler {
         .map(value -> "true".equalsIgnoreCase(value.trim()))
         .orElse(false);
     bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled);
+    String bucketArn = "arn:aws:s3:::" + bucketName;
     CreateBucketResult createBucketResult = CreateBucketResult.builder()
-        .bucketArn(IdUtils.nextUuid())
+        .bucketArn(bucketArn)
         .build();
-    response.putHeader("Location", "local")
+    response.putHeader("Location", "/" + bucketName)
+        .putHeader(AmzHeaderNames.X_AMZ_BUCKET_ARN, bucketArn)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .write(xmlMapper.writeValueAsString(createBucketResult));
     ResponseUtils.addDateHeader(response);

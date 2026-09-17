@@ -33,7 +33,7 @@ class ListBucketsPaginationIntegrationTest {
 
     assertEquals(List.of(10, 10, 5), pages.stream().map(page -> page.buckets().size()).toList());
     assertEquals(created, pages.buckets().stream().map(Bucket::name).toList());
-    assertTrue(pages.buckets().stream().allMatch(bucket -> "local".equals(bucket.bucketRegion())),
+    assertTrue(pages.buckets().stream().allMatch(bucket -> "us-east-1".equals(bucket.bucketRegion())),
         "Every bucket reports its region.");
 
     ListBucketsResponse unpaginated = s3.listBuckets();
