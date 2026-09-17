@@ -7,6 +7,7 @@ import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.rest.handler.s3vectors.VectorResourceRequests;
 import com.robothy.s3.rest.model.request.BucketRegion;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
@@ -50,6 +51,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * probes can use it; as an exact path, it takes precedence over a bucket named {@code _health}.
    */
   static final String HEALTH_CHECK_PATH = "/_health";
+
+  /**
+   * Path of the S3 Vectors tagging operations, which address a vector bucket or an index by its ARN. The ARN holds
+   * {@code /}, so a request is told to be one of them by {@linkplain #VECTOR_RESOURCE_TAGS_PREFIX}, and its decoded ARN
+   * is passed as the {@code resourceArn} parameter.
+   */
+  static final String VECTOR_RESOURCE_TAGS_PATH = "/tags/{resourceArn}";
+
+  /**
+   * The start of the decoded path of a request of an S3 Vectors tagging operation. The path of an object of a bucket
+   * named {@code tags} can start with it too; such a key is taken for an ARN, since S3 Vectors has no other way to be
+   * told apart from Amazon S3 by its path.
+   */
+  static final String VECTOR_RESOURCE_TAGS_PREFIX = "/tags/arn:aws:s3vectors:";
 
   /**
    * admin ops path
@@ -274,6 +289,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     }
 
     Map<CharSequence, List<String>> params = request.getParams();
+    if (bucketNameInPath && path.startsWith(VECTOR_RESOURCE_TAGS_PREFIX)
+        && pathRules.containsKey(VECTOR_RESOURCE_TAGS_PATH)) {
+      params.put(VectorResourceRequests.RESOURCE_ARN_PARAMETER, List.of(path.substring("/tags/".length())));
+      return pathRules.get(VECTOR_RESOURCE_TAGS_PATH);
+    }
 
     String bucketName;
     String objectKey = null;

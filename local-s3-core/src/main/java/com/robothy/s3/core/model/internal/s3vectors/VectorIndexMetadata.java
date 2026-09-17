@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -63,6 +64,12 @@ public class VectorIndexMetadata {
    * Possible values: "CREATING", "ACTIVE", "DELETING", "FAILED"
    */
   private String status;
+
+  /**
+   * The tags of this vector index, by key. Sorted, so that the stored settings of an index don't differ by the order
+   * its tags were added in.
+   */
+  private ConcurrentSkipListMap<String, String> tags = new ConcurrentSkipListMap<>();
 
   /**
    * Collection of vector objects stored in this index.

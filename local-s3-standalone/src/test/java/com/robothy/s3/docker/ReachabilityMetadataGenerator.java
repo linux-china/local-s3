@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Map;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -405,6 +406,20 @@ public class ReachabilityMetadataGenerator {
           .segmentCount(2)
           .segmentIndex(0)
           .build());
+
+      // Tagging operations, of the bucket and of the index
+      String vectorBucketArn = vectorsClient.getVectorBucket(GetVectorBucketRequest.builder()
+          .vectorBucketName(vectorBucketName)
+          .build()).vectorBucket().vectorBucketArn();
+      String indexArn = vectorsClient.getIndex(GetIndexRequest.builder()
+          .vectorBucketName(vectorBucketName)
+          .indexName(indexName)
+          .build()).index().indexArn();
+      for (String resourceArn : List.of(vectorBucketArn, indexArn)) {
+        vectorsClient.tagResource(b -> b.resourceArn(resourceArn).tags(Map.of("env", "test", "team", "search")));
+        vectorsClient.untagResource(b -> b.resourceArn(resourceArn).tagKeys("team"));
+        vectorsClient.listTagsForResource(b -> b.resourceArn(resourceArn));
+      }
 
       // Cleanup operations
       vectorsClient.deleteVectors(DeleteVectorsRequest.builder()

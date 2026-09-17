@@ -46,6 +46,12 @@ public class VectorBucketMetadata {
   private String policy;
 
   /**
+   * The tags of this vector bucket, by key. Sorted, so that the stored settings of a bucket don't differ by the order
+   * its tags were added in.
+   */
+  private ConcurrentSkipListMap<String, String> tags = new ConcurrentSkipListMap<>();
+
+  /**
    * Map of vector indexes in this bucket.
    * Key: index name, Value: index metadata
    */

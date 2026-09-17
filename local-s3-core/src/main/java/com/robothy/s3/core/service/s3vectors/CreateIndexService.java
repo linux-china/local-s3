@@ -12,20 +12,36 @@ import com.robothy.s3.datatypes.s3vectors.VectorDataType;
 import com.robothy.s3.datatypes.s3vectors.response.CreateIndexResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public interface CreateIndexService extends S3VectorsMetadataAware {
 
   default CreateIndexResponse createIndex(String vectorBucketName, String indexName,
       VectorDataType dataType, int dimension, DistanceMetric distanceMetric,
       List<String> nonFilterableMetadataKeys) {
+    return createIndex(vectorBucketName, indexName, dataType, dimension, distanceMetric, nonFilterableMetadataKeys, null);
+  }
+
+  /**
+   * Create a vector index with tags.
+   *
+   * @param tags the tags of the index; {@code null} for none.
+   */
+  default CreateIndexResponse createIndex(String vectorBucketName, String indexName,
+      VectorDataType dataType, int dimension, DistanceMetric distanceMetric,
+      List<String> nonFilterableMetadataKeys, Map<String, String> tags) {
     return changeBucket(vectorBucketName, () -> {
       validateIndexParameters(indexName, dimension, dataType, distanceMetric);
+      ValidationUtils.validateTags(tags);
 
       VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
       VectorIndexAssertions.assertVectorIndexNotExists(bucketMetadata, indexName);
 
       VectorIndexMetadata indexMetadata =
           createIndexMetadata(indexName, dimension, dataType, distanceMetric, nonFilterableMetadataKeys);
+      if (tags != null) {
+        indexMetadata.getTags().putAll(tags);
+      }
       bucketMetadata.putIndexMetadata(indexName, indexMetadata);
 
       return CreateIndexResponse.builder().build();

@@ -3,6 +3,7 @@ package com.robothy.s3.rest.handler;
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_KEY_PATH;
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_PATH;
 import static com.robothy.s3.rest.handler.LocalS3Router.HEALTH_CHECK_PATH;
+import static com.robothy.s3.rest.handler.LocalS3Router.VECTOR_RESOURCE_TAGS_PATH;
 import static com.robothy.s3.rest.handler.ParamCondition.equalTo;
 import static com.robothy.s3.rest.handler.ParamCondition.has;
 import static io.netty.handler.codec.http.HttpMethod.DELETE;
@@ -31,12 +32,15 @@ import com.robothy.s3.rest.handler.s3vectors.GetVectorBucketController;
 import com.robothy.s3.rest.handler.s3vectors.GetVectorBucketPolicyController;
 import com.robothy.s3.rest.handler.s3vectors.GetVectorsController;
 import com.robothy.s3.rest.handler.s3vectors.ListIndexesController;
+import com.robothy.s3.rest.handler.s3vectors.ListTagsForResourceController;
 import com.robothy.s3.rest.handler.s3vectors.ListVectorBucketsController;
 import com.robothy.s3.rest.handler.s3vectors.ListVectorsController;
 import com.robothy.s3.rest.handler.s3vectors.LocalS3VectorExceptionHandler;
 import com.robothy.s3.rest.handler.s3vectors.PutVectorBucketPolicyController;
 import com.robothy.s3.rest.handler.s3vectors.PutVectorsController;
 import com.robothy.s3.rest.handler.s3vectors.QueryVectorsController;
+import com.robothy.s3.rest.handler.s3vectors.TagResourceController;
+import com.robothy.s3.rest.handler.s3vectors.UntagResourceController;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpMethod;
@@ -323,7 +327,8 @@ public class LocalS3RouterFactory {
 
   /**
    * The <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors.html">S3 Vectors</a>
-   * operations, each of which is posted to a path named after it rather than addressed at a bucket or an object.
+   * operations, each of which is posted to a path named after it rather than addressed at a bucket or an object, except
+   * the tagging operations, which address a vector bucket or an index by its ARN.
    */
   private static void vectorRoutes(Routes routes, ServiceFactory factory) {
     routes
@@ -342,7 +347,10 @@ public class LocalS3RouterFactory {
         .addVectorOperation("QueryVectors", new QueryVectorsController(factory))
         .addVectorOperation("GetVectors", new GetVectorsController(factory))
         .addVectorOperation("DeleteVectors", new DeleteVectorsController(factory))
-        .addVectorOperation("ListVectors", new ListVectorsController(factory));
+        .addVectorOperation("ListVectors", new ListVectorsController(factory))
+        .add("TagResource", POST, VECTOR_RESOURCE_TAGS_PATH, new TagResourceController(factory))
+        .add("UntagResource", DELETE, VECTOR_RESOURCE_TAGS_PATH, new UntagResourceController(factory))
+        .add("ListTagsForResource", GET, VECTOR_RESOURCE_TAGS_PATH, new ListTagsForResourceController(factory));
   }
 
   /**

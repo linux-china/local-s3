@@ -105,6 +105,11 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 + GetVectorBucketPolicy
 + DeleteVectorBucketPolicy
 
+**Tagging Operations** (of a vector bucket or an index, addressed by its ARN; `CreateVectorBucket` and `CreateIndex` accept `tags` too):
++ TagResource
++ UntagResource
++ ListTagsForResource
+
 ## Known unimplemented Amazon S3 APIs
 
 LocalS3 is a mock for testing, so it implements the operations that application code exercises and leaves

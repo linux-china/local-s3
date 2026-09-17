@@ -200,7 +200,7 @@ final class AwsSignatureV4Verifier {
     }
 
     RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
-    String canonicalRequest = canonicalRequest(request, target, parseQuery(target.rawQuery()),
+    String canonicalRequest = canonicalRequest(request, target, scope, parseQuery(target.rawQuery()),
         headers, signedHeaders, payloadHash, false);
     byte[] signingKey = signingKey(scope);
     String expectedSignature = signature(signingKey,
@@ -304,7 +304,7 @@ final class AwsSignatureV4Verifier {
 
     String suppliedSignature = requiredQueryParameter(queryParameters, "X-Amz-Signature");
     String payloadHash = headers.getOrDefault(AmzHeaderNames.X_AMZ_CONTENT_SHA256, UNSIGNED_PAYLOAD);
-    String canonicalRequest = canonicalRequest(request, target, queryParameters, headers,
+    String canonicalRequest = canonicalRequest(request, target, scope, queryParameters, headers,
         signedHeaders, payloadHash, true);
     String expectedSignature = signature(signingKey(scope),
         stringToSign(amzDate, scope.value(), canonicalRequest));
@@ -379,7 +379,7 @@ final class AwsSignatureV4Verifier {
         || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash);
   }
 
-  private String canonicalRequest(HttpRequest request, RawRequestTarget target,
+  private String canonicalRequest(HttpRequest request, RawRequestTarget target, CredentialScope scope,
       List<QueryParameter> queryParameters, Map<String, String> headers,
       String signedHeaders, String payloadHash, boolean presigned) {
     StringBuilder canonicalHeaders = new StringBuilder();
@@ -388,12 +388,21 @@ final class AwsSignatureV4Verifier {
     }
 
     return request.getMethod().name() + '\n'
-        + canonicalizeRaw(target.rawPath(), true) + '\n'
+        + canonicalPath(target.rawPath(), scope) + '\n'
         + canonicalQuery(queryParameters, presigned) + '\n'
         + canonicalHeaders
         + '\n'
         + signedHeaders + '\n'
         + payloadHash;
+  }
+
+  /**
+   * The canonical path of a request. Amazon S3 signs its path encoded once, as it is sent; every other service, e.g.
+   * S3 Vectors, whose tagging operations carry an encoded ARN in their path, signs it encoded twice.
+   */
+  private static String canonicalPath(String rawPath, CredentialScope scope) {
+    String canonical = canonicalizeRaw(rawPath, true);
+    return "s3".equals(scope.service()) ? canonical : canonical.replace("%", "%25");
   }
 
   private static String canonicalQuery(List<QueryParameter> parameters, boolean presigned) {

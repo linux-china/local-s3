@@ -2,6 +2,7 @@ package com.robothy.s3.datatypes.s3vectors.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,5 +32,12 @@ public class CreateVectorBucketRequest {
    */
   @JsonProperty("encryptionConfiguration")
   private EncryptionConfiguration encryptionConfiguration;
+
+  /**
+   * Optional tags to add to the vector bucket.
+   * Map Entries: Maximum number of 50 items.
+   */
+  @JsonProperty("tags")
+  private Map<String, String> tags;
 
 }

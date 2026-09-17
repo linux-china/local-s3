@@ -52,7 +52,8 @@ public class CreateIndexController implements HttpRequestHandler {
         createRequest.getDataType(),
         createRequest.getDimension(),
         createRequest.getDistanceMetric(),
-        nonFilterableMetadataKeys
+        nonFilterableMetadataKeys,
+        createRequest.getTags()
     );
   }
 

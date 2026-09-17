@@ -7,17 +7,33 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.util.s3vectors.DateTimeUtils;
+import com.robothy.s3.core.util.vectors.ValidationUtils;
 import com.robothy.s3.datatypes.s3vectors.EncryptionConfiguration;
 import com.robothy.s3.datatypes.s3vectors.VectorBucket;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
+import java.util.Map;
 
 public interface CreateVectorBucketService extends S3VectorsMetadataAware {
 
   default CreateVectorBucketResponse createVectorBucket(String bucketName, EncryptionConfiguration encryptionConfiguration) {
+    return createVectorBucket(bucketName, encryptionConfiguration, null);
+  }
+
+  /**
+   * Create a vector bucket with tags.
+   *
+   * @param tags the tags of the bucket; {@code null} for none.
+   */
+  default CreateVectorBucketResponse createVectorBucket(String bucketName, EncryptionConfiguration encryptionConfiguration,
+                                                        Map<String, String> tags) {
     return changeBucket(bucketName, BucketGuard.Change.CREATE, () -> {
       validateBucketName(bucketName);
+      ValidationUtils.validateTags(tags);
       assertBucketDoesNotExist(bucketName);
       VectorBucketMetadata bucketMetadata = createBucketMetadata(bucketName, encryptionConfiguration);
+      if (tags != null) {
+        bucketMetadata.getTags().putAll(tags);
+      }
       storeBucketMetadata(bucketMetadata);
       return buildResponse(bucketMetadata);
     });

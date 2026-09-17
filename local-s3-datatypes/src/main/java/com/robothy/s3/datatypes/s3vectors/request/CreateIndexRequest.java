@@ -3,6 +3,7 @@ package com.robothy.s3.datatypes.s3vectors.request;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -56,6 +57,14 @@ public class CreateIndexRequest {
    */
   @JsonProperty("metadataConfiguration")
   private MetadataConfiguration metadataConfiguration;
+
+  /**
+   * The tags to add to the vector index.
+   * Map Entries: Maximum number of 50 items.
+   * Required: No
+   */
+  @JsonProperty("tags")
+  private Map<String, String> tags;
 
   /**
    * The Amazon Resource Name (ARN) of the vector bucket to create the vector index in.

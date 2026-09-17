@@ -21,7 +21,10 @@ public interface S3VectorsService extends
     GetVectorsService,
     DeleteVectorsService,
     QueryVectorsService,
-    ListVectorsService {
+    ListVectorsService,
+    TagResourceService,
+    UntagResourceService,
+    ListTagsForResourceService {
 
   /**
    * Create a service with a guard of its own, which only locks the vector buckets.

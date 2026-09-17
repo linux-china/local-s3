@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
+import com.robothy.s3.core.model.internal.s3vectors.VectorResourceIdentifier;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.PersistencePolicy;
@@ -30,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import com.robothy.s3.core.TestFiles;
 import org.junit.jupiter.api.Test;
@@ -270,5 +272,25 @@ class FileSystemLocalS3VectorsManagerTest {
     restarted.deleteIndex("bucket", "index");
     assertEquals(0, VectorStorage.createReadOnlyFileSystem(
         LocalS3VectorsManager.vectorStorageDirectory(dataPath)).getStoredVectorCount());
+  }
+
+  /**
+   * The tags of a vector bucket and of its index are kept with their settings, so they are there after a restart.
+   */
+  @Test
+  void keepsTheTagsOfBucketsAndIndexesAfterRestart(@TempDir Path dataPath) {
+    S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
+    service.createVectorBucket("bucket", null, Map.of("team", "search"));
+    service.createIndex("bucket", "index", VectorDataType.FLOAT32, 3, DistanceMetric.EUCLIDEAN, null,
+        Map.of("purpose", "rag"));
+    service.tagResource(new VectorResourceIdentifier("bucket", null), Map.of("env", "test"));
+    service.untagResource(new VectorResourceIdentifier("bucket", "index"), List.of("purpose"));
+    service.tagResource(new VectorResourceIdentifier("bucket", "index"), Map.of("owner", "me"));
+
+    S3VectorsService restarted = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
+    assertEquals(Map.of("team", "search", "env", "test"),
+        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", null)).getTags());
+    assertEquals(Map.of("owner", "me"),
+        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", "index")).getTags());
   }
 }

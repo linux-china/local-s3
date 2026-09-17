@@ -40,7 +40,8 @@ public class CreateVectorBucketController implements HttpRequestHandler {
   private CreateVectorBucketResponse processRequest(CreateVectorBucketRequest createRequest) {
     return s3VectorsService.createVectorBucket(
         createRequest.getVectorBucketName(),
-        createRequest.getEncryptionConfiguration()
+        createRequest.getEncryptionConfiguration(),
+        createRequest.getTags()
     );
   }
 
