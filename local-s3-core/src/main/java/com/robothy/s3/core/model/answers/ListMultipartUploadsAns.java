@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.datatypes.enums.StorageClass;
 import java.util.List;
 import lombok.Builder;
 import lombok.Data;
@@ -26,5 +27,6 @@ public class ListMultipartUploadsAns {
     private String key;
     private String uploadId;
     private long initiated;
+    private StorageClass storageClass;
   }
 }

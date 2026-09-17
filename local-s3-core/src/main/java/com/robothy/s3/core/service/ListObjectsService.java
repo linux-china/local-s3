@@ -9,7 +9,7 @@ import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
-import com.robothy.s3.datatypes.enums.StorageClass;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.response.S3Object;
 
 import java.time.Instant;
@@ -144,7 +144,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     object.setLastModified(Instant.ofEpochMilli(latest.getCreationDate()));
     object.setEtag(S3ObjectUtils.quoteEtag(latest.getEtag()));
     object.setOwner(Owner.DEFAULT_OWNER);
-    object.setStorageClass(StorageClass.STANDARD);
+    object.setStorageClass(SystemMetadata.storageClassOf(latest.getSystemMetadata()));
     if (Objects.nonNull(latest.getChecksum())) {
       object.setCheckSumAlgorithm(latest.getChecksum().getAlgorithm());
       object.setChecksumType(latest.getChecksum().getType());

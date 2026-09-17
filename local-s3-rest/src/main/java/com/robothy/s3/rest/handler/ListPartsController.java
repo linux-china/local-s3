@@ -7,7 +7,6 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.model.answers.ListPartsAns;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Owner;
-import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.model.response.ListPartsResult;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -61,7 +60,7 @@ public class ListPartsController implements HttpRequestHandler {
         .partNumberMarker(ans.getPartNumberMarker())
         .initiator(Owner.DEFAULT_OWNER)
         .owner(Owner.DEFAULT_OWNER)
-        .storageClass(StorageClass.STANDARD)
+        .storageClass(ans.getStorageClass())
         .checksumAlgorithm(ans.getChecksumAlgorithm())
         .checksumType(ans.getChecksumType())
         .parts(parts)

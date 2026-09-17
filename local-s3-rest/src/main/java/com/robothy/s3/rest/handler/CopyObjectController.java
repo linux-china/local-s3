@@ -95,6 +95,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .userMetadata(userMetadata)
         .contentType(replaceMetadata ? request.header(HttpHeaderNames.CONTENT_TYPE).orElse(null) : null)
         .systemMetadata(replaceMetadata ? SystemMetadataHeaders.fromRequest(request) : null)
+        .storageClass(SystemMetadataHeaders.storageClass(name -> request.header(name).orElse(null)))
         .taggingDirective(taggingDirective)
         .tagging(tagging)
         // If-Match and If-None-Match of the destination, like a PutObject; x-amz-copy-source-if-* of the source.

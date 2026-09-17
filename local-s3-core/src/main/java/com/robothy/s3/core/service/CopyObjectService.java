@@ -50,8 +50,9 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
     boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
     Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
     String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
-    SystemMetadata systemMetadataToUse = replaceMetadata ? options.getSystemMetadata()
-        : srcObjectAns.getSystemMetadata();
+    // The storage class isn't copied: the copy has the one of the request, like Amazon S3 does.
+    SystemMetadata systemMetadataToUse = SystemMetadata.withStorageClass(replaceMetadata
+        ? options.getSystemMetadata() : srcObjectAns.getSystemMetadata(), options.getStorageClass());
 
     // The tagging of the source object is copied, unless the directive replaces it with the requested one.
     String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE

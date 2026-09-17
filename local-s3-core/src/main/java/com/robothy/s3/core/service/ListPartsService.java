@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.ObjectNotExistException;
@@ -52,6 +53,7 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
           .uploadId(uploadId)
           .checksumAlgorithm(uploadMetadata.getChecksumAlgorithm())
           .checksumType(uploadMetadata.getChecksumType())
+          .storageClass(SystemMetadata.storageClassOf(uploadMetadata.getSystemMetadata()))
           .partNumberMarker(marker)
           .nextPartNumberMarker(fetchedUploadPartMap.isEmpty() ? 0 : fetchedUploadPartMap.lastKey())
           .maxParts(max)

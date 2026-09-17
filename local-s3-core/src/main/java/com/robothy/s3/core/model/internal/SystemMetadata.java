@@ -1,5 +1,7 @@
 package com.robothy.s3.core.model.internal;
 
+import com.robothy.s3.datatypes.enums.StorageClass;
+import java.util.Objects;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +16,7 @@ import lombok.NoArgsConstructor;
  * {@code SystemMetadata} at all rather than an empty one.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class SystemMetadata {
@@ -28,5 +30,37 @@ public class SystemMetadata {
   private String contentLanguage;
 
   private String expires;
+
+  /**
+   * The {@code x-amz-storage-class} that the object was stored with; {@code null} for
+   * {@linkplain StorageClass#STANDARD}. LocalS3 keeps it only to answer it: an object of any storage class is read
+   * like a {@code STANDARD} one, e.g. a {@code GLACIER} one needs no restore.
+   */
+  private StorageClass storageClass;
+
+  /**
+   * The storage class of an object.
+   *
+   * @param systemMetadata the system-defined metadata of the object; {@code null} if it has none.
+   * @return the storage class; {@linkplain StorageClass#STANDARD} if it was stored without one.
+   */
+  public static StorageClass storageClassOf(SystemMetadata systemMetadata) {
+    return Objects.isNull(systemMetadata) || Objects.isNull(systemMetadata.getStorageClass())
+        ? StorageClass.STANDARD : systemMetadata.getStorageClass();
+  }
+
+  /**
+   * The system-defined metadata with another storage class.
+   *
+   * @param systemMetadata the system-defined metadata; {@code null} for none.
+   * @param storageClass the storage class; {@code null} for {@linkplain StorageClass#STANDARD}.
+   * @return a copy with the storage class; {@code null} if it carries nothing else.
+   */
+  public static SystemMetadata withStorageClass(SystemMetadata systemMetadata, StorageClass storageClass) {
+    SystemMetadata result = Objects.isNull(systemMetadata) ? new SystemMetadata()
+        : systemMetadata.toBuilder().build();
+    result.setStorageClass(storageClass == StorageClass.STANDARD ? null : storageClass);
+    return result.equals(new SystemMetadata()) ? null : result;
+  }
 
 }

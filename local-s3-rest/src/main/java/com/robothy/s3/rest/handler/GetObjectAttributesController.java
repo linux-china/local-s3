@@ -11,7 +11,7 @@ import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.service.GetObjectService;
 import com.robothy.s3.core.service.ObjectService;
-import com.robothy.s3.datatypes.enums.StorageClass;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.response.GetObjectAttributesResult;
@@ -106,7 +106,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
       result.checksum(ChecksumElements.of(object.getChecksum()));
     }
     if (attributes.contains(ObjectAttribute.STORAGE_CLASS)) {
-      result.storageClass(StorageClass.STANDARD);
+      result.storageClass(SystemMetadata.storageClassOf(object.getSystemMetadata()));
     }
     if (attributes.contains(ObjectAttribute.OBJECT_PARTS)) {
       result.objectParts(objectParts(request, object));

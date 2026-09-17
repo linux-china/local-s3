@@ -3,6 +3,7 @@ package com.robothy.s3.core.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import com.robothy.s3.core.model.internal.SystemMetadata;
+import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
@@ -108,10 +109,11 @@ class SystemMetadataServiceTest extends LocalS3ServiceTestBase {
   void systemMetadataIsPersisted(@TempDir Path dataPath) {
     LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
     manager.bucketService().createBucket(BUCKET);
-    put(manager.objectService(), "a.txt", "text/plain", SYSTEM_METADATA);
+    SystemMetadata systemMetadata = SystemMetadata.withStorageClass(SYSTEM_METADATA, StorageClass.GLACIER);
+    put(manager.objectService(), "a.txt", "text/plain", systemMetadata);
 
     LocalS3Manager reloaded = LocalS3Manager.createFileSystemS3Manager(dataPath);
-    assertEquals(SYSTEM_METADATA, reloaded.objectService().headObject(BUCKET, "a.txt", GetObjectOptions.builder().build())
+    assertEquals(systemMetadata, reloaded.objectService().headObject(BUCKET, "a.txt", GetObjectOptions.builder().build())
         .getSystemMetadata());
   }
 

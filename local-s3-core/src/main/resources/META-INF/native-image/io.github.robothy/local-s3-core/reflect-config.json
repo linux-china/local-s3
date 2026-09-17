@@ -104,6 +104,8 @@
       {"name":"getContentEncoding","parameterTypes":[] },
       {"name":"getContentLanguage","parameterTypes":[] },
       {"name":"getExpires","parameterTypes":[] },
+      {"name":"getStorageClass","parameterTypes":[] },
+      {"name":"setStorageClass","parameterTypes":["com.robothy.s3.datatypes.enums.StorageClass"] },
       {"name":"setCacheControl","parameterTypes":["java.lang.String"] },
       {"name":"setContentDisposition","parameterTypes":["java.lang.String"] },
       {"name":"setContentEncoding","parameterTypes":["java.lang.String"] },

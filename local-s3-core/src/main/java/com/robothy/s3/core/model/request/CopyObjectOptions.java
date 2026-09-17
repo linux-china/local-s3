@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.request;
 
+import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.ObjectLock;
@@ -68,6 +69,12 @@ public class CopyObjectOptions {
    * {@linkplain MetadataDirective#REPLACE}; {@code null} if the request carries none.
    */
   private SystemMetadata systemMetadata;
+
+  /**
+   * The storage class of the copy, which isn't copied from the source object whatever the metadata directive;
+   * {@code null} for {@code STANDARD}.
+   */
+  private StorageClass storageClass;
 
   private TaggingDirective taggingDirective;
 

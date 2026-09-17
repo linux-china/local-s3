@@ -3,9 +3,13 @@ package com.robothy.s3.rest.utils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.SystemMetadata;
+import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import java.util.HashMap;
 import java.util.List;
@@ -25,10 +29,19 @@ class SystemMetadataHeadersTest {
         "content-disposition", "inline",
         "content-encoding", "gzip",
         "content-language", "de",
-        "expires", "Thu, 01 Dec 2033 16:00:00 GMT"), Map.of()));
+        "expires", "Thu, 01 Dec 2033 16:00:00 GMT",
+        "x-amz-storage-class", "GLACIER"), Map.of()));
 
-    assertEquals(new SystemMetadata("max-age=60", "inline", "gzip", "de", "Thu, 01 Dec 2033 16:00:00 GMT"),
-        systemMetadata);
+    assertEquals(new SystemMetadata("max-age=60", "inline", "gzip", "de", "Thu, 01 Dec 2033 16:00:00 GMT",
+        StorageClass.GLACIER), systemMetadata);
+  }
+
+  @Test
+  void theStandardStorageClassIsNotStoredAndAnUnknownOneIsRejected() {
+    assertNull(SystemMetadataHeaders.fromRequest(request(Map.of("x-amz-storage-class", "STANDARD"), Map.of())));
+    LocalS3RequestException exception = assertThrows(LocalS3RequestException.class,
+        () -> SystemMetadataHeaders.fromRequest(request(Map.of("x-amz-storage-class", "COLD"), Map.of())));
+    assertEquals(S3ErrorCode.InvalidStorageClass, exception.getS3ErrorCode());
   }
 
   @Test

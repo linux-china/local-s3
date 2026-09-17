@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListMultipartUploadsAns;
@@ -77,6 +78,7 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
               .key(key)
               .uploadId(uploadEntry.getKey())
               .initiated(upload.getCreateDate())
+              .storageClass(SystemMetadata.storageClassOf(upload.getSystemMetadata()))
               .build());
           if (listedUploads.size() + listedCommonPrefixes.size() >= maxUploads) {
             if (uploadItr.hasNext()) {

@@ -11,7 +11,7 @@ import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
-import com.robothy.s3.datatypes.enums.StorageClass;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.datatypes.response.VersionItem;
@@ -173,7 +173,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
             .lastModified(Instant.ofEpochMilli(versionedObjectMetadata.getCreationDate()))
             .size(versionedObjectMetadata.getSize())
             .etag(S3ObjectUtils.quoteEtag(versionedObjectMetadata.getEtag()))
-            .storageClass(StorageClass.STANDARD)
+            .storageClass(SystemMetadata.storageClassOf(versionedObjectMetadata.getSystemMetadata()))
             .owner(Owner.DEFAULT_OWNER)
             .checkSumAlgorithm(Optional.ofNullable(versionedObjectMetadata.getChecksum())
                 .map(ObjectChecksum::getAlgorithm).orElse(null))

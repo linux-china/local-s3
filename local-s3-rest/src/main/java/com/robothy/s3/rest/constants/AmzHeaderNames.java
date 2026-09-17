@@ -24,6 +24,8 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_DELETE_MARKER = "x-amz-delete-marker";
 
+  public static final String X_AMZ_STORAGE_CLASS = "x-amz-storage-class";
+
   public static final String X_AMZ_TAGGING = "x-amz-tagging";
 
   public static final String X_AMZ_TAGGING_COUNT = "x-amz-tagging-count";

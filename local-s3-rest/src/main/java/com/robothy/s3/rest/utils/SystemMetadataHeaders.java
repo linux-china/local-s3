@@ -2,7 +2,11 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.SystemMetadata;
+import com.robothy.s3.datatypes.enums.StorageClass;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.util.Arrays;
 import java.util.function.Function;
@@ -75,8 +79,35 @@ public final class SystemMetadataHeaders {
         .contentEncoding(storedContentEncoding(values.apply(Header.CONTENT_ENCODING.headerName)))
         .contentLanguage(values.apply(Header.CONTENT_LANGUAGE.headerName))
         .expires(values.apply(Header.EXPIRES.headerName))
+        .storageClass(storedStorageClass(storageClass(values)))
         .build();
     return systemMetadata.equals(new SystemMetadata()) ? null : systemMetadata;
+  }
+
+  /**
+   * Read the {@code x-amz-storage-class} that an object is stored with.
+   *
+   * @param values the value of a header name; {@code null} if there is none.
+   * @return the storage class; {@code null} if there is none.
+   * @throws LocalS3RequestException {@code InvalidStorageClass} if it names no storage class.
+   */
+  public static StorageClass storageClass(Function<String, String> values) {
+    String value = values.apply(AmzHeaderNames.X_AMZ_STORAGE_CLASS);
+    if (value == null) {
+      return null;
+    }
+    try {
+      return StorageClass.valueOf(value.trim());
+    } catch (IllegalArgumentException e) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidStorageClass);
+    }
+  }
+
+  /**
+   * {@code STANDARD} is stored as no storage class, so that an object stored with it has no system-defined metadata.
+   */
+  private static StorageClass storedStorageClass(StorageClass storageClass) {
+    return storageClass == StorageClass.STANDARD ? null : storageClass;
   }
 
   /**
@@ -112,6 +143,10 @@ public final class SystemMetadataHeaders {
       String value = systemMetadata == null ? null : header.getter.apply(systemMetadata);
       ResponseUtils.putHeaderIfPresent(response, header.headerName,
           request.parameter(header.overrideParameter()).orElse(value));
+    }
+    // Answered only for a storage class other than STANDARD, like Amazon S3 does.
+    if (systemMetadata != null) {
+      ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_STORAGE_CLASS, systemMetadata.getStorageClass());
     }
   }
 

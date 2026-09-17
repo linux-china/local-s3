@@ -59,7 +59,7 @@ public class ListMultipartUploadsController implements HttpRequestHandler {
                 .key(upload.getKey())
                 .uploadId(upload.getUploadId())
                 .initiated(Instant.ofEpochMilli(upload.getInitiated()).toString())
-                .storageClass("STANDARD")
+                .storageClass(upload.getStorageClass().name())
                 .owner(Owner.DEFAULT_OWNER)
                 .initiator(Initiator.SYSTEM)
                 .build())
