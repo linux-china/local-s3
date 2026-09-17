@@ -162,7 +162,8 @@ it all first.
 ```
 
 `loadedObjects` is how many objects have their metadata in heap and `loadedObjectMetadataBytes` an estimate of what
-that costs, measured as the size of the persisted form of that metadata. The bound defaults to 50000 objects and is
+that costs, measured as the size of the persisted form of that metadata; an `IN_MEMORY` service never writes its metadata, so
+it reports `0`. The bound defaults to 50000 objects and is
 configured with the environment variable, or system property, `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`:
 
 ```shell

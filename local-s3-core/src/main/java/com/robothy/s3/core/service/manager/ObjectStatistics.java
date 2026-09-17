@@ -26,7 +26,8 @@ import java.util.NavigableMap;
  * @param loadedObjectMetadataBytes an estimate of what the metadata in heap costs, as the number of characters of the
  *     persisted form of the metadata of {@code loadedObjects}. It counts the metadata of the objects, i.e. their
  *     versions, tagging and ACLs, not the content of the objects, which {@code objectBytes} counts. An object that
- *     has neither been read from nor written to a store yet counts as 0.
+ *     has neither been read from nor written to a store yet counts as 0, and so does every object of an
+ *     {@code IN_MEMORY} service, which keeps its metadata in heap only and never writes it.
  */
 public record ObjectStatistics(long buckets, long objects, long objectVersions, long deleteMarkers, long objectBytes,
                                long multipartUploads, long loadedObjects, long loadedObjectMetadataBytes) {

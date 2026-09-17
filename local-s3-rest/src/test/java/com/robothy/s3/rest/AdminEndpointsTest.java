@@ -45,8 +45,8 @@ class AdminEndpointsTest {
       // What the service keeps in heap, which tells a user holding a large data path where the boundary is.
       assertEquals(stats.at("/data/objects").asLong(), stats.at("/data/loadedObjects").asLong(),
           "An IN_MEMORY service holds the metadata of every object it has.");
-      assertTrue(stats.at("/data/loadedObjectMetadataBytes").asLong() > 0,
-          "The metadata that is held is measured.");
+      assertEquals(0, stats.at("/data/loadedObjectMetadataBytes").asLong(),
+          "An IN_MEMORY service never writes the metadata it holds, so there is no persisted form to measure.");
       assertEquals(0, stats.at("/vectors/vectorBuckets").asLong());
       assertTrue(stats.get("inFlightRequests").asInt() >= 1, "The request that asks is in flight.");
       assertEquals(3, stats.get("totalRequests").asLong(), "The health check isn't recorded: " + stats);
