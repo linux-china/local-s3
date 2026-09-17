@@ -83,6 +83,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
+| [Data tools](docs/data-tools.md) | DuckDB and Apache Iceberg (`S3FileIO`) on LocalS3: path-style settings, range reads, and conditional commits. |
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |

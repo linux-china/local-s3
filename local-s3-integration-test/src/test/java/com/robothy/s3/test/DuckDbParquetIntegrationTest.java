@@ -24,8 +24,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
+import org.duckdb.DuckDBConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
@@ -163,6 +169,105 @@ class DuckDbParquetIntegrationTest {
     assertTrue(reads.size() >= 2, "The file must be read in ranges, but was read with " + reads.size() + " requests.");
     assertTrue(reads.stream().allMatch(request -> request.get("status").asInt() == 206),
         "Every read must be a range request answered with 206 Partial Content: " + reads);
+  }
+
+  /**
+   * Queries that run at once on a file of many row groups, each of which DuckDB reads on threads of its own: LocalS3
+   * answers many small range requests at once, and every query gets the rows of its filter.
+   */
+  @Test
+  void answersTheConcurrentRangeRequestsOfConcurrentQueries() throws Exception {
+    execute(duckdb, "COPY (SELECT i AS id, md5(i::VARCHAR) AS payload FROM range(0, 400000) t(i)) "
+        + "TO 's3://lake/row-groups.parquet' (FORMAT parquet, ROW_GROUP_SIZE 10000)");
+    execute(duckdb, "SET threads = 8");
+    // Without the caches of DuckDB, which would answer the later rounds from memory, each round reads the file again.
+    execute(duckdb, "SET enable_external_file_cache = false");
+    execute(duckdb, "SET enable_http_metadata_cache = false");
+
+    int queries = 8;
+    int rounds = 5;
+    ExecutorService executor = Executors.newFixedThreadPool(queries + 1);
+    AtomicBoolean querying = new AtomicBoolean(true);
+    List<Connection> connections = new ArrayList<>();
+    try {
+      // The most requests that LocalS3 was handling at once.
+      Future<Integer> maxInFlight = executor.submit(() -> {
+        int max = 0;
+        while (querying.get()) {
+          max = Math.max(max, localS3.statistics().inFlightRequests());
+          Thread.onSpinWait();
+        }
+        return max;
+      });
+      CyclicBarrier start = new CyclicBarrier(queries);
+      List<Future<?>> results = new ArrayList<>();
+      for (int query = 0; query < queries; query++) {
+        // A connection of the same database, with its secret and settings.
+        Connection connection = ((DuckDBConnection) duckdb).duplicate();
+        connections.add(connection);
+        long from = query * 50_000L;
+        long to = from + 49_999;
+        results.add(executor.submit(() -> {
+          start.await();
+          for (int round = 0; round < rounds; round++) {
+            assertEquals(List.of(List.of(50_000L, (from + to) * 50_000 / 2, 50_000L)), rows(connection,
+                "SELECT count(*), sum(id)::BIGINT, count(DISTINCT payload) FROM read_parquet('s3://lake/row-groups.parquet') "
+                    + "WHERE id BETWEEN " + from + " AND " + to));
+          }
+          return null;
+        }));
+      }
+      for (Future<?> result : results) {
+        result.get();
+      }
+      querying.set(false);
+      assertTrue(maxInFlight.get() >= 2, "LocalS3 must have answered range requests at once, but answered at most "
+          + maxInFlight.get());
+    } finally {
+      querying.set(false);
+      executor.shutdownNow();
+      for (Connection connection : connections) {
+        connection.close();
+      }
+    }
+
+    RequestStatistics.OperationStatistics gets = operations().get("GetObject");
+    // At least the footer and a row group for each query of each round.
+    assertTrue(gets.count() >= 2L * queries * rounds, gets.toString());
+    assertEquals(0, gets.clientErrors(), gets.toString());
+    assertEquals(0, gets.serverErrors(), gets.toString());
+    List<JsonNode> reads = recentRequests().stream()
+        .filter(request -> "GetObject".equals(request.get("operation").asText()))
+        .toList();
+    assertFalse(reads.isEmpty());
+    assertTrue(reads.stream().allMatch(request -> request.get("status").asInt() == 206),
+        "Every read must be a range request answered with 206 Partial Content: " + reads);
+  }
+
+  /**
+   * The S3 settings of DuckDB instead of a secret, e.g. for a version of DuckDB without secrets or a script that sets
+   * them: {@code s3_url_style = 'path'} addresses the bucket in the path, {@code http://127.0.0.1:port/lake/key},
+   * since a local endpoint has no DNS name for each bucket.
+   */
+  @Test
+  void connectsWithTheS3SettingsOfDuckDbInsteadOfASecret() throws Exception {
+    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:")) {
+      loadHttpfs(connection);
+      execute(connection, "SET s3_endpoint = '127.0.0.1:" + localS3.getPort() + "'");
+      execute(connection, "SET s3_url_style = 'path'");
+      execute(connection, "SET s3_use_ssl = false");
+      execute(connection, "SET s3_region = 'us-east-1'");
+      execute(connection, "SET s3_access_key_id = 'any-access-key'");
+      execute(connection, "SET s3_secret_access_key = 'any-secret-key'");
+
+      execute(connection, "COPY (SELECT i AS id FROM range(0, 10) t(i)) TO 's3://lake/settings.parquet' (FORMAT parquet)");
+
+      assertEquals(45L, single(connection, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/settings.parquet')"));
+      assertTrue(recentRequests().stream()
+              .filter(request -> "PutObject".equals(request.get("operation").asText()))
+              .anyMatch(request -> request.get("uri").asText().startsWith("/lake/settings.parquet")),
+          "The bucket must be in the path of the requests.");
+    }
   }
 
   /**

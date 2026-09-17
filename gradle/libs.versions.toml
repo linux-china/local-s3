@@ -18,11 +18,17 @@ springBoot = "4.1.1"
 micrometer = "1.17.1"
 duckdb="1.5.5.1"
 h2MvStore="2.5.250"
+iceberg="1.11.0"
+parquet="1.17.1"
+hadoop="3.5.0"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 awssdkS3 = { group = "software.amazon.awssdk", name = "s3", version.ref = "awssdkS3" }
 awssdkS3vectors = { group = "software.amazon.awssdk", name = "s3vectors", version.ref = "awssdkS3" }
+# iceberg-aws leaves the AWS SDK to the application; its S3FileIO loads the model classes of KMS and STS as well.
+awssdkKms = { group = "software.amazon.awssdk", name = "kms", version.ref = "awssdkS3" }
+awssdkSts = { group = "software.amazon.awssdk", name = "sts", version.ref = "awssdkS3" }
 awss3ApacheClient = { group = "software.amazon.awssdk", name = "apache-client", version.ref = "awssdkS3" }
 # Jackson 3, whose annotations are still those of Jackson 2, com.fasterxml.jackson.annotation, which databind brings.
 # Optional, java.time and parameter names are supported by databind itself, without modules.
@@ -49,6 +55,17 @@ robothyCnRepo = { group = "com.robothy", name = "cn-repo", version.ref = "roboth
 gradleLombok = { group = "io.franzbecker", name = "gradle-lombok", version.ref = "gradleLombok" }
 jspecify = { group = "org.jspecify", name = "jspecify", version.ref = "jspecify" }
 duckdb = { group = "org.duckdb", name = "duckdb_jdbc", version.ref = "duckdb" }
+icebergCore = { group = "org.apache.iceberg", name = "iceberg-core", version.ref = "iceberg" }
+icebergAws = { group = "org.apache.iceberg", name = "iceberg-aws", version.ref = "iceberg" }
+icebergData = { group = "org.apache.iceberg", name = "iceberg-data", version.ref = "iceberg" }
+# iceberg-data registers the readers and writers of every format, ORC included, when it reads a table.
+icebergOrc = { group = "org.apache.iceberg", name = "iceberg-orc", version.ref = "iceberg" }
+icebergParquet = { group = "org.apache.iceberg", name = "iceberg-parquet", version.ref = "iceberg" }
+# The writers of iceberg-parquet take the MessageType of parquet-column, which iceberg-parquet only has at runtime.
+parquetColumn = { group = "org.apache.parquet", name = "parquet-column", version.ref = "parquet" }
+# The Parquet writers and readers of Iceberg take a Hadoop Configuration: the shaded Hadoop client, without Hadoop's own dependencies.
+hadoopClientApi = { group = "org.apache.hadoop", name = "hadoop-client-api", version.ref = "hadoop" }
+hadoopClientRuntime = { group = "org.apache.hadoop", name = "hadoop-client-runtime", version.ref = "hadoop" }
 springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
 springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
 springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }
