@@ -10,6 +10,28 @@
 </dependency>
 ```
 
+The starter only brings LocalS3 itself: an application that embeds the service for other processes, e.g. DuckDB or a
+Spark job, doesn't get the AWS SDK. To have the starter define the clients that point at the service, add the AWS SDK
+too:
+
+```xml
+<!-- S3Client and S3Presigner -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3</artifactId>
+</dependency>
+<!-- S3AsyncClient, optional -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>netty-nio-client</artifactId>
+</dependency>
+```
+
+The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. `netty-nio-client`
+depends on Netty 4.1, while LocalS3 needs Netty 4.2: let the dependency management of Spring Boot (the
+`spring-boot-starter-parent` or the `spring-boot-dependencies` BOM) pick the Netty version, rather than the nearest
+declaration, or LocalS3 fails to start with a `NoClassDefFoundError`.
+
 ```yaml
 local-s3:
   port: 29090            # 0 for a random port
@@ -25,7 +47,8 @@ The starter defines:
 + a `LocalS3` bean, configured by the `local-s3.*` properties, which map to the options of `LocalS3Builder` (the IDE
   completes them), and by the `LocalS3BuilderCustomizer` beans for anything else. `LocalS3Lifecycle` starts and stops it
   with the application context, in a phase before the web server, and without a JVM shutdown hook of its own;
-+ an `S3Client`, an `S3AsyncClient` and an `S3Presigner` that point at the service, with path-style requests and the
++ with the AWS SDK, an `S3Client`, an `S3AsyncClient` (with `netty-nio-client`) and an `S3Presigner` that point at the
+  service, with path-style requests and the
   credentials of the service. Creating one starts the service, so a bean can use it while it is initialized, even with a
   random port. The starter backs off from a client that the application defines itself, and from all of them with
   `local-s3.clients.enabled=false`;

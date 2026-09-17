@@ -36,7 +36,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  *   <li>the {@code S3Change}s that the service commits, published to the application context, where
  *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
  *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
- *   service, unless the application defines its own.</li>
+ *   service, unless the application defines its own, when the AWS SDK is on the classpath.</li>
  * </ul>
  *
  * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3.
@@ -133,9 +133,11 @@ public class LocalS3AutoConfiguration {
 
   /**
    * The clients of the AWS SDK that point at the embedded service, with path-style requests, and signed with the
-   * credentials of the service, if it requires any. Creating a client starts the service.
+   * credentials of the service, if it requires any. Creating a client starts the service. The AWS SDK is an optional
+   * dependency of the starter: without {@code software.amazon.awssdk:s3}, the application only embeds the service.
    */
   @Configuration(proxyBeanMethods = false)
+  @ConditionalOnClass(S3Client.class)
   @ConditionalOnBooleanProperty(name = "local-s3.clients.enabled", matchIfMissing = true)
   static class ClientsConfiguration {
 

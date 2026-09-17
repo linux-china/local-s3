@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -165,6 +167,21 @@ class LocalS3AutoConfigurationTest {
     runner.withPropertyValues("local-s3.enabled=false").run(context -> {
       assertFalse(context.containsBean("localS3"));
       assertTrue(context.getBeansOfType(S3Client.class).isEmpty());
+    });
+  }
+
+  /**
+   * The AWS SDK is an optional dependency: an application that only embeds the service, for other processes, gets it
+   * without the clients.
+   */
+  @Test
+  void embedsTheServiceWithoutTheAwsSdk() {
+    runner.withClassLoader(new FilteredClassLoader("software.amazon.awssdk.")).run(context -> {
+      assertNull(context.getStartupFailure());
+      assertTrue(context.getBean(LocalS3.class).isRunning());
+      assertFalse(context.containsBean("s3Client"));
+      assertFalse(context.containsBean("s3AsyncClient"));
+      assertFalse(context.containsBean("s3Presigner"));
     });
   }
 
