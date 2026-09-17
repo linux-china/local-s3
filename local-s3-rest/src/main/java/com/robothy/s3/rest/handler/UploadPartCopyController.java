@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -55,6 +56,7 @@ class UploadPartCopyController implements HttpRequestHandler {
     CopyPartResult result = CopyPartResult.builder()
         .lastModified(Instant.ofEpochMilli(ans.getLastModified()))
         .etag(ResponseUtils.quoteEtag(ans.getEtag()))
+        .checksum(ChecksumElements.valueOf(ans.getChecksum()))
         .build();
 
     // The Content-Length is set from the bytes of the body by LocalS3HttpMessageHandler.

@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -74,6 +75,10 @@ class GetObjectController implements HttpRequestHandler {
       }
 
       getObjectAns.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
+      if (ChecksumHeaders.isChecksumModeEnabled(request)) {
+        // A client verifies the content it reads against it; a range has none.
+        ChecksumHeaders.addHeaders(response, getObjectAns.getChecksum());
+      }
     }
 
     // Sent for a delete marker as well, like HeadObjectController does.

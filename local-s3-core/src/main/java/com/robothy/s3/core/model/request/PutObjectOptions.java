@@ -40,6 +40,11 @@ public class PutObjectOptions {
 
   private String contentMd5;
 
+  /**
+   * The checksum to store the object with; {@code null} to store it without one.
+   */
+  private RequestChecksum checksum;
+
   private String[][] tagging;
 
   private Map<String, String> userMetadata;

@@ -95,4 +95,29 @@ public class AmzHeaderNames {
    *
    */
   public static final String X_AMZ_META_PREFIX = "x-amz-meta-";
+
+  /**
+   * The names of the trailing headers of an {@code aws-chunked} body, e.g. {@code x-amz-checksum-crc32}.
+   */
+  public static final String X_AMZ_TRAILER = "x-amz-trailer";
+
+  /**
+   * The algorithm of the checksum that an AWS SDK sends with the content, in a header or a trailing header.
+   */
+  public static final String X_AMZ_SDK_CHECKSUM_ALGORITHM = "x-amz-sdk-checksum-algorithm";
+
+  /**
+   * The algorithm of the checksum of the object that CreateMultipartUpload and CopyObject store.
+   */
+  public static final String X_AMZ_CHECKSUM_ALGORITHM = "x-amz-checksum-algorithm";
+
+  /**
+   * The type of a checksum, {@code FULL_OBJECT} or {@code COMPOSITE}.
+   */
+  public static final String X_AMZ_CHECKSUM_TYPE = "x-amz-checksum-type";
+
+  /**
+   * {@code ENABLED} asks GetObject and HeadObject for the checksum of the object.
+   */
+  public static final String X_AMZ_CHECKSUM_MODE = "x-amz-checksum-mode";
 }

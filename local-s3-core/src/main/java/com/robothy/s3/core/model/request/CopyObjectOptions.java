@@ -4,6 +4,7 @@ import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -68,6 +69,12 @@ public class CopyObjectOptions {
   private TaggingDirective taggingDirective;
 
   private String[][] tagging;
+
+  /**
+   * The algorithm of the checksum to store the copy with; {@code null} for the one of the source object, if it has
+   * one.
+   */
+  private CheckSumAlgorithm checksumAlgorithm;
 
   /**
    * The {@code If-Match} and {@code If-None-Match} conditions that the object the destination key holds must satisfy;

@@ -1,5 +1,14 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
+import com.robothy.s3.rest.model.response.ChecksumElements;
+import com.robothy.s3.core.model.request.RequestChecksum;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
+import com.robothy.s3.rest.model.request.CompletedPart;
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.Objects;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
@@ -44,17 +53,20 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
 
+    RequestChecksum expectedChecksum = ChecksumHeaders.fromHeaders(request);
+    ChecksumType expectedChecksumType = ChecksumHeaders.type(request);
     CompleteMultipartUploadAns completeMultipartUploadAns;
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       CompleteMultipartUpload completeMultipartUpload = xmlMapper.readValue(in, CompleteMultipartUpload.class);
       List<CompleteMultipartUploadPartOption> parts = completeMultipartUpload.getParts().stream().map(part -> CompleteMultipartUploadPartOption.builder()
                   .etag(part.getEtag())
                   .partNumber(part.getPartNumber())
+                  .checksums(partChecksums(part))
                   .build())
               .collect(Collectors.toList());
       completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
           multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags(),
-          RequestUtils.extractPreconditions(request));
+          RequestUtils.extractPreconditions(request), expectedChecksum, expectedChecksumType);
     }
 
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()
@@ -62,6 +74,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
         .key(key)
         .etag(ResponseUtils.quoteEtag(completeMultipartUploadAns.getEtag()))
         .location(completeMultipartUploadAns.getLocation())
+        .checksum(ChecksumElements.of(completeMultipartUploadAns.getChecksum()))
         .build();
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result));
@@ -71,6 +84,26 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
+  }
+
+  /**
+   * The checksums that the request names a part with, by algorithm.
+   */
+  private static Map<CheckSumAlgorithm, String> partChecksums(CompletedPart part) {
+    Map<CheckSumAlgorithm, String> checksums = new EnumMap<>(CheckSumAlgorithm.class);
+    putIfPresent(checksums, CheckSumAlgorithm.CRC32, part.getChecksumCRC32());
+    putIfPresent(checksums, CheckSumAlgorithm.CRC32C, part.getChecksumCRC32C());
+    putIfPresent(checksums, CheckSumAlgorithm.CRC64NVME, part.getChecksumCRC64NVME());
+    putIfPresent(checksums, CheckSumAlgorithm.SHA1, part.getChecksumSHA1());
+    putIfPresent(checksums, CheckSumAlgorithm.SHA256, part.getChecksumSHA256());
+    return checksums;
+  }
+
+  private static void putIfPresent(Map<CheckSumAlgorithm, String> checksums, CheckSumAlgorithm algorithm,
+                                   String value) {
+    if (Objects.nonNull(value) && !value.isBlank()) {
+      checksums.put(algorithm, value);
+    }
   }
 
 }

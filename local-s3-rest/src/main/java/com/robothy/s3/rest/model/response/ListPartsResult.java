@@ -1,5 +1,10 @@
 package com.robothy.s3.rest.model.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
+
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.StorageClass;
@@ -55,6 +60,17 @@ public class ListPartsResult {
   @JacksonXmlProperty(localName = "StorageClass")
   private StorageClass storageClass;
 
+  /**
+   * The algorithm of the checksum of the upload; {@code null}, and left out, for none.
+   */
+  @JacksonXmlProperty(localName = "ChecksumAlgorithm")
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  private CheckSumAlgorithm checksumAlgorithm;
+
+  @JacksonXmlProperty(localName = "ChecksumType")
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  private ChecksumType checksumType;
+
   @Builder
   @Data
   @NoArgsConstructor
@@ -73,6 +89,20 @@ public class ListPartsResult {
 
     @JacksonXmlProperty(localName = "Size")
     private long size;
+
+    /**
+     * The checksum of the part, without a type; {@code null}, and left out, for a part without one.
+     */
+    @JsonUnwrapped
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ChecksumElements checksum;
+
+    /**
+     * Leaves the checksum out when a response that carries none of its elements is read.
+     */
+    public void setChecksum(ChecksumElements checksum) {
+      this.checksum = ChecksumElements.nullIfEmpty(checksum);
+    }
 
   }
 

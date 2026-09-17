@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
 import com.robothy.s3.datatypes.enums.StorageClass;
 import java.time.Instant;
 import java.util.Comparator;
@@ -31,6 +32,12 @@ public class S3Object {
 
   @JsonProperty("ChecksumAlgorithm")
   private CheckSumAlgorithm checkSumAlgorithm;
+
+  /**
+   * The type of the checksum of the object; {@code null}, and left out, for an object stored without a checksum.
+   */
+  @JsonProperty("ChecksumType")
+  private ChecksumType checksumType;
 
   @JsonProperty("ETag")
   private String etag;

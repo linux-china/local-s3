@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.model.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.robothy.s3.datatypes.enums.StorageClass;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -29,6 +30,13 @@ public class GetObjectAttributesResult {
 
   @JacksonXmlProperty(localName = "ETag")
   private String etag;
+
+  /**
+   * The checksum of the object, which is answered when the request asks for {@code Checksum} and the object was
+   * stored with one.
+   */
+  @JacksonXmlProperty(localName = "Checksum")
+  private ChecksumElements checksum;
 
   @JacksonXmlProperty(localName = "StorageClass")
   private StorageClass storageClass;
@@ -84,13 +92,13 @@ public class GetObjectAttributesResult {
   }
 
   /**
-   * One part of the object. Amazon S3 answers the checksum of a part here as well, which LocalS3 stores
-   * none of.
+   * One part of the object.
    */
   @Data
   @Builder
   @NoArgsConstructor
   @AllArgsConstructor
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class Part {
 
     @JacksonXmlProperty(localName = "PartNumber")
@@ -98,6 +106,19 @@ public class GetObjectAttributesResult {
 
     @JacksonXmlProperty(localName = "Size")
     private long size;
+
+    /**
+     * The checksum of the part, without a type; {@code null}, and left out, for a part without one.
+     */
+    @JsonUnwrapped
+    private ChecksumElements checksum;
+
+    /**
+     * Leaves the checksum out when a response that carries none of its elements is read.
+     */
+    public void setChecksum(ChecksumElements checksum) {
+      this.checksum = ChecksumElements.nullIfEmpty(checksum);
+    }
 
   }
 

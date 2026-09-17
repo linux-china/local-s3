@@ -43,12 +43,15 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
           .eTag(partMeta.getEtag())
           .lastModified(partMeta.getLastModified())
           .size(partMeta.getSize())
+          .checksum(partMeta.getChecksum())
           .build()));
 
       return ListPartsAns.builder()
           .bucket(bucket)
           .key(key)
           .uploadId(uploadId)
+          .checksumAlgorithm(uploadMetadata.getChecksumAlgorithm())
+          .checksumType(uploadMetadata.getChecksumType())
           .partNumberMarker(marker)
           .nextPartNumberMarker(fetchedUploadPartMap.isEmpty() ? 0 : fetchedUploadPartMap.lastKey())
           .maxParts(max)

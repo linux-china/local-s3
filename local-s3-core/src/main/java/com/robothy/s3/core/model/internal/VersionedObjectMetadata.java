@@ -54,6 +54,12 @@ public class VersionedObjectMetadata {
   private List<ObjectPartMetadata> parts;
 
   /**
+   * The checksum that the version was stored with; {@code null} for a version that was stored without one, or by a
+   * LocalS3 before checksums were stored.
+   */
+  private ObjectChecksum checksum;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {

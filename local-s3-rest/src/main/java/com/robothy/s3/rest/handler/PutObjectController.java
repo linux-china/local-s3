@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -40,6 +41,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .content(decodedBody.getDecodedBody())
         .contentFile(decodedBody.getBodyFile())
         .contentMd5(request.header("Content-MD5").orElse(null))
+        .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
         .preconditions(RequestUtils.extractPreconditions(request))
@@ -54,6 +56,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     }
 
     ResponseUtils.addETag(response, ans.getEtag());
+    ChecksumHeaders.addHeaders(response, ans.getChecksum());
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);

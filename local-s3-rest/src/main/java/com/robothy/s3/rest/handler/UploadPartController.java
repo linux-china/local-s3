@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -38,10 +39,12 @@ class UploadPartController implements HttpRequestHandler {
         .data(decodedBody.getDecodedBody())
         .dataFile(decodedBody.getBodyFile())
         .etag(RequestUtils.getETag(request).orElse(null))
+        .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .build());
 
     ResponseUtils.addCommonHeaders(response);
     ResponseUtils.addETag(response, uploadPartAns.getEtag());
+    ChecksumHeaders.addHeaders(response, uploadPartAns.getChecksum());
   }
 
 }

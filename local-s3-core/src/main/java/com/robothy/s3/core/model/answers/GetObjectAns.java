@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
@@ -64,4 +65,10 @@ public class GetObjectAns {
    * the part layout of the object from; {@code null} when it wasn't stored by one.
    */
   private List<ObjectPartMetadata> parts;
+
+  /**
+   * The checksum that the version was stored with; {@code null} if it was stored without one, and for a range of
+   * the content, which the checksum isn't the one of.
+   */
+  private ObjectChecksum checksum;
 }

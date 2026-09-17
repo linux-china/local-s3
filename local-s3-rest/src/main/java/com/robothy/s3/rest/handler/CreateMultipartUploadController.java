@@ -1,5 +1,11 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.core.util.Checksums;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
+import java.util.Objects;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -34,11 +40,15 @@ class CreateMultipartUploadController implements HttpRequestHandler {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String contentType = request.header("content-type").orElse("octet/stream");
+    CheckSumAlgorithm checksumAlgorithm = ChecksumHeaders.algorithm(request, AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM);
+    ChecksumType checksumType = ChecksumHeaders.type(request);
     String uploadId = uploadService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
         .contentType(contentType)
         .systemMetadata(SystemMetadataHeaders.fromRequest(request))
+        .checksumAlgorithm(checksumAlgorithm)
+        .checksumType(checksumType)
         .build());
     InitiateMultipartUploadResult result = InitiateMultipartUploadResult.builder()
         .bucket(bucket)
@@ -47,6 +57,11 @@ class CreateMultipartUploadController implements HttpRequestHandler {
         .build();
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result));
+    if (Objects.nonNull(checksumAlgorithm)) {
+      response.putHeader(AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM, checksumAlgorithm)
+          .putHeader(AmzHeaderNames.X_AMZ_CHECKSUM_TYPE,
+              Objects.requireNonNullElseGet(checksumType, () -> Checksums.defaultMultipartType(checksumAlgorithm)));
+    }
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);

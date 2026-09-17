@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -64,6 +65,9 @@ class HeadObjectController implements HttpRequestHandler {
       SystemMetadataHeaders.addResponseHeaders(request, response, object.getContentType(), object.getSystemMetadata());
       ResponseUtils.addETag(response, object.getEtag());
       object.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
+      if (ChecksumHeaders.isChecksumModeEnabled(request)) {
+        ChecksumHeaders.addHeaders(response, object.getChecksum());
+      }
     } else {
       response.status(HttpResponseStatus.METHOD_NOT_ALLOWED);
     }

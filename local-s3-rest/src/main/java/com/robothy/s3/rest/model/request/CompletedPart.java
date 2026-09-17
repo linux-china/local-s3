@@ -12,6 +12,9 @@ public class CompletedPart {
   @JacksonXmlProperty(localName = "ChecksumCRC32C")
   private String checksumCRC32C;
 
+  @JacksonXmlProperty(localName = "ChecksumCRC64NVME")
+  private String checksumCRC64NVME;
+
   @JacksonXmlProperty(localName = "ChecksumSHA1")
   private String checksumSHA1;
 

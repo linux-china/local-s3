@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
 import com.robothy.s3.datatypes.enums.StorageClass;
 import java.time.Instant;
 import lombok.Builder;
@@ -42,6 +43,12 @@ public class ObjectVersion implements VersionItem {
    */
   @JacksonXmlProperty(localName = "ChecksumAlgorithm")
   private CheckSumAlgorithm checkSumAlgorithm;
+
+  /**
+   * The type of the checksum of the version; {@code null}, and left out, for a version stored without a checksum.
+   */
+  @JacksonXmlProperty(localName = "ChecksumType")
+  private ChecksumType checksumType;
 
   @JacksonXmlProperty(localName = "ETag")
   private String etag;

@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -45,6 +46,7 @@ public class ListPartsController implements HttpRequestHandler {
           .lastModified(Instant.ofEpochSecond(part.getLastModified()))
           .size(part.getSize())
           .etag(ResponseUtils.quoteEtag(part.getETag()))
+          .checksum(ChecksumElements.valueOf(part.getChecksum()))
           .build();
       parts.add(p);
     }
@@ -60,6 +62,8 @@ public class ListPartsController implements HttpRequestHandler {
         .initiator(Owner.DEFAULT_OWNER)
         .owner(Owner.DEFAULT_OWNER)
         .storageClass(StorageClass.STANDARD)
+        .checksumAlgorithm(ans.getChecksumAlgorithm())
+        .checksumType(ans.getChecksumType())
         .parts(parts)
         .build();
     response.status(HttpResponseStatus.OK)

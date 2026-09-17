@@ -189,9 +189,9 @@ public class ObjectIntegrationTest {
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());
     assertEquals(5, versionListing1.versions().get(0).size());
     assertEquals(putObjectResult3.versionId(), versionListing1.versions().get(0).versionId());
-    // The object was put without a checksum: no algorithm, rather than one that the SDK doesn't know.
-    assertTrue(versionListing1.versions().get(0).checksumAlgorithm().isEmpty(),
-        () -> "algorithms: " + versionListing1.versions().get(0).checksumAlgorithmAsStrings().size());
+    // The AWS SDK put the object with a CRC32 checksum by default.
+    assertEquals(List.of(ChecksumAlgorithm.CRC32), versionListing1.versions().get(0).checksumAlgorithm());
+    assertEquals(ChecksumType.FULL_OBJECT, versionListing1.versions().get(0).checksumType());
 
     assertTrue(versionListing1.versions().get(0).isLatest());
     assertEquals("dir1/key1", versionListing1.versions().get(0).key());

@@ -60,4 +60,18 @@ class AwsUnsignedChunkedDecodingInputStreamTest {
     }
   }
 
+  /**
+   * The checksum that the AWS SDK sends in the trailer, after the last chunk, is kept once the body is read.
+   */
+  @Test
+  void keepsTheTrailingHeaders() throws IOException {
+    String chunkedData = "3\r\nabc\r\n0\r\nx-amz-checksum-crc32:NSRBwg==\r\n\r\n";
+    try (AwsUnsignedChunkedDecodingInputStream in =
+            new AwsUnsignedChunkedDecodingInputStream(new ByteArrayInputStream(chunkedData.getBytes()))) {
+      assertEquals("abc", new String(in.readAllBytes()));
+      assertEquals(java.util.Map.of("x-amz-checksum-crc32", "NSRBwg=="), in.trailingHeaders());
+      assertEquals(-1, in.read());
+    }
+  }
+
 }

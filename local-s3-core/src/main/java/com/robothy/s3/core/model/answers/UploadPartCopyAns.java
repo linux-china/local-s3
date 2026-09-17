@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import lombok.Builder;
 import lombok.Data;
 
@@ -27,5 +28,11 @@ public class UploadPartCopyAns {
    * The number of bytes copied into the part.
    */
   private long size;
+
+
+  /**
+   * The checksum that the copy was stored with; {@code null} for none.
+   */
+  private ObjectChecksum checksum;
 
 }

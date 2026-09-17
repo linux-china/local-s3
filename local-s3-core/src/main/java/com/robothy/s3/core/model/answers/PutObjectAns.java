@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -14,6 +15,11 @@ public class PutObjectAns {
   private String etag;
 
   private long size;
+
+  /**
+   * The checksum that the object was stored with; {@code null} for none.
+   */
+  private ObjectChecksum checksum;
 
   private long creationDate;
 

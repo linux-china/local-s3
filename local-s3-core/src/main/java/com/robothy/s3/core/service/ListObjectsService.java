@@ -145,6 +145,10 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     object.setEtag(S3ObjectUtils.quoteEtag(latest.getEtag()));
     object.setOwner(Owner.DEFAULT_OWNER);
     object.setStorageClass(StorageClass.STANDARD);
+    if (Objects.nonNull(latest.getChecksum())) {
+      object.setCheckSumAlgorithm(latest.getChecksum().getAlgorithm());
+      object.setChecksumType(latest.getChecksum().getType());
+    }
     return object;
   }
 

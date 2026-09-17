@@ -42,4 +42,9 @@ public class ObjectPartMetadata {
    */
   private Long fileId;
 
+  /**
+   * The checksum that the part was uploaded with; {@code null} if it was uploaded without one.
+   */
+  private ObjectChecksum checksum;
+
 }

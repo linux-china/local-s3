@@ -7,11 +7,14 @@ import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.Checksums;
 import com.robothy.s3.core.util.ObjectContentUtils;
 import com.robothy.s3.core.util.IdUtils;
 
@@ -53,7 +56,9 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
 
-    StoredContent content = storeContent(options.getContent(), options.getContentFile());
+    RequestChecksum checksum = options.getChecksum();
+    StoredContent content = storeContent(options.getContent(), options.getContentFile(),
+        Objects.isNull(checksum) ? null : checksum.algorithm());
     Long fileId = content.fileId();
     return deliverChangesAfter(() -> {
       try {
@@ -69,6 +74,11 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         versionedObjectMetadata.setFileId(fileId);
         versionedObjectMetadata.setEtag(content.md5());
         checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
+        if (Objects.nonNull(checksum)) {
+          Checksums.verify(checksum, content.checksum());
+          versionedObjectMetadata.setChecksum(
+              ObjectChecksum.fullObject(checksum.algorithm(), Checksums.encode(content.checksum())));
+        }
         options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
 
         // Its change is delivered after this block, so a listener that fails doesn't get here.
@@ -191,6 +201,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .creationDate(versionedObjectMetadata.getCreationDate())
         .etag(versionedObjectMetadata.getEtag())
         .size(versionedObjectMetadata.getSize())
+        .checksum(versionedObjectMetadata.getChecksum())
         .build();
   }
 

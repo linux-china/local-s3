@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Skips V4 style signing metadata from input streams.
@@ -28,7 +31,7 @@ import java.nio.charset.StandardCharsets;
  * <a href="http://docs.aws.amazon.com/AWSJavaSDK/latest/javadoc/com/amazonaws/auth/AwsChunkedEncodingInputStream.html">
  *     AwsChunkedEncodingInputStream</a>
  */
-public class AwsChunkedDecodingInputStream extends InputStream {
+public class AwsChunkedDecodingInputStream extends InputStream implements TrailingHeaders {
 
   /**
    * That's the max chunk buffer size used in the AWS implementation.
@@ -45,6 +48,13 @@ public class AwsChunkedDecodingInputStream extends InputStream {
 
   private final ByteBuffer byteBuffer = ByteBuffer.allocate(MAX_CHUNK_SIZE);
 
+  private final Map<String, String> trailingHeaders = new LinkedHashMap<>();
+
+  /**
+   * Whether the last chunk, and the trailer that follows it, were read.
+   */
+  private boolean finished;
+
   /**
    * Constructs a new {@link AwsChunkedDecodingInputStream}.
    *
@@ -56,15 +66,20 @@ public class AwsChunkedDecodingInputStream extends InputStream {
 
   @Override
   public int read() throws IOException {
+    if (finished) {
+      return -1;
+    }
     if (remainingInChunk == 0) {
       final byte[] hexLengthBytes = readUntil(DELIMITER);
       if (hexLengthBytes == null) {
+        finished = true;
         return -1;
       }
 
       remainingInChunk = parseChunkSize(new String(hexLengthBytes, StandardCharsets.UTF_8));
 
       if (remainingInChunk == 0) {
+        readTrailer();
         return -1;
       }
 
@@ -74,6 +89,26 @@ public class AwsChunkedDecodingInputStream extends InputStream {
     remainingInChunk--;
 
     return source.read();
+  }
+
+  /**
+   * Read the rest of the last chunk, i.e. its signature, and the trailing headers that follow it up to the empty line
+   * that ends the body.
+   */
+  private void readTrailer() throws IOException {
+    finished = true;
+    if (readUntil(CRLF) == null) {
+      return;
+    }
+    byte[] line;
+    while ((line = readUntil(CRLF)) != null && line.length > 0) {
+      TrailingHeaders.parse(trailingHeaders, new String(line, StandardCharsets.UTF_8));
+    }
+  }
+
+  @Override
+  public Map<String, String> trailingHeaders() {
+    return Collections.unmodifiableMap(trailingHeaders);
   }
 
   /**

@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.model.response.ChecksumElements;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -82,9 +84,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
    * attribute that the {@code x-amz-object-attributes} header didn't name out of the answer entirely, so
    * that a client can tell what it asked for apart from what it didn't.
    *
-   * <p>{@code Checksum} is never answered. LocalS3 stores no checksum of an object, which is what the
-   * attribute is answered from, and Amazon S3 leaves the element out as well for an object that was stored
-   * without one.
+   * <p>{@code Checksum} is left out for an object that was stored without a checksum, like Amazon S3 does.
    *
    * @param request the request, which carries the paging of {@code ObjectParts}.
    * @param attributes the attributes that the request asked for.
@@ -99,6 +99,9 @@ class GetObjectAttributesController implements HttpRequestHandler {
     }
     if (attributes.contains(ObjectAttribute.OBJECT_SIZE)) {
       result.objectSize(object.getSize());
+    }
+    if (attributes.contains(ObjectAttribute.CHECKSUM)) {
+      result.checksum(ChecksumElements.of(object.getChecksum()));
     }
     if (attributes.contains(ObjectAttribute.STORAGE_CLASS)) {
       result.storageClass(StorageClass.STANDARD);
@@ -139,6 +142,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
       page.add(GetObjectAttributesResult.Part.builder()
           .partNumber(part.getPartNumber())
           .size(part.getSize())
+          .checksum(partChecksum(object, part))
           .build());
     }
 
@@ -153,6 +157,19 @@ class GetObjectAttributesController implements HttpRequestHandler {
         .truncated(!page.isEmpty() && lastOnPage < lastPartNumber)
         .parts(page)
         .build();
+  }
+
+  /**
+   * The checksum of a part, which is answered if it is of the algorithm of the checksum of the object.
+   */
+  private static ChecksumElements partChecksum(GetObjectAns object, ObjectPartMetadata part) {
+    ObjectChecksum objectChecksum = object.getChecksum();
+    ObjectChecksum partChecksum = part.getChecksum();
+    if (Objects.isNull(objectChecksum) || Objects.isNull(partChecksum)
+        || objectChecksum.getAlgorithm() != partChecksum.getAlgorithm()) {
+      return null;
+    }
+    return ChecksumElements.valueOf(partChecksum);
   }
 
   /**

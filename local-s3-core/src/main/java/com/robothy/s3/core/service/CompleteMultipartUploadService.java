@@ -21,13 +21,21 @@ import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.core.exception.LocalS3BadDigestException;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
+import com.robothy.s3.core.model.request.RequestChecksum;
+import com.robothy.s3.core.util.Checksums;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -120,6 +128,33 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
                                                              List<CompleteMultipartUploadPartOption> completeParts,
                                                              long minimumPartSize, boolean compositeEtag,
                                                              ObjectPreconditions preconditions) {
+    return completeMultipartUpload(bucket, key, uploadId, completeParts, minimumPartSize, compositeEtag,
+        preconditions, null, null);
+  }
+
+  /**
+   * Complete a multipart upload like
+   * {@linkplain #completeMultipartUpload(String, String, String, List, long, boolean, ObjectPreconditions)}, giving
+   * the object the checksum of the algorithm and type that the upload was created with, if it was created with one.
+   *
+   * <p>A {@linkplain ChecksumType#COMPOSITE} checksum is the checksum of the checksums of the parts; a
+   * {@linkplain ChecksumType#FULL_OBJECT} one is combined from the CRCs of the parts, without reading their content.
+   * The content of a part is only read if the part was stored without a checksum of the algorithm.
+   *
+   * @param expectedChecksum the checksum of the whole object that the request sent, which the checksum of the object
+   *     must match; {@code null} if it sent none.
+   * @param expectedChecksumType the type of checksum that the request names, which must be the one of the upload;
+   *     {@code null} if it names none.
+   * @return result of the complete multipart operation.
+   * @throws InvalidPartException if the request names a checksum of a part that the part wasn't uploaded with.
+   * @throws LocalS3BadDigestException if the checksum of the object doesn't match {@code expectedChecksum}.
+   */
+  default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
+                                                             List<CompleteMultipartUploadPartOption> completeParts,
+                                                             long minimumPartSize, boolean compositeEtag,
+                                                             ObjectPreconditions preconditions,
+                                                             RequestChecksum expectedChecksum,
+                                                             ChecksumType expectedChecksumType) {
     // prepareCompleteMultipartUpload read locks the bucket while the upload is validated. The parts of the returned
     // upload are a snapshot of the ones that complete it, so a part uploaded again from here on isn't mixed in.
     UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
@@ -136,9 +171,12 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .partNumber(part.getKey())
           .size(partSize)
           .fileId(part.getValue().getFileId())
+          .checksum(part.getValue().getChecksum())
           .build());
       size += partSize;
     }
+    ObjectChecksum checksum = objectChecksum(uploadMetadata, completeParts, layout, expectedChecksum,
+        expectedChecksumType);
 
     VersionedObjectMetadata versionedObjectMetadata = new VersionedObjectMetadata();
     versionedObjectMetadata.setCreationDate(System.currentTimeMillis());
@@ -150,6 +188,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     // The content of the object is the content of the parts. The layout is kept after the upload is removed, so
     // that GetObjectAttributes can answer the part layout of the object as well.
     versionedObjectMetadata.setParts(layout);
+    versionedObjectMetadata.setChecksum(checksum);
     uploadMetadata.getTagging().ifPresent(versionedObjectMetadata::setTagging);
     if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
       versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
@@ -157,6 +196,96 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
 
     return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete,
         preconditions);
+  }
+
+  /**
+   * The checksum of the object that an upload stores.
+   *
+   * @param upload the upload, whose parts are the ones that complete it.
+   * @param completeParts the parts that the request completes the upload with.
+   * @param layout the parts of the object, in the order of the content, which the checksums of the parts are read from.
+   * @param expected the checksum of the whole object that the request sent; {@code null} for none.
+   * @param expectedType the type of checksum that the request names; {@code null} for none.
+   * @return the checksum; {@code null} if the upload was created without a checksum algorithm.
+   */
+  private ObjectChecksum objectChecksum(UploadMetadata upload, List<CompleteMultipartUploadPartOption> completeParts,
+                                        List<ObjectPartMetadata> layout, RequestChecksum expected,
+                                        ChecksumType expectedType) {
+    CheckSumAlgorithm algorithm = upload.getChecksumAlgorithm();
+    if (Objects.isNull(algorithm)) {
+      return null;
+    }
+    ChecksumType type = Objects.requireNonNullElseGet(upload.getChecksumType(),
+        () -> Checksums.defaultMultipartType(algorithm));
+    if (Objects.nonNull(expectedType) && expectedType != type) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "The upload was created using the " + type
+          + " checksum mode. The complete request must use the same checksum mode.");
+    }
+    if (Objects.nonNull(expected) && expected.algorithm() != algorithm) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "Checksum Type mismatch occurred, expected "
+          + "checksum Type: " + algorithm.name().toLowerCase(Locale.ROOT) + ", actual checksum Type: "
+          + expected.algorithm().name().toLowerCase(Locale.ROOT));
+    }
+
+    Map<Integer, CompleteMultipartUploadPartOption> requestedParts = new HashMap<>();
+    completeParts.forEach(part -> requestedParts.put(part.getPartNumber(), part));
+    List<byte[]> partChecksums = new ArrayList<>(layout.size());
+    List<Long> partSizes = new ArrayList<>(layout.size());
+    for (ObjectPartMetadata part : layout) {
+      byte[] partChecksum = partChecksum(algorithm, part);
+      CompleteMultipartUploadPartOption requested = requestedParts.get(part.getPartNumber());
+      String requestedChecksum = Objects.isNull(requested) || Objects.isNull(requested.getChecksums()) ? null
+          : requested.getChecksums().get(algorithm);
+      if (Objects.nonNull(requestedChecksum)
+          && !MessageDigest.isEqual(Checksums.decode(algorithm, requestedChecksum), partChecksum)) {
+        throw InvalidPartException.checksumMismatch(part.getPartNumber(), algorithm.name());
+      }
+      partChecksums.add(partChecksum);
+      partSizes.add(part.getSize());
+    }
+
+    if (type == ChecksumType.COMPOSITE) {
+      String composite = Checksums.composite(algorithm, partChecksums);
+      String sent = Objects.isNull(expected) ? null : expected.expected().get();
+      if (Objects.nonNull(sent)) {
+        // A client may send the composite checksum with or without the number of parts.
+        Checksums.verify(RequestChecksum.of(algorithm, sent.trim().replaceFirst("-\\d+$", "")),
+            Checksums.decode(algorithm, composite.substring(0, composite.lastIndexOf('-'))));
+      }
+      return new ObjectChecksum(algorithm, ChecksumType.COMPOSITE, composite);
+    }
+
+    byte[] fullObject = Checksums.combine(algorithm, partChecksums, partSizes);
+    if (Objects.nonNull(expected)) {
+      Checksums.verify(expected, fullObject);
+    }
+    return ObjectChecksum.fullObject(algorithm, Checksums.encode(fullObject));
+  }
+
+  /**
+   * The checksum of a part: the one it was uploaded with, or, for a part that was uploaded without one of the
+   * algorithm, the one of its content, which is read.
+   */
+  private byte[] partChecksum(CheckSumAlgorithm algorithm, ObjectPartMetadata part) {
+    ObjectChecksum checksum = part.getChecksum();
+    if (Objects.nonNull(checksum) && checksum.getAlgorithm() == algorithm) {
+      return Checksums.decode(algorithm, checksum.getValue());
+    }
+
+    InputStream content;
+    try {
+      content = storage().getInputStream(part.getFileId());
+    } catch (IllegalArgumentException e) {
+      throw partGone(part.getPartNumber(), e);
+    }
+    byte[] computed;
+    try (InputStream in = content) {
+      computed = Checksums.compute(algorithm, in);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Failed to read part " + part.getPartNumber() + ".", e);
+    }
+    part.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(computed)));
+    return computed;
   }
 
   /**
@@ -275,6 +404,8 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .systemMetadata(uploadMetadata.getSystemMetadata())
           .tagging(uploadMetadata.getTagging().orElse(null))
           .userMetadata(uploadMetadata.getUserMetadata())
+          .checksumAlgorithm(uploadMetadata.getChecksumAlgorithm())
+          .checksumType(uploadMetadata.getChecksumType())
           .parts(partsToComplete)
           .build();
     });
@@ -349,6 +480,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .versionId(putObjectAns.getVersionId())
           .etag(putObjectAns.getEtag())
           .size(putObjectAns.getSize())
+          .checksum(putObjectAns.getChecksum())
           .build();
     });
   }

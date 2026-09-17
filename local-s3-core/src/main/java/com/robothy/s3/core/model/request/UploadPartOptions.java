@@ -23,6 +23,11 @@ public class UploadPartOptions {
 
   private String etag;
 
+  /**
+   * The checksum to upload the part with; {@code null} for the one of the upload, if it has one.
+   */
+  private RequestChecksum checksum;
+
   public Optional<String> getETag() {
     return Optional.ofNullable(etag);
   }

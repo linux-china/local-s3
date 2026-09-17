@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.rest.utils.ChecksumHeaders;
+import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
@@ -43,6 +45,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     CopyObjectResult result = CopyObjectResult.builder()
         .lastModified(Instant.ofEpochMilli(copyObjectAns.getLastModified()))
         .etag(ResponseUtils.quoteEtag(copyObjectAns.getEtag()))
+        .checksum(ChecksumElements.of(copyObjectAns.getChecksum()))
         .build();
 
     response.status(HttpResponseStatus.OK)
@@ -90,6 +93,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         // If-Match and If-None-Match of the destination, like a PutObject; x-amz-copy-source-if-* of the source.
         .preconditions(RequestUtils.extractPreconditions(request))
         .sourcePreconditions(RequestUtils.extractCopySourcePreconditions(request))
+        .checksumAlgorithm(ChecksumHeaders.algorithm(request, AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM))
         .build();
   }
 

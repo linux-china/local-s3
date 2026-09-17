@@ -89,6 +89,15 @@ imported either.
   [semantics](docs/semantics.md#conditional-requests).
 + **Operations**: `UploadPartCopy`, `GetObjectAttributes`, `GetObjectAcl`, `PutObjectAcl`, `ListMultipartUploads`,
   `GetBucketCors`, `PutBucketCors`, `DeleteBucketCors`, `GetBucketPolicyStatus`, and CORS preflight requests.
++ **Flexible checksums**: a `CRC32`, `CRC32C`, `CRC64NVME`, `SHA1` or `SHA256` checksum that a request sends in an
+  `x-amz-checksum-*` header, or in the trailer of an `aws-chunked` body like the AWS SDKs do by default, is verified
+  (`400 BadDigest` on a mismatch) and stored with the object or the part. `PutObject`, `UploadPart`,
+  `CompleteMultipartUpload`, `CopyObject`, `UploadPartCopy`, `ListParts`, `GetObjectAttributes`, `ListObjects(V2)` and
+  `ListObjectVersions` answer it, and so do `GetObject` and `HeadObject` when asked with `x-amz-checksum-mode: ENABLED`,
+  except for a range. `CreateMultipartUpload` takes `x-amz-checksum-algorithm` and `x-amz-checksum-type`: a
+  `COMPOSITE` checksum is the checksum of the checksums of the parts, and a `FULL_OBJECT` CRC is combined from the
+  CRCs of the parts without reading their content. An object that is stored without a checksum still gets none, and
+  `POST Object` doesn't take one.
 + **Browser form uploads**: `POST Object` stores the file of an HTML form posted to a bucket, with the policy
   document and its Signature Version 4 or 2 signature checked like Amazon S3 checks them: expiration, `eq`,
   `starts-with` and `content-length-range` conditions, and fields that no condition names. The policy of a form is

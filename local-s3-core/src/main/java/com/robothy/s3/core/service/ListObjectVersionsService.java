@@ -21,7 +21,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import java.util.Objects;
+import java.util.Optional;
 
 public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
 
@@ -173,6 +175,10 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
             .etag(S3ObjectUtils.quoteEtag(versionedObjectMetadata.getEtag()))
             .storageClass(StorageClass.STANDARD)
             .owner(Owner.DEFAULT_OWNER)
+            .checkSumAlgorithm(Optional.ofNullable(versionedObjectMetadata.getChecksum())
+                .map(ObjectChecksum::getAlgorithm).orElse(null))
+            .checksumType(Optional.ofNullable(versionedObjectMetadata.getChecksum())
+                .map(ObjectChecksum::getType).orElse(null))
             .build());
       }
 

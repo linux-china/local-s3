@@ -27,4 +27,9 @@ public class UploadPartMetadata {
    */
   private String contentMd5;
 
+  /**
+   * The checksum of the stored content of the part; {@code null} for a part that was uploaded without one.
+   */
+  private ObjectChecksum checksum;
+
 }

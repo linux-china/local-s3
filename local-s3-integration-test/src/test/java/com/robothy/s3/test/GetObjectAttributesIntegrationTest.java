@@ -11,6 +11,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ChecksumType;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectAttributesParts;
@@ -56,9 +57,8 @@ public class GetObjectAttributesIntegrationTest {
   }
 
   /**
-   * LocalS3 stores no checksum of an object, so the {@code Checksum} attribute is answered with nothing,
-   * like Amazon S3 answers it for an object that was stored without one. What it may not be answered with
-   * is another attribute: a client that asks for the checksum and reads back an entity tag has no way to
+   * The {@code Checksum} attribute is answered with the checksum that the AWS SDK sent the object with, a CRC32 by
+   * default, and with nothing else: a client that asks for the checksum and reads back an entity tag has no way to
    * tell that it didn't get what it asked for.
    */
   @Test
@@ -72,7 +72,9 @@ public class GetObjectAttributesIntegrationTest {
     GetObjectAttributesResponse attributes = s3.getObjectAttributes(b -> b.bucket(bucket).key(key)
         .objectAttributes(ObjectAttributes.CHECKSUM));
 
-    assertNull(attributes.checksum());
+    assertNotNull(attributes.checksum());
+    assertEquals(Checksums.crc32("Hello"), attributes.checksum().checksumCRC32());
+    assertEquals(ChecksumType.FULL_OBJECT, attributes.checksum().checksumType());
     assertNull(attributes.eTag());
     assertNull(attributes.objectSize());
     assertNull(attributes.storageClass());

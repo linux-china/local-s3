@@ -35,6 +35,18 @@ public class InvalidPartException extends LocalS3Exception {
   }
 
   /**
+   * The checksum of a part that completes the upload isn't the one that the part was uploaded with.
+   *
+   * @param partNumber the part number that completes the upload.
+   * @param algorithm the name of the algorithm of the checksum.
+   * @return the exception.
+   */
+  public static InvalidPartException checksumMismatch(int partNumber, String algorithm) {
+    return new InvalidPartException("Part " + partNumber + " was uploaded with another " + algorithm
+        + " checksum.");
+  }
+
+  /**
    * The part was uploaded again after the upload was validated, so the data that was concatenated is no
    * longer the data of the part.
    *

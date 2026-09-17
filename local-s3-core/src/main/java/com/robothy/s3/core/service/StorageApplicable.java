@@ -1,7 +1,9 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.util.Checksums;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import com.robothy.s3.core.util.S3ObjectUtils.MeasuredInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,15 +32,30 @@ public interface StorageApplicable {
    * @return the stored content.
    */
   default StoredContent storeContent(InputStream content, Path contentFile) {
+    return storeContent(content, contentFile, null);
+  }
+
+  /**
+   * Store the content of a request like {@linkplain #storeContent(InputStream, Path)}, computing a checksum of it as
+   * well.
+   *
+   * @param content the content; may be {@code null} if {@code contentFile} is given.
+   * @param contentFile a file that holds exactly the content; {@code null} if there is none.
+   * @param checksumAlgorithm the algorithm of the checksum to compute; {@code null} to compute none.
+   * @return the stored content.
+   */
+  default StoredContent storeContent(InputStream content, Path contentFile, CheckSumAlgorithm checksumAlgorithm) {
+    Checksums.Calculator calculator = Objects.isNull(checksumAlgorithm) ? null : Checksums.calculator(checksumAlgorithm);
     if (Objects.isNull(contentFile)) {
-      MeasuredInputStream measured = S3ObjectUtils.measuringStream(content);
+      MeasuredInputStream measured = S3ObjectUtils.measuringStream(checksummed(content, calculator));
       Long fileId = storage().put(measured);
-      return new StoredContent(fileId, measured.getSize(), measured.etag());
+      return new StoredContent(fileId, measured.getSize(), measured.etag(), digest(calculator));
     }
 
     MeasuredInputStream measured;
     try {
-      measured = S3ObjectUtils.measuringStream(Objects.nonNull(content) ? content : Files.newInputStream(contentFile));
+      InputStream source = Objects.nonNull(content) ? content : Files.newInputStream(contentFile);
+      measured = S3ObjectUtils.measuringStream(checksummed(source, calculator));
       try (InputStream in = measured) {
         in.transferTo(OutputStream.nullOutputStream());
       }
@@ -46,7 +63,15 @@ public interface StorageApplicable {
       throw new UncheckedIOException("Failed to read the content in " + contentFile + ".", e);
     }
     Long fileId = storage().put(contentFile);
-    return new StoredContent(fileId, measured.getSize(), measured.etag());
+    return new StoredContent(fileId, measured.getSize(), measured.etag(), digest(calculator));
+  }
+
+  private static InputStream checksummed(InputStream content, Checksums.Calculator calculator) {
+    return Objects.isNull(calculator) ? content : Checksums.checksumStream(content, calculator);
+  }
+
+  private static byte[] digest(Checksums.Calculator calculator) {
+    return Objects.isNull(calculator) ? null : calculator.digest();
   }
 
   /**
@@ -72,8 +97,9 @@ public interface StorageApplicable {
    * @param fileId the ID of the content in the storage.
    * @param size the number of bytes of the content.
    * @param md5 the hex encoded MD5 digest of the content.
+   * @param checksum the checksum of the content; {@code null} if none was computed.
    */
-  record StoredContent(Long fileId, long size, String md5) {
+  record StoredContent(Long fileId, long size, String md5, byte[] checksum) {
   }
 
 }

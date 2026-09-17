@@ -8,7 +8,12 @@ import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
+import com.robothy.s3.core.model.request.RequestChecksum;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 
 public interface CopyObjectService extends GetObjectService, PutObjectService, LocalS3MetadataApplicable, StorageApplicable {
 
@@ -63,6 +68,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .tagging(taggingToUse)
         // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
         .preconditions(options.getPreconditions())
+        .checksum(copyChecksum(options, srcObjectAns))
         .build());
 
     return CopyObjectAns.builder()
@@ -71,7 +77,21 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .lastModified(putObjectAns.getCreationDate())
         .etag(putObjectAns.getEtag())
         .size(putObjectAns.getSize())
+        .checksum(putObjectAns.getChecksum())
         .build();
+  }
+
+  /**
+   * The checksum that a copy is stored with: one of the algorithm that the request names, or else of the algorithm
+   * of the source object, which is computed from the copied content. A composite checksum of the source is not the
+   * checksum of a copy, which isn't stored in parts, so the copy gets the checksum of its whole content instead.
+   *
+   * @return the checksum; {@code null} if the request names no algorithm and the source has no checksum.
+   */
+  private static RequestChecksum copyChecksum(CopyObjectOptions options, GetObjectAns source) {
+    CheckSumAlgorithm algorithm = Objects.nonNull(options.getChecksumAlgorithm()) ? options.getChecksumAlgorithm()
+        : Optional.ofNullable(source.getChecksum()).map(ObjectChecksum::getAlgorithm).orElse(null);
+    return Objects.isNull(algorithm) ? null : RequestChecksum.of(algorithm, null);
   }
 
 }

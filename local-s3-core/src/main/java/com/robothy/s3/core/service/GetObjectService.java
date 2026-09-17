@@ -116,6 +116,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .taggingCount(latestObject.getTagging().map(tagging -> tagging.length).orElse(0))
         .tagging(latestObject.getTagging().orElse(null))
         .parts(latestObject.getParts().orElse(null))
+        // The checksum is the one of the whole content, not of a range of it.
+        .checksum(Objects.isNull(contentRange) ? latestObject.getChecksum() : null)
         .build();
   }
 
@@ -203,6 +205,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .tagging(versionedObjectMetadata.getTagging().orElse(null))
           .userMetadata(versionedObjectMetadata.getUserMetadata())
           .parts(versionedObjectMetadata.getParts().orElse(null))
+          // The checksum is the one of the whole content, not of a range of it.
+          .checksum(Objects.isNull(contentRange) ? versionedObjectMetadata.getChecksum() : null)
           .build();
     }
   }

@@ -1,6 +1,8 @@
 package com.robothy.s3.core.model.internal;
 
 import com.robothy.s3.core.converters.deserializer.UploadPartMetadataMapConverter;
+import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import com.robothy.s3.datatypes.enums.ChecksumType;
 
 import java.util.Map;
 import java.util.NavigableMap;
@@ -40,6 +42,18 @@ public class UploadMetadata {
   private String[][] tagging;
 
   private Map<String, String> userMetadata;
+
+  /**
+   * The algorithm of the checksum of the object that the upload stores, which every part is uploaded with;
+   * {@code null} if the upload was created without one, which stores an object without a checksum.
+   */
+  private CheckSumAlgorithm checksumAlgorithm;
+
+  /**
+   * The type of the checksum of the object that the upload stores; {@code null} if it has no
+   * {@linkplain #checksumAlgorithm}.
+   */
+  private ChecksumType checksumType;
 
   @JsonDeserialize(converter = UploadPartMetadataMapConverter.class)
   @Builder.Default
