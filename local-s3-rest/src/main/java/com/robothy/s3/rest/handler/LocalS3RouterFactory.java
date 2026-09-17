@@ -44,6 +44,7 @@ import com.robothy.s3.rest.handler.s3vectors.UntagResourceController;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpMethod;
+import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -147,9 +148,13 @@ public class LocalS3RouterFactory {
     CorsResponseHeaders corsResponseHeaders = serviceFactory.containsInstance(BucketService.class)
         ? new CorsResponseHeaders(serviceFactory.getInstance(BucketService.class))
         : null;
-    AwsSignatureV4Verifier signatureVerifier =
-        accessKeyId == null ? null : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey);
-    LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders);
+    // The temporary credentials of the STS endpoint are verified with a key derived from the secret access key, so that
+    // they remain valid across restarts.
+    SessionCredentialIssuer sessionCredentialIssuer = new SessionCredentialIssuer(secretAccessKey, Clock.systemUTC());
+    AwsSignatureV4Verifier signatureVerifier = accessKeyId == null ? null
+        : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC());
+    LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
+        .sts(new StsController(sessionCredentialIssuer));
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);

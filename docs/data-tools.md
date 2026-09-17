@@ -53,6 +53,19 @@ needs, on as many threads as `SET threads` allows. Concurrent queries on one Loc
 concurrent range requests, which LocalS3 answers from both storage modes; see `ConcurrentRangeReadIntegrationTest`
 and `DuckDbParquetIntegrationTest.answersTheConcurrentRangeRequestsOfConcurrentQueries`.
 
+## Iceberg REST catalogs that vend credentials
+
+A catalog such as Apache Polaris, Lakekeeper, Gravitino or Unity Catalog gets temporary credentials for a table with
+STS `AssumeRole` and hands them to the engine. Point its STS endpoint at LocalS3, which answers `AssumeRole` on the same
+port; see [temporary credentials](embedding.md#temporary-credentials-sts). The catalog signs `AssumeRole` with the key
+pair of LocalS3, and any role ARN works, e.g. `arn:aws:iam::000000000000:role/catalog`.
+
+The names of the settings depend on the catalog and its version; check its documentation. For example, the S3 storage
+configuration of a Polaris catalog sets `endpoint` and `stsEndpoint` to `http://localhost:29090`, `pathStyleAccess` to
+`true` and `roleArn`, and a Lakekeeper storage profile of flavor `s3-compat` sets `endpoint`, `path-style-access`,
+`sts-enabled: true` and `sts-role-arn`. These catalog settings aren't covered by the tests of LocalS3; the STS protocol
+they use is, with the STS client of the AWS SDK.
+
 ## Apache Iceberg
 
 `S3FileIO` of `iceberg-aws`, configured with catalog properties:

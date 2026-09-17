@@ -27,11 +27,16 @@ import java.util.Random;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.Tag;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 /**
  * Browser form uploads, {@code POST Object}, sent the way a browser sends them: a {@code multipart/form-data} body
@@ -201,6 +206,49 @@ class PostObjectIntegrationTest {
     assertEquals("signed", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("signed/a.txt")).asUtf8String());
   }
 
+  /**
+   * A form signed with temporary credentials of the STS endpoint, e.g. by a backend that hands out upload forms with
+   * credentials it got from {@code AssumeRole}, carries their session token in the {@code x-amz-security-token} field.
+   */
+  @Test
+  @LocalS3(buckets = BUCKET, accessKey = ACCESS_KEY, secretKey = SECRET_KEY)
+  void acceptsAFormSignedWithTemporaryCredentials(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
+    Credentials credentials;
+    try (StsClient sts = StsClient.builder().endpointOverride(URI.create(endpoint.endpoint()))
+        .region(Region.of(REGION))
+        .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+        .build()) {
+      credentials = sts.assumeRole(b -> b.roleArn("arn:aws:iam::123456789012:role/uploader")
+          .roleSessionName("browser")).credentials();
+    }
+    Instant now = Instant.now();
+    String amzDate = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC).format(now);
+    String date = amzDate.substring(0, 8);
+    String credential = credentials.accessKeyId() + "/" + date + "/" + REGION + "/s3/aws4_request";
+    String policy = policy(now.plus(1, ChronoUnit.HOURS), "[{\"bucket\":\"uploads\"},"
+        + "{\"key\":\"session.txt\"},"
+        + "{\"x-amz-algorithm\":\"AWS4-HMAC-SHA256\"},"
+        + "{\"x-amz-credential\":\"" + credential + "\"},"
+        + "{\"x-amz-date\":\"" + amzDate + "\"},"
+        + "{\"x-amz-security-token\":\"" + credentials.sessionToken() + "\"}]");
+
+    Map<String, String> fields = new LinkedHashMap<>();
+    fields.put("key", "session.txt");
+    fields.put("x-amz-algorithm", "AWS4-HMAC-SHA256");
+    fields.put("x-amz-credential", credential);
+    fields.put("x-amz-date", amzDate);
+    fields.put("x-amz-security-token", credentials.sessionToken());
+    fields.put("policy", policy);
+    fields.put("x-amz-signature", HexFormat.of().formatHex(
+        hmacSha256(signingKey(credentials.secretAccessKey(), date), policy)));
+
+    assertEquals(204, post(endpoint, BUCKET, fields, "a.txt", bytes("session")).statusCode());
+    assertEquals("session", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("session.txt")).asUtf8String());
+
+    fields.remove("x-amz-security-token");
+    assertError(403, "InvalidAccessKeyId", null, post(endpoint, BUCKET, fields, "a.txt", bytes("forged")));
+  }
+
   @Test
   @LocalS3(buckets = BUCKET, accessKey = ACCESS_KEY, secretKey = SECRET_KEY)
   void acceptsAFormSignedWithSignatureVersion2(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
@@ -286,7 +334,11 @@ class PostObjectIntegrationTest {
   }
 
   private static byte[] signingKey(String date) throws Exception {
-    byte[] key = hmacSha256(("AWS4" + SECRET_KEY).getBytes(StandardCharsets.UTF_8), date);
+    return signingKey(SECRET_KEY, date);
+  }
+
+  private static byte[] signingKey(String secretKey, String date) throws Exception {
+    byte[] key = hmacSha256(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), date);
     key = hmacSha256(key, REGION);
     key = hmacSha256(key, "s3");
     return hmacSha256(key, "aws4_request");

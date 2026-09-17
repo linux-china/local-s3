@@ -83,6 +83,10 @@ imported either.
 
 + **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and
   `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of a request is received.
++ **STS temporary credentials**: a stateless STS endpoint on the same port answers `AssumeRole`, `GetSessionToken` and
+  `GetCallerIdentity`, like the one of MinIO, and requests signed with the temporary credentials it issues are accepted,
+  with their session token in `x-amz-security-token`, a presigned URL or a form upload. The credentials survive restarts
+  and are revoked by changing the secret access key. See [temporary credentials](docs/embedding.md#temporary-credentials-sts).
 + **Conditional requests**: `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` for reads;
   conditional writes for `PutObject`, `CopyObject` and `CompleteMultipartUpload`; conditional deletes for
   `DeleteObject` and `DeleteObjects`; `x-amz-copy-source-if-*` for `CopyObject` and `UploadPartCopy`. See

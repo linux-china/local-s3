@@ -27,7 +27,7 @@ dependencies {
     testImplementation(libs.parquetColumn)
     testRuntimeOnly(libs.icebergOrc)
     testRuntimeOnly(libs.awssdkKms)
-    testRuntimeOnly(libs.awssdkSts)
+    testImplementation(libs.awssdkSts)
     testRuntimeOnly(libs.hadoopClientApi)
     testRuntimeOnly(libs.hadoopClientRuntime)
     testRuntimeOnly(libs.logbackClassic)

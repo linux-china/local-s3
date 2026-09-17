@@ -106,6 +106,11 @@ class AwsSignatureV4VerifierTest {
   }
 
   private VerificationResult verifyHead(Map<CharSequence, String> headers, String path, HttpMethod method) {
+    return verifyHead(headers, path, method, verifier);
+  }
+
+  private static VerificationResult verifyHead(Map<CharSequence, String> headers, String path, HttpMethod method,
+                                               AwsSignatureV4Verifier verifier) {
     return verifier.verifyHead(HttpRequest.builder()
         .method(method)
         .uri(path)
@@ -358,6 +363,55 @@ class AwsSignatureV4VerifierTest {
         request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT)), head.verifiedHead()).errorCode());
   }
 
+  /**
+   * A request signed with temporary credentials of the STS endpoint carries their session token, and is signed with
+   * their secret access key, which is derived from the token again rather than stored. The token is checked before the
+   * signature: a request without it is one of an unknown access key, and one with a token of other credentials, a
+   * forged token or an expired one is rejected with the error of the token.
+   */
+  @Test
+  void verifiesARequestSignedWithTemporaryCredentials() {
+    MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
+    SessionCredentialIssuer issuer = new SessionCredentialIssuer(SECRET_ACCESS_KEY, clock);
+    AwsSignatureV4Verifier verifier = new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, issuer, clock);
+    SessionCredentialIssuer.SessionCredentials credentials = issuer.issue(java.time.Duration.ofHours(1),
+        "arn:aws:sts::000000000000:assumed-role/role/session", "AROAEXAMPLE:session");
+    String signedHeaders = "host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-storage-class";
+
+    Map<CharSequence, String> headers = putObjectHeaders();
+    headers.put("x-amz-security-token", credentials.sessionToken());
+    headers.put("authorization", authorization(credentials.accessKeyId(), signedHeaders,
+        sign(credentials.secretAccessKey(), "PUT", PUT_OBJECT_PATH, headers, signedHeaders, AMZ_DATE,
+            headers.get("x-amz-content-sha256"))));
+    assertTrue(verifier.verify(request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT))).authenticated());
+
+    Map<CharSequence, String> withoutToken = new HashMap<>(headers);
+    withoutToken.remove("x-amz-security-token");
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(withoutToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
+        .errorCode());
+
+    Map<CharSequence, String> otherToken = new HashMap<>(headers);
+    otherToken.put("x-amz-security-token", issuer.issue(java.time.Duration.ofHours(1),
+        "arn:aws:sts::000000000000:assumed-role/role/other", "AROAEXAMPLE:other").sessionToken());
+    assertEquals(S3ErrorCode.InvalidToken, verifyHead(otherToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
+        .errorCode());
+
+    Map<CharSequence, String> forgedToken = new HashMap<>(headers);
+    forgedToken.put("x-amz-security-token", credentials.sessionToken().substring(1));
+    assertEquals(S3ErrorCode.InvalidToken, verifyHead(forgedToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
+        .errorCode());
+
+    // The static access key has no session token.
+    Map<CharSequence, String> staticKeyWithToken = putObjectHeaders();
+    staticKeyWithToken.put("x-amz-security-token", credentials.sessionToken());
+    assertEquals(S3ErrorCode.InvalidToken, verifyHead(staticKeyWithToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
+        .errorCode());
+
+    clock.instant = Instant.parse("2013-05-24T01:00:00Z");
+    assertEquals(S3ErrorCode.ExpiredToken, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
+        .errorCode());
+  }
+
   private static Map<CharSequence, String> dateSignedHeaders(String date) {
     Map<CharSequence, String> headers = putObjectHeaders();
     headers.remove("x-amz-date");
@@ -398,6 +452,11 @@ class AwsSignatureV4VerifierTest {
    */
   private static String sign(String method, String path, Map<CharSequence, String> headers, String signedHeaders,
                              String amzDate, String payloadHash) {
+    return sign(SECRET_ACCESS_KEY, method, path, headers, signedHeaders, amzDate, payloadHash);
+  }
+
+  private static String sign(String secretAccessKey, String method, String path, Map<CharSequence, String> headers,
+                             String signedHeaders, String amzDate, String payloadHash) {
     StringBuilder canonicalHeaders = new StringBuilder();
     for (String name : signedHeaders.split(";")) {
       canonicalHeaders.append(name).append(':').append(headers.get(name).trim()).append('\n');
@@ -407,7 +466,7 @@ class AwsSignatureV4VerifierTest {
     String scope = amzDate.substring(0, 8) + "/us-east-1/s3/aws4_request";
     String stringToSign = "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n"
         + HexFormat.of().formatHex(sha256(canonicalRequest));
-    byte[] key = hmac(("AWS4" + SECRET_ACCESS_KEY).getBytes(StandardCharsets.UTF_8), amzDate.substring(0, 8));
+    byte[] key = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), amzDate.substring(0, 8));
     key = hmac(key, "us-east-1");
     key = hmac(key, "s3");
     key = hmac(key, "aws4_request");
@@ -457,7 +516,11 @@ class AwsSignatureV4VerifierTest {
   }
 
   private static String authorization(String signedHeaders, String signature) {
-    return "AWS4-HMAC-SHA256 Credential=" + ACCESS_KEY_ID + "/20130524/us-east-1/s3/aws4_request,"
+    return authorization(ACCESS_KEY_ID, signedHeaders, signature);
+  }
+
+  private static String authorization(String accessKeyId, String signedHeaders, String signature) {
+    return "AWS4-HMAC-SHA256 Credential=" + accessKeyId + "/20130524/us-east-1/s3/aws4_request,"
         + "SignedHeaders=" + signedHeaders + ",Signature=" + signature;
   }
 

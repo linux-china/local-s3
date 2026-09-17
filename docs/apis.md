@@ -131,6 +131,15 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 + UntagResource
 + ListTagsForResource
 
+## Supported AWS STS APIs
+
+A stateless STS endpoint on the same port issues temporary credentials of LocalS3, like the one of MinIO; see
+[embedding.md](embedding.md#temporary-credentials-sts). STS requests are `POST /` with a form-urlencoded body.
+
++ AssumeRole
++ GetSessionToken
++ GetCallerIdentity
+
 ## Known unimplemented Amazon S3 APIs
 
 LocalS3 is a mock for testing, so it implements the operations that application code exercises and leaves

@@ -33,7 +33,14 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * Verifies AWS Signature Version 4 requests for a single access key pair.
+ * Verifies AWS Signature Version 4 requests for a single access key pair, and for the temporary credentials that the
+ * STS endpoint of LocalS3 issued with it, see {@linkplain SessionCredentialIssuer}. A request signed with temporary
+ * credentials carries their session token in {@code x-amz-security-token}, in {@code X-Amz-Security-Token} for a
+ * presigned URL, or in the {@code x-amz-security-token} field of a form upload, and is signed with the secret access key
+ * that is derived from the token.
+ *
+ * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service; any other
+ * request for {@code s3} or {@code s3vectors}.
  */
 final class AwsSignatureV4Verifier {
 
@@ -57,6 +64,7 @@ final class AwsSignatureV4Verifier {
 
   private final String accessKeyId;
   private final String secretAccessKey;
+  private final SessionCredentialIssuer sessionCredentialIssuer;
   private final Clock clock;
 
   AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey) {
@@ -64,6 +72,19 @@ final class AwsSignatureV4Verifier {
   }
 
   AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey, Clock clock) {
+    this(accessKeyId, secretAccessKey, new SessionCredentialIssuer(secretAccessKey, clock), clock);
+  }
+
+  /**
+   * Create a verifier.
+   *
+   * @param accessKeyId the access key ID of LocalS3.
+   * @param secretAccessKey the secret access key of LocalS3.
+   * @param sessionCredentialIssuer resolves the temporary credentials that a request is signed with.
+   * @param clock the clock that the time of a request is checked with.
+   */
+  AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey, SessionCredentialIssuer sessionCredentialIssuer,
+                         Clock clock) {
     if (accessKeyId == null || accessKeyId.isBlank()) {
       throw new IllegalArgumentException("accessKeyId must not be blank.");
     }
@@ -72,6 +93,7 @@ final class AwsSignatureV4Verifier {
     }
     this.accessKeyId = accessKeyId;
     this.secretAccessKey = secretAccessKey;
+    this.sessionCredentialIssuer = Objects.requireNonNull(sessionCredentialIssuer);
     this.clock = Objects.requireNonNull(clock);
   }
 
@@ -158,12 +180,13 @@ final class AwsSignatureV4Verifier {
       boolean bodyReceived) {
     ParsedAuthorization parsed = parseAuthorization(authorization);
     CredentialScope scope = parseCredential(parsed.credential());
-    VerificationResult credentialResult = validateCredential(scope);
-    if (!credentialResult.authenticated()) {
-      return HeadVerification.failed(credentialResult);
+    Map<String, String> headers = normalizedHeaders(request);
+    Credential credential = validateCredential(scope, headers.get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN),
+        StsController.isStsRequest(request));
+    if (!credential.result().authenticated()) {
+      return HeadVerification.failed(credential.result());
     }
 
-    Map<String, String> headers = normalizedHeaders(request);
     RequestTime time = requestTime(headers);
     if (time == null) {
       return HeadVerification.failed(malformed("The x-amz-date or Date header is required."));
@@ -202,7 +225,7 @@ final class AwsSignatureV4Verifier {
     RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
     String canonicalRequest = canonicalRequest(request, target, scope, parseQuery(target.rawQuery()),
         headers, signedHeaders, payloadHash, false);
-    byte[] signingKey = signingKey(scope);
+    byte[] signingKey = signingKey(credential.secretAccessKey(), scope);
     String expectedSignature = signature(signingKey,
         stringToSign(time.amzDate(), scope.value(), canonicalRequest));
     if (!secureEquals(expectedSignature, parsed.signature())) {
@@ -273,9 +296,10 @@ final class AwsSignatureV4Verifier {
     }
 
     CredentialScope scope = parseCredential(requiredQueryParameter(queryParameters, "X-Amz-Credential"));
-    VerificationResult credentialResult = validateCredential(scope);
-    if (!credentialResult.authenticated()) {
-      return credentialResult;
+    Credential credential = validateCredential(scope,
+        queryParameter(queryParameters, "X-Amz-Security-Token").orElse(null), StsController.isStsRequest(request));
+    if (!credential.result().authenticated()) {
+      return credential.result();
     }
 
     String amzDate = requiredQueryParameter(queryParameters, "X-Amz-Date");
@@ -306,22 +330,48 @@ final class AwsSignatureV4Verifier {
     String payloadHash = headers.getOrDefault(AmzHeaderNames.X_AMZ_CONTENT_SHA256, UNSIGNED_PAYLOAD);
     String canonicalRequest = canonicalRequest(request, target, scope, queryParameters, headers,
         signedHeaders, payloadHash, true);
-    String expectedSignature = signature(signingKey(scope),
+    String expectedSignature = signature(signingKey(credential.secretAccessKey(), scope),
         stringToSign(amzDate, scope.value(), canonicalRequest));
     return secureEquals(expectedSignature, suppliedSignature)
         ? VerificationResult.success()
         : signatureMismatch();
   }
 
-  private VerificationResult validateCredential(CredentialScope scope) {
-    if (!accessKeyId.equals(scope.accessKeyId())) {
-      return VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
-          "The AWS access key ID you provided does not exist in our records.");
+  private Credential validateCredential(CredentialScope scope, String sessionToken, boolean stsRequest) {
+    Credential credential = resolveCredential(scope.accessKeyId(), sessionToken);
+    if (!credential.result().authenticated()) {
+      return credential;
     }
-    if (!("s3".equals(scope.service()) || "s3vectors".equals(scope.service()))) {
-      return malformed("The credential scope service must be s3 or s3vectors.");
+    if (stsRequest ? !"sts".equals(scope.service())
+        : !("s3".equals(scope.service()) || "s3vectors".equals(scope.service()))) {
+      return Credential.failed(malformed(stsRequest ? "The credential scope service must be sts."
+          : "The credential scope service must be s3 or s3vectors."));
     }
-    return VerificationResult.success();
+    return credential;
+  }
+
+  /**
+   * The secret access key that a request of an access key ID is signed with: the one of LocalS3 for its access key ID,
+   * or the one that is derived from the session token of temporary credentials.
+   *
+   * @param requestAccessKeyId the access key ID of the request.
+   * @param sessionToken the session token of the request; {@code null} if it carries none.
+   * @return the secret access key, or why the credentials are rejected.
+   */
+  private Credential resolveCredential(String requestAccessKeyId, String sessionToken) {
+    if (sessionToken == null || sessionToken.isEmpty()) {
+      return accessKeyId.equals(requestAccessKeyId)
+          ? new Credential(VerificationResult.success(), secretAccessKey)
+          : Credential.failed(VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
+              "The AWS access key ID you provided does not exist in our records."));
+    }
+    // The long-term access key of LocalS3 has no session token, like the one of an IAM user.
+    SessionCredentialIssuer.Resolution resolution = sessionCredentialIssuer.resolve(requestAccessKeyId, sessionToken);
+    if (!resolution.accepted()) {
+      return Credential.failed(VerificationResult.failure(resolution.errorCode(),
+          resolution.errorCode().description()));
+    }
+    return new Credential(VerificationResult.success(), resolution.secretAccessKey());
   }
 
   private VerificationResult validateRequestTime(String amzDate, String scopeDate,
@@ -495,7 +545,7 @@ final class AwsSignatureV4Verifier {
         .orElseThrow(() -> new IllegalArgumentException("Missing query parameter: " + name));
   }
 
-  private byte[] signingKey(CredentialScope scope) {
+  private static byte[] signingKey(String secretAccessKey, CredentialScope scope) {
     byte[] dateKey = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), scope.date());
     byte[] regionKey = hmac(dateKey, scope.region());
     byte[] serviceKey = hmac(regionKey, scope.service());
@@ -800,9 +850,9 @@ final class AwsSignatureV4Verifier {
     } catch (IllegalArgumentException e) {
       return postFieldInvalid(e.getMessage());
     }
-    if (!accessKeyId.equals(scope.accessKeyId())) {
-      return VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
-          "The AWS access key ID you provided does not exist in our records.");
+    Credential resolved = resolveCredential(scope.accessKeyId(), field.apply("x-amz-security-token").orElse(null));
+    if (!resolved.result().authenticated()) {
+      return resolved.result();
     }
     if (!"s3".equals(scope.service())) {
       return postFieldInvalid("The credential scope service must be s3.");
@@ -819,7 +869,7 @@ final class AwsSignatureV4Verifier {
     if (!amzDate.get().startsWith(scope.date())) {
       return postFieldInvalid("The credential scope date does not match x-amz-date.");
     }
-    String expectedSignature = signature(signingKey(scope), policy);
+    String expectedSignature = signature(signingKey(resolved.secretAccessKey(), scope), policy);
     return secureEquals(expectedSignature, suppliedSignature) ? VerificationResult.success() : signatureMismatch();
   }
 
@@ -829,13 +879,14 @@ final class AwsSignatureV4Verifier {
     if (suppliedAccessKeyId.isEmpty()) {
       return postFieldInvalid("The form must contain the field AWSAccessKeyId.");
     }
-    if (!accessKeyId.equals(suppliedAccessKeyId.get())) {
-      return VerificationResult.failure(S3ErrorCode.InvalidAccessKeyId,
-          "The AWS access key ID you provided does not exist in our records.");
+    Credential resolved = resolveCredential(suppliedAccessKeyId.get(),
+        field.apply("x-amz-security-token").orElse(null));
+    if (!resolved.result().authenticated()) {
+      return resolved.result();
     }
     try {
       Mac mac = Mac.getInstance("HmacSHA1");
-      mac.init(new SecretKeySpec(secretAccessKey.getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
+      mac.init(new SecretKeySpec(resolved.secretAccessKey().getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
       byte[] expected = mac.doFinal(policy.getBytes(StandardCharsets.UTF_8));
       byte[] supplied = Base64.getDecoder().decode(suppliedSignature.trim());
       return MessageDigest.isEqual(expected, supplied) ? VerificationResult.success() : signatureMismatch();
@@ -896,6 +947,25 @@ final class AwsSignatureV4Verifier {
   }
 
   private record RequestTime(String amzDate, String header) {
+  }
+
+  /**
+   * The credentials of a request.
+   *
+   * @param result whether they are accepted.
+   * @param secretAccessKey the secret access key that the request is signed with; {@code null} if they aren't accepted.
+   */
+  private record Credential(VerificationResult result, String secretAccessKey) {
+
+    static Credential failed(VerificationResult result) {
+      return new Credential(result, null);
+    }
+
+    @Override
+    public String toString() {
+      // Never reveal the secret access key.
+      return "Credential[result=" + result + "]";
+    }
   }
 
   record VerificationResult(boolean authenticated, S3ErrorCode errorCode, String message) {

@@ -114,6 +114,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   private final CorsResponseHeaders corsResponseHeaders;
 
+  /**
+   * Answers the STS requests; {@code null} if the router has no STS endpoint.
+   */
+  private StsController stsController;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -146,6 +151,17 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     this.corsResponseHeaders = corsResponseHeaders;
   }
 
+  /**
+   * Answer the STS requests, see {@linkplain StsController#isStsRequest}, with a controller.
+   *
+   * @param stsController the controller.
+   * @return this router.
+   */
+  LocalS3Router sts(StsController stsController) {
+    this.stsController = Objects.requireNonNull(stsController);
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -176,6 +192,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   @Override
   public HttpRequestHandler match(HttpRequest request) {
+    if (stsController != null && StsController.isStsRequest(request)) {
+      return matchSts(request);
+    }
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
@@ -198,6 +217,21 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
+   * The handler of an STS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
+   * in the error format of STS rather than the one of Amazon S3.
+   */
+  private OperationHandler matchSts(HttpRequest request) {
+    if (requiresAuthentication(request)) {
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      if (!result.authenticated()) {
+        return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION,
+            (req, resp) -> StsController.writeAuthenticationFailure(resp, result));
+      }
+    }
+    return new OperationHandler(StsController.operation(request), stsController);
+  }
+
+  /**
    * Verify the signature of a request before its body is received, so that a request with an invalid signature
    * doesn't get to upload its body. What was verified is kept, and handed to the complete request by
    * {@linkplain #requestReceived}, so that {@linkplain #match} only verifies what depends on the body: the payload hash
@@ -206,7 +240,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   @Override
   public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
     // The credentials of a form upload are fields of its body, so it can only be verified once the body is received.
-    if (!requiresAuthentication(head) || isFormUpload(head)) {
+    // An STS request is small, and verified once it is received, so that a rejection is answered in the format of STS.
+    if (!requiresAuthentication(head) || isFormUpload(head)
+        || stsController != null && StsController.isStsRequest(head)) {
       return null;
     }
     AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);

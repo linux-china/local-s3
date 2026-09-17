@@ -91,6 +91,41 @@ localS3.start();
 
 The [health check](deployment.md#health-check) needs no authentication, so probes keep working.
 
+### Temporary credentials (STS)
+
+LocalS3 answers the STS actions `AssumeRole`, `GetSessionToken` and `GetCallerIdentity` on its own port, so a client
+that gets temporary credentials from STS, e.g. an Iceberg REST catalog that vends them to DuckDB, PyIceberg or Spark,
+can use LocalS3 as its STS endpoint. Requests signed with the temporary credentials, i.e. with their
+`x-amz-security-token`, `X-Amz-Security-Token` of a presigned URL, or the `x-amz-security-token` field of a form upload,
+are accepted until the credentials expire.
+
+```java
+StsClient sts = StsClient.builder()
+    .endpointOverride(URI.create("http://localhost:29090"))
+    .region(Region.US_EAST_1)
+    .credentialsProvider(StaticCredentialsProvider.create(
+        AwsBasicCredentials.create("access-key-id", "secret-access-key")))
+    .build();
+Credentials credentials = sts.assumeRole(b -> b
+    .roleArn("arn:aws:iam::123456789012:role/reader")
+    .roleSessionName("spark")
+    .durationSeconds(3600)).credentials();
+```
+
++ **Stateless**: nothing is stored. The session token carries the access key ID, the expiration and the identity,
+  authenticated with a key derived from the secret access key, and the temporary secret access key is derived from the
+  token again. The credentials stay valid across restarts, in both modes, as long as the secret access key is the same;
+  changing it revokes all of them.
++ **No IAM**: `RoleArn`, `RoleSessionName`, `DurationSeconds` and `Policy` are validated like STS validates them
+  (`AssumeRole` 15 minutes to 12 hours, 1 hour at most when chained from temporary credentials; `GetSessionToken` up to
+  36 hours, not from temporary credentials), but temporary credentials can do everything the static key pair can.
+  Any role ARN is accepted; one of the form `arn:aws:iam::<account>:role/<name>` names the account and the role of the
+  assumed-role ARN.
++ **Without `credentials(...)`** the endpoint issues credentials as well, and every request is accepted as before, so a
+  catalog configured with an STS endpoint works with an unauthenticated LocalS3 too.
++ **Errors**: an STS request is answered with the errors of STS, e.g. `InvalidClientTokenId`; an S3 request signed with a
+  forged or foreign token with `400 InvalidToken`, and with an expired one with `400 ExpiredToken`.
+
 ### Listen to bucket and object changes
 
 `changeListener` subscribes an `S3ChangeListener`, which receives an `S3Change` whenever a bucket or an object

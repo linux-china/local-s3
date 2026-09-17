@@ -71,6 +71,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **In-memory and persistence modes**, and in-memory services that start from the data of a directory, e.g. a fixture
   shared by many tests. Data directories of hundreds of thousands of objects open without loading all their metadata.
 + **AWS Signature Version 4** verification, path-style and virtual-hosted-style requests, CORS.
++ **A stateless STS endpoint** (`AssumeRole`, `GetSessionToken`, `GetCallerIdentity`), so Iceberg REST catalogs that
+  vend temporary credentials, and the engines that use them, work with LocalS3.
+  [Details](docs/embedding.md#temporary-credentials-sts).
 + **Change listeners** that are told of every committed change, e.g. to assert that an upload happened.
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
 + **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 4, Testcontainers, a Docker image (JVM or native), or an

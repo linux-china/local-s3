@@ -24,6 +24,11 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_DELETE_MARKER = "x-amz-delete-marker";
 
+  /**
+   * The session token of the temporary credentials that a request is signed with.
+   */
+  public static final String X_AMZ_SECURITY_TOKEN = "x-amz-security-token";
+
   public static final String X_AMZ_STORAGE_CLASS = "x-amz-storage-class";
 
   public static final String X_AMZ_TAGGING = "x-amz-tagging";
