@@ -240,6 +240,83 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void testBucketConfigurationsThatAreStoredButNotApplied(S3Client s3) {
+    String bucketName = "my-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+
+    // A new bucket answers what a new bucket of Amazon S3 answers, which is what Terraform reads when it refreshes one.
+    assertNull(s3.getBucketAccelerateConfiguration(
+        GetBucketAccelerateConfigurationRequest.builder().bucket(bucketName).build()).status());
+    assertNull(s3.getBucketLogging(GetBucketLoggingRequest.builder().bucket(bucketName).build()).loggingEnabled());
+    assertEquals(Payer.BUCKET_OWNER, s3.getBucketRequestPayment(
+        GetBucketRequestPaymentRequest.builder().bucket(bucketName).build()).payer());
+    assertEquals(ObjectOwnership.BUCKET_OWNER_ENFORCED, s3.getBucketOwnershipControls(
+            GetBucketOwnershipControlsRequest.builder().bucket(bucketName).build())
+        .ownershipControls().rules().get(0).objectOwnership());
+    S3Exception noWebsite = assertThrows(S3Exception.class,
+        () -> s3.getBucketWebsite(GetBucketWebsiteRequest.builder().bucket(bucketName).build()));
+    assertEquals(404, noWebsite.statusCode());
+    assertEquals("NoSuchWebsiteConfiguration", noWebsite.awsErrorDetails().errorCode());
+
+    s3.putBucketAccelerateConfiguration(PutBucketAccelerateConfigurationRequest.builder()
+        .bucket(bucketName)
+        .accelerateConfiguration(AccelerateConfiguration.builder().status(BucketAccelerateStatus.ENABLED).build())
+        .build());
+    assertEquals(BucketAccelerateStatus.ENABLED, s3.getBucketAccelerateConfiguration(
+        GetBucketAccelerateConfigurationRequest.builder().bucket(bucketName).build()).status());
+
+    s3.putBucketLogging(PutBucketLoggingRequest.builder()
+        .bucket(bucketName)
+        .bucketLoggingStatus(BucketLoggingStatus.builder()
+            .loggingEnabled(LoggingEnabled.builder().targetBucket("log-bucket").targetPrefix("logs/").build())
+            .build())
+        .build());
+    LoggingEnabled logging = s3.getBucketLogging(GetBucketLoggingRequest.builder().bucket(bucketName).build())
+        .loggingEnabled();
+    assertEquals("log-bucket", logging.targetBucket());
+    assertEquals("logs/", logging.targetPrefix());
+
+    s3.putBucketRequestPayment(PutBucketRequestPaymentRequest.builder()
+        .bucket(bucketName)
+        .requestPaymentConfiguration(RequestPaymentConfiguration.builder().payer(Payer.REQUESTER).build())
+        .build());
+    assertEquals(Payer.REQUESTER, s3.getBucketRequestPayment(
+        GetBucketRequestPaymentRequest.builder().bucket(bucketName).build()).payer());
+
+    s3.putBucketWebsite(PutBucketWebsiteRequest.builder()
+        .bucket(bucketName)
+        .websiteConfiguration(WebsiteConfiguration.builder()
+            .indexDocument(IndexDocument.builder().suffix("index.html").build())
+            .errorDocument(ErrorDocument.builder().key("error.html").build())
+            .build())
+        .build());
+    GetBucketWebsiteResponse website = s3.getBucketWebsite(GetBucketWebsiteRequest.builder().bucket(bucketName).build());
+    assertEquals("index.html", website.indexDocument().suffix());
+    assertEquals("error.html", website.errorDocument().key());
+    s3.deleteBucketWebsite(DeleteBucketWebsiteRequest.builder().bucket(bucketName).build());
+    assertThrows(S3Exception.class,
+        () -> s3.getBucketWebsite(GetBucketWebsiteRequest.builder().bucket(bucketName).build()));
+
+    s3.putBucketOwnershipControls(PutBucketOwnershipControlsRequest.builder()
+        .bucket(bucketName)
+        .ownershipControls(OwnershipControls.builder()
+            .rules(OwnershipControlsRule.builder().objectOwnership(ObjectOwnership.OBJECT_WRITER).build())
+            .build())
+        .build());
+    assertEquals(ObjectOwnership.OBJECT_WRITER, s3.getBucketOwnershipControls(
+            GetBucketOwnershipControlsRequest.builder().bucket(bucketName).build())
+        .ownershipControls().rules().get(0).objectOwnership());
+    s3.deleteBucketOwnershipControls(DeleteBucketOwnershipControlsRequest.builder().bucket(bucketName).build());
+    S3Exception noOwnershipControls = assertThrows(S3Exception.class, () -> s3.getBucketOwnershipControls(
+        GetBucketOwnershipControlsRequest.builder().bucket(bucketName).build()));
+    assertEquals("OwnershipControlsNotFoundError", noOwnershipControls.awsErrorDetails().errorCode());
+
+    assertThrows(NoSuchBucketException.class, () -> s3.getBucketLogging(
+        GetBucketLoggingRequest.builder().bucket("no-such-bucket").build()));
+  }
+
+  @Test
+  @LocalS3
   void testBucketEncryption(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());

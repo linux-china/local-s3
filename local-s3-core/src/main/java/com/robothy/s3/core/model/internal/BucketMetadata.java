@@ -6,6 +6,7 @@ import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.model.BucketObjectLockConfiguration;
+import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.util.BucketEncryptionConfigurations;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
@@ -134,6 +135,14 @@ public class BucketMetadata {
    * The notification configuration of the bucket, which LocalS3 stores but never delivers to; {@code null} for none.
    */
   private String notification;
+
+  /**
+   * The configurations that LocalS3 stores but never applies, by {@linkplain StoredBucketConfiguration#name()}, each
+   * as the document that was put; a configuration that was deleted maps to an empty document, so that it isn't
+   * mistaken for one that was never configured, which may have a default. See
+   * {@linkplain com.robothy.s3.core.service.BucketStoredConfigurationService}.
+   */
+  private Map<String, String> storedConfigurations = new ConcurrentHashMap<>();
 
   /**
    * The object lock configuration of the bucket; {@code null} if the bucket doesn't have Object Lock enabled. Once

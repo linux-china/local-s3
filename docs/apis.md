@@ -18,9 +18,11 @@ versioning, see [semantics.md](semantics.md).
 + DeleteBucketCors
 + DeleteBucketEncryption
 + DeleteBucketLifecycle
++ DeleteBucketOwnershipControls
 + DeleteBucketPolicy
 + DeleteBucketReplication
 + DeleteBucketTagging
++ DeleteBucketWebsite
 + DeleteObject
 + DeleteObjects
 + DeleteObjectTagging
@@ -32,15 +34,20 @@ versioning, see [semantics.md](semantics.md).
 + GetObjectLegalHold
 + GetObjectLockConfiguration
 + GetObjectRetention
++ GetBucketAccelerateConfiguration
 + GetBucketAcl
 + GetBucketCors
 + GetBucketEncryption
 + GetBucketLifecycleConfiguration
++ GetBucketLogging
 + GetBucketNotificationConfiguration
++ GetBucketOwnershipControls
 + GetBucketPolicy
 + GetBucketPolicyStatus
 + GetBucketReplication
++ GetBucketRequestPayment
 + GetBucketVersioning
++ GetBucketWebsite
 + GetBucketTagging
 + GetBucketLocation
 + HeadBucket
@@ -51,14 +58,19 @@ versioning, see [semantics.md](semantics.md).
 + ListObjectVersions
 + ListMultipartUploads
 + ListParts
++ PutBucketAccelerateConfiguration
 + PutBucketAcl
 + PutBucketCors
 + PutBucketEncryption
 + PutBucketLifecycleConfiguration
++ PutBucketLogging
 + PutBucketNotificationConfiguration
++ PutBucketOwnershipControls
 + PutBucketPolicy
 + PutBucketReplication
++ PutBucketRequestPayment
 + PutBucketVersioning
++ PutBucketWebsite
 + PutBucketTagging
 + PostObject
 + PutObject
@@ -85,6 +97,20 @@ configures notifications when it starts, e.g. Terraform, CDK or an application, 
 was never configured answers an empty `NotificationConfiguration`. To hear of changes, register a listener; see
 [change events](semantics.md#change-events). The deprecated `PutBucketNotification` and `GetBucketNotification` send
 the same requests, and are answered the same way.
+
+Transfer acceleration, access logging, requester pays, static website hosting and ownership controls are **stored and
+returned as they were put, but never applied**: nothing is accelerated, logged, billed to the requester or served as a
+website, and ACLs keep working whatever the object ownership. They exist so that clients that read or write them, e.g.
+Terraform refreshing an `aws_s3_bucket`, or CDK and SDK tool chains setting the ownership controls, work against
+LocalS3. A bucket that was never configured answers like a new bucket of Amazon S3 does:
+
+| Operation                          | Never configured                                         | After the delete                     |
+|------------------------------------|----------------------------------------------------------|--------------------------------------|
+| `GetBucketAccelerateConfiguration` | an empty `AccelerateConfiguration`                       | –                                    |
+| `GetBucketLogging`                 | an empty `BucketLoggingStatus`                           | –                                    |
+| `GetBucketRequestPayment`          | `<Payer>BucketOwner</Payer>`                             | –                                    |
+| `GetBucketWebsite`                 | `404 NoSuchWebsiteConfiguration`                         | `404 NoSuchWebsiteConfiguration`     |
+| `GetBucketOwnershipControls`       | `<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership>` | `404 OwnershipControlsNotFoundError` |
 
 Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` headers of `PutObject`, `CopyObject` and
 `CreateMultipartUpload`, retention and legal holds) protects object versions from being deleted, see
@@ -162,28 +188,6 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 + RestoreObject
 + SelectObjectContent
 + WriteGetObjectResponse
-
-**Static website hosting**
-+ DeleteBucketWebsite
-+ GetBucketWebsite
-+ PutBucketWebsite
-
-**Access logging**
-+ GetBucketLogging
-+ PutBucketLogging
-
-**Requester pays**
-+ GetBucketRequestPayment
-+ PutBucketRequestPayment
-
-**Transfer acceleration**
-+ GetBucketAccelerateConfiguration
-+ PutBucketAccelerateConfiguration
-
-**Ownership controls**
-+ DeleteBucketOwnershipControls
-+ GetBucketOwnershipControls
-+ PutBucketOwnershipControls
 
 **Analytics, inventory and metrics**
 + DeleteBucketAnalyticsConfiguration

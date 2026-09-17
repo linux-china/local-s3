@@ -1,5 +1,10 @@
 package com.robothy.s3.rest.handler;
 
+import static com.robothy.s3.core.model.StoredBucketConfiguration.ACCELERATE;
+import static com.robothy.s3.core.model.StoredBucketConfiguration.LOGGING;
+import static com.robothy.s3.core.model.StoredBucketConfiguration.OWNERSHIP_CONTROLS;
+import static com.robothy.s3.core.model.StoredBucketConfiguration.REQUEST_PAYMENT;
+import static com.robothy.s3.core.model.StoredBucketConfiguration.WEBSITE;
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_KEY_PATH;
 import static com.robothy.s3.rest.handler.LocalS3Router.BUCKET_PATH;
 import static com.robothy.s3.rest.handler.LocalS3Router.HEALTH_CHECK_PATH;
@@ -66,19 +71,6 @@ public class LocalS3RouterFactory {
    * route.
    */
   private static final List<NotImplementedOperation> NOT_IMPLEMENTED_OPERATIONS = List.of(
-      // Bucket configurations.
-      new NotImplementedOperation("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate")),
-      new NotImplementedOperation("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate")),
-      new NotImplementedOperation("GetBucketLogging", GET, BUCKET_PATH, has("logging")),
-      new NotImplementedOperation("PutBucketLogging", PUT, BUCKET_PATH, has("logging")),
-      new NotImplementedOperation("GetBucketOwnershipControls", GET, BUCKET_PATH, has("ownershipControls")),
-      new NotImplementedOperation("PutBucketOwnershipControls", PUT, BUCKET_PATH, has("ownershipControls")),
-      new NotImplementedOperation("DeleteBucketOwnershipControls", DELETE, BUCKET_PATH, has("ownershipControls")),
-      new NotImplementedOperation("GetBucketRequestPayment", GET, BUCKET_PATH, has("requestPayment")),
-      new NotImplementedOperation("PutBucketRequestPayment", PUT, BUCKET_PATH, has("requestPayment")),
-      new NotImplementedOperation("GetBucketWebsite", GET, BUCKET_PATH, has("website")),
-      new NotImplementedOperation("PutBucketWebsite", PUT, BUCKET_PATH, has("website")),
-      new NotImplementedOperation("DeleteBucketWebsite", DELETE, BUCKET_PATH, has("website")),
       // Bucket configurations of which a bucket has several, each named by an id: a GET with the id reads one, and a
       // GET without it lists them.
       new NotImplementedOperation("GetBucketAnalyticsConfiguration", GET, BUCKET_PATH, has("analytics", "id")),
@@ -185,6 +177,7 @@ public class LocalS3RouterFactory {
                                    BucketEncryptionController bucketEncryption,
                                    BucketLifecycleController bucketLifecycle,
                                    BucketNotificationController bucketNotification,
+                                   BucketStoredConfigurationController storedConfiguration,
                                    ObjectTaggingController objectTagging,
                                    ObjectLockController objectLock) {
 
@@ -194,6 +187,7 @@ public class LocalS3RouterFactory {
           new BucketEncryptionController(serviceFactory),
           new BucketLifecycleController(serviceFactory),
           new BucketNotificationController(serviceFactory),
+          new BucketStoredConfigurationController(serviceFactory),
           new ObjectTaggingController(serviceFactory),
           new ObjectLockController(serviceFactory));
     }
@@ -232,20 +226,28 @@ public class LocalS3RouterFactory {
    */
   private static void bucketReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
     routes
+        .add("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate"),
+            shared.storedConfiguration().get(ACCELERATE))
         .add("GetBucketAcl", GET, BUCKET_PATH, has("acl"), new GetBucketAclController(factory))
         .add("GetBucketCors", GET, BUCKET_PATH, has("cors"), new GetBucketCorsController(factory))
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
         .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
         .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
+        .add("GetBucketLogging", GET, BUCKET_PATH, has("logging"), shared.storedConfiguration().get(LOGGING))
         .add("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification"),
             shared.bucketNotification()::get)
         .add("GetObjectLockConfiguration", GET, BUCKET_PATH, has("object-lock"), shared.objectLock()::getConfiguration)
+        .add("GetBucketOwnershipControls", GET, BUCKET_PATH, has("ownershipControls"),
+            shared.storedConfiguration().get(OWNERSHIP_CONTROLS))
         .add("GetBucketPolicy", GET, BUCKET_PATH, has("policy"), shared.bucketPolicy()::get)
         .add("GetBucketPolicyStatus", GET, BUCKET_PATH, has("policyStatus"),
             new GetBucketPolicyStatusController(factory))
         .add("GetBucketReplication", GET, BUCKET_PATH, has("replication"), shared.bucketReplication()::get)
+        .add("GetBucketRequestPayment", GET, BUCKET_PATH, has("requestPayment"),
+            shared.storedConfiguration().get(REQUEST_PAYMENT))
         .add("GetBucketTagging", GET, BUCKET_PATH, has("tagging"), new GetBucketTaggingController(factory))
         .add("GetBucketVersioning", GET, BUCKET_PATH, has("versioning"), new GetBucketVersioningController(factory))
+        .add("GetBucketWebsite", GET, BUCKET_PATH, has("website"), shared.storedConfiguration().get(WEBSITE))
         .add("GetPublicAccessBlock", GET, BUCKET_PATH, has("publicAccessBlock"),
             new GetPublicAccessBlockController(factory))
         .add("HeadBucket", HEAD, BUCKET_PATH, new HeadBucketController(factory))
@@ -272,23 +274,34 @@ public class LocalS3RouterFactory {
         .add("DeleteBucketCors", DELETE, BUCKET_PATH, has("cors"), new DeleteBucketCorsController(factory))
         .add("DeleteBucketEncryption", DELETE, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::delete)
         .add("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::delete)
+        .add("DeleteBucketOwnershipControls", DELETE, BUCKET_PATH, has("ownershipControls"),
+            shared.storedConfiguration().delete(OWNERSHIP_CONTROLS))
         .add("DeleteBucketPolicy", DELETE, BUCKET_PATH, has("policy"), shared.bucketPolicy()::delete)
         .add("DeleteBucketReplication", DELETE, BUCKET_PATH, has("replication"), shared.bucketReplication()::delete)
         .add("DeleteBucketTagging", DELETE, BUCKET_PATH, has("tagging"), new DeleteBucketTaggingController(factory))
+        .add("DeleteBucketWebsite", DELETE, BUCKET_PATH, has("website"), shared.storedConfiguration().delete(WEBSITE))
         .add("DeleteObjects", POST, BUCKET_PATH, has("delete"), new DeleteObjectsController(factory))
         .add("DeletePublicAccessBlock", DELETE, BUCKET_PATH, has("publicAccessBlock"),
             new DeletePublicAccessBlockController(factory))
         .add(PostObjectController.OPERATION, POST, BUCKET_PATH, new PostObjectController(factory, signatureVerifier))
+        .add("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate"),
+            shared.storedConfiguration().put(ACCELERATE))
         .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
         .add("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::put)
+        .add("PutBucketLogging", PUT, BUCKET_PATH, has("logging"), shared.storedConfiguration().put(LOGGING))
         .add("PutBucketNotificationConfiguration", PUT, BUCKET_PATH, has("notification"),
             shared.bucketNotification()::put)
+        .add("PutBucketOwnershipControls", PUT, BUCKET_PATH, has("ownershipControls"),
+            shared.storedConfiguration().put(OWNERSHIP_CONTROLS))
         .add("PutBucketPolicy", PUT, BUCKET_PATH, has("policy"), shared.bucketPolicy()::put)
         .add("PutBucketReplication", PUT, BUCKET_PATH, has("replication"), shared.bucketReplication()::put)
+        .add("PutBucketRequestPayment", PUT, BUCKET_PATH, has("requestPayment"),
+            shared.storedConfiguration().put(REQUEST_PAYMENT))
         .add("PutBucketTagging", PUT, BUCKET_PATH, has("tagging"), new PutBucketTaggingController(factory))
         .add("PutBucketVersioning", PUT, BUCKET_PATH, has("versioning"), new PutBucketVersioningController(factory))
+        .add("PutBucketWebsite", PUT, BUCKET_PATH, has("website"), shared.storedConfiguration().put(WEBSITE))
         .add("PutObjectLockConfiguration", PUT, BUCKET_PATH, has("object-lock"), shared.objectLock()::putConfiguration)
         .add("PutPublicAccessBlock", PUT, BUCKET_PATH, has("publicAccessBlock"),
             new PutPublicAccessBlockController(factory));

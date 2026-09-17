@@ -2,13 +2,8 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.BucketMetadata;
-import java.io.StringReader;
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
+import com.robothy.s3.core.util.XmlConfigurations;
 
 /**
  * Bucket notification configuration service.
@@ -45,7 +40,7 @@ public interface BucketNotificationService extends LocalS3MetadataApplicable {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-      validateNotificationConfiguration(configuration);
+      XmlConfigurations.assertWellFormed(configuration, "NotificationConfiguration");
       bucketMetadata.setNotification(configuration);
     });
   }
@@ -62,41 +57,6 @@ public interface BucketNotificationService extends LocalS3MetadataApplicable {
       return BucketAssertions.assertBucketExists(localS3Metadata(), bucketName).getNotification()
           .orElse(EMPTY_NOTIFICATION_CONFIGURATION);
     });
-  }
-
-  private static void validateNotificationConfiguration(String configuration) {
-    if (configuration == null || configuration.isBlank()) {
-      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-    }
-    XMLInputFactory factory = XMLInputFactory.newDefaultFactory();
-    // A configuration has no document type, and its entities must never be resolved.
-    factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
-    factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
-    try {
-      XMLStreamReader reader = factory.createXMLStreamReader(new StringReader(configuration));
-      try {
-        boolean rootSeen = false;
-        while (reader.hasNext()) {
-          int event = reader.next();
-          if (event == XMLStreamConstants.DTD || event == XMLStreamConstants.ENTITY_REFERENCE) {
-            throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-          }
-          if (event == XMLStreamConstants.START_ELEMENT && !rootSeen) {
-            if (!"NotificationConfiguration".equals(reader.getLocalName())) {
-              throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-            }
-            rootSeen = true;
-          }
-        }
-        if (!rootSeen) {
-          throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-        }
-      } finally {
-        reader.close();
-      }
-    } catch (XMLStreamException e) {
-      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
-    }
   }
 
 }
