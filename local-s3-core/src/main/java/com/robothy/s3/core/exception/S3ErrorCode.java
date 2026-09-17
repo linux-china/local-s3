@@ -36,6 +36,7 @@ public enum S3ErrorCode {
   //InvalidLocationConstraint("InvalidLocationConstraint", 400, "The specified location constraint is not valid. For more information about Regions, see How to Select a Region for Your Buckets."),
   //InvalidObjectState("InvalidObjectState", 403, "The action is not valid for the current state of the object."),
   InvalidPart("InvalidPart", 400, "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag."),
+  InvalidPartNumber("InvalidPartNumber", 416, "The requested partnumber is not satisfiable"),
   InvalidPartOrder("InvalidPartOrder", 400, "The list of parts was not in ascending order. Parts list must be specified in order by part number."),
   //InvalidPayer("InvalidPayer", 403, "All access to this object has been disabled. Please contact AWS Support for further assistance."),
   InvalidPolicyDocument("InvalidPolicyDocument", 400, "The content of the form does not meet the conditions specified in the policy document."),

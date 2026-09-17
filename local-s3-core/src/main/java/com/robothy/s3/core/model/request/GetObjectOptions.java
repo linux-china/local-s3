@@ -20,6 +20,12 @@ public class GetObjectOptions {
   private Range range;
 
   /**
+   * The {@code partNumber} of the request: the part of an object uploaded in parts to read, counted from 1 in the
+   * order of the content; {@code null} to read the object, or the range, rather than a part.
+   */
+  private Integer partNumber;
+
+  /**
    * The conditions that the object must satisfy for the read to answer with it; {@code null} if the
    * request is unconditional.
    */
@@ -37,6 +43,10 @@ public class GetObjectOptions {
 
   public Optional<Range> getRange() {
     return Optional.ofNullable(range);
+  }
+
+  public Optional<Integer> getPartNumber() {
+    return Optional.ofNullable(partNumber);
   }
 
   /**

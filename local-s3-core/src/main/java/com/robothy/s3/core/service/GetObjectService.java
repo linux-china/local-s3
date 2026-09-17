@@ -4,22 +4,28 @@ import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.CustomerEncryptionAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
+import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
+import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.VersionedObjectNotExistException;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.ObjectContentUtils;
-import java.io.InputStream;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -103,39 +109,17 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       return notModified(bucketName, key, null, latestObject);
     }
 
-    long fullSize = latestObject.getSize();
-    long contentLength = fullSize;
-    String contentRange = null;
-    InputStream content = null;
-
-    if (options.getRange().isPresent()) {
-      long[] range = options.getRange().get().resolve(fullSize);
-      long start = range[0], end = range[1];
-      contentLength = end - start + 1;
-      contentRange = "bytes " + start + "-" + end + "/" + fullSize;
-      if (!metadataOnly) {
-        content = ObjectContentUtils.open(storage, latestObject, start, contentLength);
-      }
-    } else if (!metadataOnly) {
-      content = ObjectContentUtils.open(storage, latestObject);
-    }
-
-    return GetObjectAns.builder()
+    return content(storage, latestObject, metadataOnly, options)
         .bucketName(bucketName)
         .key(key)
         .contentType(latestObject.getContentType())
         .systemMetadata(latestObject.getSystemMetadata())
         .lastModified(latestObject.getCreationDate())
-        .size(contentLength)
-        .content(content)
         .etag(latestObject.getEtag())
-        .contentRange(contentRange)
         .userMetadata(latestObject.getUserMetadata())
         .taggingCount(latestObject.getTagging().map(tagging -> tagging.length).orElse(0))
         .tagging(latestObject.getTagging().orElse(null))
         .parts(latestObject.getParts().orElse(null))
-        // The checksum is the one of the whole content, not of a range of it.
-        .checksum(Objects.isNull(contentRange) ? latestObject.getChecksum() : null)
         .objectLock(latestObject.getObjectLock())
         .customerEncryption(latestObject.getCustomerEncryption())
         .serverSideEncryption(latestObject.getServerSideEncryption())
@@ -196,45 +180,99 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         return notModified(bucketName, key, returnedVersionId, versionedObjectMetadata);
       }
 
-      long fullSize = versionedObjectMetadata.getSize();
-      long contentLength = fullSize;
-      String contentRange = null;
-      InputStream content = null;
-
-      if (options.getRange().isPresent()) {
-        long[] range = options.getRange().get().resolve(fullSize);
-        long start = range[0], end = range[1];
-        contentLength = end - start + 1;
-        contentRange = "bytes " + start + "-" + end + "/" + fullSize;
-        if (!metadataOnly) {
-          content = ObjectContentUtils.open(storage, versionedObjectMetadata, start, contentLength);
-        }
-      } else if (!metadataOnly) {
-        content = ObjectContentUtils.open(storage, versionedObjectMetadata);
-      }
-
-      return GetObjectAns.builder()
+      return content(storage, versionedObjectMetadata, metadataOnly, options)
           .bucketName(bucketName)
           .key(key)
           .versionId(returnedVersionId)
           .contentType(versionedObjectMetadata.getContentType())
           .systemMetadata(versionedObjectMetadata.getSystemMetadata())
           .lastModified(versionedObjectMetadata.getCreationDate())
-          .size(contentLength)
-          .content(content)
           .etag(versionedObjectMetadata.getEtag())
-          .contentRange(contentRange)
           .taggingCount(versionedObjectMetadata.getTagging().map(tagging -> tagging.length).orElse(0))
           .tagging(versionedObjectMetadata.getTagging().orElse(null))
           .userMetadata(versionedObjectMetadata.getUserMetadata())
           .parts(versionedObjectMetadata.getParts().orElse(null))
-          // The checksum is the one of the whole content, not of a range of it.
-          .checksum(Objects.isNull(contentRange) ? versionedObjectMetadata.getChecksum() : null)
           .objectLock(versionedObjectMetadata.getObjectLock())
           .customerEncryption(versionedObjectMetadata.getCustomerEncryption())
           .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
           .build();
     }
+  }
+
+  /**
+   * The content of a read of a version: all of it, the {@code Range} of the request, or the part that the
+   * {@code partNumber} of the request names. The answer carries the size, the content unless {@code metadataOnly},
+   * the {@code Content-Range}, the checksum, and the number of parts of a read of a part.
+   *
+   * <p>A part is counted from 1 in the order of the content, like the {@code x-amz-mp-parts-count} header that
+   * answers it counts them, so that a client that reads parts 1 to the count reads the whole object; the part
+   * numbers that the parts were uploaded with don't have to be consecutive. An object that wasn't uploaded in parts
+   * has a single part, which is all of its content, like Amazon S3 answers.
+   *
+   * @throws LocalS3RequestException {@code InvalidRequest} if the request carries both a range and a part number.
+   * @throws LocalS3Exception {@code InvalidPartNumber} if the object has no part of the part number.
+   */
+  private static GetObjectAns.GetObjectAnsBuilder content(Storage storage, VersionedObjectMetadata version,
+                                                          boolean metadataOnly, GetObjectOptions options) {
+    long fullSize = version.getSize();
+    GetObjectAns.GetObjectAnsBuilder answer = GetObjectAns.builder();
+    long start;
+    long contentLength;
+    ObjectChecksum checksum;
+    if (options.getPartNumber().isPresent()) {
+      if (options.getRange().isPresent()) {
+        throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
+            "Cannot specify both Range header and partNumber query parameter");
+      }
+      int partNumber = UploadAssertions.assertPartNumberIsValid(options.getPartNumber().get());
+      List<ObjectPartMetadata> parts = version.getParts().filter(list -> !list.isEmpty()).orElse(null);
+      if (Objects.isNull(parts)) {
+        if (partNumber != 1) {
+          throw new LocalS3RequestException(S3ErrorCode.InvalidPartNumber);
+        }
+        start = 0;
+        contentLength = fullSize;
+        checksum = version.getChecksum();
+      } else {
+        if (partNumber > parts.size()) {
+          throw new LocalS3RequestException(S3ErrorCode.InvalidPartNumber);
+        }
+        start = 0;
+        for (int i = 0; i < partNumber - 1; i++) {
+          start += parts.get(i).getSize();
+        }
+        ObjectPartMetadata part = parts.get(partNumber - 1);
+        contentLength = part.getSize();
+        // The checksum of the part, which is what the content read is, when the object has one of its algorithm.
+        ObjectChecksum objectChecksum = version.getChecksum();
+        ObjectChecksum partChecksum = part.getChecksum();
+        checksum = Objects.nonNull(objectChecksum) && Objects.nonNull(partChecksum)
+            && objectChecksum.getAlgorithm() == partChecksum.getAlgorithm() ? partChecksum : null;
+        answer.partsCount(parts.size());
+      }
+      // A read of a part is a partial content, even of the only part of an object; an empty part has no range.
+      if (contentLength > 0) {
+        answer.contentRange("bytes " + start + "-" + (start + contentLength - 1) + "/" + fullSize);
+      }
+    } else if (options.getRange().isPresent()) {
+      long[] range = options.getRange().get().resolve(fullSize);
+      start = range[0];
+      contentLength = range[1] - start + 1;
+      answer.contentRange("bytes " + start + "-" + range[1] + "/" + fullSize);
+      // The checksum is the one of the whole content, not of a range of it.
+      checksum = null;
+    } else {
+      start = 0;
+      contentLength = fullSize;
+      checksum = version.getChecksum();
+    }
+
+    if (!metadataOnly) {
+      answer.content(start == 0 && contentLength == fullSize
+          ? ObjectContentUtils.open(storage, version)
+          : ObjectContentUtils.open(storage, version, start, contentLength));
+    }
+    return answer.size(contentLength).checksum(checksum);
   }
 
   /**

@@ -70,6 +70,12 @@ public class GetObjectAns {
   private List<ObjectPartMetadata> parts;
 
   /**
+   * The number of parts that the object was uploaded in, which the {@code x-amz-mp-parts-count} header of a read of a
+   * part carries; {@code null} unless a part was read of an object uploaded in parts.
+   */
+  private Integer partsCount;
+
+  /**
    * The checksum that the version was stored with; {@code null} if it was stored without one, and for a range of
    * the content, which the checksum isn't the one of.
    */

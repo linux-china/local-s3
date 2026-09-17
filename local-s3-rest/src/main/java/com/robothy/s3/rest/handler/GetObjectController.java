@@ -43,6 +43,7 @@ class GetObjectController implements HttpRequestHandler {
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
+        .partNumber(RequestAssertions.assertPartNumberIsValidIfPresent(request))
         .preconditions(RequestUtils.extractPreconditions(request))
         .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
         .build();
@@ -71,6 +72,7 @@ class GetObjectController implements HttpRequestHandler {
 
       response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), getObjectAns.getSize())
           .putHeader("Accept-Ranges", "bytes");
+      ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_MP_PARTS_COUNT, getObjectAns.getPartsCount());
       SystemMetadataHeaders.addResponseHeaders(request, response, getObjectAns.getContentType(),
           getObjectAns.getSystemMetadata());
 
@@ -83,7 +85,7 @@ class GetObjectController implements HttpRequestHandler {
       CustomerEncryptionHeaders.addHeaders(response, getObjectAns.getCustomerEncryption());
       ServerSideEncryptionHeaders.addHeaders(response, getObjectAns.getServerSideEncryption(), false);
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {
-        // A client verifies the content it reads against it; a range has none.
+        // A client verifies the content it reads against it; a range has none, a part has its own.
         ChecksumHeaders.addHeaders(response, getObjectAns.getChecksum());
       }
     }

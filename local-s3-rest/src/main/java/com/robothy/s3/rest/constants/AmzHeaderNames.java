@@ -41,6 +41,12 @@ public class AmzHeaderNames {
    */
   public static final String X_AMZ_PART_NUMBER_MARKER = "x-amz-part-number-marker";
 
+  /**
+   * The number of parts of an object uploaded in parts, which a {@code GetObject} or {@code HeadObject} of a part
+   * answers.
+   */
+  public static final String X_AMZ_MP_PARTS_COUNT = "x-amz-mp-parts-count";
+
   public static final String X_AMZN_ERRORTYPE = "x-amzn-errortype";
 
   /**

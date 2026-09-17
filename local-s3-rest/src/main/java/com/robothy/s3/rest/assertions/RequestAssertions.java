@@ -125,6 +125,16 @@ public class RequestAssertions {
   }
 
   /**
+   * Assert that the {@code partNumber} query parameter, if the request carries one, is valid.
+   *
+   * @param request HTTP request.
+   * @return the part number; {@code null} if the request carries none.
+   */
+  public static Integer assertPartNumberIsValidIfPresent(HttpRequest request) {
+    return request.parameter("partNumber").isPresent() ? assertPartNumberIsValid(request) : null;
+  }
+
+  /**
    * Assert that the uploadId is in the query parameters.
    *
    * @param request HTTP request.
