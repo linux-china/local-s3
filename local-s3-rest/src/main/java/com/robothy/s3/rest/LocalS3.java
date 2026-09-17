@@ -344,8 +344,10 @@ public class LocalS3 implements AutoCloseable {
 
     LocalS3Manager createLocalS3Manager() {
         if (config.mode() == LocalS3Mode.IN_MEMORY) {
-            log.info("Created in-memory LocalS3 manager.");
-            return LocalS3Manager.createInMemoryS3Manager(config.dataPath(), config.initialDataCacheEnabled());
+            log.info("Created in-memory LocalS3 manager, holding at most {} bytes of content.",
+                    config.maxInMemoryBytes());
+            return LocalS3Manager.createInMemoryS3Manager(config.dataPath(), config.initialDataCacheEnabled(),
+                    config.maxInMemoryBytes());
         } else {
             log.info("Created file system LocalS3 manager with the {} persistence policy.",
                     config.persistencePolicy());

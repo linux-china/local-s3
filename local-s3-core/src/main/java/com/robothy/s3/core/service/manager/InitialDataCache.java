@@ -387,7 +387,18 @@ final class InitialDataCache implements CopyBudget {
      * @return a {@code LayeredStorage} to make sure the real data won't be polluted.
      */
     Storage storage() {
-      return Storage.createLayered(Storage.createInMemory(), storage);
+      return storage(Long.MAX_VALUE);
+    }
+
+    /**
+     * Create a {@code LayeredStorage} with the cached storage as backend and a new {@code InMemoryStorage} of at most
+     * {@code maxInMemoryBytes} as frontend.
+     *
+     * @param maxInMemoryBytes the max number of bytes of the frontend.
+     * @return a {@code LayeredStorage} to make sure the real data won't be polluted.
+     */
+    Storage storage(long maxInMemoryBytes) {
+      return Storage.createLayered(Storage.createInMemory(maxInMemoryBytes), storage);
     }
 
     /**

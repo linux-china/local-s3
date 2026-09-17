@@ -39,6 +39,23 @@ public interface LocalS3Manager {
   }
 
   /**
+   * Create an in-memory implementation of {@linkplain LocalS3Manager} whose content takes a bounded amount of heap.
+   * Storing content beyond {@code maxInMemoryBytes}, e.g. an object or a part of a multipart upload, fails with
+   * {@linkplain com.robothy.s3.core.exception.TotalSizeExceedException}, answered as {@code 507 InsufficientStorage},
+   * rather than running the JVM out of heap. The initial data read from {@code dataDirectory} doesn't count.
+   *
+   * @param dataDirectory the initial data; {@code null} for none.
+   * @param enabledInitialDataCache whether the initial data is cached.
+   * @param maxInMemoryBytes the max number of bytes of the content stored in the heap, positive;
+   *     {@code Long.MAX_VALUE} for no limit.
+   * @return an instance of in-memory implementation.
+   */
+  static LocalS3Manager createInMemoryS3Manager(Path dataDirectory, boolean enabledInitialDataCache,
+      long maxInMemoryBytes) {
+    return new InMemoryLocalS3Manager(dataDirectory, enabledInitialDataCache, maxInMemoryBytes);
+  }
+
+  /**
    * Drop the initial data that the {@linkplain #createInMemoryS3Manager(Path, boolean) in-memory managers}
    * cached, releasing the heap it holds. The cache keeps the data of a bounded number of data paths; call
    * this to release them earlier, e.g. when a test class that used a data path has finished. The data of a

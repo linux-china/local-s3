@@ -54,6 +54,12 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   private static final InitialDataCache cache = new InitialDataCache();
 
   /**
+   * The max number of bytes that the content stored in the heap takes, i.e. the objects and parts uploaded to the
+   * service; the initial data read from the disk, and its copies in the {@linkplain #cache}, don't count.
+   */
+  private final long maxInMemoryBytes;
+
+  /**
    * The metadata and the storage of the service.
    */
   private record Data(LocalS3Metadata metadata, Storage storage) {
@@ -64,7 +70,19 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    * @param initialDataPath initial data path.
    */
   InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache) {
-    this(initialDataPath, enableInitialDataCache, cache);
+    this(initialDataPath, enableInitialDataCache, Long.MAX_VALUE);
+  }
+
+  /**
+   * Create a {@linkplain InMemoryLocalS3Manager} with initial data, whose uploaded content takes at most
+   * {@code maxInMemoryBytes} of heap.
+   *
+   * @param initialDataPath initial data path.
+   * @param enableInitialDataCache whether the initial data is cached.
+   * @param maxInMemoryBytes the max number of bytes of the content stored in the heap, positive.
+   */
+  InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, long maxInMemoryBytes) {
+    this(initialDataPath, enableInitialDataCache, cache, maxInMemoryBytes);
   }
 
   /**
@@ -75,6 +93,15 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    * @param cache the cache of the initial data.
    */
   InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
+    this(initialDataPath, enableInitialDataCache, cache, Long.MAX_VALUE);
+  }
+
+  private InMemoryLocalS3Manager(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache,
+      long maxInMemoryBytes) {
+    if (maxInMemoryBytes <= 0) {
+      throw new IllegalArgumentException("maxInMemoryBytes must be positive.");
+    }
+    this.maxInMemoryBytes = maxInMemoryBytes;
     this.initialData = () -> initialData(initialDataPath, enableInitialDataCache, cache);
     this.data = initialData.get();
     forgetChanges();
@@ -90,6 +117,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    * @param initialStorage initial storage.
    */
   InMemoryLocalS3Manager(LocalS3Metadata initialMetadata, Storage initialStorage) {
+    this.maxInMemoryBytes = Long.MAX_VALUE;
     this.initialData = () -> new Data(new LocalS3Metadata(), Storage.createInMemory());
     this.data = new Data(Optional.ofNullable(initialMetadata).orElseGet(LocalS3Metadata::new),
         Optional.ofNullable(initialStorage).orElseGet(Storage::createInMemory));
@@ -100,7 +128,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
 
   private Data initialData(Path initialDataPath, boolean enableInitialDataCache, InitialDataCache cache) {
     if (Objects.isNull(initialDataPath) || !Files.exists(initialDataPath)) {
-      return new Data(new LocalS3Metadata(), Storage.createInMemory());
+      return new Data(new LocalS3Metadata(), Storage.createInMemory(maxInMemoryBytes));
     }
 
     String absPath = initialDataPath.toAbsolutePath().toString();
@@ -113,10 +141,10 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
         return new InitialDataCache.CacheValue(metadata, Storage.createCopyOnAccess(persistent, cache));
       });
       // Each call makes a copy of the metadata and a storage of its own over the cached one.
-      return new Data(cacheValue.metadata(), cacheValue.storage());
+      return new Data(cacheValue.metadata(), cacheValue.storage(maxInMemoryBytes));
     }
     return new Data(loadS3Metadata(initialDataPath),
-        Storage.createLayered(Storage.createInMemory(), Storage.createReadOnlyPersistent(storagePath)));
+        Storage.createLayered(Storage.createInMemory(maxInMemoryBytes), Storage.createReadOnlyPersistent(storagePath)));
   }
 
   @Override

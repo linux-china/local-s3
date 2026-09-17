@@ -91,6 +91,7 @@ class LocalS3AutoConfigurationTest {
         "local-s3.data-path=" + dataPath,
         "local-s3.buckets=bucket-a, bucket-b",
         "local-s3.initial-data-cache-enabled=false",
+        "local-s3.in-memory.max-size=256MB",
         "local-s3.composite-multipart-etags=false",
         "local-s3.virtual-host-domains=s3.local,minio",
         "local-s3.credentials.access-key-id=spring-key",
@@ -114,6 +115,7 @@ class LocalS3AutoConfigurationTest {
       assertEquals(dataPath, config.dataPath());
       assertEquals(List.of("bucket-a", "bucket-b"), config.buckets());
       assertFalse(config.initialDataCacheEnabled());
+      assertEquals(256L * 1024 * 1024, config.maxInMemoryBytes());
       assertFalse(config.compositeMultipartEtags());
       assertEquals(List.of("s3.local", "minio"), config.virtualHostDomains());
       assertEquals("spring-key", config.accessKeyId());

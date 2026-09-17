@@ -69,7 +69,7 @@ class LocalS3ConfigTest {
     assertThrows(IllegalArgumentException.class, () -> withPort(valid, 65536));
     assertThrows(IllegalArgumentException.class, () -> new LocalS3Config(valid.bindHost(), valid.port(),
         valid.dataPath(), valid.mode(), valid.persistencePolicy(), valid.buckets(), valid.changeListeners(), valid.changeListenerExecutor(),
-        valid.initialDataCacheEnabled(), valid.daemonThreads(), valid.registerShutdownHook(),
+        valid.initialDataCacheEnabled(), valid.maxInMemoryBytes(), valid.daemonThreads(), valid.registerShutdownHook(),
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
         valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
@@ -77,7 +77,7 @@ class LocalS3ConfigTest {
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
-        valid.changeListeners(), valid.changeListenerExecutor(), valid.initialDataCacheEnabled(), valid.daemonThreads(),
+        valid.changeListeners(), valid.changeListenerExecutor(), valid.initialDataCacheEnabled(), valid.maxInMemoryBytes(), valid.daemonThreads(),
         valid.registerShutdownHook(), valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(),
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
@@ -126,7 +126,7 @@ class LocalS3ConfigTest {
   private static LocalS3Config withPort(LocalS3Config config, int port) {
     return new LocalS3Config(config.bindHost(), port, config.dataPath(), config.mode(), config.persistencePolicy(), config.buckets(),
         config.changeListeners(), config.changeListenerExecutor(),
-        config.initialDataCacheEnabled(), config.daemonThreads(), config.registerShutdownHook(),
+        config.initialDataCacheEnabled(), config.maxInMemoryBytes(), config.daemonThreads(), config.registerShutdownHook(),
         config.nettyParentEventGroupThreadNum(), config.nettyChildEventGroupThreadNum(), config.s3ExecutorThreadNum(),
         config.virtualThreads(), config.accessKeyId(), config.secretAccessKey(), config.maxRequestBodySize(),
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),

@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.router.Router;
+import com.robothy.s3.core.exception.TotalSizeExceedException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.utils.ErrorResponses;
 import io.netty.buffer.ByteBuf;
@@ -343,7 +344,10 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    */
   static void logFailure(HttpRequest request, StreamingHttpResponse response, Exception e) {
     int status = response.getStatus() == null ? HttpResponseStatus.OK.code() : response.getStatus().code();
-    if (status == HttpResponseStatus.NOT_IMPLEMENTED.code()) {
+    if (e instanceof TotalSizeExceedException) {
+      // A limit that the configuration sets, not a failure of the service; the message tells how to raise it.
+      log.warn("{} {} answered {}: {}", request.getMethod(), request.getPath(), status, e.getMessage());
+    } else if (status == HttpResponseStatus.NOT_IMPLEMENTED.code()) {
       log.warn("{} {} is not implemented: {}", request.getMethod(), request.getPath(), e.toString());
     } else if (status >= 500) {
       log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);

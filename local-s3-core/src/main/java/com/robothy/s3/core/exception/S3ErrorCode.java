@@ -25,6 +25,11 @@ public enum S3ErrorCode {
   IncompleteBody("IncompleteBody", 400, "You did not provide the number of bytes specified by the Content-Length HTTP header"),
   IncorrectNumberOfFilesInPostRequest("IncorrectNumberOfFilesInPostRequest", 400, "POST requires exactly one file upload per request."),
   //InlineDataTooLarge("InlineDataTooLarge", 400, "Inline data exceeds the maximum allowed size."),
+  /**
+   * Not an error of Amazon S3: the in-memory storage of LocalS3 is full. {@code 507 Insufficient Storage} rather than
+   * {@code 503 ServiceUnavailable}, which clients retry in vain.
+   */
+  InsufficientStorage("InsufficientStorage", 507, "The in-memory storage of LocalS3 is full."),
   InternalError("InternalError", 500, "We encountered an internal error. Please try again."),
   InvalidAccessKeyId("InvalidAccessKeyId", 403, "The AWS access key ID you provided does not exist in our records."),
   //InvalidAddressingHeader("InvalidAddressingHeader", 400, "You must specify the Anonymous role."),

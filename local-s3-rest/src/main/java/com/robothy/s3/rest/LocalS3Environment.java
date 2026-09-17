@@ -33,6 +33,14 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_PERSISTENCE_POLICY = "LOCAL_S3_PERSISTENCE_POLICY";
 
+  /**
+   * The max number of bytes of heap that the content of an {@code IN_MEMORY} service takes, e.g. {@code 536870912} or
+   * {@code 512m}, with an optional {@code k}, {@code m} or {@code g} suffix.
+   *
+   * @see LocalS3Builder#maxInMemoryBytes(long)
+   */
+  public static final String LOCAL_S3_IN_MEMORY_MAX_BYTES = "LOCAL_S3_IN_MEMORY_MAX_BYTES";
+
   public static final String LOCAL_S3_VIRTUAL_THREADS = "LOCAL_S3_VIRTUAL_THREADS";
 
   public static final String LOCAL_S3_COMPOSITE_MULTIPART_ETAGS = "LOCAL_S3_COMPOSITE_MULTIPART_ETAGS";
@@ -77,6 +85,8 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
     variable(variables, LOCAL_S3_PERSISTENCE_POLICY)
         .ifPresent(policy -> builder.persistencePolicy(parsePersistencePolicy(policy)));
+    variable(variables, LOCAL_S3_IN_MEMORY_MAX_BYTES)
+        .ifPresent(bytes -> builder.maxInMemoryBytes(parseMaxInMemoryBytes(bytes)));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
         .ifPresent(virtual -> builder.virtualThreads(Boolean.parseBoolean(virtual)));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
@@ -129,6 +139,32 @@ public final class LocalS3Environment {
           + ". Valid values are " + Arrays.toString(LocalS3Mode.values()) + ".");
     }
     return LocalS3Mode.valueOf(modeName.toUpperCase(Locale.ROOT));
+  }
+
+  /**
+   * Parse a positive number of bytes with an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}.
+   */
+  static long parseMaxInMemoryBytes(String bytes) {
+    String value = bytes.trim().toLowerCase(Locale.ROOT);
+    long multiplier = switch (value.isEmpty() ? ' ' : value.charAt(value.length() - 1)) {
+      case 'k' -> 1024L;
+      case 'm' -> 1024L * 1024;
+      case 'g' -> 1024L * 1024 * 1024;
+      default -> 1;
+    };
+    if (multiplier != 1) {
+      value = value.substring(0, value.length() - 1).trim();
+    }
+    try {
+      long parsed = Math.multiplyExact(Long.parseLong(value), multiplier);
+      if (parsed > 0) {
+        return parsed;
+      }
+    } catch (NumberFormatException | ArithmeticException e) {
+      // Rejected below.
+    }
+    throw new IllegalArgumentException("\"" + bytes + "\" is not a valid " + LOCAL_S3_IN_MEMORY_MAX_BYTES
+        + "; use a positive number of bytes, e.g. 536870912 or 512m.");
   }
 
   private static int parsePort(String port) {

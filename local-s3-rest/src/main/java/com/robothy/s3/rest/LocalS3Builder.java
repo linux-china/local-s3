@@ -48,6 +48,8 @@ public class LocalS3Builder {
 
     private boolean initialDataCacheEnabled = true;
 
+    private long maxInMemoryBytes = LocalS3Config.DEFAULT_MAX_IN_MEMORY_BYTES;
+
     private boolean daemonThreads = true;
 
     private boolean registerShutdownHook = true;
@@ -205,6 +207,27 @@ public class LocalS3Builder {
      */
     public LocalS3Builder initialDataCacheEnabled(boolean enabled) {
         this.initialDataCacheEnabled = enabled;
+        return this;
+    }
+
+    /**
+     * Set the max number of bytes of heap that the content of an {@code IN_MEMORY} service takes: the objects and the
+     * parts of multipart uploads stored in it. Storing content beyond the limit is answered with
+     * {@code 507 InsufficientStorage}, whose message suggests the {@code PERSISTENCE} mode, instead of running the JVM
+     * that embeds the service, e.g. an application or an IDE, out of heap. The space of deleted objects, and of a
+     * {@linkplain LocalS3#reset() reset} service, is available again. The initial data read from the
+     * {@linkplain #dataPath(String) data path} doesn't count; its copies are bounded by
+     * {@code LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES}. A {@code PERSISTENCE} service ignores the limit.
+     *
+     * <p>Default value is {@linkplain LocalS3Config#DEFAULT_MAX_IN_MEMORY_BYTES}, i.e. half the max heap;
+     * {@code Long.MAX_VALUE} for no limit.
+     *
+     * @param maxInMemoryBytes max number of bytes, positive.
+     * @return builder.
+     */
+    public LocalS3Builder maxInMemoryBytes(long maxInMemoryBytes) {
+        LocalS3Config.requireMaxInMemoryBytes(maxInMemoryBytes);
+        this.maxInMemoryBytes = maxInMemoryBytes;
         return this;
     }
 
@@ -516,7 +539,8 @@ public class LocalS3Builder {
      * embedded service or a test keeps the defaults of the builder. The variables are
      * {@linkplain LocalS3Environment#LOCAL_S3_PORT}, {@linkplain LocalS3Environment#LOCAL_S3_HOST},
      * {@linkplain LocalS3Environment#LOCAL_S3_MODE},
-     * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_IN_MEMORY_MAX_BYTES},
+     * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_CERT},
      * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#AWS_BUCKETS},
@@ -552,7 +576,7 @@ public class LocalS3Builder {
      */
     public LocalS3Config buildConfig() {
         return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, changeListeners,
-                changeListenerExecutor, initialDataCacheEnabled, daemonThreads, registerShutdownHook,
+                changeListenerExecutor, initialDataCacheEnabled, maxInMemoryBytes, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,

@@ -61,6 +61,8 @@ public class LocalS3Properties {
    */
   private List<String> virtualHostDomains = new ArrayList<>();
 
+  private final InMemory inMemory = new InMemory();
+
   private final Credentials credentials = new Credentials();
 
   private final Threads threads = new Threads();
@@ -143,6 +145,10 @@ public class LocalS3Properties {
     this.virtualHostDomains = virtualHostDomains;
   }
 
+  public InMemory getInMemory() {
+    return inMemory;
+  }
+
   public Credentials getCredentials() {
     return credentials;
   }
@@ -161,6 +167,27 @@ public class LocalS3Properties {
 
   public Events getEvents() {
     return events;
+  }
+
+  /**
+   * The heap that an {@code IN_MEMORY} service takes.
+   */
+  public static class InMemory {
+
+    /**
+     * Max size of the content, i.e. the objects and parts, that an IN_MEMORY service stores in the heap; storing more
+     * is answered with 507 InsufficientStorage. Defaults to half the max heap.
+     */
+    private DataSize maxSize;
+
+    public DataSize getMaxSize() {
+      return maxSize;
+    }
+
+    public void setMaxSize(DataSize maxSize) {
+      this.maxSize = maxSize;
+    }
+
   }
 
   /**

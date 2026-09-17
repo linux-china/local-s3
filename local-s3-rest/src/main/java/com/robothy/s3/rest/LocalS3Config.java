@@ -27,6 +27,8 @@ import org.jspecify.annotations.Nullable;
  * @param changeListeners receive the changes that the services commit; empty for none.
  * @param changeListenerExecutor runs the change listeners.
  * @param initialDataCacheEnabled whether the initial data of an {@code IN_MEMORY} service is cached.
+ * @param maxInMemoryBytes the max number of bytes of heap that the content stored by an {@code IN_MEMORY} service
+ *     takes, positive; ignored by a {@code PERSISTENCE} service.
  * @param daemonThreads whether the threads that serve the requests are daemon threads.
  * @param registerShutdownHook whether starting the service registers a JVM shutdown hook.
  * @param nettyParentEventGroupThreadNum the number of threads that accept connections; {@code 0} for Netty's default.
@@ -57,6 +59,7 @@ public record LocalS3Config(
     List<S3ChangeListener> changeListeners,
     Executor changeListenerExecutor,
     boolean initialDataCacheEnabled,
+    long maxInMemoryBytes,
     boolean daemonThreads,
     boolean registerShutdownHook,
     int nettyParentEventGroupThreadNum,
@@ -79,6 +82,14 @@ public record LocalS3Config(
    * of more than 2 GiB is kept in a temporary file only, rather than memory-mapped.
    */
   public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 5L * 1024 * 1024 * 1024;
+
+  /**
+   * Default max number of bytes(half the max heap) that the content stored by an {@code IN_MEMORY} service takes, so
+   * that uploading more than the heap holds is answered with {@code 507 InsufficientStorage} rather than taking the
+   * JVM that embeds the service down with an {@code OutOfMemoryError}.
+   */
+  public static final long DEFAULT_MAX_IN_MEMORY_BYTES = Runtime.getRuntime().maxMemory() == Long.MAX_VALUE
+      ? Long.MAX_VALUE : Runtime.getRuntime().maxMemory() / 2;
 
   /**
    * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap.
@@ -136,6 +147,7 @@ public record LocalS3Config(
     Objects.requireNonNull(changeListenerExecutor, "changeListenerExecutor");
     requireThat((accessKeyId == null) == (secretAccessKey == null),
         "accessKeyId and secretAccessKey must be configured together.");
+    requireMaxInMemoryBytes(maxInMemoryBytes);
     requireMaxRequestBodySize(maxRequestBodySize);
     requireRequestBodyFileThreshold(requestBodyFileThreshold);
     requireMaxRequestHeaderSize(maxRequestHeaderSize);
@@ -169,6 +181,7 @@ public record LocalS3Config(
   public String toString() {
     return "LocalS3Config[bindHost=" + bindHost + ", port=" + port + ", dataPath=" + dataPath + ", mode=" + mode
         + ", buckets=" + buckets + ", initialDataCacheEnabled=" + initialDataCacheEnabled
+        + ", maxInMemoryBytes=" + maxInMemoryBytes
         + ", daemonThreads=" + daemonThreads + ", registerShutdownHook=" + registerShutdownHook
         + ", nettyParentEventGroupThreadNum=" + nettyParentEventGroupThreadNum
         + ", nettyChildEventGroupThreadNum=" + nettyChildEventGroupThreadNum
@@ -184,6 +197,10 @@ public record LocalS3Config(
   /*
    * The checks that LocalS3Builder applies as soon as a value is set, so that a wrong value fails where it is set.
    */
+
+  static void requireMaxInMemoryBytes(long maxInMemoryBytes) {
+    requireThat(maxInMemoryBytes > 0, "maxInMemoryBytes must be positive.");
+  }
 
   static void requireMaxRequestBodySize(long maxRequestBodySize) {
     requireThat(maxRequestBodySize > 0 && maxRequestBodySize <= DEFAULT_MAX_REQUEST_BODY_SIZE,

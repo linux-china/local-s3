@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.exception.TotalSizeExceedException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -187,6 +189,35 @@ class InMemoryLocalS3ManagerTest {
     } finally {
       TestFiles.deleteDirectory(dataPath);
     }
+  }
+
+  /**
+   * Content beyond the max in-memory bytes is rejected with InsufficientStorage rather than filling the heap, and the
+   * space of deleted objects, or of a reset service, is available again.
+   */
+  @Test
+  void contentBeyondTheMaxInMemoryBytesIsRejected() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager(null, false, 10);
+    manager.bucketService().createBucket("bucket");
+    ObjectService objectService = manager.objectService();
+    putObject(objectService, "bucket", "a.txt", "0123456789");
+
+    TotalSizeExceedException exceeded = assertThrows(TotalSizeExceedException.class,
+        () -> putObject(objectService, "bucket", "b.txt", "X"));
+    assertEquals(S3ErrorCode.InsufficientStorage, exceeded.getS3ErrorCode());
+    assertEquals(507, exceeded.getS3ErrorCode().httpStatus());
+    assertTrue(exceeded.getMessage().contains("PERSISTENCE"), exceeded.getMessage());
+    assertThrows(Exception.class,
+        () -> objectService.getObject("bucket", "b.txt", GetObjectOptions.builder().build()),
+        "The rejected object isn't created.");
+
+    objectService.deleteObject("bucket", "a.txt");
+    putObject(objectService, "bucket", "b.txt", "0123456789");
+
+    manager.reset();
+    manager.bucketService().createBucket("bucket");
+    assertDoesNotThrow(() -> putObject(objectService, "bucket", "c.txt", "0123456789"));
+    assertThrows(IllegalArgumentException.class, () -> LocalS3Manager.createInMemoryS3Manager(null, false, 0));
   }
 
   @Test

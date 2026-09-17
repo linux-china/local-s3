@@ -62,6 +62,7 @@ imported either.
 | Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `compositeMultipartEtags(false)` restores the old one |
 | Bucket names | not validated | the naming rules of Amazon S3; invalid names fail with `InvalidBucketName` |
 | Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
+| Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`maxInMemoryBytes`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
 
 `LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
 
@@ -81,6 +82,10 @@ imported either.
 
 ### Added
 
++ **Bounded in-memory storage**: `maxInMemoryBytes(bytes)`, `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and
+  `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
+  heap by default. An upload beyond it is answered with `507 InsufficientStorage`, whose message suggests the
+  `PERSISTENCE` mode, instead of an `OutOfMemoryError` that takes the embedding application or IDE down.
 + **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and
   `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of a request is received.
 + **STS temporary credentials**: a stateless STS endpoint on the same port answers `AssumeRole`, `GetSessionToken` and
