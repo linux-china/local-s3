@@ -39,7 +39,7 @@ public class LocalS3 implements AutoCloseable {
     /**
      * The directory in the storage directory that large request bodies are buffered in in {@code PERSISTENCE} mode.
      */
-    static final String REQUEST_BODY_DIRECTORY = ".request-bodies";
+    static final String REQUEST_BODY_DIRECTORY = LocalS3Manager.REQUEST_BODY_DIRECTORY;
 
     private final LocalS3Config config;
 

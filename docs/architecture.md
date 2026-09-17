@@ -130,6 +130,13 @@ before. It reads a snapshot of the metadata of that moment, so it is correct whi
 opening a directory doesn't wait for its files to be listed. It deletes nothing if the metadata references no content
 at all, or if the directory still holds `*.bucket.meta` files of a LocalS3 before 2.5.
 
+The same sweep deletes the temporary files that a process which died left behind, `.storage/.<id>.<uuid>.tmp` and
+`.storage/.request-bodies/*.tmp`, under the same rule of a minute; nothing references them, so they are deleted whatever
+the metadata holds. Neither a storage nor a server deletes them when it is created, since another service of the JVM may
+be writing them over the same data directory. A request body file that is renamed into place is marked as modified
+first, since a rename keeps the time its upload began: every content file is last modified when it was stored, or
+later.
+
 ### Change events
 
 The changes an operation publishes are held back until the outermost change of the thread has ended. A change that was

@@ -27,7 +27,6 @@ import io.netty.handler.codec.http.TooLongHttpHeaderException;
 import io.netty.handler.codec.http.TooLongHttpLineException;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -211,19 +210,17 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   }
 
   /**
-   * Prepare a directory for the temporary body files: create it if it doesn't exist, and delete the body files that a
-   * process which died while it received requests left behind in it.
+   * Prepare a directory for the temporary body files: create it if it doesn't exist.
+   *
+   * <p>The body files in it are kept: another server of the JVM may be receiving them, over the same data directory.
+   * Those that a process which died left behind in the directory of a data directory are deleted when the store of
+   * the directory is opened, see {@code UnreferencedContentSweeper}.
    *
    * @param directory the directory.
-   * @throws IOException if the directory can't be created or cleaned.
+   * @throws IOException if the directory can't be created.
    */
   public static void prepareBodyFileDirectory(Path directory) throws IOException {
     Files.createDirectories(directory);
-    try (DirectoryStream<Path> leftovers = Files.newDirectoryStream(directory, BODY_FILE_PREFIX + "*.tmp")) {
-      for (Path leftover : leftovers) {
-        Files.deleteIfExists(leftover);
-      }
-    }
   }
 
   @Override

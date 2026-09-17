@@ -134,6 +134,33 @@ class UnreferencedContentSweeperTest {
   }
 
   /**
+   * The temporary files of the writes of the storage and of the request bodies are never referenced, so the ones that
+   * were last modified long enough before are deleted, even from a store whose metadata references nothing.
+   */
+  @Test
+  void deletesTheTemporaryFilesThatAProcessLeftBehind(@TempDir Path dataPath) throws Exception {
+    withManager(dataPath, manager -> manager.bucketService().createBucket(BUCKET));
+    Path storage = dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY);
+    Path requestBodies = Files.createDirectories(storage.resolve(LocalS3Manager.REQUEST_BODY_DIRECTORY));
+    Path oldWrite = file(storage.resolve(".42.0000.tmp"), LONG_AGO);
+    Path recentWrite = file(storage.resolve(".43.0000.tmp"), Instant.now().minus(Duration.ofSeconds(10)));
+    Path oldBody = file(requestBodies.resolve("locals3-body-1.tmp"), LONG_AGO);
+    Path recentBody = file(requestBodies.resolve("locals3-body-2.tmp"), Instant.now().minus(Duration.ofSeconds(10)));
+    Path unrelated = file(requestBodies.resolve("notes.txt"), LONG_AGO);
+    Path orphan = contentFile(storage, ORPHAN_ID, LONG_AGO);
+
+    try (LocalS3Store store = LocalS3Store.persistent(dataPath)) {
+      assertEquals(new UnreferencedContentSweeper.Result(0, 0, 2), store.sweeper().await());
+    }
+    assertFalse(Files.exists(oldWrite));
+    assertFalse(Files.exists(oldBody));
+    assertTrue(Files.exists(recentWrite), "A write that is less than a minute old may still be in progress.");
+    assertTrue(Files.exists(recentBody));
+    assertTrue(Files.exists(unrelated), "Only the temporary files are deleted.");
+    assertTrue(Files.exists(orphan), "A store that references nothing keeps its content files.");
+  }
+
+  /**
    * A holder that shares the store of a directory that another holder has open starts no sweep: the other holder may
    * be storing content that its metadata doesn't reference yet. Neither does a store that was just created.
    */
@@ -150,11 +177,14 @@ class UnreferencedContentSweeperTest {
       assertEquals(1, first.sweeper().await().files());
 
       Path inFlight = contentFile(storage, ORPHAN_ID + 1, LONG_AGO);
+      Path bodyInFlight = file(Files.createDirectories(storage.resolve(LocalS3Manager.REQUEST_BODY_DIRECTORY))
+          .resolve("locals3-body-1.tmp"), LONG_AGO);
       try (LocalS3Store second = LocalS3Store.persistent(dataPath)) {
         assertSame(first, second);
         assertEquals(1, second.sweeper().await().files(), "Sharing the store starts no other sweep.");
       }
       assertTrue(Files.exists(inFlight));
+      assertTrue(Files.exists(bodyInFlight));
     }
   }
 
@@ -179,6 +209,12 @@ class UnreferencedContentSweeperTest {
       manager.objectService().putObject(BUCKET, "put.txt", content("Hello"));
     });
     ageContentFiles(dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY));
+  }
+
+  private static Path file(Path file, Instant lastModified) throws IOException {
+    Files.writeString(file, "partial");
+    Files.setLastModifiedTime(file, FileTime.from(lastModified));
+    return file;
   }
 
   private static Path contentFile(Path storage, long id, Instant lastModified) throws IOException {

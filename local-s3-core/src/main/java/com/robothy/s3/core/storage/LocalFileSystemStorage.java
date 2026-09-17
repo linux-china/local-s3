@@ -5,10 +5,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -33,9 +34,10 @@ import lombok.extern.slf4j.Slf4j;
 class LocalFileSystemStorage implements Storage {
 
   /**
-   * Suffix of the temporary files that objects are written to.
+   * Suffix of the temporary files that objects are written to, which are named {@code .<id>.<uuid>.tmp} in the
+   * directory.
    */
-  private static final String TEMP_FILE_SUFFIX = ".tmp";
+  static final String TEMP_FILE_SUFFIX = ".tmp";
 
   private final Path directory;
 
@@ -43,8 +45,11 @@ class LocalFileSystemStorage implements Storage {
 
   /**
    * Construct a writable {@linkplain LocalFileSystemStorage} instance. The directory is created if it doesn't exist,
-   * the temporary files that a process which died left behind are deleted, and the object files of the flat layout of
-   * a LocalS3 before 2.5 are moved into their subdirectories.
+   * and the object files of the flat layout of a LocalS3 before 2.5 are moved into their subdirectories.
+   *
+   * <p>The temporary files of the directory are kept: another service of the JVM may be writing them, over the same
+   * data directory. Those that a process which died left behind are deleted by {@linkplain UnreferencedContentSweeper},
+   * when no service of the JVM uses the directory.
    *
    * @param dataPath the path is where data stores in.
    */
@@ -64,7 +69,6 @@ class LocalFileSystemStorage implements Storage {
     this.readOnly = readOnly;
     if (!readOnly) {
       PathUtils.createDirectoryIfNotExist(directory);
-      deleteTempFiles();
       moveFlatObjectFilesIntoSubdirectories();
     }
   }
@@ -97,11 +101,16 @@ class LocalFileSystemStorage implements Storage {
    * Store the content of a file by renaming it to the object file, so that its content isn't written a second
    * time. A file that can't be renamed atomically, e.g. because it is on another file system, or because Windows
    * refuses to rename a file that is memory-mapped, is copied instead, like a stream.
+   *
+   * <p>The file is marked as modified before it is renamed, since a rename keeps the time the file was last written,
+   * e.g. when its upload began. Every object file is then last modified when it was stored, or later, which is what
+   * {@linkplain UnreferencedContentSweeper} relies on to keep the files stored after it read the metadata.
    */
   @Override
   public Long put(Long id, Path file) {
     ensureWritable();
     try {
+      Files.setLastModifiedTime(file, FileTime.from(Instant.now()));
       Files.move(file, createObjectDirectory(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       deleteFlatObjectFile(id);
       return id;
@@ -249,19 +258,6 @@ class LocalFileSystemStorage implements Storage {
     if (moved > 0) {
       log.info("Moved {} object files of {} into subdirectories in {} ms.", moved, directory,
           (System.nanoTime() - start) / 1_000_000);
-    }
-  }
-
-  /**
-   * Delete the temporary files left behind by a process that died while writing objects.
-   */
-  private void deleteTempFiles() {
-    try (DirectoryStream<Path> tempFiles = Files.newDirectoryStream(directory, ".*" + TEMP_FILE_SUFFIX)) {
-      for (Path tempFile : tempFiles) {
-        Files.deleteIfExists(tempFile);
-      }
-    } catch (IOException e) {
-      throw new UncheckedIOException("Failed to delete the temporary files in " + directory + ".", e);
     }
   }
 

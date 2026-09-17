@@ -12,6 +12,14 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import com.robothy.s3.core.util.IdUtils;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,14 +48,57 @@ class LocalFileSystemStorageTest {
     TestFiles.deleteDirectory(directory);
   }
 
+  /**
+   * Creating a storage doesn't delete the temporary files of its directory: they may be the writes in progress of
+   * another service of the JVM over the same data directory. The files that a process which died left behind are deleted
+   * by {@linkplain UnreferencedContentSweeper}, once no service of the JVM uses the directory.
+   */
   @Test
-  void deletesLeftoverTempFilesOnCreation() throws IOException {
-    Path leftover = Files.writeString(directory.resolve(".42." + "0000" + ".tmp"), "partial");
+  void keepsTheTempFilesOfAWriteInProgressOnCreation() throws Exception {
+    Storage storage = Storage.createPersistent(directory);
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch proceed = new CountDownLatch(1);
+    InputStream slow = new InputStream() {
+      private int sent;
+
+      @Override
+      public int read() throws IOException {
+        if (sent == 1) {
+          started.countDown();
+          try {
+            proceed.await();
+          } catch (InterruptedException e) {
+            throw new IOException(e);
+          }
+        }
+        return sent < 5 ? "Hello".charAt(sent++) : -1;
+      }
+    };
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<Long> put = executor.submit(() -> storage.put(42L, slow));
+      assertTrue(started.await(10, TimeUnit.SECONDS));
+
+      Storage.createPersistent(directory);
+      proceed.countDown();
+
+      assertEquals(42L, put.get(10, TimeUnit.SECONDS));
+      assertArrayEquals("Hello".getBytes(), storage.getBytes(42L));
+    } finally {
+      proceed.countDown();
+      executor.shutdownNow();
+    }
+    Path leftover = Files.writeString(directory.resolve(".43.0000.tmp"), "partial");
+    Storage.createPersistent(directory);
+    assertTrue(Files.exists(leftover));
+  }
+
+  @Test
+  void movesTheObjectFilesOfTheFlatLayoutOnCreation() throws IOException {
     Path object = Files.writeString(directory.resolve("42"), "complete");
 
     Storage storage = Storage.createPersistent(directory);
 
-    assertFalse(Files.exists(leftover));
     assertArrayEquals("complete".getBytes(), storage.getBytes(42L));
     assertEquals(List.of(objectPath(storage, 42L)), listFiles(), "The object file of the flat layout is moved.");
     assertFalse(Files.exists(object));
@@ -135,9 +186,15 @@ class LocalFileSystemStorageTest {
     Storage storage = Storage.createPersistent(directory);
     Path file = Files.writeString(directory.resolve(".body.tmp"), "Hello");
 
+    Files.setLastModifiedTime(file, FileTime.from(Instant.now().minus(Duration.ofHours(1))));
+    Instant beforePut = Instant.now().minusSeconds(2);
+
     Long id = storage.put(file);
 
     assertFalse(Files.exists(file), "The file is taken over.");
+    // A file is last modified when it is stored, however long ago it was written, so that the sweep of unreferenced
+    // content tells a file stored after the store was opened from one left behind before.
+    assertFalse(Files.getLastModifiedTime(objectPath(storage, id)).toInstant().isBefore(beforePut));
     assertArrayEquals("Hello".getBytes(), storage.getBytes(id));
     assertEquals(5, storage.size(id));
     assertEquals(List.of(objectPath(storage, id)), listFiles());

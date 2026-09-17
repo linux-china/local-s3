@@ -19,6 +19,13 @@ public interface LocalS3Manager {
    String STORAGE_DIRECTORY = ".storage";
 
   /**
+   * The directory in {@value #STORAGE_DIRECTORY} that a {@code PERSISTENCE} service buffers large request bodies in, on
+   * the file system of the storage, so that an upload is stored by renaming its body file. The body files that a process
+   * which died left behind are deleted with the unreferenced content, see {@code UnreferencedContentSweeper}.
+   */
+  String REQUEST_BODY_DIRECTORY = ".request-bodies";
+
+  /**
    * Create an in-memory implementation of {@linkplain LocalS3Manager}.
    *
    * @return an instance of in-memory implementation.

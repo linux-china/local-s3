@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.Random;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -123,7 +124,7 @@ class LocalS3HttpRequestDecoderTest {
     Path leftover = Files.createFile(directory.resolve(LocalS3HttpRequestDecoder.BODY_FILE_PREFIX + "1.tmp"));
     Path unrelated = Files.createFile(directory.resolve("123"));
     LocalS3HttpRequestDecoder.prepareBodyFileDirectory(directory);
-    assertFalse(Files.exists(leftover), "A body file left behind by a process that died is deleted.");
+    assertTrue(Files.exists(leftover), "A body file may be received by another server of the JVM, so it is kept.");
     assertTrue(Files.exists(unrelated));
 
     EmbeddedChannel configured = new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD,
@@ -141,7 +142,8 @@ class LocalS3HttpRequestDecoderTest {
         body.release();
       }
       try (Stream<Path> files = Files.list(directory)) {
-        assertEquals(List.of(unrelated), files.toList(), "The body file is deleted once the body is released.");
+        assertEquals(Set.of(leftover, unrelated), Set.copyOf(files.toList()),
+            "The body file is deleted once the body is released.");
       }
     } finally {
       configured.finishAndReleaseAll();

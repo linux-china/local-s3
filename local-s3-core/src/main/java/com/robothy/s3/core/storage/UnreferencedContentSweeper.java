@@ -1,5 +1,6 @@
 package com.robothy.s3.core.storage;
 
+import com.robothy.s3.core.service.manager.LocalS3Manager;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -39,13 +40,25 @@ import org.h2.mvstore.MVStore;
  *
  * <p>What isn't certain is kept:
  * <ul>
- *   <li>nothing is deleted if the metadata can't be read, or holds no objects and no uploads at all, e.g. a store that
- *   was replaced or rolled back;</li>
- *   <li>nothing is deleted in a directory of a LocalS3 before 2.5, whose {@code *.bucket.meta} files 2.5 doesn't read,
- *   and whose content it therefore doesn't see referenced;</li>
- *   <li>only the files of the layout of 2.5, {@code .storage/ab/cd/<id>}, are considered, not those still in the flat
- *   layout, nor the temporary files of request bodies and writes.</li>
+ *   <li>no content file is deleted if the metadata can't be read, or holds no objects and no uploads at all, e.g. a
+ *   store that was replaced or rolled back;</li>
+ *   <li>no content file is deleted in a directory of a LocalS3 before 2.5, whose {@code *.bucket.meta} files 2.5
+ *   doesn't read, and whose content it therefore doesn't see referenced;</li>
+ *   <li>only the content files of the layout of 2.5, {@code .storage/ab/cd/<id>}, are considered, not those still in
+ *   the flat layout.</li>
  * </ul>
+ *
+ * <p>The sweep deletes the temporary files of the content directory as well, under the same rule of the modification
+ * time, whatever the metadata holds, since nothing references them: those of the writes of the storage,
+ * {@code .storage/.<id>.<uuid>.tmp}, and the request bodies of {@code .storage/}{@value
+ * LocalS3Manager#REQUEST_BODY_DIRECTORY}{@code /*.tmp}. They are deleted here, rather than when a storage or a server is
+ * created, because another service of the JVM may be writing them over the same data directory then, whereas no
+ * service of the JVM holds the store when the sweep starts. A temporary file that is being written is modified as its
+ * bytes arrive, so only a write that received nothing for a minute, of a service whose store was closed meanwhile, e.g.
+ * after its shutdown timed out, can lose its file; such a write fails anyway, since it can't store its metadata.
+ *
+ * <p>An object file is last modified when it is stored, or later, even when the file of a request body that was
+ * written long before is renamed into place, see {@linkplain LocalFileSystemStorage#put(Long, Path)}.
  */
 @Slf4j
 final class UnreferencedContentSweeper {
@@ -54,7 +67,7 @@ final class UnreferencedContentSweeper {
    * The directory of the content of a data directory; see
    * {@linkplain com.robothy.s3.core.service.manager.LocalS3Manager#STORAGE_DIRECTORY}.
    */
-  static final String CONTENT_DIRECTORY = ".storage";
+  static final String CONTENT_DIRECTORY = LocalS3Manager.STORAGE_DIRECTORY;
 
   static final long MODIFIED_BEFORE_OPEN_MINUTES = 1;
 
@@ -65,12 +78,13 @@ final class UnreferencedContentSweeper {
   /**
    * What a sweep deleted.
    *
-   * @param files the number of files deleted.
-   * @param bytes the number of bytes of the files deleted.
+   * @param files the number of unreferenced content files deleted.
+   * @param bytes the number of bytes of the content files deleted.
+   * @param temporaryFiles the number of temporary files deleted, which the other counts leave out.
    */
-  record Result(long files, long bytes) {
+  record Result(long files, long bytes, long temporaryFiles) {
 
-    static final Result NONE = new Result(0, 0);
+    static final Result NONE = new Result(0, 0, 0);
   }
 
   private final MVStore store;
@@ -169,6 +183,12 @@ final class UnreferencedContentSweeper {
       if (!Files.isDirectory(contentDirectory)) {
         return;
       }
+      long temporaryFiles = deleteTemporaryFiles(contentDirectory);
+      if (temporaryFiles > 0) {
+        result = new Result(0, 0, temporaryFiles);
+        log.info("Deleted {} temporary files that a process which died left behind in {}.", temporaryFiles,
+            contentDirectory);
+      }
       if (hasLegacyBucketMetadata()) {
         log.warn("Kept the content files of {}: it holds bucket metadata of a LocalS3 before 2.5, which isn't read, so"
             + " the files it references can't be told apart from unreferenced ones.", dataDirectory);
@@ -179,7 +199,8 @@ final class UnreferencedContentSweeper {
         log.debug("Kept the content files of {}: its metadata references no content.", dataDirectory);
         return;
       }
-      result = deleteUnreferenced(contentDirectory, referenced);
+      Result unreferenced = deleteUnreferenced(contentDirectory, referenced);
+      result = new Result(unreferenced.files(), unreferenced.bytes(), temporaryFiles);
       if (result.files() > 0) {
         log.info("Deleted {} unreferenced content files ({} bytes) of {} in {} ms.", result.files(), result.bytes(),
             contentDirectory, (System.nanoTime() - start) / 1_000_000);
@@ -200,6 +221,37 @@ final class UnreferencedContentSweeper {
         "*" + LEGACY_BUCKET_METADATA_SUFFIX)) {
       return legacy.iterator().hasNext();
     }
+  }
+
+  /**
+   * Delete the temporary files of the writes of the storage in the content directory, and of the request bodies in its
+   * {@value LocalS3Manager#REQUEST_BODY_DIRECTORY} directory, that were last modified before
+   * {@linkplain #modifiedBefore}.
+   *
+   * @return the number of files deleted.
+   */
+  private long deleteTemporaryFiles(Path contentDirectory) throws IOException {
+    long deleted = deleteTemporaryFiles(contentDirectory, ".*" + LocalFileSystemStorage.TEMP_FILE_SUFFIX);
+    Path requestBodies = contentDirectory.resolve(LocalS3Manager.REQUEST_BODY_DIRECTORY);
+    if (Files.isDirectory(requestBodies)) {
+      deleted += deleteTemporaryFiles(requestBodies, "*" + LocalFileSystemStorage.TEMP_FILE_SUFFIX);
+    }
+    return deleted;
+  }
+
+  private long deleteTemporaryFiles(Path directory, String glob) throws IOException {
+    long deleted = 0;
+    try (DirectoryStream<Path> files = Files.newDirectoryStream(directory, glob)) {
+      for (Path file : files) {
+        if (cancelled) {
+          throw new CancellationException();
+        }
+        if (Files.isRegularFile(file) && deleteIfModifiedBefore(file) >= 0) {
+          deleted++;
+        }
+      }
+    }
+    return deleted;
   }
 
   /**
@@ -235,7 +287,7 @@ final class UnreferencedContentSweeper {
         }
       }
     }
-    return new Result(files, bytes);
+    return new Result(files, bytes, 0);
   }
 
   /**
@@ -251,7 +303,7 @@ final class UnreferencedContentSweeper {
       long size = Files.size(file);
       return Files.deleteIfExists(file) ? size : -1;
     } catch (IOException e) {
-      log.warn("Failed to delete the unreferenced content file {}.", file, e);
+      log.warn("Failed to delete the file {}, which nothing references.", file, e);
       return -1;
     }
   }
