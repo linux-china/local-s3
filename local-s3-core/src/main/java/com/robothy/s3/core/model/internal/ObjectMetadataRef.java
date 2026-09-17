@@ -2,6 +2,8 @@ package com.robothy.s3.core.model.internal;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.robothy.s3.core.util.JsonUtils;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -39,10 +41,20 @@ public final class ObjectMetadataRef {
   private volatile ObjectMetadataCache cache;
 
   /**
-   * The metadata in heap; {@code null} if it has not been read yet, or was evicted. Guarded by {@code this} for
-   * writing, so that concurrent readers of a key get the one instance rather than a copy each.
+   * The metadata in heap; {@code null} if it has not been read yet, or was evicted. Written by compare-and-set through
+   * {@linkplain #METADATA}, so that concurrent readers of a key get the one instance rather than a copy each.
    */
   private volatile ObjectMetadata metadata;
+
+  private static final VarHandle METADATA;
+
+  static {
+    try {
+      METADATA = MethodHandles.lookup().findVarHandle(ObjectMetadataRef.class, "metadata", ObjectMetadata.class);
+    } catch (ReflectiveOperationException e) {
+      throw new ExceptionInInitializerError(e);
+    }
+  }
 
   /**
    * The number of characters of the persisted form of the metadata, as an estimate of what holding it costs;
@@ -208,24 +220,28 @@ public final class ObjectMetadataRef {
     if (pinned || source == null) {
       return false;
     }
-    synchronized (this) {
-      if (pinned || metadata == null) {
-        return false;
-      }
-      metadata = null;
-      return true;
-    }
+    ObjectMetadata inHeap = metadata;
+    return inHeap != null && METADATA.compareAndSet(this, inHeap, null);
   }
 
+  /**
+   * Read the metadata from the store, and publish it unless another reader did first, whose instance is answered then.
+   *
+   * <p>The store is read without holding a lock: a monitor held across the read would pin the carrier thread of a
+   * virtual thread on JDK 21 while the store reads the disk, so that concurrent reads of cold keys would be limited to
+   * the number of carrier threads. Readers that race for a key may each read it, but all of them answer one instance.
+   */
   private ObjectMetadata load() {
-    synchronized (this) {
+    while (true) {
       ObjectMetadata inHeap = metadata;
       if (inHeap != null) {
         return inHeap;
       }
       ObjectMetadata parsed = parse(readJson());
-      metadata = parsed;
-      return parsed;
+      if (METADATA.compareAndSet(this, null, parsed)) {
+        return parsed;
+      }
+      // Another reader published its instance; answer that one, or read again if it was evicted meanwhile.
     }
   }
 
