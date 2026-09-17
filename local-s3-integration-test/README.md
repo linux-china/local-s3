@@ -1,7 +1,7 @@
 Local S3 integration test
 ==========================
 
-End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB and Apache Iceberg.
+End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB, DuckLake and Apache Iceberg.
 
 The tests are grouped by JUnit tag:
 
@@ -17,6 +17,7 @@ The tests are grouped by JUnit tag:
 ./gradlew :local-s3-integration-test:test
 ./gradlew :local-s3-integration-test:dataToolsTest
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbParquetIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckLakeIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergS3FileIOIntegrationTest'
 ./gradlew :local-s3-integration-test:test --tests '*ConcurrentRangeReadIntegrationTest'
 ```
@@ -80,6 +81,19 @@ FROM 'local-s3-integration-test/src/test/resources/family.csv')
 SELECT *
 FROM read_parquet('s3://demo1/family.parquet');
 ```
+
+# DuckLake
+
+`DuckLakeIntegrationTest` attaches a DuckLake whose catalog is a DuckDB file in a temporary directory and whose data
+files are on LocalS3, with `DATA_INLINING_ROW_LIMIT 0` so that every change is a Parquet object:
+
+| Test                                                  | DuckLake                                                                                                                      | S3 features checked on the LocalS3 side                                                                                            |
+|-------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `readsTheSnapshotsOfATableWithTimeTravel`             | `CREATE TABLE`, two `INSERT`s, `UPDATE`; `AT (VERSION => n)` for snapshots 1, 3 and 4                                         | old data and delete files stay readable; no deletes                                                                                |
+| `cleanupDeletesTheFilesOfExpiredSnapshotsFromLocalS3` | `ducklake_rewrite_data_files`, `ducklake_merge_adjacent_files`, `ducklake_expire_snapshots`, `ducklake_cleanup_old_files`     | expiry deletes nothing; cleanup deletes exactly the scheduled files with `DeleteObjects`, and leaves the files of the current snapshot |
+| `encryptedDataFilesAreNotReadableAsPlainParquet`      | `ENCRYPTED` and a plain DuckLake side by side                                                                                 | an encrypted object has the catalog's size and the `PARE` magic, and `read_parquet` rejects it; a plain one reads as Parquet        |
+
+The `ducklake` extension is loaded or installed like `httpfs`; without it, the tests are skipped.
 
 # Concurrent range reads
 

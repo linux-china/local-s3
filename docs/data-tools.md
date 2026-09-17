@@ -1,7 +1,7 @@
 # Data tools
 
-How to point DuckDB and Apache Iceberg at LocalS3, e.g. a LocalS3 started with
-`docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. Both run as end-to-end tests in
+How to point DuckDB, DuckLake and Apache Iceberg at LocalS3, e.g. a LocalS3 started with
+`docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as end-to-end tests in
 [`local-s3-integration-test`](../local-s3-integration-test/README.md).
 
 A local endpoint has no DNS name for each bucket, so every client uses **path-style** addressing,
@@ -65,6 +65,46 @@ DuckDB reads a Parquet file with range requests: the footer with a suffix range,
 needs, on as many threads as `SET threads` allows. Concurrent queries on one LocalS3 therefore mean many small,
 concurrent range requests, which LocalS3 answers from both storage modes; see `ConcurrentRangeReadIntegrationTest`
 and `DuckDbParquetIntegrationTest.answersTheConcurrentRangeRequestsOfConcurrentQueries`.
+
+## DuckLake
+
+A DuckLake keeps its catalog in a SQL database, a DuckDB file, SQLite or PostgreSQL, and its data files as Parquet
+files on S3. It connects to LocalS3 with the S3 secret of [DuckDB](#duckdb), including `USE_SSL false`:
+
+```sql
+INSTALL ducklake;
+LOAD ducklake;
+-- The secret local_s3 of the DuckDB section, for localhost:29090.
+ATTACH 'ducklake:metadata.ducklake' AS lake (DATA_PATH 's3://lake/data/', ENCRYPTED);
+
+CREATE TABLE lake.t AS SELECT * FROM range(100000);
+UPDATE lake.t SET range = range + 1 WHERE range % 2 = 0;
+SELECT count(*) FROM lake.t AT (VERSION => 1);
+
+-- Maintenance: compaction, then deletion of the files that no snapshot refers to any more.
+CALL ducklake_rewrite_data_files('lake');
+CALL ducklake_merge_adjacent_files('lake');
+CALL ducklake_expire_snapshots('lake', older_than => now() - INTERVAL 7 DAYS);
+CALL ducklake_cleanup_old_files('lake', older_than => now() - INTERVAL 1 DAY);
+```
+
+The bucket must exist before the first write, e.g. with `buckets` of LocalS3 or `aws s3 mb`. `ENCRYPTED` is optional.
+
+What LocalS3 answers for DuckLake:
+
++ data and delete files: `PutObject`, with the upload settings of `httpfs`, as for `COPY`;
++ reads, including time travel with `AT (VERSION => n)` or `AT (TIMESTAMP => ...)`: range requests;
++ `ducklake_cleanup_old_files`: `DeleteObjects`. `ducklake_expire_snapshots`
+  and compaction only schedule files for deletion in the catalog; they don't delete objects;
++ `ENCRYPTED`: DuckLake encrypts each Parquet file with a key that only the catalog holds. LocalS3 stores the bytes as
+  they are, so an object downloaded from LocalS3 starts and ends with `PARE` and isn't readable as a Parquet file
+  without the catalog.
+
+Small inserts are kept in the catalog instead of a Parquet file; set `DATA_INLINING_ROW_LIMIT 0` in the `ATTACH` options
+to see every change as an object on LocalS3. Merging skips files that have deletes, so run
+`ducklake_rewrite_data_files` before `ducklake_merge_adjacent_files` to compact a table after an `UPDATE` or a `DELETE`.
+
+`DuckLakeIntegrationTest` covers time travel, the deletion of the files of expired snapshots and encryption.
 
 ## Iceberg REST catalogs that vend credentials
 
