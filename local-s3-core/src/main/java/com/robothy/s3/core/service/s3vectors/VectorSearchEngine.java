@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.s3vectors;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -15,12 +16,12 @@ import java.util.List;
 public interface VectorSearchEngine {
 
   /**
-   * Create a basic vector search engine implementation.
+   * The basic vector search engine implementation, which is stateless, so that every search shares one instance.
    *
-   * @return a new basic vector search engine instance
+   * @return the basic vector search engine instance
    */
   static VectorSearchEngine createBasic() {
-    return new BasicVectorSearchEngine();
+    return BasicVectorSearchEngine.INSTANCE;
   }
 
   /**
@@ -42,7 +43,7 @@ public interface VectorSearchEngine {
    * metadata, which fails the search rather than silently returning fewer vectors.
    *
    * @param queryVector      the query vector to search for
-   * @param candidateVectors the collection of vector metadata to search in
+   * @param candidateVectors the collection of vector metadata to search in, which is only iterated, not copied
    * @param vectorStorage    the storage of the data of the candidates, which must not be deleted during the search
    * @param distanceMetric   the distance metric to use for calculations
    * @param k                the number of nearest neighbors to return
@@ -54,7 +55,7 @@ public interface VectorSearchEngine {
    */
   List<VectorSearchResult> findNearestVectors(
       float[] queryVector,
-      List<VectorObjectMetadata> candidateVectors,
+      Collection<VectorObjectMetadata> candidateVectors,
       VectorStorage vectorStorage,
       DistanceMetric distanceMetric,
       int k,

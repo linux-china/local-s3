@@ -12,9 +12,16 @@ import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
 import com.robothy.s3.datatypes.s3vectors.response.QueryVectorsResponse;
 import com.robothy.s3.datatypes.s3vectors.response.QueryOutputVector;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsStorageAware {
+
+    /**
+     * The maximum {@code topK} of a query, see
+     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-limitations.html">S3 Vectors limitations</a>.
+     */
+    int MAX_TOP_K = 10_000;
 
     /**
      * Query the nearest vectors of an index, under the read lock of the vector bucket, so that the vectors that are
@@ -33,7 +40,7 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
             float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension());
             int validatedTopK = validateTopK(topK);
 
-            List<VectorObjectMetadata> candidateVectors = getCandidateVectors(indexMetadata);
+            Collection<VectorObjectMetadata> candidateVectors = indexMetadata.getVectorObjects().values();
 
             if (candidateVectors.isEmpty()) {
                 return buildEmptyResponse(indexMetadata.getDistanceMetric());
@@ -71,11 +78,11 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
         if (topK == null || topK < 1) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, "topK must be at least 1");
         }
+        if (topK > MAX_TOP_K) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
+                "topK must be at most " + MAX_TOP_K);
+        }
         return topK;
-    }
-
-    private List<VectorObjectMetadata> getCandidateVectors(VectorIndexMetadata indexMetadata) {
-        return new ArrayList<>(indexMetadata.getVectorObjects().values());
     }
 
     private QueryVectorsResponse buildEmptyResponse(DistanceMetric distanceMetric) {
@@ -86,16 +93,15 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
     }
 
     private List<VectorSearchEngine.VectorSearchResult> performVectorSearch(
-            float[] queryVectorData, List<VectorObjectMetadata> candidateVectors,
+            float[] queryVectorData, Collection<VectorObjectMetadata> candidateVectors,
             VectorIndexMetadata indexMetadata, int topK, MetadataFilterExpression filter) {
-        VectorSearchEngine searchEngine = VectorSearchEngine.createBasic();
         try {
-            return searchEngine.findNearestVectors(
+            return VectorSearchEngine.createBasic().findNearestVectors(
                 queryVectorData,
                 candidateVectors,
                 vectorStorage(),
                 indexMetadata.getDistanceMetric(),
-                Math.min(topK, candidateVectors.size()),
+                topK,
                 filter
             );
         } catch (IllegalStateException e) {

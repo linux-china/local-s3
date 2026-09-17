@@ -4,6 +4,7 @@ import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import java.nio.FloatBuffer;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 class BasicVectorSearchEngine implements VectorSearchEngine {
+
+  static final BasicVectorSearchEngine INSTANCE = new BasicVectorSearchEngine();
 
   /**
    * Nearest first. Candidates at the same distance, e.g. vectors of the same values, are ranked by vector ID, which is
@@ -53,7 +56,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
   @Override
   public List<VectorSearchResult> findNearestVectors(
       float[] queryVector,
-      List<VectorObjectMetadata> candidateVectors,
+      Collection<VectorObjectMetadata> candidateVectors,
       VectorStorage vectorStorage,
       DistanceMetric distanceMetric,
       int k,
@@ -75,18 +78,15 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     log.debug("Searching for {} nearest vectors from {} candidates using {} metric",
         k, candidateVectors.size(), distanceMetric);
 
-    // Apply metadata filters first to reduce computation
-    List<VectorObjectMetadata> filteredVectors = MetadataFilter.applyFilter(candidateVectors, metadataFilter);
-
-    if (filteredVectors.isEmpty()) {
-      return List.of();
-    }
-
     // A max-heap of the K nearest vectors so far, whose head is the farthest of them.
     PriorityQueue<VectorSearchResult> maxHeap = new PriorityQueue<>(NEAREST_FIRST.reversed());
 
     double queryNorm = distanceMetric == DistanceMetric.COSINE ? norm(queryVector) : 0.0;
-    for (VectorObjectMetadata vectorMetadata : filteredVectors) {
+    for (VectorObjectMetadata vectorMetadata : candidateVectors) {
+      // The metadata filter is checked before the data is read, to skip the distance of what it excludes.
+      if (metadataFilter != null && !metadataFilter.matches(vectorMetadata)) {
+        continue;
+      }
       // The stored data is compared in place, without copying it.
       FloatBuffer candidateVector = candidateData(vectorMetadata, queryVector.length, vectorStorage);
       double distance = switch (distanceMetric) {

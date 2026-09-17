@@ -193,6 +193,24 @@ class QueryVectorsServiceTest {
   }
 
   @Test
+  void queryVectors_withTopKAboveMaximum_throwsException() {
+    TestQueryVectorsService service = createTestService();
+    VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");
+    VectorIndexMetadata indexMetadata = createVectorIndexMetadata("test-index", 3, DistanceMetric.EUCLIDEAN);
+    bucketMetadata.getIndexes().put("test-index", indexMetadata);
+    service.metadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
+
+    PutInputVector.VectorData queryVector = createVectorData(new float[]{1.0f, 2.0f, 3.0f});
+
+    LocalS3VectorException exception = assertThrows(LocalS3VectorException.class,
+        () -> service.queryVectors("test-bucket", "test-index", queryVector, QueryVectorsService.MAX_TOP_K + 1,
+            true, true, null));
+
+    assertEquals(LocalS3VectorErrorType.INVALID_REQUEST, exception.getErrorType());
+    assertEquals("topK must be at most 10000", exception.getMessage());
+  }
+
+  @Test
   void queryVectors_withNullTopK_throwsException() {
     TestQueryVectorsService service = createTestService();
     VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");

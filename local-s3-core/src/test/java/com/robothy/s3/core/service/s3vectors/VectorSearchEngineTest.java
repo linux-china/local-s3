@@ -40,13 +40,13 @@ class VectorSearchEngineTest {
   }
 
   @Test
-  void createBasic_multipleCallsReturnNewInstances() {
+  void createBasic_multipleCallsReturnTheSameInstance() {
     VectorSearchEngine engine1 = VectorSearchEngine.createBasic();
     VectorSearchEngine engine2 = VectorSearchEngine.createBasic();
 
     assertNotNull(engine1);
     assertNotNull(engine2);
-    assertNotSame(engine1, engine2);
+    assertSame(engine1, engine2);
   }
 
   // ========== Default Method Tests ==========
