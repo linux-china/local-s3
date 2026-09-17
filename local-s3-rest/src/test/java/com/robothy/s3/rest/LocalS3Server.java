@@ -11,6 +11,7 @@ public class LocalS3Server {
                 .dataPath("temp/local-s3-data")
                 .credentials("admin","admin")
                 .buckets("msst-test","demo1", "demo2", "demo3")
+                //.tls(Path.of("local-s3-rest/src/test/resources/example.org.pem"), Path.of("local-s3-rest/src/test/resources/example.org-key.pem"))
                 .changeListener(change -> {
                     System.out.println(change.type() + " " + change.getObjectS3Url());
                 })
