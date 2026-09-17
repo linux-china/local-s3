@@ -16,6 +16,7 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.MultipartFormData;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -122,6 +123,7 @@ class PostObjectController implements HttpRequestHandler {
         .content(new ByteBufInputStream(file.duplicate()))
         .tagging(tagging(form))
         .userMetadata(userMetadata(form))
+        .serverSideEncryption(ServerSideEncryptionHeaders.fromValues(name -> form.field(name).orElse(null), null))
         .build();
     PutObjectAns ans = objectService.putObject(bucketName, key, options);
 
@@ -129,6 +131,7 @@ class PostObjectController implements HttpRequestHandler {
     ResponseUtils.addCommonHeaders(response);
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, ans.getVersionId());
     ResponseUtils.addETag(response, ans.getEtag());
+    ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), true);
     Optional<URI> redirect = form.field("success_action_redirect").or(() -> form.field("redirect"))
         .flatMap(PostObjectController::redirectUri);
     if (redirect.isPresent()) {

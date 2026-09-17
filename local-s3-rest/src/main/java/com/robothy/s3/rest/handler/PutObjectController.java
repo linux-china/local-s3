@@ -17,6 +17,7 @@ import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -53,6 +54,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .preconditions(RequestUtils.extractPreconditions(request))
         .objectLock(ObjectLockHeaders.fromRequest(request))
         .customerEncryption(customerEncryption)
+        .serverSideEncryption(ServerSideEncryptionHeaders.fromRequest(request, customerEncryption))
         .writeOffsetBytes(writeOffsetBytes)
         .build();
 
@@ -67,6 +69,8 @@ class PutObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addETag(response, ans.getEtag());
     ChecksumHeaders.addHeaders(response, ans.getChecksum());
     CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
+    // The encryption of the stored version, which is the one of the object that an append extends.
+    ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), true);
     if (Objects.nonNull(writeOffsetBytes)) {
       response.putHeader(AmzHeaderNames.X_AMZ_OBJECT_SIZE, ans.getSize());
     }

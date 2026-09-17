@@ -23,6 +23,7 @@ import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
@@ -80,6 +81,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
         .write(xmlMapper.writeValueAsString(result));
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID,
         completeMultipartUploadAns.getVersionId());
+    ServerSideEncryptionHeaders.addHeaders(response, completeMultipartUploadAns.getServerSideEncryption(), false);
 
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);

@@ -147,6 +147,27 @@ public class AmzHeaderNames {
   public static final String X_AMZ_BYPASS_GOVERNANCE_RETENTION = "x-amz-bypass-governance-retention";
 
   /**
+   * The server-side encryption algorithm of an object: {@code AES256} (SSE-S3), {@code aws:kms} (SSE-KMS) or
+   * {@code aws:kms:dsse} (DSSE-KMS).
+   */
+  public static final String X_AMZ_SERVER_SIDE_ENCRYPTION = "x-amz-server-side-encryption";
+
+  /**
+   * The ID of the KMS key of an SSE-KMS or DSSE-KMS encrypted object.
+   */
+  public static final String X_AMZ_SSE_KMS_KEY_ID = "x-amz-server-side-encryption-aws-kms-key-id";
+
+  /**
+   * The base64 encoded JSON encryption context of an SSE-KMS or DSSE-KMS encrypted object.
+   */
+  public static final String X_AMZ_SSE_CONTEXT = "x-amz-server-side-encryption-context";
+
+  /**
+   * Whether an SSE-KMS encrypted object uses an S3 Bucket Key.
+   */
+  public static final String X_AMZ_SSE_BUCKET_KEY_ENABLED = "x-amz-server-side-encryption-bucket-key-enabled";
+
+  /**
    * The algorithm of a customer-provided encryption key (SSE-C), which is always {@code AES256}.
    */
   public static final String X_AMZ_SSE_CUSTOMER_ALGORITHM = "x-amz-server-side-encryption-customer-algorithm";

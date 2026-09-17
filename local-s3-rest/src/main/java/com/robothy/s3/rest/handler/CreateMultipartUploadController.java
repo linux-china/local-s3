@@ -1,6 +1,8 @@
 package com.robothy.s3.rest.handler;
 
+import com.robothy.s3.core.model.answers.CreateMultipartUploadAns;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.core.util.Checksums;
@@ -20,6 +22,7 @@ import com.robothy.s3.rest.model.response.InitiateMultipartUploadResult;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import tools.jackson.dataformat.xml.XmlMapper;
@@ -46,7 +49,8 @@ class CreateMultipartUploadController implements HttpRequestHandler {
     CheckSumAlgorithm checksumAlgorithm = ChecksumHeaders.algorithm(request, AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM);
     ChecksumType checksumType = ChecksumHeaders.type(request);
     CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
-    String uploadId = uploadService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
+    ServerSideEncryption serverSideEncryption = ServerSideEncryptionHeaders.fromRequest(request, customerEncryption);
+    CreateMultipartUploadAns ans = uploadService.initiateMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
         .contentType(contentType)
@@ -55,11 +59,12 @@ class CreateMultipartUploadController implements HttpRequestHandler {
         .checksumType(checksumType)
         .objectLock(ObjectLockHeaders.fromRequest(request))
         .customerEncryption(customerEncryption)
+        .serverSideEncryption(serverSideEncryption)
         .build());
     InitiateMultipartUploadResult result = InitiateMultipartUploadResult.builder()
         .bucket(bucket)
         .key(key)
-        .uploadId(uploadId)
+        .uploadId(ans.getUploadId())
         .build();
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result));
@@ -69,6 +74,7 @@ class CreateMultipartUploadController implements HttpRequestHandler {
               Objects.requireNonNullElseGet(checksumType, () -> Checksums.defaultMultipartType(checksumAlgorithm)));
     }
     CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
+    ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), true);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addAmzRequestId(response);

@@ -138,6 +138,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .checksum(Objects.isNull(contentRange) ? latestObject.getChecksum() : null)
         .objectLock(latestObject.getObjectLock())
         .customerEncryption(latestObject.getCustomerEncryption())
+        .serverSideEncryption(latestObject.getServerSideEncryption())
         .build();
   }
 
@@ -231,6 +232,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .checksum(Objects.isNull(contentRange) ? versionedObjectMetadata.getChecksum() : null)
           .objectLock(versionedObjectMetadata.getObjectLock())
           .customerEncryption(versionedObjectMetadata.getCustomerEncryption())
+          .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
           .build();
     }
   }

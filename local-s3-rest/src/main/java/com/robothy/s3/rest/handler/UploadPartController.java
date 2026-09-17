@@ -15,6 +15,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -50,6 +51,7 @@ class UploadPartController implements HttpRequestHandler {
     ResponseUtils.addETag(response, uploadPartAns.getEtag());
     ChecksumHeaders.addHeaders(response, uploadPartAns.getChecksum());
     CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
+    ServerSideEncryptionHeaders.addHeaders(response, uploadPartAns.getServerSideEncryption(), false);
   }
 
 }

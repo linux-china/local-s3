@@ -16,6 +16,7 @@ import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -80,6 +81,7 @@ class GetObjectController implements HttpRequestHandler {
       getObjectAns.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
       ObjectLockHeaders.addHeaders(response, getObjectAns.getObjectLock());
       CustomerEncryptionHeaders.addHeaders(response, getObjectAns.getCustomerEncryption());
+      ServerSideEncryptionHeaders.addHeaders(response, getObjectAns.getServerSideEncryption(), false);
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {
         // A client verifies the content it reads against it; a range has none.
         ChecksumHeaders.addHeaders(response, getObjectAns.getChecksum());

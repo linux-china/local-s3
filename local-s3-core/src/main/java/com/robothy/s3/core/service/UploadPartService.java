@@ -119,6 +119,8 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
           .etag(uploadPartMetadata.getEtag())
           .lastModified(uploadPartMetadata.getLastModified())
           .checksum(uploadPartMetadata.getChecksum())
+          // A part is answered with the encryption of its upload, which the request of the part doesn't name.
+          .serverSideEncryption(uploadMetadata.getServerSideEncryption())
           .build();
     });
   }

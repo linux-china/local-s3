@@ -72,6 +72,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         // Neither the Object Lock settings nor the encryption of the source are copied, like Amazon S3 does.
         .objectLock(options.getObjectLock())
         .customerEncryption(options.getCustomerEncryption())
+        .serverSideEncryption(options.getServerSideEncryption())
         .build());
 
     return CopyObjectAns.builder()
@@ -81,6 +82,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .etag(putObjectAns.getEtag())
         .size(putObjectAns.getSize())
         .checksum(putObjectAns.getChecksum())
+        .serverSideEncryption(putObjectAns.getServerSideEncryption())
         .build();
   }
 

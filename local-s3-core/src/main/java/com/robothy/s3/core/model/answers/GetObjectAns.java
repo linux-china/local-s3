@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.answers;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
@@ -83,4 +84,9 @@ public class GetObjectAns {
    * The customer-provided key that the version was stored with; {@code null} if it wasn't stored with one.
    */
   private CustomerEncryption customerEncryption;
+
+  /**
+   * The SSE-S3 or SSE-KMS encryption that the version was stored with; {@code null} if it wasn't stored with one.
+   */
+  private ServerSideEncryption serverSideEncryption;
 }

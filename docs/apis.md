@@ -87,6 +87,9 @@ directory buckets, work on the buckets whose versioning was never enabled, see
 
 Server-side encryption with customer-provided keys (SSE-C) is accepted and echoed, but nothing is encrypted, see
 [semantics.md](semantics.md#server-side-encryption-with-customer-provided-keys-sse-c).
+The `x-amz-server-side-encryption*` headers of SSE-S3, SSE-KMS and DSSE-KMS are stored with the object and answered
+like Amazon S3 answers them, but nothing is encrypted either, see
+[semantics.md](semantics.md#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms).
 
 `PostObject` is the upload of a file by an HTML form that a browser posts to a bucket, with its policy document and
 signature; see [semantics.md](semantics.md#browser-form-uploads-post-object).

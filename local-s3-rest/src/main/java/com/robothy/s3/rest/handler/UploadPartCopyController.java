@@ -17,6 +17,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -71,6 +72,7 @@ class UploadPartCopyController implements HttpRequestHandler {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
         ans.getSourceVersionId());
     CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
+    ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), false);
     ResponseUtils.addCommonHeaders(response);
   }
 

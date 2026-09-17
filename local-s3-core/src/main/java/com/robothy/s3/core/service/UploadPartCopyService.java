@@ -72,6 +72,7 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
         .sourceVersionId(source.getVersionId())
         .size(source.getSize())
         .checksum(part.getChecksum())
+        .serverSideEncryption(part.getServerSideEncryption())
         .build();
   }
 

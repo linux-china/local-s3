@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.request;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
@@ -49,5 +50,10 @@ public class CreateMultipartUploadOptions {
    * The customer-provided key to store the object with; {@code null} for none.
    */
   private CustomerEncryption customerEncryption;
+
+  /**
+   * The SSE-S3 or SSE-KMS encryption to store the object of the upload with; {@code null} for none.
+   */
+  private ServerSideEncryption serverSideEncryption;
 
 }

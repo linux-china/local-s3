@@ -194,6 +194,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     // is added.
     versionedObjectMetadata.setObjectLock(uploadMetadata.getObjectLock());
     versionedObjectMetadata.setCustomerEncryption(uploadMetadata.getCustomerEncryption());
+    versionedObjectMetadata.setServerSideEncryption(uploadMetadata.getServerSideEncryption());
     if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
       versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
     }
@@ -412,6 +413,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .checksumType(uploadMetadata.getChecksumType())
           .objectLock(uploadMetadata.getObjectLock())
           .customerEncryption(uploadMetadata.getCustomerEncryption())
+          .serverSideEncryption(uploadMetadata.getServerSideEncryption())
           .parts(partsToComplete)
           .build();
     });
@@ -487,6 +489,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .etag(putObjectAns.getEtag())
           .size(putObjectAns.getSize())
           .checksum(putObjectAns.getChecksum())
+          .serverSideEncryption(putObjectAns.getServerSideEncryption())
           .build();
     });
   }

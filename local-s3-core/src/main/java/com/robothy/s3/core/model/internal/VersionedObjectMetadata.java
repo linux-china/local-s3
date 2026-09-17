@@ -70,6 +70,11 @@ public class VersionedObjectMetadata {
   private CustomerEncryption customerEncryption;
 
   /**
+   * The SSE-S3 or SSE-KMS encryption that the version was stored with; {@code null} if it wasn't stored with one.
+   */
+  private ServerSideEncryption serverSideEncryption;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {

@@ -16,6 +16,7 @@ import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -70,6 +71,7 @@ class HeadObjectController implements HttpRequestHandler {
       object.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
       ObjectLockHeaders.addHeaders(response, object.getObjectLock());
       CustomerEncryptionHeaders.addHeaders(response, object.getCustomerEncryption());
+      ServerSideEncryptionHeaders.addHeaders(response, object.getServerSideEncryption(), false);
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {
         ChecksumHeaders.addHeaders(response, object.getChecksum());
       }

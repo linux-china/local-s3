@@ -15,6 +15,7 @@ Amazon S3 would refuse.
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Object Lock](#object-lock)
 - [Appends and renames](#appends-and-renames)
+- [Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)](#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms)
 - [Server-side encryption with customer-provided keys (SSE-C)](#server-side-encryption-with-customer-provided-keys-sse-c)
 - [Change events](#change-events)
 
@@ -298,6 +299,31 @@ rename.
   `If-Modified-Since` and `If-Unmodified-Since` are evaluated against the destination, and the
   `x-amz-rename-source-if-*` headers against the source; either answers `412 PreconditionFailed`. The source is in the
   same bucket, named as `/bucket/key` or as the key alone. `x-amz-client-token` is accepted and ignored.
+
+## Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)
+
+`PutObject`, `POST Object`, `CopyObject` and `CreateMultipartUpload` accept `x-amz-server-side-encryption` (`AES256`,
+`aws:kms` or `aws:kms:dsse`), and for the KMS algorithms `x-amz-server-side-encryption-aws-kms-key-id`,
+`-context` and `-bucket-key-enabled`. **Nothing is encrypted, and KMS is never called**: LocalS3 stores what the
+request names with the object version, or with the upload, so that client code that sets these headers, e.g. Iceberg
+`S3FileIO` with `s3.sse.type`, sees the responses it sees against Amazon S3.
+
++ The headers are validated: an unknown algorithm, a key ID or a context without a KMS algorithm, a context that isn't
+  a base64 encoded JSON object, a `bucket-key-enabled` other than `true` or `false` with a KMS algorithm, and an
+  algorithm together with an SSE-C key all answer `400 InvalidArgument`. The KMS key ID isn't resolved or checked.
++ `PutObject`, `POST Object`, `CopyObject`, `CreateMultipartUpload`, `UploadPart`, `UploadPartCopy`,
+  `CompleteMultipartUpload`, `GetObject` and `HeadObject` answer the algorithm, the key ID as the request named it,
+  and `bucket-key-enabled: true` if it was set; the context is only answered by the requests that store an object with
+  it, like Amazon S3 does. A key ID is only answered if the request named one: LocalS3 doesn't make up the ARN of an
+  AWS managed key.
++ The parts of a multipart upload get the encryption of the upload. A copy gets the encryption that the `CopyObject`
+  request names, not the one of its source, and an append keeps the one of the object that it extends.
++ An object or an upload that is stored without the headers, and without an SSE-C key, gets the default encryption of
+  its bucket, the `ApplyServerSideEncryptionByDefault` of the first rule of `PutBucketEncryption`; a
+  `KMSMasterKeyID` and `BucketKeyEnabled` only count with a KMS algorithm. The configuration isn't validated when it is
+  stored, and one that can't be read, or names an unknown algorithm, applies no encryption. A bucket without a
+  configuration applies none either: LocalS3 doesn't answer `AES256` for every object like Amazon S3 does since
+  January 2023.
 
 ## Server-side encryption with customer-provided keys (SSE-C)
 

@@ -98,6 +98,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
         versionedObjectMetadata.setObjectLock(options.getObjectLock());
         versionedObjectMetadata.setCustomerEncryption(options.getCustomerEncryption());
+        versionedObjectMetadata.setServerSideEncryption(options.getServerSideEncryption());
 
         // Its change is delivered after this block, so a listener that fails doesn't get here.
         return commitPutObject(bucketName, key, versionedObjectMetadata, options.getPreconditions(),
@@ -194,12 +195,14 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
           }
           options.getTagging().ifPresent(version::setTagging);
           version.setCustomerEncryption(options.getCustomerEncryption());
+          version.setServerSideEncryption(options.getServerSideEncryption());
         } else {
           version.setContentType(appendedTo.getContentType());
           version.setSystemMetadata(appendedTo.getSystemMetadata());
           version.setUserMetadata(appendedTo.getUserMetadata());
           appendedTo.getTagging().ifPresent(version::setTagging);
           version.setCustomerEncryption(appendedTo.getCustomerEncryption());
+          version.setServerSideEncryption(appendedTo.getServerSideEncryption());
         }
         version.setObjectLock(options.getObjectLock());
         version.setSize(content.size());
@@ -330,6 +333,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
                                  VersionedObjectMetadata versionedObjectMetadata) {
     // Rejects Object Lock settings for a bucket without Object Lock before anything changes.
     ObjectLockAssertions.applyBucketObjectLock(bucketMetadata, versionedObjectMetadata);
+    applyBucketDefaultEncryption(bucketMetadata, versionedObjectMetadata);
     String versionId = IdUtils.defaultGenerator().nextStrId();
     ObjectMetadata objectMetadata;
     if (bucketMetadata.getObjectMetadata(key).isPresent()) {
@@ -364,7 +368,18 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .etag(versionedObjectMetadata.getEtag())
         .size(versionedObjectMetadata.getSize())
         .checksum(versionedObjectMetadata.getChecksum())
+        .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
         .build();
+  }
+
+  /**
+   * Give a version that is stored without an encryption the default encryption of its bucket, like Amazon S3 does. A
+   * version stored with a customer-provided key keeps that key only.
+   */
+  private static void applyBucketDefaultEncryption(BucketMetadata bucketMetadata, VersionedObjectMetadata version) {
+    if (Objects.isNull(version.getServerSideEncryption()) && Objects.isNull(version.getCustomerEncryption())) {
+      version.setServerSideEncryption(bucketMetadata.getDefaultEncryption());
+    }
   }
 
   private static void checkRequestingMd5Header(PutObjectOptions options, String etag) {

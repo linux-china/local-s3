@@ -6,6 +6,7 @@ import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.model.BucketObjectLockConfiguration;
+import com.robothy.s3.core.util.BucketEncryptionConfigurations;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
@@ -380,6 +381,35 @@ public class BucketMetadata {
   public void setEncryption(String encryption) {
     this.encryption = encryption;
   }
+
+  /**
+   * The encryption that the objects of the bucket are stored with when a request names none, read from the
+   * {@linkplain #getEncryption() encryption configuration}; see
+   * {@linkplain BucketEncryptionConfigurations#defaultEncryption(String)}. The document is read once per configuration.
+   *
+   * @return the default encryption; {@code null} if the bucket has none.
+   */
+  @JsonIgnore
+  public ServerSideEncryption getDefaultEncryption() {
+    DefaultEncryption cached = defaultEncryption;
+    if (cached == null || cached.configuration() != encryption) {
+      cached = new DefaultEncryption(encryption, BucketEncryptionConfigurations.defaultEncryption(encryption));
+      defaultEncryption = cached;
+    }
+    return cached.encryption();
+  }
+
+  /**
+   * The default encryption read from a configuration document, which is compared by identity: a new document is read
+   * again even if it is equal.
+   */
+  private record DefaultEncryption(String configuration, ServerSideEncryption encryption) {
+  }
+
+  @JsonIgnore
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile DefaultEncryption defaultEncryption;
 
   /**
    * Get public access block configuration.

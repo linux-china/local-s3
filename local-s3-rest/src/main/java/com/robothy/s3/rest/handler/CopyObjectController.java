@@ -6,6 +6,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.core.service.CopyObjectService;
 import com.robothy.s3.core.service.ObjectService;
@@ -17,6 +18,7 @@ import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -57,6 +59,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
         copyObjectAns.getSourceVersionId());
     CustomerEncryptionHeaders.addHeaders(response, copyObjectOptions.getCustomerEncryption());
+    ServerSideEncryptionHeaders.addHeaders(response, copyObjectAns.getServerSideEncryption(), true);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
@@ -83,6 +86,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         ? RequestUtils.extractTagging(request).orElse(null)
         : null;
 
+    CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
     return CopyObjectOptions.builder()
         .sourceBucket(copySource.bucket())
         .sourceKey(copySource.key())
@@ -98,7 +102,8 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .sourcePreconditions(RequestUtils.extractCopySourcePreconditions(request))
         .checksumAlgorithm(ChecksumHeaders.algorithm(request, AmzHeaderNames.X_AMZ_CHECKSUM_ALGORITHM))
         .objectLock(ObjectLockHeaders.fromRequest(request))
-        .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))
+        .customerEncryption(customerEncryption)
+        .serverSideEncryption(ServerSideEncryptionHeaders.fromRequest(request, customerEncryption))
         .sourceCustomerEncryption(CustomerEncryptionHeaders.fromCopySourceRequest(request))
         .build();
   }

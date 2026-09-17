@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.request;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.ObjectLock;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import java.io.InputStream;
@@ -73,6 +74,11 @@ public class PutObjectOptions {
    * The customer-provided key to store the object with; {@code null} for none.
    */
   private CustomerEncryption customerEncryption;
+
+  /**
+   * The SSE-S3 or SSE-KMS encryption to store the object with; {@code null} for none.
+   */
+  private ServerSideEncryption serverSideEncryption;
 
   /**
    * The {@code x-amz-write-offset-bytes} of a request that appends the content to the object the key holds, which

@@ -66,6 +66,12 @@ public class UploadMetadata {
    */
   private CustomerEncryption customerEncryption;
 
+  /**
+   * The SSE-S3 or SSE-KMS encryption that the upload was created with, which the object it stores gets;
+   * {@code null} for none.
+   */
+  private ServerSideEncryption serverSideEncryption;
+
   @JsonDeserialize(converter = UploadPartMetadataMapConverter.class)
   @Builder.Default
   private NavigableMap<Integer, UploadPartMetadata> parts = new ConcurrentSkipListMap<>();

@@ -98,6 +98,12 @@ imported either.
   `COMPOSITE` checksum is the checksum of the checksums of the parts, and a `FULL_OBJECT` CRC is combined from the
   CRCs of the parts without reading their content. An object that is stored without a checksum still gets none, and
   `POST Object` doesn't take one.
++ **Server-side encryption headers**: `x-amz-server-side-encryption` (`AES256`, `aws:kms`, `aws:kms:dsse`) and its
+  `-aws-kms-key-id`, `-context` and `-bucket-key-enabled` headers are validated, stored with the object or the
+  multipart upload, and answered by the operations that store or serve it; an object stored without them gets the
+  default encryption of its bucket. Customer-provided keys (SSE-C) are validated, and a read needs the key the object
+  was stored with. Nothing is encrypted. See
+  [semantics](docs/semantics.md#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms).
 + **Browser form uploads**: `POST Object` stores the file of an HTML form posted to a bucket, with the policy
   document and its Signature Version 4 or 2 signature checked like Amazon S3 checks them: expiration, `eq`,
   `starts-with` and `content-length-range` conditions, and fields that no condition names. The policy of a form is

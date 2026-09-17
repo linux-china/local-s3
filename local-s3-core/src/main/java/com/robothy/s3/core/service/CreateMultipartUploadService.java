@@ -3,7 +3,9 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.ObjectLockAssertions;
+import com.robothy.s3.core.model.answers.CreateMultipartUploadAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.util.IdUtils;
@@ -28,6 +30,19 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
    * @return the upload ID.
    */
   default String createMultipartUpload(String bucket, String key, CreateMultipartUploadOptions options) {
+    return initiateMultipartUpload(bucket, key, options).getUploadId();
+  }
+
+  /**
+   * Init a multipart upload, like {@linkplain #createMultipartUpload}, and answer what the upload was created with.
+   *
+   * @param bucket  the bucket name
+   * @param key     the object key.
+   * @param options options of the multipart upload.
+   * @return the upload ID, and the encryption that the object of the upload is stored with.
+   */
+  default CreateMultipartUploadAns initiateMultipartUpload(String bucket, String key,
+                                                           CreateMultipartUploadOptions options) {
     ChecksumType checksumType = checksumType(options);
     ObjectLockAssertions.assertRequestedObjectLockIsValid(options.getObjectLock(), System.currentTimeMillis());
     return changeBucket(bucket, () -> {
@@ -37,6 +52,11 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
         ObjectLockAssertions.assertObjectLockEnabled(bucketMetadata);
       }
       String uploadId = IdUtils.defaultGenerator().nextStrId();
+      // An upload that names no encryption stores its object with the default encryption of the bucket at the time it
+      // is created, which its parts are answered with.
+      ServerSideEncryption serverSideEncryption = Objects.isNull(options.getServerSideEncryption())
+          && Objects.isNull(options.getCustomerEncryption())
+          ? bucketMetadata.getDefaultEncryption() : options.getServerSideEncryption();
       NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
       uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
       uploads.get(key).put(uploadId, UploadMetadata.builder()
@@ -49,9 +69,13 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
           .checksumType(checksumType)
           .objectLock(options.getObjectLock())
           .customerEncryption(options.getCustomerEncryption())
+          .serverSideEncryption(serverSideEncryption)
           .build());
       bucketMetadata.markUploadsChanged(key);
-      return uploadId;
+      return CreateMultipartUploadAns.builder()
+          .uploadId(uploadId)
+          .serverSideEncryption(serverSideEncryption)
+          .build();
     });
   }
 
