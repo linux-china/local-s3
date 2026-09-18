@@ -127,8 +127,7 @@ Such a file, or one whose deletion failed, is removed later: when a `PERSISTENCE
 that no other service of the JVM has open, a background thread deletes the content files under `.storage/ab/cd/`
 that the metadata didn't reference when the directory was opened, and that were last modified more than a minute
 before. It reads a snapshot of the metadata of that moment, so it is correct while the service handles requests, and
-opening a directory doesn't wait for its files to be listed. It deletes nothing if the metadata references no content
-at all, or if the directory still holds `*.bucket.meta` files of a LocalS3 before 2.5.
+opening a directory doesn't wait for its files to be listed. 
 
 The same sweep deletes the temporary files that a process which died left behind, `.storage/.<id>.<uuid>.tmp` and
 `.storage/.request-bodies/*.tmp`, under the same rule of a minute; nothing references them, so they are deleted whatever
@@ -244,8 +243,6 @@ records, and in memory in contiguous `float` arrays, so a query reads no file.
 
 | Before 2.5 | 2.5 |
 |---|---|
-| `<bucket>.bucket.meta`, one JSON file per bucket | `buckets.mvstore` — **not migrated**, see the [CHANGELOG](../CHANGELOG.md#upgrading-from-24) |
-| `vectors/<bucket>.vectorbucket.meta` | `buckets.mvstore`, map `vectors/buckets` — **not migrated** |
 | `.storage/<id>`, flat | `.storage/ab/cd/<id>` — moved on start, one rename at a time |
 | one file per vector | `vectors/.storage/vectors-<d>.vec` — the files of `vectors/.storage/` are imported on start and deleted; 2.4 wrote them to `.storage/` of the working directory instead, where they aren't looked for |
 

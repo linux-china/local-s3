@@ -253,10 +253,6 @@ In `PERSISTENCE` mode LocalS3 loads data from and stores all data into its data 
 data directory, it starts from the data of the directory and never writes to it. How the directory is laid out is
 described in [architecture.md](architecture.md#persistence-layout).
 
-> **Upgrading from 2.4 or earlier:** 2.5 keeps the metadata of the buckets in `buckets.mvstore` and no longer reads
-> the `*.bucket.meta` files of earlier versions. See the [CHANGELOG](../CHANGELOG.md#upgrading-from-24) before pointing
-> 2.5 at an existing data directory.
-
 ### Persistence policy
 
 A `PERSISTENCE` service commits the metadata of every change by default, so a process that is killed loses nothing it
