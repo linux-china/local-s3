@@ -5,6 +5,12 @@ import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.BucketObjectLockConfiguration;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.util.BucketPublicAccess;
+import com.robothy.s3.datatypes.AccessControlPolicy;
+import com.robothy.s3.datatypes.Grant;
+import com.robothy.s3.datatypes.Grantee;
+import com.robothy.s3.datatypes.Owner;
+import java.util.List;
 
 /**
  * Create bucket service.
@@ -49,10 +55,38 @@ public interface CreateBucketService extends LocalS3MetadataApplicable {
         bucketMetadata.setVersioningEnabled(true);
         bucketMetadata.setObjectLock(new BucketObjectLockConfiguration(null));
       }
+      bucketMetadata.setAcl(defaultBucketAcl());
       localS3Metadata().addBucketMetadata(bucketMetadata);
       publishChange(S3Change.bucketCreated("CreateBucket", bucketName, region));
       return Bucket.fromBucketMetadata(bucketMetadata);
     });
+  }
+
+  /**
+   * Create the default bucket ACL: only the owner has full control, while everyone may read.
+   */
+  private static AccessControlPolicy defaultBucketAcl() {
+    Owner owner = new Owner(Owner.DEFAULT_OWNER.getDisplayName(), Owner.DEFAULT_OWNER.getId());
+
+    Grantee ownerGrantee = new Grantee();
+    ownerGrantee.setDisplayName(owner.getDisplayName());
+    ownerGrantee.setId(owner.getId());
+    ownerGrantee.setType("CanonicalUser");
+    Grant ownerGrant = new Grant();
+    ownerGrant.setGrantee(ownerGrantee);
+    ownerGrant.setPermission("FULL_CONTROL");
+
+    Grantee publicGrantee = new Grantee();
+    publicGrantee.setUri(BucketPublicAccess.ALL_USERS_GROUP);
+    publicGrantee.setType("Group");
+    Grant publicReadGrant = new Grant();
+    publicReadGrant.setGrantee(publicGrantee);
+    publicReadGrant.setPermission("READ");
+
+    return AccessControlPolicy.builder()
+        .owner(owner)
+        .grants(List.of(ownerGrant, publicReadGrant))
+        .build();
   }
 
 }
