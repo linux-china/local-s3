@@ -37,6 +37,8 @@ local-s3:
   port: 29090            # 0 for a random port
   buckets: [uploads, reports]
   mode: in-memory        # or persistence, with data-path
+  seed:
+    classpath: s3-fixtures   # the objects the service starts with
   # credentials:
   #   access-key-id: ...
   #   secret-access-key: ...
@@ -47,6 +49,9 @@ The starter defines:
 + a `LocalS3` bean, configured by the `local-s3.*` properties, which map to the options of `LocalS3Builder` (the IDE
   completes them), and by the `LocalS3BuilderCustomizer` beans for anything else. `LocalS3Lifecycle` starts and stops it
   with the application context, in a phase before the web server, and without a JVM shutdown hook of its own;
++ the buckets and objects of `local-s3.seed.classpath`, and of the `LocalS3Seeder` beans of the application, put into
+  the service before it accepts the first request, and again after every reset. See
+  [Initial data](#initial-data);
 + with the AWS SDK, an `S3Client`, an `S3AsyncClient` (with `netty-nio-client`) and an `S3Presigner` that point at the
   service, with path-style requests and the
   credentials of the service. Creating one starts the service, so a bean can use it while it is initialized, even with a
@@ -74,7 +79,125 @@ class UploadIndexer {
 }
 ```
 
-Set `local-s3.enabled=false` to leave LocalS3 out, e.g. in the profile that runs against Amazon S3.
+## Initial data
+
+`local-s3.buckets` creates empty buckets. To have the service start with objects in them, put a directory tree on the
+classpath, e.g. in `src/test/resources`, and name it with `local-s3.seed.classpath`. The first segment of each path is
+the bucket, the rest is the key:
+
+```
+src/test/resources/s3-fixtures/
+├── README.md                 # names no bucket, so it is skipped
+├── reports/
+│   └── 2026/q1.csv           # s3://reports/2026/q1.csv
+└── uploads/
+    ├── hello.txt             # s3://uploads/hello.txt
+    └── nested/deep.json      # s3://uploads/nested/deep.json
+```
+
+```yaml
+local-s3:
+  seed:
+    classpath: s3-fixtures
+```
+
++ the bucket of a fixture is created, so it doesn't have to be in `local-s3.buckets` as well;
++ the tree is seeded when the service starts, before it accepts the first request, and again after every reset, so each
+  test method of a class that shares one service finds the same fixtures. An object replaces the one that its key
+  already holds, e.g. the one that a `PERSISTENCE` service loaded from its data path;
++ the content type is guessed from the key, e.g. `text/plain` for `hello.txt`;
++ the location is resolved with `classpath*:`, so the fixtures of a jar on the classpath, e.g. a module of fixtures
+  shared by several applications, are seeded too;
++ `local-s3.seed.enabled=false` keeps the location, e.g. the one that another profile sets, without seeding it.
+
+Objects that no file describes well, e.g. a large generated one, come from a `LocalS3Seeder` bean, which is applied the
+same way — on start, and after every reset:
+
+```java
+@Bean
+LocalS3Seeder reportSeeder() {
+  return fixtures -> {
+    fixtures.bucket("archive");
+    fixtures.object("reports", "2026/q1.csv", report(2026, 1));
+    fixtures.object("reports", "2026/q2.csv", Path.of("build/reports/q2.csv"));
+  };
+}
+```
+
+## Startup order
+
+`LocalS3Lifecycle` starts the service in a phase before the web server, and creating one of the client beans starts it
+too, because the endpoint of a client names the port the service listens on, which a random `local-s3.port` only
+settles once it is started. So a bean that uses an injected `S3Client` while it is initialized, e.g. in a
+`@PostConstruct` method or a constructor, finds the service running:
+
+```java
+@Component
+class ReportBucket {
+
+  private final S3Client s3;
+
+  ReportBucket(S3Client s3) {
+    this.s3 = s3;
+  }
+
+  @PostConstruct
+  void prepare() {
+    s3.headBucket(request -> request.bucket("reports")); // the service is already listening
+  }
+}
+```
+
+A bean that uses the service without a client bean of the starter, e.g. through its own client or over the endpoint of
+`LocalS3Lifecycle`, injects `LocalS3Lifecycle` rather than `LocalS3`: `lifecycle.endpoint()` starts the service if the
+lifecycle of the context hasn't yet, while `localS3.getPort()` on its own is the configured port, i.e. `0` for a
+random one, until the service starts.
+
+## LocalS3 locally, Amazon S3 in production
+
+`local-s3.enabled=false` leaves the service out — and with it the `S3Client`, `S3AsyncClient` and `S3Presigner` beans
+of the starter, so the profile that switches it off defines the client of Amazon S3 instead. Otherwise the beans that
+use one fail with a `NoSuchBeanDefinitionException`. Make `local-s3.enabled` the switch of both configurations, so
+exactly one of them defines the clients, whatever the profile:
+
+```java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = "local-s3.enabled", havingValue = "false")
+class AmazonS3Configuration {
+
+  @Bean
+  S3Client s3Client(@Value("${app.s3.region}") String region) {
+    return S3Client.builder().region(Region.of(region)).build(); // the default credentials provider chain
+  }
+}
+```
+
+The condition has no `matchIfMissing`, on purpose: `local-s3.enabled` is unset in a test that only adds the starter,
+which then embeds a service and defines the clients that point at it, as it does by default.
+
+`application.yml`, the production default, which the starter is switched off in:
+
+```yaml
+local-s3:
+  enabled: false
+app:
+  s3:
+    region: eu-central-1
+```
+
+`application-local.yml`, an embedded service with the fixtures of a local run:
+
+```yaml
+local-s3:
+  enabled: true
+  buckets: [uploads, reports]
+  seed:
+    classpath: s3-fixtures
+```
+
+An application that only ever embeds LocalS3 for the processes around it, e.g. DuckDB or a Spark job, needs none of
+this: it doesn't use a client itself, and doesn't have the AWS SDK on the classpath, so the starter defines no client
+beans to begin with.
 
 ## Tests
 

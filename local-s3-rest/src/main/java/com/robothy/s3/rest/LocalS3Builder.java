@@ -44,6 +44,8 @@ public class LocalS3Builder {
 
     private final List<S3ChangeListener> changeListeners = new ArrayList<>();
 
+    private final List<LocalS3Seeder> seeders = new ArrayList<>();
+
     private Executor changeListenerExecutor = Runnable::run;
 
     private boolean initialDataCacheEnabled = true;
@@ -191,6 +193,20 @@ public class LocalS3Builder {
      */
     public LocalS3Builder changeListener(@NonNull S3ChangeListener changeListener) {
         this.changeListeners.add(Objects.requireNonNull(changeListener));
+        return this;
+    }
+
+    /**
+     * Add a {@linkplain LocalS3Seeder seeder} that puts the initial buckets and objects of the service into it: the
+     * fixtures that a test or a local run starts with. The seeders are applied in the order they were added, when the
+     * service starts, after the {@linkplain #buckets(String...) default buckets} are created and before the server
+     * accepts requests, and again after {@linkplain LocalS3#reset()}.
+     *
+     * @param seeder puts the initial buckets and objects into the service.
+     * @return builder.
+     */
+    public LocalS3Builder seeder(@NonNull LocalS3Seeder seeder) {
+        this.seeders.add(Objects.requireNonNull(seeder));
         return this;
     }
 
@@ -605,7 +621,8 @@ public class LocalS3Builder {
      * @return the configuration.
      */
     public LocalS3Config buildConfig() {
-        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, changeListeners,
+        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, seeders,
+                changeListeners,
                 changeListenerExecutor, initialDataCacheEnabled, maxInMemoryBytes, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,

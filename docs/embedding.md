@@ -80,6 +80,29 @@ localS3.start();
 
 `localS3.reset()` brings the service back to that initial data, much quicker than restarting it.
 
+### Seed the initial buckets and objects
+
+`seeder(...)` puts the buckets and objects that the service starts with into it, e.g. the fixtures of a test, before it
+accepts the first request. A seeder runs again after `localS3.reset()`, so every test method of a class that shares one
+service finds the same fixtures, and the bucket of an object is created if nothing else names it.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .port(0)
+    .seeder(fixtures -> {
+      fixtures.object("uploads", "hello.txt", "Hello!".getBytes(UTF_8));
+      fixtures.object("uploads", "images/logo.png", Path.of("src/test/resources/logo.png"));
+    })
+    .build();
+
+localS3.start();
+```
+
+Unlike [initial data](#in-memory-mode-with-initial-data), which is a data path that LocalS3 itself wrote, a seeder
+writes whatever the application has at hand: files of the classpath, rows of a database, generated content. An object
+replaces the one that its key already holds. Spring Boot applications map a directory tree of the classpath with
+[`local-s3.seed.classpath`](../local-s3-spring-boot-starter/README.md#initial-data) instead of writing a seeder.
+
 ### Require signed requests
 
 By default LocalS3 serves every request, signed or not. `credentials(...)` enables AWS Signature Version 4
@@ -212,7 +235,8 @@ are set; see [deployment.md](deployment.md#configuration).
 
 `local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 4 application, configured by `local-s3.*` properties,
 and, when the application has the AWS SDK, which is an optional dependency, defines an `S3Client`, an `S3AsyncClient`
-and an `S3Presigner` that point at it. See
+and an `S3Presigner` that point at it. `local-s3.seed.classpath` names a directory tree of the classpath that the
+service starts with, as `<bucket>/<key>`. See
 [its README](../local-s3-spring-boot-starter/README.md).
 
 ## JUnit 5

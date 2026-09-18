@@ -69,6 +69,8 @@ public class LocalS3Properties {
 
   private final Requests requests = new Requests();
 
+  private final Seed seed = new Seed();
+
   private final Clients clients = new Clients();
 
   private final Events events = new Events();
@@ -159,6 +161,10 @@ public class LocalS3Properties {
 
   public Requests getRequests() {
     return requests;
+  }
+
+  public Seed getSeed() {
+    return seed;
   }
 
   public Clients getClients() {
@@ -350,6 +356,41 @@ public class LocalS3Properties {
 
     public void setIdleConnectionTimeout(Duration idleConnectionTimeout) {
       this.idleConnectionTimeout = idleConnectionTimeout;
+    }
+
+  }
+
+  /**
+   * The objects that the service starts with, besides the empty {@linkplain LocalS3Properties#getBuckets() buckets}.
+   */
+  public static class Seed {
+
+    /**
+     * Whether to seed the service, if a classpath location is set.
+     */
+    private boolean enabled = true;
+
+    /**
+     * Classpath location of a directory tree that is put into the service as {@code <bucket>/<key>}, e.g.
+     * {@code s3-fixtures}, whose {@code s3-fixtures/uploads/a.txt} becomes the object {@code a.txt} of the bucket
+     * {@code uploads}. Seeded when the service starts and after each reset; unset seeds nothing.
+     */
+    private String classpath;
+
+    public boolean isEnabled() {
+      return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    public String getClasspath() {
+      return classpath;
+    }
+
+    public void setClasspath(String classpath) {
+      this.classpath = classpath;
     }
 
   }

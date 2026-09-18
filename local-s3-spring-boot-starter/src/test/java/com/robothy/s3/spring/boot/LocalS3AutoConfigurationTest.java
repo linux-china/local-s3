@@ -27,10 +27,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.async.AsyncRequestBody;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -170,6 +173,42 @@ class LocalS3AutoConfigurationTest {
       assertFalse(context.containsBean("localS3"));
       assertTrue(context.getBeansOfType(S3Client.class).isEmpty());
     });
+  }
+
+  /**
+   * The profile switch that the README documents: {@code local-s3.enabled} decides which configuration defines the
+   * clients, so that switching the embedded service off doesn't leave the beans that use a client without one.
+   */
+  @Test
+  void aConfigurationConditionalOnTheServiceBeingDisabledDefinesTheClientsInstead() {
+    ApplicationContextRunner withAmazonS3 = runner.withUserConfiguration(AmazonS3Configuration.class);
+
+    withAmazonS3.withPropertyValues("local-s3.enabled=false").run(context -> {
+      assertFalse(context.containsBean("localS3"));
+      assertSame(context.getBean("amazonS3Client"), context.getBean(S3Client.class),
+          "The client of Amazon S3 is the only one, so the application always has one to inject.");
+    });
+    withAmazonS3.run(context -> {
+      assertTrue(context.getBean(LocalS3.class).isRunning());
+      assertFalse(context.containsBean("amazonS3Client"),
+          "With the service enabled, which it is by default, the clients of the starter point at it.");
+      assertEquals(URI.create("http://127.0.0.1:" + context.getBean(LocalS3.class).getPort()),
+          context.getBean(LocalS3Lifecycle.class).endpoint());
+    });
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnProperty(name = "local-s3.enabled", havingValue = "false")
+  static class AmazonS3Configuration {
+
+    @Bean
+    S3Client amazonS3Client() {
+      // Built without a call, so the test needs no credentials of Amazon S3.
+      return S3Client.builder().region(Region.EU_CENTRAL_1)
+          .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("key", "secret")))
+          .build();
+    }
+
   }
 
   /**

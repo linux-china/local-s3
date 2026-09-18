@@ -2,6 +2,7 @@ package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
+import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 
 import java.time.Duration;
@@ -11,6 +12,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.PropertyMapper;
 import org.springframework.context.ApplicationContext;
@@ -33,6 +35,8 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  *   <li>a {@linkplain LocalS3} bean configured by {@linkplain LocalS3Properties local-s3.*} and the
  *   {@linkplain LocalS3BuilderCustomizer customizers}, which {@linkplain LocalS3Lifecycle} starts and stops with the
  *   application context;</li>
+ *   <li>the buckets and objects of the directory tree of {@code local-s3.seed.classpath}, put into the service when it
+ *   starts and after every reset;</li>
  *   <li>the {@code S3Change}s that the service commits, published to the application context, where
  *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
  *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
@@ -57,7 +61,8 @@ public class LocalS3AutoConfiguration {
   @ConditionalOnMissingBean
   public LocalS3 localS3(LocalS3Properties properties, ObjectProvider<LocalS3ApplicationEventPublisher> eventPublisher,
                          ObjectProvider<LocalS3BuilderCustomizer> customizers,
-                         ObjectProvider<RequestRecorder> requestRecorders) {
+                         ObjectProvider<RequestRecorder> requestRecorders,
+                         ObjectProvider<LocalS3Seeder> seeders) {
     LocalS3Builder builder = LocalS3.builder()
         // The application context stops the service; a hook of its own would stop it before the beans that use it.
         .registerShutdownHook(false);
@@ -73,6 +78,9 @@ public class LocalS3AutoConfiguration {
       builder.requestRecorder((request, operation, status, requestId, durationNanos) -> recorders.forEach(
           recorder -> recorder.record(request, operation, status, requestId, durationNanos)));
     }
+    // The objects that the service starts with, and that a reset puts back, before the customizers, so that one of
+    // them can seed on top of the fixtures of local-s3.seed.classpath.
+    seeders.orderedStream().forEach(builder::seeder);
     customizers.orderedStream().forEach(customizer -> customizer.customize(builder));
     return builder.build();
   }
@@ -82,6 +90,23 @@ public class LocalS3AutoConfiguration {
   @ConditionalOnBooleanProperty(name = "local-s3.events.enabled", matchIfMissing = true)
   public LocalS3ApplicationEventPublisher localS3ApplicationEventPublisher(ApplicationContext applicationContext) {
     return new LocalS3ApplicationEventPublisher(applicationContext);
+  }
+
+  /**
+   * Seeds the service from the directory tree of {@code local-s3.seed.classpath}, when one is configured. An
+   * application that seeds otherwise defines a {@linkplain LocalS3Seeder} bean of its own, which is applied too.
+   *
+   * @param properties the configuration, whose {@code seed.classpath} names the tree.
+   * @param context resolves the location with the class loader of the application.
+   * @return the seeder of the configured classpath location.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBooleanProperty(name = "local-s3.seed.enabled", matchIfMissing = true)
+  @ConditionalOnProperty(name = "local-s3.seed.classpath")
+  public ClasspathLocalS3Seeder classpathLocalS3Seeder(LocalS3Properties properties, ApplicationContext context) {
+    // The context resolves the location with the class loader of the application, e.g. the one of a launched jar.
+    return new ClasspathLocalS3Seeder(properties.getSeed().getClasspath(), context);
   }
 
   @Bean

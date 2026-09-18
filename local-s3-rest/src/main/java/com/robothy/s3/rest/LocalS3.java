@@ -2,6 +2,7 @@ package com.robothy.s3.rest;
 
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
+import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
@@ -15,8 +16,11 @@ import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.ServiceFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -159,6 +163,9 @@ public class LocalS3 implements AutoCloseable {
             log.info("Create default buckets:{}", String.join(",", config.buckets()));
             createBuckets();
         }
+        if (!config.seeders().isEmpty()) {
+            seed();
+        }
         Path requestBodyFileDirectory = prepareRequestBodyFileDirectory();
         this.server = NettyServer.start(config,
                 LocalS3RouterFactory.create(serviceFactory, config.accessKeyId(), config.secretAccessKey()),
@@ -246,6 +253,79 @@ public class LocalS3 implements AutoCloseable {
         }
     }
 
+    /**
+     * Apply the {@linkplain LocalS3Config#seeders() seeders} to the services of the manager, so that the fixtures are
+     * in place before the server accepts the first request, and again after a reset. They write through the services,
+     * not over HTTP, so their changes reach the change listeners like any other change.
+     */
+    private void seed() {
+        SeededFixtures fixtures = new SeededFixtures();
+        try {
+            for (LocalS3Seeder seeder : config.seeders()) {
+                seeder.seed(fixtures);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to seed LocalS3 with its initial objects.", e);
+        }
+        log.info("Seeded LocalS3 with {} initial object(s).", fixtures.count);
+    }
+
+    /**
+     * The buckets and objects that the {@linkplain LocalS3Seeder seeders} write, put through the services of the
+     * manager. Used by {@linkplain #seed()} only, on the thread that starts or resets the service.
+     */
+    private class SeededFixtures implements LocalS3Seeder.Fixtures {
+
+        private final BucketNameValidator bucketNameValidator = new BucketNameValidator();
+
+        private int count;
+
+        @Override
+        public void bucket(String bucketName) {
+            BucketService bucketService = getS3Manager().bucketService();
+            try {
+                bucketService.getBucket(bucketName);
+            } catch (BucketNotExistException e) {
+                // Existing buckets are accepted, like the default buckets and the buckets loaded from the data path.
+                bucketNameValidator.validate(bucketName);
+                bucketService.createBucket(bucketName);
+            }
+        }
+
+        @Override
+        public void object(String bucketName, String key, byte[] content) {
+            put(bucketName, key, new ByteArrayInputStream(content), content.length, null);
+        }
+
+        @Override
+        public void object(String bucketName, String key, Path file) throws IOException {
+            long size = Files.size(file);
+            String contentType = Files.probeContentType(file);
+            try (InputStream content = Files.newInputStream(file)) {
+                put(bucketName, key, content, size, contentType);
+            }
+        }
+
+        @Override
+        public void object(String bucketName, String key, InputStream content, long size, String contentType)
+                throws IOException {
+            try (InputStream stream = content) {
+                put(bucketName, key, stream, size, contentType);
+            }
+        }
+
+        private void put(String bucketName, String key, InputStream content, long size, String contentType) {
+            bucket(bucketName);
+            getS3Manager().objectService().putObject(bucketName, key, PutObjectOptions.builder()
+                    .contentType(contentType)
+                    .size(size)
+                    .content(content)
+                    .build());
+            count++;
+        }
+
+    }
+
     private ServiceFactory createServiceFactory() {
         // Keep the managers across a restart, so that a service that is started again serves the data it held.
         if (s3Manager == null) {
@@ -287,6 +367,9 @@ public class LocalS3 implements AutoCloseable {
         localS3VectorsManager.reset();
         if (!config.buckets().isEmpty()) {
             createBuckets();
+        }
+        if (!config.seeders().isEmpty()) {
+            seed();
         }
         RequestStatistics statistics = this.requestStatistics;
         if (statistics != null) {
