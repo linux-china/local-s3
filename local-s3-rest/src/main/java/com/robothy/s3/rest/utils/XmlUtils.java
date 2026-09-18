@@ -2,6 +2,7 @@ package com.robothy.s3.rest.utils;
 
 import com.ctc.wstx.stax.WstxInputFactory;
 import com.ctc.wstx.stax.WstxOutputFactory;
+import java.nio.charset.StandardCharsets;
 import javax.xml.stream.XMLInputFactory;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.dataformat.xml.XmlFactory;
@@ -31,10 +32,36 @@ public class XmlUtils {
         .xmlInputFactory(input)
         .xmlOutputFactory(new WstxOutputFactory())
         .build();
-    return XmlMapper.builder(factory)
+    return new S3XmlMapper(XmlMapper.builder(factory)
         .configureForJackson2()
-        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-        .build();
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES));
+  }
+
+  /**
+   * A mapper that declares the namespace of Amazon S3 on the root element of the documents it writes; see
+   * {@linkplain S3XmlNamespace}. Declaring it here rather than at the call sites means that every response
+   * carries it, including the ones a controller writes with the mapper it holds.
+   *
+   * <p>Only a whole document is namespaced. A value written into a document that is already being
+   * written, e.g. the {@code <Deleted>} and {@code <Error>} children that the serializer of
+   * {@code DeleteResult} writes, doesn't go through these methods and inherits the declaration of its root.
+   */
+  static final class S3XmlMapper extends XmlMapper {
+
+    S3XmlMapper(XmlMapper.Builder builder) {
+      super(builder);
+    }
+
+    @Override
+    public String writeValueAsString(Object value) {
+      return S3XmlNamespace.declareOn(super.writeValueAsString(value));
+    }
+
+    @Override
+    public byte[] writeValueAsBytes(Object value) {
+      return writeValueAsString(value).getBytes(StandardCharsets.UTF_8);
+    }
+
   }
 
   public static String toXml(Object object) {
@@ -42,7 +69,8 @@ public class XmlUtils {
   }
 
   public static String toPrettyXml(Object object) {
-    return xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+    // The writer of a mapper doesn't go through writeValueAsString, so the namespace is declared here too.
+    return S3XmlNamespace.declareOn(xmlMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object));
   }
 
   public static  <T> T fromXml(String xml, Class<T> clazz) {

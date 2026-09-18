@@ -187,6 +187,11 @@ imported either.
 + Every response carries an `x-amz-id-2`, like Amazon S3 answers on every response, and an error repeats it in the
   `<HostId>` of its body, as it repeats `x-amz-request-id` in `<RequestId>`. The AWS SDK reports it as the extended
   request ID. It is 76 random characters; LocalS3 serves every request itself, so it identifies no host.
++ The root element of an XML response declares the namespace of Amazon S3,
+  `xmlns="http://s3.amazonaws.com/doc/2006-03-01/"`, which its children inherit, so a namespace-aware parser, e.g. an
+  XPath bound to the namespace or a strict XML binding, reads a response of LocalS3 like one of Amazon S3. An
+  `<Error>` declares none, like an error of Amazon S3. The AWS SDK, boto3 and the other clients that ignore
+  namespaces are unaffected.
 + `HeadObject` answers `x-amz-delete-marker` only for a version that is a delete marker, like Amazon S3 does and like
   `GetObject` already did. Through 2.4 every response carried the header, `false` for an ordinary object.
 + A `<Deleted>` of a `DeleteObjects` result names `<DeleteMarker>` and `<DeleteMarkerVersionId>` only when the deletion
