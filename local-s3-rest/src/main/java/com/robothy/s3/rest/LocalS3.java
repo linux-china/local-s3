@@ -189,8 +189,33 @@ public class LocalS3 implements AutoCloseable {
         if (config.tls() != null) {
             logCertificate(config.tls());
         }
+        warnIfOpenToTheNetwork();
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
+    }
+
+    /**
+     * Warn that the service answers unsigned requests from other machines, which a service does that has no
+     * credentials and doesn't bind a loopback address: everyone who reaches the port reads, writes and deletes every
+     * bucket. The Docker image binds {@code 0.0.0.0}, since a container serves its host, so publishing its port
+     * without credentials opens the data to the network the machine is on.
+     *
+     * <p>It warns rather than refuses to start: an open service is what some setups want, e.g. a test environment
+     * that a team shares. Configuring credentials turns the warning off, as does binding a loopback address; the
+     * logger of this class silences it.
+     *
+     * <p>Package-private so that a test may call it on a service it hasn't started, rather than bind the wildcard
+     * address of the machine it runs on to see the warning.
+     */
+    void warnIfOpenToTheNetwork() {
+        if (config.authenticationEnabled() || !config.reachableFromOtherHosts()) {
+            return;
+        }
+        log.warn("""
+                !! LocalS3 is listening on {}:{} without authentication: everyone who reaches this port can read, \
+                write and delete every bucket.
+                !! Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require \
+                signed requests; bind 127.0.0.1 to serve this machine alone.""", config.bindHost(), port);
     }
 
     /**

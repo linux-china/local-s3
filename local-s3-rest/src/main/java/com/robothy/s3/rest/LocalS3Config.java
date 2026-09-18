@@ -4,6 +4,8 @@ import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.netty.RequestRecorder;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -177,6 +179,30 @@ public record LocalS3Config(
    */
   public boolean authenticationEnabled() {
     return accessKeyId != null;
+  }
+
+  /**
+   * Whether other machines can reach the service, which {@linkplain #bindHost()} decides: a loopback address, e.g.
+   * the default {@code 127.0.0.1}, is reachable from this machine alone, while the wildcard address {@code 0.0.0.0}
+   * and the address of an interface are reachable from the network the machine is on. The Docker image binds the
+   * wildcard address, since a container serves its host.
+   *
+   * <p>Together with {@linkplain #authenticationEnabled()} this says whether the data of the service is open to the
+   * network; {@linkplain LocalS3#start()} warns when it is.
+   *
+   * <p>A bind host that doesn't resolve is reported as reachable. A service that binds one doesn't start at all, so
+   * the answer only matters for a host that resolves, and the reachable answer is the one that warns rather than
+   * stays quiet.
+   *
+   * @return {@code true} if the bind host isn't a loopback address.
+   */
+  public boolean reachableFromOtherHosts() {
+    try {
+      // The wildcard addresses, 0.0.0.0 and ::, aren't loopback addresses: they serve every interface.
+      return !InetAddress.getByName(bindHost).isLoopbackAddress();
+    } catch (UnknownHostException e) {
+      return true;
+    }
   }
 
   /**

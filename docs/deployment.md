@@ -29,6 +29,25 @@ It runs as the unprivileged user `locals3`, so a bind-mounted data directory mus
 your own user instead, and keep the ownership of the directory, start the container with
 `--user "$(id -u):$(id -g)"`.
 
+> **A published port without credentials is open to the network.** The container listens on every interface, so
+> `-p 29090:29090` lets everyone who reaches the machine read, write and delete every bucket, and the service says so
+> when it starts:
+>
+> ```
+> !! LocalS3 is listening on 0.0.0.0:29090 without authentication: everyone who reaches this port can read, write and delete every bucket.
+> !! Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require signed requests; bind 127.0.0.1 to serve this machine alone.
+> ```
+>
+> On a shared network, e.g. an office network or a CI machine, set credentials, or publish the port to the loopback
+> address of the host alone:
+>
+> ```shell
+> docker run -d -p 29090:29090 -e AWS_ACCESS_KEY_ID=local -e AWS_SECRET_ACCESS_KEY=local luofuxiang/local-s3
+> docker run -d -p 127.0.0.1:29090:29090 luofuxiang/local-s3
+> ```
+>
+> The warning is logged by `com.robothy.s3.rest.LocalS3`; a service that is meant to be open can silence it there.
+
 `local-s3-standalone/docker-compose.yaml` starts both images side by side, on ports `29090` and `39090`.
 
 ## Executable jar
@@ -83,7 +102,7 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES` | `1024` | `IN_MEMORY` mode with initial data: the max number of data paths whose loaded data the JVM caches. |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. Unset, every request is answered, whoever sends it; a service that also binds an address other than a loopback one warns about that when it starts, see [Docker](#docker). |
 | `LOCAL_S3_WEBSITE` | `true` | Serve the buckets as [static websites](semantics.md#static-website-hosting) to the requests that carry no credentials. Only a public bucket answers one; the signed requests of an S3 client are never affected. |
 | `LOCAL_S3_WEBSITE_ALL_BUCKETS` | `false` | Serve **every** bucket as a static website, not the public ones alone, which also lets an unsigned request read the objects of a private bucket. Meant for local development. |
 | `LOCAL_S3_WEBSITE_INDEX_DOCUMENT` | `index.html` | The index document of the buckets that have no `WebsiteConfiguration` of their own. |

@@ -85,6 +85,14 @@ imported either.
 
 ### Added
 
++ **A service that is open to the network says so when it starts.** A service that has no credentials and binds an
+  address other than a loopback one — which the Docker image does, since a container serves its host — answers every
+  request, whoever sends it. It now logs a `WARN` naming the address it listens on and how to close it, so that
+  `docker run -p 29090:29090 luofuxiang/local-s3` on a shared network isn't an open object store that nothing
+  mentioned. `LocalS3Config.reachableFromOtherHosts()` is the condition, beside `authenticationEnabled()`. The
+  service still starts: an open service on a private network is a valid setup, and the logger of
+  `com.robothy.s3.rest.LocalS3` silences the warning. See [Docker](docs/deployment.md#docker).
+
 + **Delta Lake is covered end to end.** `DeltaLakeIntegrationTest` drives
   [delta-kernel-java](https://delta.io/blog/delta-kernel/), the Delta client without Spark, against LocalS3: creating a
   table, writing and reading rows, two writers racing for the same version, time travel to an earlier version, and a
