@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
@@ -62,23 +63,56 @@ public class ResponseUtils {
   }
 
   /**
-   * Add 'x-amz-request-id' header with a new request ID.
+   * The number of random bytes of a host ID. Base64 encodes them as the 76 characters of an
+   * {@code x-amz-id-2} of Amazon S3, the last of which is the single {@code =} that padding 56 bytes adds.
+   */
+  private static final int HOST_ID_BYTES = 56;
+
+  /**
+   * Generate the host ID of a response, which its {@code x-amz-id-2} header carries, and the {@code HostId}
+   * of the body of an error repeats. Amazon S3 answers one on every response, where it identifies the host
+   * that served the request; LocalS3 serves every request itself, so the ID means nothing beyond having the
+   * shape that code which logs or parses it expects.
    *
-   * @param response the response to add 'x-amz-request-id' header.
+   * @return a new host ID.
+   */
+  public static String nextHostId() {
+    byte[] bytes = new byte[HOST_ID_BYTES];
+    ThreadLocalRandom.current().nextBytes(bytes);
+    return Base64.getEncoder().encodeToString(bytes);
+  }
+
+  /**
+   * Add 'x-amz-request-id' and 'x-amz-id-2' headers with a new request ID and a new host ID.
+   *
+   * @param response the response to add the headers to.
    */
   public static void addAmzRequestId(HttpResponse response) {
     addAmzRequestId(response, nextRequestId());
   }
 
   /**
-   * Add 'x-amz-request-id' header with the given request ID, which an error response also carries in its
-   * body, so that the two report the same ID.
+   * Add 'x-amz-request-id' header with the given request ID, and 'x-amz-id-2' with a new host ID. An error
+   * response that repeats both in its body calls {@linkplain #addAmzIds} instead, with the pair it wrote.
    *
-   * @param response the response to add 'x-amz-request-id' header.
+   * @param response the response to add the headers to.
    * @param requestId the ID of the request.
    */
   public static void addAmzRequestId(HttpResponse response, String requestId) {
+    addAmzIds(response, requestId, nextHostId());
+  }
+
+  /**
+   * Add the 'x-amz-request-id' and 'x-amz-id-2' headers of a response whose body names the same two IDs, so
+   * that the headers and the body agree, like they do on Amazon S3.
+   *
+   * @param response the response to add the headers to.
+   * @param requestId the ID of the request.
+   * @param hostId the host ID of the response.
+   */
+  public static void addAmzIds(HttpResponse response, String requestId, String hostId) {
     response.putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
+    response.putHeader(AmzHeaderNames.X_AMZ_ID_2, hostId);
   }
 
   /**

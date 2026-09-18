@@ -24,18 +24,20 @@ final class AuthenticationFailureHandler implements HttpRequestHandler {
 
   @Override
   public void handle(HttpRequest request, HttpResponse response) {
-    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     S3Error error = S3Error.builder()
         .code(result.errorCode().code())
         .message(result.message())
         .requestId(requestId)
+        .hostId(hostId)
         .build();
 
     response.status(HttpResponseStatus.valueOf(result.errorCode().httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
-    ResponseUtils.addAmzRequestId(response, requestId);
+    ResponseUtils.addAmzIds(response, requestId, hostId);
     if (!HttpMethod.HEAD.equals(request.getMethod())) {
       response.write(XmlUtils.toXml(error));
     }

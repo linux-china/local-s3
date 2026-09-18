@@ -79,6 +79,9 @@ imported either.
   the XML and JSON documents it writes, and the metadata of a data directory, stay the same.
 + The module `local-s3-docker` is renamed to `local-s3-standalone`, and `local-s3-integrationtest` to
   `local-s3-integration-test`.
++ `S3Error` writes no field that is `null`, rather than an empty element, and gains `hostId` for the `<HostId>` of an
+  error; `LocalS3Exception` gains `getKey()` and `getVersionId()` next to `getBucketName()`. Code that asserts on the
+  message of a `NoSuchKey`, `NoSuchBucket` or `NoSuchVersion` reads the field instead; see [Changed](#changed).
 
 ### Added
 
@@ -165,6 +168,25 @@ imported either.
   change leaves neither metadata nor content behind.
 + The locks of the buckets belong to a service instead of the JVM, so services in the same JVM don't block each other.
 + Error responses use the error codes and status codes of Amazon S3.
++ An `<Error>` document names only the fields the error carries, and names what the request addressed in fields of
+  its own rather than in the message, like Amazon S3 does. Through 2.4 every field was written, empty when it had no
+  value, and the key or the bucket was part of the message:
+
+  ```xml
+  <!-- 2.4 -->
+  <Error><Code>NoSuchKey</Code><Message>Object key 'a.txt' not exists.</Message><RequestId>…</RequestId>
+    <ArgumentName/><ArgumentValue/><BucketName/><Key/><VersionId/></Error>
+  <!-- 2.5 -->
+  <Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message>
+    <BucketName>my-bucket</BucketName><Key>a.txt</Key><RequestId>…</RequestId><HostId>…</HostId></Error>
+  ```
+
+  Code that read an empty `<Key/>` as "present but empty" now finds no element; code that parsed the key or the
+  bucket out of the message reads `<Key>` and `<BucketName>` instead. The messages of `NoSuchKey`, `NoSuchBucket` and
+  `NoSuchVersion` are the ones of Amazon S3.
++ Every response carries an `x-amz-id-2`, like Amazon S3 answers on every response, and an error repeats it in the
+  `<HostId>` of its body, as it repeats `x-amz-request-id` in `<RequestId>`. The AWS SDK reports it as the extended
+  request ID. It is 76 random characters; LocalS3 serves every request itself, so it identifies no host.
 + Netty's event loops only parse and write; requests are handled on an executor, and a connection isn't read while
   its request is in flight.
 

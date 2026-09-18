@@ -1,6 +1,8 @@
 package com.robothy.s3.rest.utils;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
@@ -8,6 +10,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -25,6 +28,30 @@ class ErrorResponsesTest {
     assertTrue(body.contains("<Code>NotImplemented</Code>"), body);
     assertTrue(body.contains("PATCH /bucket/key"), body);
     assertTrue(body.contains("<RequestId>" + response.getHeaders().get("x-amz-request-id") + "</RequestId>"), body);
+    assertTrue(body.contains("<HostId>" + response.getHeaders().get("x-amz-id-2") + "</HostId>"), body);
+  }
+
+  @Test
+  void leavesOutTheFieldsThatTheErrorDoesNotCarry() {
+    StreamingHttpResponse response = new StreamingHttpResponse();
+    ErrorResponses.notImplemented(request(HttpMethod.PATCH, Map.of()), response);
+
+    // Amazon S3 names only what is relevant to an error; LocalS3 wrote every field, empty, through 2.4.
+    String body = body(response);
+    for (String field : new String[] {"ArgumentName", "ArgumentValue", "BucketName", "Key", "VersionId"}) {
+      assertFalse(body.contains("<" + field), body);
+    }
+  }
+
+  @Test
+  void answersAHostIdOfTheShapeOfAmazonS3() {
+    StreamingHttpResponse response = new StreamingHttpResponse();
+    ErrorResponses.notImplemented(request(HttpMethod.PATCH, Map.of()), response);
+
+    // 56 random bytes, which base64 writes as the 76 characters of an x-amz-id-2 of Amazon S3.
+    String hostId = response.getHeaders().get("x-amz-id-2");
+    assertEquals(76, hostId.length(), hostId);
+    assertDoesNotThrow(() -> Base64.getDecoder().decode(hostId), hostId);
   }
 
   @Test

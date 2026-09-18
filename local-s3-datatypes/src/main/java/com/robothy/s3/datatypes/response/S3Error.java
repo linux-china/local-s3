@@ -10,6 +10,15 @@ import lombok.Setter;
 import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
+/**
+ * The {@code <Error>} document of a failed S3 request, written in the order Amazon S3 writes it: the code and
+ * the message, the fields that say what the request named, and the two IDs of the request last.
+ *
+ * <p>A field that the error doesn't carry is left out, like Amazon S3 leaves it out, rather than written as an
+ * empty element: an error of Amazon S3 names only what is relevant to it, e.g. {@code <Key>} and
+ * {@code <BucketName>} for a {@code NoSuchKey}. LocalS3 wrote every field, empty when it had no value,
+ * through 2.4.
+ */
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -17,6 +26,7 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 @Builder
 @JacksonXmlRootElement(localName = "Error")
 @EqualsAndHashCode
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class S3Error {
 
   @JacksonXmlProperty(localName = "Code")
@@ -24,9 +34,6 @@ public class S3Error {
 
   @JacksonXmlProperty(localName = "Message")
   private String message;
-
-  @JacksonXmlProperty(localName = "RequestId")
-  private String requestId;
 
   @JacksonXmlProperty(localName = "ArgumentName")
   private String argumentName;
@@ -36,10 +43,8 @@ public class S3Error {
 
   /**
    * The name of the header whose condition didn't hold, which a {@code PreconditionFailed} error reports,
-   * e.g. {@code If-None-Match}. Left out of an error that isn't about a condition; the other fields are
-   * written even when they are empty, which the clients of LocalS3 have always seen.
+   * e.g. {@code If-None-Match}.
    */
-  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JacksonXmlProperty(localName = "Condition")
   private String condition;
 
@@ -51,4 +56,13 @@ public class S3Error {
 
   @JacksonXmlProperty(localName = "VersionId")
   private String versionId;
+
+  @JacksonXmlProperty(localName = "RequestId")
+  private String requestId;
+
+  /**
+   * The {@code x-amz-id-2} of the response, which the body repeats, like Amazon S3 does.
+   */
+  @JacksonXmlProperty(localName = "HostId")
+  private String hostId;
 }

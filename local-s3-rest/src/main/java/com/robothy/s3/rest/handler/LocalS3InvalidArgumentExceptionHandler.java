@@ -33,10 +33,12 @@ public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<
 
   @Override
   public void handle(LocalS3InvalidArgumentException e, HttpRequest request, HttpResponse response) {
-    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     S3Error error = S3Error.builder()
         .requestId(requestId)
+        .hostId(hostId)
         .code(e.getS3ErrorCode().code())
         .message(e.getMessage() == null ? e.getS3ErrorCode().description() : e.getMessage())
         .argumentName(e.getArgumentName())
@@ -47,7 +49,7 @@ public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<
     response.status(HttpResponseStatus.valueOf(e.getS3ErrorCode().httpStatus()))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .write(xml);
-    ResponseUtils.addAmzRequestId(response, requestId);
+    ResponseUtils.addAmzIds(response, requestId, hostId);
   }
 
 }

@@ -4,7 +4,6 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
-import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.datatypes.s3vectors.response.S3VectorsError;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -60,16 +59,19 @@ public final class ErrorResponses {
 
   private static void writeS3Error(HttpRequest request, HttpResponse response, S3ErrorCode errorCode,
                                    String message) {
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     response.status(HttpResponseStatus.valueOf(errorCode.httpStatus()))
-        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-        .putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
+        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
+    ResponseUtils.addAmzIds(response, requestId, hostId);
     // A response to a HEAD request has no body.
     if (request == null || !HttpMethod.HEAD.equals(request.getMethod())) {
       response.write(XmlUtils.toXml(S3Error.builder()
           .code(errorCode.code())
           .message(message)
           .requestId(requestId)
+          .hostId(hostId)
           .build()));
     }
   }

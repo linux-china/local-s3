@@ -7,6 +7,8 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_REQUEST_ID = "x-amz-request-id";
 
+  public static final String X_AMZ_ID_2 = "x-amz-id-2";
+
   public static final String X_AMZ_VERSION_ID = "x-amz-version-id";
 
   public static final String X_AMZ_CONTENT_SHA256 = "x-amz-content-sha256";

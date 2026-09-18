@@ -32,13 +32,20 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
   @Override
   public void handle(LocalS3Exception e, HttpRequest request, HttpResponse response) {
     S3ErrorCode s3ErrorCode = e.getS3ErrorCode();
-    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     S3Error error = S3Error.builder()
         .code(s3ErrorCode.code())
         .message(Optional.ofNullable(e.getMessage()).orElse(s3ErrorCode.description()))
         .requestId(requestId)
-        .bucketName(e.getBucketName())
+        .hostId(hostId)
+        // What the request named, which Amazon S3 reports in the error rather than in its message. The bucket
+        // of the request stands in for the one of an exception that was raised without it, e.g. a NoSuchKey,
+        // which Amazon S3 reports with the bucket the key was looked for in.
+        .bucketName(Optional.ofNullable(e.getBucketName()).orElseGet(() -> request.parameter("bucket").orElse(null)))
+        .key(e.getKey())
+        .versionId(e.getVersionId())
         // Amazon S3 names the condition that didn't hold in the error of a conditional request.
         .condition(e instanceof PreconditionFailedException failed ? failed.getCondition() : null)
         .build();
@@ -47,7 +54,7 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
       response.status(HttpResponseStatus.valueOf(s3ErrorCode.httpStatus()))
           .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
           .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
-      ResponseUtils.addAmzRequestId(response, requestId);
+      ResponseUtils.addAmzIds(response, requestId, hostId);
 
       if (!HttpMethod.HEAD.equals(request.getMethod())) {
         response.write(xmlMapper.writeValueAsString(error));

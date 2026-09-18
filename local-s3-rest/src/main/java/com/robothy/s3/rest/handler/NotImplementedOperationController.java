@@ -35,19 +35,21 @@ class NotImplementedOperationController implements HttpRequestHandler {
         + "If you need this feature, please submit an issue at "
         + "https://github.com/Robothy/local-s3/issues/new.";
 
-    // The header and the body of an error report the same request ID, like Amazon S3 does, so
-    // the ID is generated once here rather than by ResponseUtils.addCommonHeaders.
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does, so
+    // they are generated once here rather than by ResponseUtils.addCommonHeaders.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     S3Error err = S3Error.builder()
         .code(S3ErrorCode.NotImplemented.code())
         .message(msg)
         .requestId(requestId)
+        .hostId(hostId)
         .build();
 
     response.status(HttpResponseStatus.NOT_IMPLEMENTED)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
         .write(xmlMapper.writeValueAsString(err));
-    ResponseUtils.addAmzRequestId(response, requestId);
+    ResponseUtils.addAmzIds(response, requestId, hostId);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
   }

@@ -470,12 +470,14 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     releaseBody(ctx);
     releaseHeldMessages();
 
-    // The header and the body of an error report the same request ID, like Amazon S3 does.
+    // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
+    String hostId = ResponseUtils.nextHostId();
     S3Error error = S3Error.builder()
         .code(errorCode.code())
         .message(message)
         .requestId(requestId)
+        .hostId(hostId)
         .build();
     byte[] content;
     try {
@@ -490,7 +492,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         .set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_XML)
         .set(HttpHeaderNames.CONTENT_LENGTH, content.length)
         .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE)
-        .set(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
+        .set(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId)
+        .set(AmzHeaderNames.X_AMZ_ID_2, hostId);
     ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
   }
 
