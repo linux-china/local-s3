@@ -2,12 +2,15 @@ package com.robothy.s3.rest.netty;
 
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.LocalS3Config;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpDecoderConfig;
 import io.netty.handler.codec.http.HttpRequestDecoder;
 import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.ssl.OptionalSslHandler;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -24,8 +27,12 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * share; see {@linkplain LocalS3HttpMessageHandler}. So do the writes of the request bodies that are buffered in
  * temporary files, so that an event loop never waits for the disk; see {@linkplain LocalS3HttpRequestDecoder}.
  *
- * <p>With {@linkplain LocalS3Config#tls() TLS} configured, every connection starts with an {@code SslHandler}, which the
- * rest of the pipeline reads plain HTTP from.
+ * <p>With {@linkplain LocalS3Config#tls() TLS} configured, a connection is decrypted by an {@code SslHandler}, which
+ * the rest of the pipeline reads plain HTTP from. Unless {@linkplain LocalS3Config#tlsRequired() TLS is required}, the
+ * port answers HTTP and HTTPS alike: an {@linkplain OptionalSslHandler} reads the first bytes of each connection and
+ * inserts the {@code SslHandler} only for the connections that start with a TLS handshake, so a client that speaks
+ * TLS and one that doesn't share the endpoint. {@linkplain ConnectionSchemes} records which of the two a connection
+ * turned out to be, for the responses that name the URL of the service.
  */
 public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -79,7 +86,12 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        if (sslContext != null) {
+        if (sslContext != null && config.plainHttpAccepted()) {
+            // Decided by the first bytes of the connection: a TLS handshake gets the SslHandler, anything else goes
+            // to the HTTP decoder as it is.
+            ConnectionSchemes.mixed(ch);
+            ch.pipeline().addLast("optional-ssl", new SchemeDetectingSslHandler(sslContext));
+        } else if (sslContext != null) {
             ch.pipeline().addLast("ssl", sslContext.newHandler(ch.alloc()));
         }
         ch.pipeline()
@@ -98,6 +110,29 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests,
                         requestRecorder));
+    }
+
+    /**
+     * An {@linkplain OptionalSslHandler} that records the scheme of the connection it decided on, so that the
+     * responses which name the URL of the service, e.g. the {@code Location} of a browser form upload, name the one
+     * the client actually used.
+     */
+    private static final class SchemeDetectingSslHandler extends OptionalSslHandler {
+
+        SchemeDetectingSslHandler(SslContext sslContext) {
+            super(sslContext);
+        }
+
+        @Override
+        protected String newSslHandlerName() {
+            return "ssl";
+        }
+
+        @Override
+        protected SslHandler newSslHandler(ChannelHandlerContext context, SslContext sslContext) {
+            ConnectionSchemes.https(context.channel());
+            return super.newSslHandler(context, sslContext);
+        }
     }
 
 }

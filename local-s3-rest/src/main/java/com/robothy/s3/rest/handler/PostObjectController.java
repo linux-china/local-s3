@@ -14,6 +14,7 @@ import com.robothy.s3.datatypes.response.PostResponse;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.MultipartFormData;
 import com.robothy.s3.rest.utils.ResponseUtils;
@@ -74,9 +75,10 @@ class PostObjectController implements HttpRequestHandler {
   private final Clock clock;
 
   /**
-   * The scheme of the URLs that the service is reached at: {@code https} if it serves TLS.
+   * The scheme of the URLs that the service is reached at when the request doesn't say: {@code https} if it serves
+   * TLS. A port that answers both HTTP and HTTPS is told by the request, see {@linkplain ConnectionSchemes}.
    */
-  private final String scheme;
+  private final String defaultScheme;
 
   PostObjectController(ServiceFactory serviceFactory, AwsSignatureV4Verifier signatureVerifier) {
     this(serviceFactory, signatureVerifier, Clock.systemUTC());
@@ -87,8 +89,9 @@ class PostObjectController implements HttpRequestHandler {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
     this.signatureVerifier = signatureVerifier;
     this.clock = Objects.requireNonNull(clock);
-    this.scheme = serviceFactory.containsInstance(LocalS3Config.class)
-        && serviceFactory.getInstance(LocalS3Config.class).tlsEnabled() ? "https" : "http";
+    this.defaultScheme = serviceFactory.containsInstance(LocalS3Config.class)
+        && serviceFactory.getInstance(LocalS3Config.class).tlsEnabled()
+        ? ConnectionSchemes.HTTPS : ConnectionSchemes.HTTP;
   }
 
   @Override
@@ -192,13 +195,14 @@ class PostObjectController implements HttpRequestHandler {
   }
 
   /**
-   * The URL of the stored object, addressed like the form was: at the bucket of the path, or at the bucket of the host
-   * of a virtual-hosted-style request.
+   * The URL of the stored object, addressed like the form was: by the scheme the form was posted with, at the bucket
+   * of the path, or at the bucket of the host of a virtual-hosted-style request.
    */
   private String objectLocation(HttpRequest request, String bucketName, String key) {
     String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
     String path = request.getPath() == null ? "/" : request.getPath();
     boolean bucketInPath = !path.replace("/", "").isEmpty();
+    String scheme = ConnectionSchemes.of(request).orElse(defaultScheme);
     return scheme + "://" + host + "/" + (bucketInPath ? encodePathSegment(bucketName) + "/" : "") + encodeKey(key);
   }
 

@@ -50,6 +50,8 @@ import org.jspecify.annotations.Nullable;
  * @param requestRecorder receives every request once its response is written, besides the statistics of the service,
  *     e.g. to record metrics; {@code null} is {@linkplain RequestRecorder#NONE}.
  * @param tls the certificate and private key that the service serves HTTPS with; {@code null} to serve plain HTTP.
+ * @param tlsRequired whether a service with {@code tls} serves HTTPS only, rather than answering HTTP and HTTPS on the
+ *     same port; ignored without {@code tls}.
  */
 public record LocalS3Config(
     String bindHost,
@@ -78,7 +80,8 @@ public record LocalS3Config(
     boolean compositeMultipartEtags,
     List<String> virtualHostDomains,
     RequestRecorder requestRecorder,
-    @Nullable LocalS3Tls tls) {
+    @Nullable LocalS3Tls tls,
+    boolean tlsRequired) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -170,12 +173,22 @@ public record LocalS3Config(
   }
 
   /**
-   * Whether the service serves HTTPS rather than plain HTTP.
+   * Whether the service serves HTTPS.
    *
    * @return {@code true} if a {@linkplain #tls() certificate and private key} are configured.
    */
   public boolean tlsEnabled() {
     return tls != null;
+  }
+
+  /**
+   * Whether the service answers plain HTTP requests: always without TLS, and with TLS unless
+   * {@linkplain #tlsRequired()} is set, in which case the port serves HTTPS alone.
+   *
+   * @return {@code true} if a plain HTTP request is answered.
+   */
+  public boolean plainHttpAccepted() {
+    return tls == null || !tlsRequired;
   }
 
   /**
@@ -195,7 +208,7 @@ public record LocalS3Config(
         + ", maxRequestHeaderSize=" + maxRequestHeaderSize
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
-        + ", tls=" + tlsEnabled() + "]";
+        + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired + "]";
   }
 
   /*

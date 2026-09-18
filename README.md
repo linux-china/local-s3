@@ -73,6 +73,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **AWS Signature Version 4** verification, path-style and virtual-hosted-style requests, CORS.
 + **HTTPS** with a self-signed certificate that LocalS3 generates on startup, or one of
   [mkcert](https://github.com/FiloSottile/mkcert), for clients that require TLS, e.g. DuckDB, Hadoop S3A and Snowflake.
+  The same port keeps answering plain HTTP, so TLS clients and plain ones share one endpoint.
   [Details](docs/deployment.md#https).
 + **A stateless STS endpoint** (`AssumeRole`, `GetSessionToken`, `GetCallerIdentity`), so Iceberg REST catalogs that
   vend temporary credentials, and the engines that use them, work with LocalS3.

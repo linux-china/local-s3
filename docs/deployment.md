@@ -84,8 +84,9 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
-| `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS instead of plain HTTP with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
+| `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS, alongside plain HTTP on the same port, with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
 | `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). |
+| `LOCAL_S3_TLS_REQUIRED` | `false` | Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port, so that a plain HTTP request fails. No effect without a certificate; see [HTTPS](#https). |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
 The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them
@@ -113,8 +114,12 @@ require, HTTPS by default, and then connect to LocalS3 without turning TLS off:
 | Snowflake | S3-compatible storage must be reached over HTTPS |
 | `object_store` (Rust) and some Go clients | an `http://` endpoint is refused unless e.g. `allow_http` is set |
 
-With TLS configured, the port serves **only** HTTPS; plain HTTP requests to it fail. The
-[health check](#health-check) is then `https://…/_health`.
+With TLS configured, the port serves **both HTTP and HTTPS**: each connection is told apart by its first bytes, so a
+client that speaks TLS and one that doesn't reach the same endpoint, and a test suite covering both needs one service
+rather than two. The [health check](#health-check) answers at `https://…/_health` and `http://…/_health` alike.
+
+Set `LOCAL_S3_TLS_REQUIRED=true`, or `tlsRequired(true)`, to serve HTTPS alone, which makes a plain HTTP request fail;
+that is what a test asserting that its client really uses TLS needs. Without a certificate the setting has no effect.
 
 There are two ways to get a certificate: LocalS3 [generates one for itself](#generate-a-certificate-on-startup), which
 needs nothing installed but has to be handed to every client, or [mkcert](#create-a-certificate-with-mkcert) issues one

@@ -106,9 +106,30 @@ class TlsTest {
     }
   }
 
+  /**
+   * The port answers plain HTTP as well by default, so a client that doesn't speak TLS reaches the same service; see
+   * {@linkplain MixedHttpAndHttpsTest}.
+   */
   @Test
-  void rejectsPlainHttpRequests() throws Exception {
+  void answersPlainHttpRequestsOnTheSamePort() throws Exception {
     LocalS3 localS3 = LocalS3.builder().port(-1).tls(certPem, keyPem).build();
+    localS3.start();
+    try {
+      HttpURLConnection connection = (HttpURLConnection) new URI("http://127.0.0.1:" + localS3.getPort() + "/_health")
+          .toURL().openConnection();
+      connection.setReadTimeout(5_000);
+      assertEquals(200, connection.getResponseCode());
+
+      assertEquals(200, request(localS3, "GET", "/_health", null).status(),
+          "The service keeps serving HTTPS after a plain HTTP request.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void rejectsPlainHttpRequestsWhenTlsIsRequired() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).tls(certPem, keyPem).tlsRequired(true).build();
     localS3.start();
     try {
       HttpURLConnection connection = (HttpURLConnection) new URI("http://127.0.0.1:" + localS3.getPort() + "/_health")

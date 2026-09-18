@@ -306,6 +306,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // The body now belongs to the request; LocalS3HttpMessageHandler releases it.
     HttpRequest request = builder.body(requestBody).build();
     builder = null;
+    // The scheme of the connection, which a port that answers both HTTP and HTTPS only knows per connection.
+    ConnectionSchemes.record(ctx.channel(), request);
     if (verifiedHead != null) {
       HttpRequest head = verifiedHead;
       verifiedHead = null;

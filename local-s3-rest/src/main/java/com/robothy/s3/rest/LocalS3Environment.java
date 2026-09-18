@@ -74,6 +74,14 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_TLS_SELF_SIGNED = "LOCAL_S3_TLS_SELF_SIGNED";
 
+  /**
+   * Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port: {@code true} makes a plain HTTP request
+   * to a service with a certificate fail. Without a certificate it has no effect.
+   *
+   * @see LocalS3Builder#tlsRequired(boolean)
+   */
+  public static final String LOCAL_S3_TLS_REQUIRED = "LOCAL_S3_TLS_REQUIRED";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
@@ -126,6 +134,8 @@ public final class LocalS3Environment {
     } else if (selfSigned != null) {
       builder.tls(selfSigned);
     }
+    variable(variables, LOCAL_S3_TLS_REQUIRED)
+        .ifPresent(required -> builder.tlsRequired(Boolean.parseBoolean(required)));
 
     String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
     String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);

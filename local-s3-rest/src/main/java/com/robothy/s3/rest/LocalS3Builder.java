@@ -84,6 +84,8 @@ public class LocalS3Builder {
 
     private LocalS3Tls tls;
 
+    private boolean tlsRequired = false;
+
     /**
      * Set the host that local-s3 service listens on.
      * The default value is {@code 127.0.0.1}, and local only,
@@ -510,16 +512,19 @@ public class LocalS3Builder {
     }
 
     /**
-     * Serve HTTPS instead of plain HTTP, with a certificate and its private key in PEM format. Clients that use HTTPS
-     * by default, e.g. DuckDB, Hadoop S3A or the {@code object_store} crate, then connect without turning TLS off.
+     * Serve HTTPS with a certificate and its private key in PEM format. Clients that use HTTPS by default, e.g.
+     * DuckDB, Hadoop S3A or the {@code object_store} crate, then connect without turning TLS off.
      *
      * <p>For local development, <a href="https://github.com/FiloSottile/mkcert">mkcert</a> creates a certificate that
      * the machine trusts: {@code mkcert -install} once, then {@code mkcert localhost 127.0.0.1} creates
      * {@code localhost+1.pem} and {@code localhost+1-key.pem}. A JVM client trusts it only once the CA of mkcert,
      * {@code $(mkcert -CAROOT)/rootCA.pem}, is in its trust store.
      *
-     * <p>The files are read, and the certificate and key validated, when this method is called. The service serves only
-     * HTTPS on its port; plain HTTP requests to it fail.
+     * <p>The port answers <b>both HTTP and HTTPS</b>: every connection is told apart by its first bytes, so a client
+     * that speaks TLS and one that doesn't share the endpoint, and a test suite doesn't need two services to cover
+     * both. {@linkplain #tlsRequired(boolean)} serves HTTPS alone instead.
+     *
+     * <p>The files are read, and the certificate and key validated, when this method is called.
      *
      * @param certPem the certificate, optionally followed by its intermediate certificates: the path of a PEM file, or
      *     the PEM content itself.
@@ -577,6 +582,23 @@ public class LocalS3Builder {
     }
 
     /**
+     * Serve HTTPS alone on the port, instead of answering both HTTP and HTTPS on it. A plain HTTP request to the
+     * service then fails, which is what a test asserts that its client really uses TLS with.
+     *
+     * <p>A service with {@linkplain #tls(String, String) TLS} accepts both by default, since a port that answers
+     * whatever a client speaks is one less thing to configure. Without TLS this has no effect: there is nothing to
+     * serve HTTPS with.
+     *
+     * @param tlsRequired {@code true} to refuse plain HTTP; {@code false}, the default, to answer HTTP and HTTPS on
+     *     the same port.
+     * @return builder.
+     */
+    public LocalS3Builder tlsRequired(boolean tlsRequired) {
+        this.tlsRequired = tlsRequired;
+        return this;
+    }
+
+    /**
      * Configure the builder from the environment variables that the Docker image is configured with, read
      * from the environment or, if a variable isn't set there, from the system property of the same name.
      *
@@ -589,7 +611,8 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_CERT},
-     * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#AWS_BUCKETS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_REQUIRED},
+     * {@linkplain LocalS3Environment#AWS_BUCKETS},
      * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
      *
      * @return builder.
@@ -627,7 +650,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,
-                virtualHostDomains, requestRecorder, tls);
+                virtualHostDomains, requestRecorder, tls, tlsRequired);
     }
 
     /**

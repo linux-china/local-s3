@@ -172,7 +172,12 @@ public class LocalS3 implements AutoCloseable {
                 serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics));
         // The actual port, in case a random one was requested.
         this.port = server.port();
-        log.info("LocalS3 listens on {}://{}:{}.", config.tlsEnabled() ? "https" : "http", config.bindHost(), port);
+        if (config.tlsEnabled() && config.plainHttpAccepted()) {
+            log.info("LocalS3 listens on https://{}:{} and http://{}:{}, on the same port.", config.bindHost(), port,
+                    config.bindHost(), port);
+        } else {
+            log.info("LocalS3 listens on {}://{}:{}.", config.tlsEnabled() ? "https" : "http", config.bindHost(), port);
+        }
         if (config.tls() != null) {
             logCertificate(config.tls());
         }

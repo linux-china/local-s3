@@ -29,6 +29,9 @@ started with a certificate serves [HTTPS](deployment.md#https) instead, and the 
 >   `SSL peer certificate or SSH remote key was not OK`; with a certificate of
 >   [mkcert](deployment.md#create-a-certificate-with-mkcert) it needs no CA file at all.
 >
+> The port keeps answering plain HTTP either way, so turning TLS on for DuckDB doesn't cut off the other clients,
+> scripts and tests that address the same service with an `http://` endpoint.
+>
 > The exact wording of the errors depends on the version of DuckDB; the messages here are from DuckDB 1.5.
 
 ## DuckDB
