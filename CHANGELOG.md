@@ -204,6 +204,12 @@ imported either.
 
 ### Fixed
 
++ The jar and the image give an `IN_MEMORY` service the data path of the container, `/data`, only when that directory
+  exists, which is what [deployment](docs/deployment.md) already described: an `IN_MEMORY` service reads a data path
+  for its initial data alone, so the jar on a machine without `/data` reported a data path it never read, in its
+  startup log, in `GET /_admin/stats` and in the log of the vector storage, as though a volume were mounted. A
+  `PERSISTENCE` service, and an `IN_MEMORY` service whose `/data` is there, e.g. the volume of the image, are
+  unchanged, as is a `LOCAL_S3_DATA_PATH` of your own.
 + `PutObjectAcl` and `PutBucketAcl` accept a canned ACL (`x-amz-acl`) or grant headers (`x-amz-grant-*`) without a
   body, e.g. `aws s3api put-object-acl --acl public-read`, instead of failing with `500 InternalError`; a request
   without any ACL fails with `MissingSecurityHeader`, and a malformed one with `MalformedACLError`, like Amazon S3.
