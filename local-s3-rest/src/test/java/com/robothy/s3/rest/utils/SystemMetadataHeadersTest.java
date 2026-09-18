@@ -81,4 +81,24 @@ class SystemMetadataHeadersTest {
     assertFalse(headers.containsKey("content-language"));
   }
 
+  @Test
+  void anObjectStoredWithoutAContentTypeIsServedWithTheDefaultOne() {
+    StreamingHttpResponse response = new StreamingHttpResponse();
+
+    SystemMetadataHeaders.addResponseHeaders(request(Map.of(), Map.of()), response, null, null);
+
+    // Amazon S3 always answers a Content-Type, binary/octet-stream for an object stored without one.
+    assertEquals("binary/octet-stream", response.getHeaders().get("content-type"));
+  }
+
+  @Test
+  void theResponseParameterOverridesTheDefaultContentTypeToo() {
+    StreamingHttpResponse response = new StreamingHttpResponse();
+
+    SystemMetadataHeaders.addResponseHeaders(
+        request(Map.of(), Map.of("response-content-type", List.of("text/csv"))), response, null, null);
+
+    assertEquals("text/csv", response.getHeaders().get("content-type"));
+  }
+
 }

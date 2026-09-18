@@ -7,6 +7,9 @@ import com.robothy.s3.jupiter.LocalS3;
 import com.robothy.s3.jupiter.LocalS3Endpoint;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -80,6 +83,30 @@ class SystemMetadataIntegrationTest {
         RequestBody.fromString("Signed stream"));
 
     assertNull(s3.headObject(request -> request.bucket(BUCKET).key("chunked.txt")).contentEncoding());
+  }
+
+  /**
+   * An object stored by a request that carries no {@code Content-Type} is served with
+   * {@code binary/octet-stream}, like Amazon S3 serves it: a {@code GetObject} or {@code HeadObject} response
+   * always carries a content type, which a browser and the clients that branch on it rely on.
+   */
+  @Test
+  @LocalS3
+  void anObjectStoredWithoutAContentTypeIsServedWithTheDefaultOne(S3Client s3, LocalS3Endpoint endpoint)
+      throws Exception {
+    s3.createBucket(request -> request.bucket(BUCKET));
+    // The AWS SDK always sends a content type, so the object is stored over plain HTTP without one; the service
+    // accepts unsigned requests here, since @LocalS3 carries no credentials.
+    HttpClient http = HttpClient.newHttpClient();
+    URI url = URI.create(endpoint.endpoint() + "/" + BUCKET + "/no-content-type.bin");
+    HttpResponse<Void> put = http.send(HttpRequest.newBuilder(url)
+        .PUT(HttpRequest.BodyPublishers.ofString("xyz")).build(), HttpResponse.BodyHandlers.discarding());
+    assertEquals(200, put.statusCode());
+
+    assertEquals("binary/octet-stream",
+        s3.headObject(request -> request.bucket(BUCKET).key("no-content-type.bin")).contentType());
+    assertEquals("binary/octet-stream",
+        s3.getObject(request -> request.bucket(BUCKET).key("no-content-type.bin")).response().contentType());
   }
 
   @Test

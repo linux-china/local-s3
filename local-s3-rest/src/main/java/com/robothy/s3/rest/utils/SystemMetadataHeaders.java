@@ -52,6 +52,13 @@ public final class SystemMetadataHeaders {
 
   private static final String AWS_CHUNKED = "aws-chunked";
 
+  /**
+   * The content type that an object stored without one is served with, which is what Amazon S3 answers: a
+   * {@code GetObject} or {@code HeadObject} response always carries a {@code Content-Type}. Note that Amazon S3
+   * defaults to {@code binary/octet-stream} rather than the {@code application/octet-stream} of RFC 2046.
+   */
+  static final String DEFAULT_CONTENT_TYPE = "binary/octet-stream";
+
   private SystemMetadataHeaders() {
   }
 
@@ -129,6 +136,9 @@ public final class SystemMetadataHeaders {
    * Add the {@code Content-Type} and the system-defined metadata of an object to a response that serves it, each
    * overridden by the {@code response-*} query parameter of the request if it carries one.
    *
+   * <p>An object stored without a content type is served with {@linkplain #DEFAULT_CONTENT_TYPE}, so that the
+   * response always carries a {@code Content-Type}, like the one of Amazon S3 does.
+   *
    * @param request        the {@code GetObject} or {@code HeadObject} request.
    * @param response       the response to add the headers to.
    * @param contentType    the content type of the object; {@code null} if it has none.
@@ -137,8 +147,8 @@ public final class SystemMetadataHeaders {
   public static void addResponseHeaders(HttpRequest request, HttpResponse response, String contentType,
                                         SystemMetadata systemMetadata) {
     String contentTypeHeader = HttpHeaderNames.CONTENT_TYPE.toString();
-    ResponseUtils.putHeaderIfPresent(response, contentTypeHeader,
-        request.parameter(RESPONSE_PARAMETER_PREFIX + contentTypeHeader).orElse(contentType));
+    response.putHeader(contentTypeHeader, request.parameter(RESPONSE_PARAMETER_PREFIX + contentTypeHeader)
+        .orElseGet(() -> contentType == null ? DEFAULT_CONTENT_TYPE : contentType));
     for (Header header : Header.values()) {
       String value = systemMetadata == null ? null : header.getter.apply(systemMetadata);
       ResponseUtils.putHeaderIfPresent(response, header.headerName,
