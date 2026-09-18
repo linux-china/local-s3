@@ -1,5 +1,6 @@
 package com.robothy.s3.datatypes.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Objects;
@@ -28,11 +29,21 @@ public class DeleteResult {
   @JacksonXmlElementWrapper(useWrapping = false)
   private List<Object> deletedList;
 
+  /**
+   * An object that {@code DeleteObjects} deleted. Like Amazon S3, it names only what applies to the deletion:
+   * a bucket that was never versioned answers the key alone, and the two delete marker fields belong to a
+   * deletion that created one. LocalS3 wrote every field, {@code false} or empty, through 2.4.
+   */
   @Setter
   @Getter
   @JacksonXmlRootElement(localName = "Deleted")
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public static class Deleted {
 
+    /**
+     * Whether the deletion created a delete marker. Written only when it did, like Amazon S3 writes it.
+     */
+    @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     @JacksonXmlProperty(localName = "DeleteMarker")
     private boolean deleteMarker;
 

@@ -187,6 +187,13 @@ imported either.
 + Every response carries an `x-amz-id-2`, like Amazon S3 answers on every response, and an error repeats it in the
   `<HostId>` of its body, as it repeats `x-amz-request-id` in `<RequestId>`. The AWS SDK reports it as the extended
   request ID. It is 76 random characters; LocalS3 serves every request itself, so it identifies no host.
++ `HeadObject` answers `x-amz-delete-marker` only for a version that is a delete marker, like Amazon S3 does and like
+  `GetObject` already did. Through 2.4 every response carried the header, `false` for an ordinary object.
++ A `<Deleted>` of a `DeleteObjects` result names `<DeleteMarker>` and `<DeleteMarkerVersionId>` only when the deletion
+  created a delete marker, and `<VersionId>` only when it deleted a version, like Amazon S3 does. A bucket that was
+  never versioned answers `<Deleted><Key>a.txt</Key></Deleted>`; through 2.4 it also wrote
+  `<DeleteMarker>false</DeleteMarker>`, `<DeleteMarkerVersionId/>` and `<VersionId/>`. The AWS SDK reads the absent
+  fields as `null` rather than as `false` and `""`.
 + Netty's event loops only parse and write; requests are handled on an executor, and a connection isn't read while
   its request is in flight.
 

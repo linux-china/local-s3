@@ -47,8 +47,12 @@ class HeadObjectController implements HttpRequestHandler {
         .build();
     GetObjectAns object = objectService.headObject(bucket, key, options);
 
-    response.putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, object.isDeleteMarker())
-        .putHeader(HttpHeaderNames.LAST_MODIFIED.toString(), ResponseUtils.toRfc1123DateTime(object.getLastModified()));
+    // Answered only for a delete marker, like Amazon S3 does, and like GetObjectController answers it.
+    if (object.isDeleteMarker()) {
+      response.putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, true);
+    }
+    response.putHeader(HttpHeaderNames.LAST_MODIFIED.toString(),
+        ResponseUtils.toRfc1123DateTime(object.getLastModified()));
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, object.getVersionId());
 
     if (object.isNotModified()) {
