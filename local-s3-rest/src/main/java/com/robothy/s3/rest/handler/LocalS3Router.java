@@ -7,6 +7,7 @@ import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.s3vectors.VectorResourceRequests;
 import com.robothy.s3.rest.model.request.BucketRegion;
 import com.robothy.s3.rest.netty.OperationHandler;
@@ -124,6 +125,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   private KmsController kmsController;
 
+  /**
+   * Answers the Iceberg REST catalog requests; {@code null} if the service serves no catalog.
+   */
+  private IcebergCatalogController icebergController;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -178,6 +184,19 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * Answer the Iceberg REST catalog requests, see {@linkplain IcebergCatalogController#isIcebergRequest}, with a
+   * controller.
+   *
+   * @param icebergController the controller; {@code null} to serve no catalog, which leaves its paths to the S3
+   *     routes, i.e. to a bucket named {@code iceberg}.
+   * @return this router.
+   */
+  LocalS3Router iceberg(IcebergCatalogController icebergController) {
+    this.icebergController = icebergController;
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -213,6 +232,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     }
     if (kmsController != null && KmsController.isKmsRequest(request)) {
       return matchKms(request);
+    }
+    if (icebergController != null && IcebergCatalogController.isIcebergRequest(request)) {
+      return matchIceberg(request);
     }
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
@@ -266,6 +288,33 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
+   * The handler of an Iceberg REST catalog request. The catalog speaks its own protocol, whose credentials are an
+   * OAuth2 bearer token rather than an AWS signature, so its requests aren't verified: a client that signs them with
+   * SigV4, which the Iceberg client does only when it is configured to, is verified like any other request, and one
+   * that doesn't is answered as it is. The S3 requests that the engine then makes are verified either way, which is
+   * where the credentials of a service actually guard something.
+   */
+  private OperationHandler matchIceberg(HttpRequest request) {
+    if (requiresAuthentication(request) && isAwsSigned(request)) {
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      if (!result.authenticated()) {
+        return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, new AuthenticationFailureHandler(result));
+      }
+    }
+    return new OperationHandler(IcebergCatalogController.operation(request), icebergController);
+  }
+
+  /**
+   * Whether a request carries an AWS Signature Version 4, rather than another kind of credential such as the bearer
+   * token of the Iceberg REST protocol.
+   */
+  private static boolean isAwsSigned(HttpRequest request) {
+    return request.header(HttpHeaderNames.AUTHORIZATION.toString())
+        .map(authorization -> authorization.startsWith("AWS4-"))
+        .orElseGet(() -> Objects.toString(request.getUri(), "").contains("X-Amz-Algorithm="));
+  }
+
+  /**
    * Verify the signature of a request before its body is received, so that a request with an invalid signature
    * doesn't get to upload its body. What was verified is kept, and handed to the complete request by
    * {@linkplain #requestReceived}, so that {@linkplain #match} only verifies what depends on the body: the payload hash
@@ -278,7 +327,8 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     // format of that service.
     if (!requiresAuthentication(head) || isFormUpload(head)
         || stsController != null && StsController.isStsRequest(head)
-        || kmsController != null && KmsController.isKmsRequest(head)) {
+        || kmsController != null && KmsController.isKmsRequest(head)
+        || icebergController != null && IcebergCatalogController.isIcebergRequest(head)) {
       return null;
     }
     AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);

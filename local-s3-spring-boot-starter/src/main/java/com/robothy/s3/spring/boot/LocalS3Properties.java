@@ -1,6 +1,7 @@
 package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -75,6 +76,8 @@ public class LocalS3Properties {
 
   private final Events events = new Events();
 
+  private final IcebergCatalog icebergCatalog = new IcebergCatalog();
+
   public boolean isEnabled() {
     return enabled;
   }
@@ -129,6 +132,10 @@ public class LocalS3Properties {
 
   public void setInitialDataCacheEnabled(boolean initialDataCacheEnabled) {
     this.initialDataCacheEnabled = initialDataCacheEnabled;
+  }
+
+  public IcebergCatalog getIcebergCatalog() {
+    return icebergCatalog;
   }
 
   public boolean isCompositeMultipartEtags() {
@@ -446,6 +453,69 @@ public class LocalS3Properties {
       this.enabled = enabled;
     }
 
+  }
+
+
+  /**
+   * The Iceberg REST catalog that LocalS3 can serve beside its S3 API, under {@code /iceberg/v1} on the same port, so
+   * that an application or a test of Apache Iceberg needs no catalog of its own. It is off unless
+   * {@code local-s3.iceberg-catalog.enabled} is set.
+   */
+  public static class IcebergCatalog {
+
+    /**
+     * Whether to serve an Iceberg REST catalog at {@code /iceberg/v1}.
+     */
+    private boolean enabled = false;
+
+    /**
+     * Warehouse location of the catalog: an s3:// URI of a bucket of this service, which the tables created without
+     * a location of their own are placed under.
+     */
+    private String warehouse = LocalS3IcebergCatalog.DEFAULT_WAREHOUSE;
+
+    /**
+     * Whether to create the warehouse bucket when LocalS3 starts, if it doesn't exist.
+     */
+    private boolean createWarehouseBucket = true;
+
+    /**
+     * Whether a loaded table carries the endpoint and the credentials of LocalS3, so that an engine configured with
+     * the catalog URI alone reaches the storage too.
+     */
+    private boolean credentialVending = true;
+
+    public boolean isEnabled() {
+      return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    public String getWarehouse() {
+      return warehouse;
+    }
+
+    public void setWarehouse(String warehouse) {
+      this.warehouse = warehouse;
+    }
+
+    public boolean isCreateWarehouseBucket() {
+      return createWarehouseBucket;
+    }
+
+    public void setCreateWarehouseBucket(boolean createWarehouseBucket) {
+      this.createWarehouseBucket = createWarehouseBucket;
+    }
+
+    public boolean isCredentialVending() {
+      return credentialVending;
+    }
+
+    public void setCredentialVending(boolean credentialVending) {
+      this.credentialVending = credentialVending;
+    }
   }
 
 }

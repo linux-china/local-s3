@@ -2,6 +2,7 @@ package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
+import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 
@@ -127,6 +128,12 @@ public class LocalS3AutoConfiguration {
     map.from(properties::isCompositeMultipartEtags).to(builder::compositeMultipartEtags);
     map.from(properties::getVirtualHostDomains)
         .to(domains -> builder.virtualHostDomains(domains.toArray(String[]::new)));
+
+    LocalS3Properties.IcebergCatalog iceberg = properties.getIcebergCatalog();
+    if (iceberg.isEnabled()) {
+      builder.icebergCatalog(new LocalS3IcebergCatalog(iceberg.getWarehouse(), iceberg.isCreateWarehouseBucket(),
+          iceberg.isCredentialVending()));
+    }
 
     LocalS3Properties.Credentials credentials = properties.getCredentials();
     boolean hasAccessKeyId = hasText(credentials.getAccessKeyId());

@@ -13,7 +13,8 @@ Use it to:
 
 + test code that uses S3 with JUnit 5, Testcontainers or Spring Boot, without an AWS account;
 + embed an S3 server in a Java application or an IDE, e.g. as the default S3 for DuckDB;
-+ give a big data platform such as Iceberg or Delta Lake a fast, local S3 to test against.
++ give a big data platform such as Iceberg or Delta Lake a fast, local S3 to test against — with an
+  [Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog) built in, so no separate catalog is needed.
 
 ## Quick start
 
@@ -65,6 +66,10 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   [Details](docs/semantics.md#browser-form-uploads-post-object).
 + **Lifecycle configurations are saved but not applied**: they can be put, read back and deleted, so frameworks that
   configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
++ **A built-in Iceberg REST catalog**, off by default, served under `/iceberg/v1` on the same port: a lakehouse test
+  needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
+  catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works.
+  [Details](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
 + **Faithful semantics**: conditional reads, writes and deletes that are atomic per key, Amazon S3 entity tags for
   multipart uploads, and the validation of Amazon S3 for bucket names and part sizes. [Semantics](docs/semantics.md).
@@ -93,7 +98,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
-| [Data tools](docs/data-tools.md) | DuckDB and Apache Iceberg (`S3FileIO`) on LocalS3: path-style settings, range reads, and conditional commits. |
+| [Data tools](docs/data-tools.md) | DuckDB, DuckLake and Apache Iceberg on LocalS3, and the built-in Iceberg REST catalog. |
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |

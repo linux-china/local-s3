@@ -14,4 +14,7 @@ dependencies {
     api(libs.jacksonDatabind)
 
     implementation(libs.h2MvStore)
+
+    // The nullness annotations of the Iceberg catalog, whose records and commits carry values that may be absent.
+    implementation(libs.jspecify)
 }

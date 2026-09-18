@@ -79,6 +79,16 @@ class SignatureCredentialsTest {
       }
 
       @Override
+      public boolean icebergCatalog() {
+        return defaults.icebergCatalog();
+      }
+
+      @Override
+      public String icebergWarehouse() {
+        return defaults.icebergWarehouse();
+      }
+
+      @Override
       public int port() {
         return defaults.port();
       }

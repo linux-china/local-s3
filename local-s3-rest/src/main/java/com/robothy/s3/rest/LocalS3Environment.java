@@ -82,6 +82,22 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_TLS_REQUIRED = "LOCAL_S3_TLS_REQUIRED";
 
+  /**
+   * Serve an Iceberg REST catalog under {@code /iceberg/v1} beside the S3 API: {@code true} turns it on. It is off
+   * by default, so a service that doesn't ask for one carries neither its routes nor its state.
+   *
+   * @see LocalS3Builder#icebergCatalog(boolean)
+   */
+  public static final String LOCAL_S3_ICEBERG_CATALOG = "LOCAL_S3_ICEBERG_CATALOG";
+
+  /**
+   * The warehouse of the Iceberg REST catalog, an {@code s3://} URI of a bucket of this service, e.g.
+   * {@code s3://warehouse/}. Setting it turns the catalog on.
+   *
+   * @see LocalS3Builder#icebergWarehouse(String)
+   */
+  public static final String LOCAL_S3_ICEBERG_WAREHOUSE = "LOCAL_S3_ICEBERG_WAREHOUSE";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
@@ -116,6 +132,10 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
         .ifPresent(domains -> builder.virtualHostDomains(domains.split(",")));
     variable(variables, AWS_BUCKETS).ifPresent(names -> builder.buckets(names.split(",")));
+    // The warehouse is applied after the switch, so that setting both turns the catalog on with that warehouse.
+    variable(variables, LOCAL_S3_ICEBERG_CATALOG)
+        .ifPresent(enabled -> builder.icebergCatalog(Boolean.parseBoolean(enabled)));
+    variable(variables, LOCAL_S3_ICEBERG_WAREHOUSE).ifPresent(builder::icebergWarehouse);
 
     String tlsCert = variable(variables, LOCAL_S3_TLS_CERT).orElse(null);
     String tlsKey = variable(variables, LOCAL_S3_TLS_KEY).orElse(null);

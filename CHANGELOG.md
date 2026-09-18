@@ -85,6 +85,19 @@ imported either.
 
 ### Added
 
++ **A built-in Iceberg REST catalog**, off by default: `icebergCatalog(true)`, `@LocalS3(icebergCatalog = true)`,
+  `local-s3.iceberg-catalog.enabled` or `LOCAL_S3_ICEBERG_CATALOG=true` serves an
+  [Iceberg REST catalog](https://iceberg.apache.org/spec/#rest-catalog) under `/iceberg/v1` on the same port, so a
+  lakehouse test needs one process rather than a catalog — Polaris, Lakekeeper, Nessie or JDBC — beside the object
+  store. Namespaces, tables, views, commits and multi-table transactions are served; a commit moves the pointer of a
+  table with a compare-and-set, so a writer that lost the race is answered `409 CommitFailedException` and its client
+  retries, and concurrent appends never lose one another's rows. The tables live in LocalS3 itself, under the warehouse
+  `s3://warehouse/` by default, so an `IN_MEMORY` service holds them in memory and a `PERSISTENCE` service keeps them
+  in its data directory. `GET /v1/config` and every loaded table vend the endpoint, path-style access and the
+  credentials of the service, so a client configured with the catalog URI alone reaches the storage. LocalS3 builds the
+  table metadata itself and gains no dependency on Iceberg.
+  See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
+
 + **Bounded in-memory storage**: `maxInMemoryBytes(bytes)`, `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and
   `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
   heap by default. An upload beyond it is answered with `507 InsufficientStorage`, whose message suggests the

@@ -52,6 +52,8 @@ import org.jspecify.annotations.Nullable;
  * @param tls the certificate and private key that the service serves HTTPS with; {@code null} to serve plain HTTP.
  * @param tlsRequired whether a service with {@code tls} serves HTTPS only, rather than answering HTTP and HTTPS on the
  *     same port; ignored without {@code tls}.
+ * @param icebergCatalog the Iceberg REST catalog that the service serves under {@code /iceberg/v1}; {@code null} to
+ *     serve none, which is the default.
  */
 public record LocalS3Config(
     String bindHost,
@@ -81,7 +83,8 @@ public record LocalS3Config(
     List<String> virtualHostDomains,
     RequestRecorder requestRecorder,
     @Nullable LocalS3Tls tls,
-    boolean tlsRequired) {
+    boolean tlsRequired,
+    @Nullable LocalS3IcebergCatalog icebergCatalog) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -182,6 +185,15 @@ public record LocalS3Config(
   }
 
   /**
+   * Whether the service serves an Iceberg REST catalog beside its S3 API.
+   *
+   * @return {@code true} if a {@linkplain #icebergCatalog() catalog} is configured.
+   */
+  public boolean icebergCatalogEnabled() {
+    return icebergCatalog != null;
+  }
+
+  /**
    * Whether the service answers plain HTTP requests: always without TLS, and with TLS unless
    * {@linkplain #tlsRequired()} is set, in which case the port serves HTTPS alone.
    *
@@ -208,7 +220,8 @@ public record LocalS3Config(
         + ", maxRequestHeaderSize=" + maxRequestHeaderSize
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
-        + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired + "]";
+        + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
+        + ", icebergCatalog=" + icebergCatalog + "]";
   }
 
   /*

@@ -86,6 +86,8 @@ public class LocalS3Builder {
 
     private boolean tlsRequired = false;
 
+    private LocalS3IcebergCatalog icebergCatalog;
+
     /**
      * Set the host that local-s3 service listens on.
      * The default value is {@code 127.0.0.1}, and local only,
@@ -612,7 +614,8 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_CERT},
      * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_REQUIRED},
-     * {@linkplain LocalS3Environment#AWS_BUCKETS},
+     * {@linkplain LocalS3Environment#LOCAL_S3_ICEBERG_CATALOG},
+     * {@linkplain LocalS3Environment#LOCAL_S3_ICEBERG_WAREHOUSE}, {@linkplain LocalS3Environment#AWS_BUCKETS},
      * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
      *
      * @return builder.
@@ -637,6 +640,62 @@ public class LocalS3Builder {
         return this;
     }
 
+
+    /**
+     * Serve an <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> beside the S3 API, on
+     * the same port, under {@code /iceberg/v1}, so that a test of Apache Iceberg needs no catalog of its own:
+     *
+     * <pre>{@code
+     *  LocalS3 s3 = LocalS3.builder().port(29090).icebergCatalog(true).build();
+     *  s3.start();
+     *
+     *  RESTCatalog catalog = new RESTCatalog();
+     *  catalog.initialize("local", Map.of("uri", "http://localhost:29090/iceberg"));
+     *  catalog.createNamespace(Namespace.of("db"));
+     * }</pre>
+     *
+     * <p>The tables are stored in LocalS3 itself, under the warehouse {@value LocalS3IcebergCatalog#DEFAULT_WAREHOUSE},
+     * whose bucket is created when the service starts; {@linkplain #icebergCatalog(LocalS3IcebergCatalog)} configures
+     * that. An {@code IN_MEMORY} service therefore holds its tables in memory and a {@code PERSISTENCE} service keeps
+     * them in its data directory, like everything else it stores.
+     *
+     * <p>The catalog is off by default: a service that doesn't ask for one carries neither its routes nor its state.
+     *
+     * @param enabled {@code true} to serve the catalog with the default settings; {@code false}, the default, to serve
+     *     none.
+     * @return builder.
+     */
+    public LocalS3Builder icebergCatalog(boolean enabled) {
+        this.icebergCatalog = enabled ? LocalS3IcebergCatalog.enabled() : null;
+        return this;
+    }
+
+    /**
+     * Serve an Iceberg REST catalog with settings of your own, see {@linkplain #icebergCatalog(boolean)}.
+     *
+     * @param icebergCatalog the settings of the catalog; {@code null} to serve none.
+     * @return builder.
+     * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
+     */
+    public LocalS3Builder icebergCatalog(LocalS3IcebergCatalog icebergCatalog) {
+        this.icebergCatalog = icebergCatalog;
+        return this;
+    }
+
+    /**
+     * Set the warehouse of the Iceberg REST catalog, which also turns the catalog on: the {@code s3://} location of a
+     * bucket of this service that the tables created without a location of their own are placed under.
+     *
+     * @param warehouse the warehouse location, e.g. {@code s3://lakehouse/}.
+     * @return builder.
+     * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
+     */
+    public LocalS3Builder icebergWarehouse(@NonNull String warehouse) {
+        this.icebergCatalog = Objects.requireNonNullElseGet(this.icebergCatalog, LocalS3IcebergCatalog::enabled)
+                .withWarehouse(warehouse);
+        return this;
+    }
+
     /**
      * Build the configuration of a {@linkplain LocalS3} service from the values set so far. Changing the builder
      * afterwards doesn't change the configuration.
@@ -650,7 +709,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,
-                virtualHostDomains, requestRecorder, tls, tlsRequired);
+                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog);
     }
 
     /**

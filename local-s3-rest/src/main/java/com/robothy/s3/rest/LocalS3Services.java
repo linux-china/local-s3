@@ -1,12 +1,15 @@
 package com.robothy.s3.rest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.rest.admin.LocalS3Admin;
+import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.DefaultServiceFactory;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
@@ -43,7 +46,7 @@ final class LocalS3Services {
    * @return the assembled factory.
    */
   static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager) {
-    return create(config, s3Manager, vectorsManager, null);
+    return create(config, s3Manager, vectorsManager, null, null);
   }
 
   /**
@@ -55,10 +58,11 @@ final class LocalS3Services {
    * @param vectorsManager the manager of the S3 Vectors data of the service.
    * @param admin the administration of the service, which the {@code /_admin} endpoints answer through;
    *     {@code null} for none, which leaves the endpoints out.
+   * @param icebergManager the Iceberg REST catalog of the service; {@code null} for none, which leaves its routes out.
    * @return the assembled factory.
    */
   static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
-                               LocalS3Admin admin) {
+                               LocalS3Admin admin, LocalS3IcebergManager icebergManager) {
     ServiceFactory serviceFactory = new DefaultServiceFactory();
 
     BucketService bucketService = s3Manager.bucketService();
@@ -82,6 +86,16 @@ final class LocalS3Services {
 
     S3VectorsService s3VectorsService = vectorsManager.s3VectorsService();
     serviceFactory.register(S3VectorsService.class, () -> s3VectorsService);
+
+    // Registered only when the service serves a catalog, which is what the router registers its routes by.
+    if (Objects.nonNull(icebergManager)) {
+      IcebergCatalogService icebergCatalogService = icebergManager.icebergCatalogService();
+      serviceFactory.register(IcebergCatalogService.class, () -> icebergCatalogService);
+      IcebergClientConfig clientConfig = new IcebergClientConfig(IcebergClientConfig.DEFAULT_REGION,
+          config.accessKeyId(), config.secretAccessKey(), config.tlsEnabled(),
+          config.icebergCatalog().credentialVending());
+      serviceFactory.register(IcebergClientConfig.class, () -> clientConfig);
+    }
 
     if (Objects.nonNull(admin)) {
       serviceFactory.register(LocalS3Admin.class, () -> admin);

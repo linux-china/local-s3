@@ -26,6 +26,9 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.core.iceberg.IcebergCatalogService;
+import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
+import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
 import com.robothy.s3.rest.handler.s3vectors.CreateIndexController;
 import com.robothy.s3.rest.handler.s3vectors.CreateVectorBucketController;
 import com.robothy.s3.rest.handler.s3vectors.DeleteIndexController;
@@ -145,7 +148,10 @@ public class LocalS3RouterFactory {
         : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC());
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
         .sts(new StsController(sessionCredentialIssuer))
-        .kms(new KmsController());
+        .kms(new KmsController())
+        // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
+        // routes: without one, /iceberg/... stays an ordinary bucket path.
+        .iceberg(icebergController(serviceFactory));
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
@@ -167,6 +173,22 @@ public class LocalS3RouterFactory {
         .exceptionHandler(LocalS3InvalidArgumentException.class, new LocalS3InvalidArgumentExceptionHandler())
         .exceptionHandler(LocalS3VectorException.class, new LocalS3VectorExceptionHandler(serviceFactory))
         .exceptionHandler(Exception.class, new ExceptionHandler());
+  }
+
+  /**
+   * The controller of the Iceberg REST catalog of a service that serves one.
+   *
+   * @param serviceFactory the services of the service.
+   * @return the controller; {@code null} if the service serves no catalog.
+   */
+  private static IcebergCatalogController icebergController(ServiceFactory serviceFactory) {
+    if (!serviceFactory.containsInstance(IcebergCatalogService.class)) {
+      return null;
+    }
+    IcebergClientConfig clientConfig = serviceFactory.containsInstance(IcebergClientConfig.class)
+        ? serviceFactory.getInstance(IcebergClientConfig.class)
+        : new IcebergClientConfig(IcebergClientConfig.DEFAULT_REGION, null, null, false, false);
+    return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig);
   }
 
   /**

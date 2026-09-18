@@ -37,6 +37,22 @@ public class LocalS3Endpoint {
         return region;
     }
 
+    /**
+     * The URI of the Iceberg REST catalog of the service, which a {@code RESTCatalog} is initialized with:
+     *
+     * <pre>{@code
+     *  catalog.initialize("local", Map.of("uri", endpoint.icebergCatalogUri()));
+     * }</pre>
+     *
+     * <p>Only a service started with {@linkplain LocalS3#icebergCatalog()} answers it; on any other service the
+     * catalog requests are 404s, since the path is then an ordinary bucket path.
+     *
+     * @return the catalog URI, i.e. the endpoint followed by {@code /iceberg}.
+     */
+    public String icebergCatalogUri() {
+        return endpoint + "/iceberg";
+    }
+
     @Nullable
     public String accessKey() {
         return accessKey;

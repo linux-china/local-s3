@@ -120,10 +120,103 @@ to see every change as an object on LocalS3. Merging skips files that have delet
 
 `DuckLakeIntegrationTest` covers time travel, the deletion of the files of expired snapshots and encryption.
 
+## The built-in Iceberg REST catalog
+
+LocalS3 can serve an [Iceberg REST catalog](https://iceberg.apache.org/spec/#rest-catalog) of its own, beside the S3
+API and on the same port, under `/iceberg/v1`. It is **off by default**; turning it on gives a lakehouse test one
+process instead of two, because the catalog and the storage are then the same service.
+
+```java
+LocalS3 localS3 = LocalS3.builder().port(29090).icebergCatalog(true).build();
+localS3.start();
+
+RESTCatalog catalog = new RESTCatalog();
+catalog.initialize("local", Map.of("uri", "http://localhost:29090/iceberg"));
+catalog.createNamespace(Namespace.of("db"));
+catalog.createTable(TableIdentifier.of("db", "orders"), schema);
+```
+
+In a JUnit 5 test, one annotation attribute is the whole setup:
+
+```java
+@LocalS3(icebergCatalog = true)
+class MyTest {
+
+  @Test
+  void test(LocalS3Endpoint endpoint) {
+    RESTCatalog catalog = new RESTCatalog();
+    catalog.initialize("local", Map.of("uri", endpoint.icebergCatalogUri()));
+    // warehouse: s3://warehouse/
+  }
+}
+```
+
+The URI is the whole client configuration. `GET /v1/config` and every loaded table carry the S3 endpoint, path-style
+access and the credentials of the service — the *credential vending* of the REST protocol — so an engine reaches the
+storage without being configured for it:
+
+```properties
+spark.sql.catalog.local      = org.apache.iceberg.spark.SparkCatalog
+spark.sql.catalog.local.type = rest
+spark.sql.catalog.local.uri  = http://localhost:29090/iceberg
+```
+
+Elsewhere:
+
+| Where | How |
+|---|---|
+| Java | `LocalS3.builder().icebergCatalog(true)`, or `.icebergWarehouse("s3://lakehouse/")` |
+| JUnit 5 | `@LocalS3(icebergCatalog = true)` |
+| Spring Boot | `local-s3.iceberg-catalog.enabled=true`, `local-s3.iceberg-catalog.warehouse=s3://warehouse/` |
+| Docker / jar | `LOCAL_S3_ICEBERG_CATALOG=true`, `LOCAL_S3_ICEBERG_WAREHOUSE=s3://warehouse/` |
+
+PyIceberg reaches it the same way:
+
+```python
+from pyiceberg.catalog.rest import RestCatalog
+catalog = RestCatalog("local", uri="http://localhost:29090/iceberg")
+```
+
+### What it stores, and where
+
+A table is two things: a `metadata.json` in the object store, and a catalog pointer to the file the table currently is.
+LocalS3 keeps the pointer beside its bucket metadata and writes the metadata files into the **warehouse bucket**
+(`s3://warehouse/` by default, created on startup), through its own S3 services rather than over HTTP to itself. So
+both modes work without anything extra:
+
++ an **`IN_MEMORY`** service keeps its tables in memory, and `reset()` — or `POST /_admin/reset` — drops them with the
+  rest of the data, which is what makes the catalog usable between tests;
++ a **`PERSISTENCE`** service writes them to its data directory, and a service started again over that directory finds
+  its namespaces and tables where they were;
++ an `IN_MEMORY` service started from a data directory reads the tables of that directory and never writes to it, like
+  it treats the objects and vectors there.
+
+### Commits and conflicts
+
+A commit sends the requirements the table must still satisfy and the updates to apply. LocalS3 checks the
+requirements, writes a new metadata file and then moves the pointer with a compare-and-set: of two writers that started
+from the same snapshot, exactly one moves it, and the other is answered `409 CommitFailedException`. That is the answer
+the Iceberg client retries on — it refreshes the table, replays its changes and commits again — so concurrent appends
+converge instead of overwriting one another. `IcebergRestCatalogIntegrationTest` asserts exactly that: four writers
+appending at once end with four snapshots and every writer's rows.
+
+### Limits
+
++ Requests to the catalog are **not signature-verified**. The REST protocol authenticates with an OAuth2 bearer token
+  rather than an AWS signature; a token is accepted without being checked, and `POST /v1/oauth/tokens` hands one out so
+  that a client configured with `credential` starts. The S3 requests the engine then makes are verified as usual.
++ The catalog serves **one warehouse**, so it answers no `prefix`; a request that carries one anyway is read as if it
+  didn't.
++ A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
+  the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
+  compare-and-sets can see part of it.
++ Views are served, but they get far less use — and far less testing — than tables.
++ Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`.
+
 ## Iceberg REST catalogs that vend credentials
 
-A catalog such as Apache Polaris, Lakekeeper, Gravitino or Unity Catalog gets temporary credentials for a table with
-STS `AssumeRole` and hands them to the engine. Point its STS endpoint at LocalS3, which answers `AssumeRole` on the same
+If you run a catalog of your own rather than the built-in one above — Apache Polaris, Lakekeeper, Gravitino or Unity
+Catalog — it gets temporary credentials for a table with STS `AssumeRole` and hands them to the engine. Point its STS endpoint at LocalS3, which answers `AssumeRole` on the same
 port; see [temporary credentials](embedding.md#temporary-credentials-sts). The catalog signs `AssumeRole` with the key
 pair of LocalS3, and any role ARN works, e.g. `arn:aws:iam::000000000000:role/catalog`.
 

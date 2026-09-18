@@ -4,7 +4,9 @@ import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.core.iceberg.IcebergMetadataFiles;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
+import com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.admin.RequestStatistics;
@@ -57,6 +59,11 @@ public class LocalS3 implements AutoCloseable {
 
     private volatile LocalS3Manager s3Manager;
     private volatile LocalS3VectorsManager localS3VectorsManager;
+
+    /**
+     * The Iceberg REST catalog of the service; {@code null} if it serves none.
+     */
+    private volatile LocalS3IcebergManager localS3IcebergManager;
 
     /**
      * Whether the service is started and not shut down yet. Written under the lock of start() and shutdown(), and
@@ -163,6 +170,7 @@ public class LocalS3 implements AutoCloseable {
             log.info("Create default buckets:{}", String.join(",", config.buckets()));
             createBuckets();
         }
+        prepareIcebergWarehouse();
         if (!config.seeders().isEmpty()) {
             seed();
         }
@@ -344,8 +352,11 @@ public class LocalS3 implements AutoCloseable {
         if (localS3VectorsManager == null) {
             localS3VectorsManager = createLocalS3VectorsManager();
         }
+        if (localS3IcebergManager == null && config.icebergCatalogEnabled()) {
+            localS3IcebergManager = createLocalS3IcebergManager();
+        }
 
-        return LocalS3Services.create(config, s3Manager, localS3VectorsManager, new Admin());
+        return LocalS3Services.create(config, s3Manager, localS3VectorsManager, new Admin(), localS3IcebergManager);
     }
 
     /**
@@ -370,9 +381,13 @@ public class LocalS3 implements AutoCloseable {
         LocalS3Manager objects = getS3Manager();
         objects.reset();
         localS3VectorsManager.reset();
+        if (localS3IcebergManager != null) {
+            localS3IcebergManager.reset();
+        }
         if (!config.buckets().isEmpty()) {
             createBuckets();
         }
+        prepareIcebergWarehouse();
         if (!config.seeders().isEmpty()) {
             seed();
         }
@@ -484,6 +499,43 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Create the manager of the Iceberg REST catalog, which keeps its namespaces and its table pointers where the
+     * service keeps the rest of its metadata: in memory, or in the store of the data directory. The tables themselves
+     * are objects of the warehouse bucket, so they are kept by the S3 half of the service either way.
+     *
+     * @return the manager.
+     */
+    LocalS3IcebergManager createLocalS3IcebergManager() {
+        LocalS3IcebergCatalog catalog = config.icebergCatalog();
+        LocalS3Manager manager = getS3Manager();
+        if (config.mode() == LocalS3Mode.IN_MEMORY) {
+            log.info("Created in-memory Iceberg REST catalog with the warehouse {}.", catalog.warehouse());
+            // Starts from the catalog of the data path, if any, which it never changes, like the objects of the path.
+            return LocalS3IcebergManager.createInMemory(config.dataPath(), manager.bucketService(),
+                    manager.objectService(), catalog.warehouse());
+        }
+        log.info("Created file system Iceberg REST catalog with the warehouse {}.", catalog.warehouse());
+        // The same data path as the S3 buckets: the catalog records are written to the store of the path too, which
+        // is shared, so the policy has to be the same one.
+        return LocalS3IcebergManager.createFileSystem(config.dataPath(), config.persistencePolicy(),
+                manager.bucketService(), manager.objectService(), catalog.warehouse());
+    }
+
+    /**
+     * Create the warehouse bucket of the Iceberg catalog if it doesn't exist, so that a test that turns the catalog on
+     * can create a table without first creating a bucket by hand.
+     */
+    private void prepareIcebergWarehouse() {
+        LocalS3IcebergCatalog catalog = config.icebergCatalog();
+        if (catalog == null || !catalog.createWarehouseBucket()) {
+            return;
+        }
+        LocalS3Manager manager = getS3Manager();
+        new IcebergMetadataFiles(manager.bucketService(), manager.objectService())
+                .createBucketIfAbsent(catalog.warehouse());
+    }
+
+    /**
      * Whether the service is started, i.e. {@linkplain #start()} returned and {@linkplain #shutdown()} wasn't called
      * since, e.g. for a host that manages the lifecycle of the service.
      *
@@ -520,18 +572,26 @@ public class LocalS3 implements AutoCloseable {
         if (config.mode() != LocalS3Mode.PERSISTENCE) {
             return;
         }
+        LocalS3IcebergManager icebergManager = this.localS3IcebergManager;
+        this.localS3IcebergManager = null;
         LocalS3VectorsManager vectorsManager = this.localS3VectorsManager;
         this.localS3VectorsManager = null;
         LocalS3Manager manager = this.s3Manager;
         this.s3Manager = null;
-        // Both hold the one store of the data directory, which is closed once they have both released it.
+        // They hold the one store of the data directory, which is closed once they have all released it.
         try {
-            if (vectorsManager != null) {
-                vectorsManager.close();
+            if (icebergManager != null) {
+                icebergManager.close();
             }
         } finally {
-            if (manager != null) {
-                manager.close();
+            try {
+                if (vectorsManager != null) {
+                    vectorsManager.close();
+                }
+            } finally {
+                if (manager != null) {
+                    manager.close();
+                }
             }
         }
     }

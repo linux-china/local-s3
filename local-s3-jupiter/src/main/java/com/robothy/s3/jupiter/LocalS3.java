@@ -144,4 +144,38 @@ public @interface LocalS3 {
    * @return the secret access key that signatures are verified with; empty to verify no signature.
    */
   String secretKey() default "";
+
+  /**
+   * Serve an <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> beside the S3 API, on
+   * the same port, under {@code /iceberg/v1}, so that a test of Apache Iceberg needs no catalog of its own — no
+   * Polaris, Lakekeeper, Nessie or JDBC catalog beside the object store:
+   *
+   * <pre>{@code
+   *  @LocalS3(icebergCatalog = true)
+   *  class MyTest {
+   *    @Test
+   *    void test(LocalS3Endpoint endpoint) {
+   *      RESTCatalog catalog = new RESTCatalog();
+   *      catalog.initialize("local", Map.of("uri", endpoint.icebergCatalogUri()));
+   *      catalog.createNamespace(Namespace.of("db"));
+   *      // warehouse: s3://warehouse/
+   *    }
+   *  }
+   * }</pre>
+   *
+   * <p>The tables are stored in LocalS3 itself, under {@linkplain #icebergWarehouse()}, whose bucket is created when
+   * the service starts. A loaded table carries the endpoint and the credentials of the service, so the engine reaches
+   * the storage without being configured for it.
+   *
+   * @return whether to serve an Iceberg REST catalog.
+   */
+  boolean icebergCatalog() default false;
+
+  /**
+   * Set the warehouse of the {@linkplain #icebergCatalog() Iceberg REST catalog}: the {@code s3://} location that the
+   * tables created without a location of their own are placed under. Setting it turns the catalog on.
+   *
+   * @return the warehouse location.
+   */
+  String icebergWarehouse() default "s3://warehouse/";
 }

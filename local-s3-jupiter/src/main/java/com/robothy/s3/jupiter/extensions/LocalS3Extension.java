@@ -129,6 +129,9 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     if (verifiesSignatures(s3Config)) {
       builder.credentials(s3Config.accessKey(), s3Config.secretKey());
     }
+    if (s3Config.icebergCatalog()) {
+      builder.icebergWarehouse(s3Config.icebergWarehouse());
+    }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();
       logger.debug("LocalS3 endpoint http://localhost:{}", localS3.getPort());
