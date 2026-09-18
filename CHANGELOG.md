@@ -204,6 +204,12 @@ imported either.
 
 ### Fixed
 
++ `docker run luofuxiang/local-s3` with no arguments works. The image runs `PERSISTENCE` over `/data`, and the
+  anonymous volume that `docker run` creates for it is initialized from the `/data` of the image, its ownership
+  included; that directory belonged to `root`, so the service, which runs as `locals3` since 2.5, started and then
+  failed to open its store with `AccessDeniedException: /data/buckets.mvstore`. The image now creates `/data` owned
+  by `locals3`. A bind-mounted directory keeps the ownership it has on the host and must still be writable by that
+  user.
 + The jar and the image give an `IN_MEMORY` service the data path of the container, `/data`, only when that directory
   exists, which is what [deployment](docs/deployment.md) already described: an `IN_MEMORY` service reads a data path
   for its initial data alone, so the jar on a machine without `/data` reported a data path it never read, in its

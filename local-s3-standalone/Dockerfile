@@ -10,6 +10,13 @@ COPY --chown=locals3:locals3 build/libs/s3.jar /app/s3.jar
 
 WORKDIR /app
 
+# The data directory of a PERSISTENCE service, which this image runs by default. It has to belong to the user
+# the service runs as, and before VOLUME: an anonymous volume, i.e. the one that `docker run` without a bind
+# mount creates, is initialized from this directory of the image, its ownership included, so a /data left to
+# root leaves the service unable to write its store. A bind-mounted directory keeps the ownership it has on
+# the host instead, and must be writable by this user.
+RUN mkdir -p /data && chown locals3:locals3 /data
+
 VOLUME /data
 
 EXPOSE 29090
