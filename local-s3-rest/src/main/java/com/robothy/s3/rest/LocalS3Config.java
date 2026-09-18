@@ -54,6 +54,8 @@ import org.jspecify.annotations.Nullable;
  *     same port; ignored without {@code tls}.
  * @param icebergCatalog the Iceberg REST catalog that the service serves under {@code /iceberg/v1}; {@code null} to
  *     serve none, which is the default.
+ * @param website how the buckets are served as static websites to the requests that carry no credentials;
+ *     {@code null} is {@linkplain LocalS3Website#defaults()}, which serves the public buckets.
  */
 public record LocalS3Config(
     String bindHost,
@@ -84,7 +86,8 @@ public record LocalS3Config(
     RequestRecorder requestRecorder,
     @Nullable LocalS3Tls tls,
     boolean tlsRequired,
-    @Nullable LocalS3IcebergCatalog icebergCatalog) {
+    @Nullable LocalS3IcebergCatalog icebergCatalog,
+    LocalS3Website website) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -164,6 +167,7 @@ public record LocalS3Config(
     requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
     virtualHostDomains = List.copyOf(virtualHostDomains);
     requestRecorder = requestRecorder == null ? RequestRecorder.NONE : requestRecorder;
+    website = website == null ? LocalS3Website.defaults() : website;
   }
 
   /**
@@ -182,6 +186,15 @@ public record LocalS3Config(
    */
   public boolean tlsEnabled() {
     return tls != null;
+  }
+
+  /**
+   * Whether the service serves its buckets as static websites to the requests that carry no credentials.
+   *
+   * @return {@code true} if {@linkplain #website() static website hosting} is enabled.
+   */
+  public boolean websiteEnabled() {
+    return website.enabled();
   }
 
   /**
@@ -221,7 +234,7 @@ public record LocalS3Config(
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
-        + ", icebergCatalog=" + icebergCatalog + "]";
+        + ", icebergCatalog=" + icebergCatalog + ", website=" + website + "]";
   }
 
   /*

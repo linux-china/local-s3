@@ -130,6 +130,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   private IcebergCatalogController icebergController;
 
+  /**
+   * Serves the buckets as static websites; {@code null} if the service serves none.
+   */
+  private StaticWebsiteController websiteController;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -197,6 +202,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * Serve the buckets as static websites, see {@linkplain StaticWebsiteController}: the unsigned {@code GET} and
+   * {@code HEAD} requests of the buckets that allow them are answered with the semantics of a website rather than
+   * those of the S3 API, and without a signature.
+   *
+   * @param websiteController the controller; {@code null} to serve no website, which leaves every request to the S3
+   *     API.
+   * @return this router.
+   */
+  LocalS3Router website(StaticWebsiteController websiteController) {
+    this.websiteController = websiteController;
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -242,11 +261,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         .orElseGet(() -> notFoundHandler() == null ? null
             : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
 
+    // A bucket that is served as a static website answers an unsigned read of a browser, which the S3 routes above
+    // would answer with a listing, with an XML error, or, of a service that requires signed requests, not at all.
+    BucketKey website = websiteTarget(request);
+    if (website != null && websiteController.isWebsiteRequest(request, website.bucket(), website.key())) {
+      return withCorsHeaders(request, new OperationHandler(StaticWebsiteController.OPERATION, websiteController));
+    }
+
     // The form of a browser upload carries its credentials, which its controller verifies; any other request that
     // looks like a form upload, e.g. one posted to an object, is verified like every request.
     boolean authenticatedByForm = isFormUpload(request) && handler != null
         && PostObjectController.OPERATION.equals(handler.operation());
-    if (requiresAuthentication(request) && !authenticatedByForm) {
+    if (requiresAuthentication(request) && !authenticatedByForm && website == null) {
       // A request whose head was verified before its body was received has only its body verified.
       AwsSignatureV4Verifier.VerificationResult result =
           signatureVerifier.verifyBody(request, receivedRequests.remove(request));
@@ -328,7 +354,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     if (!requiresAuthentication(head) || isFormUpload(head)
         || stsController != null && StsController.isStsRequest(head)
         || kmsController != null && KmsController.isKmsRequest(head)
-        || icebergController != null && IcebergCatalogController.isIcebergRequest(head)) {
+        || icebergController != null && IcebergCatalogController.isIcebergRequest(head)
+        // An unsigned read that the static website answers, which match() dispatches without a signature.
+        || websiteTarget(head) != null) {
       return null;
     }
     AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);
@@ -351,6 +379,63 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   private boolean requiresAuthentication(HttpRequest request) {
     // Neither health checks nor the CORS preflight requests of browsers are signed.
     return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request);
+  }
+
+  /**
+   * The bucket and the object key of a request that the static website answers without credentials, i.e. an unsigned
+   * read of a bucket that is public or of a service that serves every bucket, see
+   * {@linkplain StaticWebsiteController#servesAnonymously}.
+   *
+   * @param request the request.
+   * @return the target of the request; {@code null} if it isn't answered anonymously, and so is verified like every
+   *     request.
+   */
+  private BucketKey websiteTarget(HttpRequest request) {
+    if (websiteController == null) {
+      return null;
+    }
+    BucketKey target = bucketAndKey(request);
+    return target != null && websiteController.servesAnonymously(request, target.bucket(), target.key())
+        ? target : null;
+  }
+
+  /**
+   * The bucket and the object key that a request addresses, read off its path and its {@code Host} the way
+   * {@linkplain #matchPath} reads them, but without touching the parameters of the request: it is read before a route
+   * is matched, i.e. before the parameters are set.
+   *
+   * @param request the request.
+   * @return the target; {@code null} if the request addresses no bucket, e.g. {@code ListBuckets}.
+   */
+  private BucketKey bucketAndKey(HttpRequest request) {
+    String path = Objects.toString(request.getPath(), "");
+    String trimmedPath = trimPath(path);
+    Optional<BucketRegion> bucketRegion =
+        virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
+    if (bucketRegion.isPresent() && bucketRegion.get().getBucketName().isPresent()) {
+      // A virtual-hosted request addresses the bucket of its Host, so its path is the object key.
+      String bucket = bucketRegion.get().getBucketName().get();
+      return new BucketKey(bucket, "/".equals(trimmedPath) ? "" : path.substring(1));
+    }
+
+    if (path.isEmpty() || "/".equals(trimmedPath) || trimmedPath.isEmpty()) {
+      return null;
+    }
+    long slashCount = path.chars().filter(c -> c == '/').count();
+    if (slashCount == 1 || (slashCount == 2 && path.endsWith("/"))) { // The bucket itself.
+      return new BucketKey(trimmedPath.substring(1), "");
+    }
+    int secondSlashIdx = path.indexOf('/', 1);
+    return new BucketKey(path.substring(1, secondSlashIdx), path.substring(secondSlashIdx + 1));
+  }
+
+  /**
+   * The bucket and the object key that a request addresses.
+   *
+   * @param bucket the bucket name.
+   * @param key the object key; empty for a request that addresses the bucket itself.
+   */
+  private record BucketKey(String bucket, String key) {
   }
 
   /**

@@ -24,6 +24,9 @@ import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
@@ -151,7 +154,8 @@ public class LocalS3RouterFactory {
         .kms(new KmsController())
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
         // routes: without one, /iceberg/... stays an ordinary bucket path.
-        .iceberg(icebergController(serviceFactory));
+        .iceberg(icebergController(serviceFactory))
+        .website(websiteController(serviceFactory));
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
@@ -189,6 +193,24 @@ public class LocalS3RouterFactory {
         ? serviceFactory.getInstance(IcebergClientConfig.class)
         : new IcebergClientConfig(IcebergClientConfig.DEFAULT_REGION, null, null, false, false);
     return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig);
+  }
+
+  /**
+   * The controller that serves the buckets of a service as static websites.
+   *
+   * @param serviceFactory the services of the service.
+   * @return the controller; {@code null} if the service serves no website, or holds no data to serve one from, which
+   *     is the case for a router of handlers alone.
+   */
+  private static StaticWebsiteController websiteController(ServiceFactory serviceFactory) {
+    if (!serviceFactory.containsInstance(BucketService.class)
+        || !serviceFactory.containsInstance(ObjectService.class)) {
+      return null;
+    }
+    LocalS3Website website = serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class).website()
+        : LocalS3Website.defaults();
+    return website.enabled() ? new StaticWebsiteController(serviceFactory, website) : null;
   }
 
   /**

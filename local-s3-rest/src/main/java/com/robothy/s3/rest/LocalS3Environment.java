@@ -98,6 +98,36 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_ICEBERG_WAREHOUSE = "LOCAL_S3_ICEBERG_WAREHOUSE";
 
+  /**
+   * Serve the buckets as static websites to the requests that carry no credentials: {@code false} turns it off. It is
+   * on by default, and only a public bucket answers such a request.
+   *
+   * @see LocalS3Builder#website(boolean)
+   */
+  public static final String LOCAL_S3_WEBSITE = "LOCAL_S3_WEBSITE";
+
+  /**
+   * Serve <b>every</b> bucket as a static website, not the public ones alone: {@code true} turns it on. It also lets
+   * an unsigned request read the objects of a private bucket, so it is off by default.
+   *
+   * @see LocalS3Builder#websiteAllBuckets(boolean)
+   */
+  public static final String LOCAL_S3_WEBSITE_ALL_BUCKETS = "LOCAL_S3_WEBSITE_ALL_BUCKETS";
+
+  /**
+   * The index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code index.html}.
+   *
+   * @see LocalS3Builder#websiteIndexDocument(String)
+   */
+  public static final String LOCAL_S3_WEBSITE_INDEX_DOCUMENT = "LOCAL_S3_WEBSITE_INDEX_DOCUMENT";
+
+  /**
+   * The error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code error.html}.
+   *
+   * @see LocalS3Builder#websiteErrorDocument(String)
+   */
+  public static final String LOCAL_S3_WEBSITE_ERROR_DOCUMENT = "LOCAL_S3_WEBSITE_ERROR_DOCUMENT";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
@@ -136,6 +166,11 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_ICEBERG_CATALOG)
         .ifPresent(enabled -> builder.icebergCatalog(Boolean.parseBoolean(enabled)));
     variable(variables, LOCAL_S3_ICEBERG_WAREHOUSE).ifPresent(builder::icebergWarehouse);
+    variable(variables, LOCAL_S3_WEBSITE).ifPresent(enabled -> builder.website(Boolean.parseBoolean(enabled)));
+    variable(variables, LOCAL_S3_WEBSITE_ALL_BUCKETS)
+        .ifPresent(allBuckets -> builder.websiteAllBuckets(Boolean.parseBoolean(allBuckets)));
+    variable(variables, LOCAL_S3_WEBSITE_INDEX_DOCUMENT).ifPresent(builder::websiteIndexDocument);
+    variable(variables, LOCAL_S3_WEBSITE_ERROR_DOCUMENT).ifPresent(builder::websiteErrorDocument);
 
     String tlsCert = variable(variables, LOCAL_S3_TLS_CERT).orElse(null);
     String tlsKey = variable(variables, LOCAL_S3_TLS_KEY).orElse(null);

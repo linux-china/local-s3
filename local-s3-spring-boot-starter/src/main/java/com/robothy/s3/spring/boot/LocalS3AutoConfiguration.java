@@ -3,6 +3,7 @@ package com.robothy.s3.spring.boot;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
+import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 
@@ -134,6 +135,10 @@ public class LocalS3AutoConfiguration {
       builder.icebergCatalog(new LocalS3IcebergCatalog(iceberg.getWarehouse(), iceberg.isCreateWarehouseBucket(),
           iceberg.isCredentialVending()));
     }
+
+    LocalS3Properties.Website website = properties.getWebsite();
+    builder.website(new LocalS3Website(website.isEnabled(), website.isAllBuckets(), website.getIndexDocument(),
+        website.getErrorDocument()));
 
     LocalS3Properties.Credentials credentials = properties.getCredentials();
     boolean hasAccessKeyId = hasText(credentials.getAccessKeyId());

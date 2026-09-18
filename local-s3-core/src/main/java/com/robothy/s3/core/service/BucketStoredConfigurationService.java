@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.util.XmlConfigurations;
+import java.util.Optional;
 
 /**
  * The configurations of a bucket that LocalS3 stores and returns but never applies: transfer acceleration, access
@@ -54,6 +55,22 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
       }
       return configuration;
     });
+  }
+
+  /**
+   * Find a configuration of a bucket, for the callers that apply one if the bucket has it, e.g. the static website
+   * endpoint reading the {@code WebsiteConfiguration}, rather than answering a request for it.
+   *
+   * @param bucketName the bucket name.
+   * @param type the configuration.
+   * @return the document that was put, or the default one if none was; empty if the bucket has none, or doesn't
+   *     exist.
+   */
+  default Optional<String> findBucketConfiguration(String bucketName, StoredBucketConfiguration type) {
+    return withBucketReadLock(bucketName, () -> localS3Metadata().getBucketMetadata(bucketName)
+        .map(bucket -> bucket.getStoredConfigurations().getOrDefault(type.name(),
+            type.defaultConfiguration().orElse("")))
+        .filter(configuration -> !configuration.isEmpty()));
   }
 
   /**

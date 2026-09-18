@@ -73,6 +73,10 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **Delta Lake**: the conditional write that the Delta commit protocol rests on, covered end to end with
   `delta-kernel-java` — create, write, read, concurrent commits and time travel.
   [Details](docs/data-tools.md#delta-lake).
++ **Static website hosting** on the same port: a public bucket is served to a browser as a site, with index and error
+  documents, directory redirects and routing rules, while the signed requests of an S3 client keep their S3 semantics.
+  A file stored without a content type gets the one of its extension, so a directory copied into a bucket just works.
+  [Details](docs/semantics.md#static-website-hosting).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
 + **Faithful semantics**: conditional reads, writes and deletes that are atomic per key, Amazon S3 entity tags for
   multipart uploads, and the validation of Amazon S3 for bucket names and part sizes. [Semantics](docs/semantics.md).

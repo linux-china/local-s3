@@ -179,8 +179,10 @@ encryption fields. They still have to be named by the policy.
 
 ## Access control lists
 
-`PutBucketAcl` and `PutObjectAcl` store an ACL, which `GetBucketAcl` and `GetObjectAcl` return; LocalS3 doesn't enforce
-it. Like Amazon S3, a request gives the ACL in exactly one of three ways:
+`PutBucketAcl` and `PutObjectAcl` store an ACL, which `GetBucketAcl` and `GetObjectAcl` return. LocalS3 doesn't
+enforce it against signed requests; the one place an ACL takes effect is
+[static website hosting](#static-website-hosting), where a bucket that grants the `AllUsers` group `READ` answers
+requests that carry no credentials. Like Amazon S3, a request gives the ACL in exactly one of three ways:
 
 + **A canned ACL**, the `x-amz-acl` header, which grants the owner `FULL_CONTROL`, and `private` nothing more;
   `public-read` and `public-read-write` grant the `AllUsers` group `READ`, and `WRITE`; `authenticated-read` grants the
@@ -200,6 +202,90 @@ An ACL of headers keeps the owner that the bucket or object has. The rejected re
 | No canned ACL, no grant headers and no body | `400 MissingSecurityHeader` |
 | An unknown canned ACL, one that doesn't apply to the resource, or a malformed grant header | `400 InvalidArgument` |
 | A body that isn't an `AccessControlPolicy` document | `400 MalformedACLError` |
+
+## Static website hosting
+
+A bucket of static files is served as a website on the port of the S3 API, so a test can put an object with its S3
+client and open the page in a browser without a second server:
+
+```
+http://localhost:29090/my-site/          -> my-site/index.html
+http://localhost:29090/my-site/docs      -> 302 to /my-site/docs/
+http://localhost:29090/my-site/docs/     -> my-site/docs/index.html
+http://localhost:29090/my-site/gone.html -> 404, the error document of the bucket or a generic error page
+```
+
+Virtual-hosted-style requests work too, e.g. `http://my-site.localhost:29090/`.
+
+### Which requests are served as a website
+
+A request is answered as a website request when **all** of these hold; anything else keeps the S3 semantics it had
+before:
+
++ it is a `GET` or a `HEAD`;
++ it **carries no credentials**: no `Authorization` header, and no `X-Amz-Algorithm` of a presigned URL. So the
+  requests of an S3 client, which are signed, are never affected, and a presigned URL still reads a private bucket;
++ it names no operation of the S3 API in its query, e.g. `?acl`, `?uploads` or `?list-type=2`. A query of the page
+  itself, e.g. `?v=3` of a cache-busting link, is ignored, like Amazon S3 ignores it;
++ the bucket **allows anonymous reads** of the key, see below.
+
+The one request such a bucket keeps the S3 semantics of is its root: with no index document to serve in its place,
+`GET /my-site` is answered by `ListObjects`, so an unsigned listing of a public bucket still works.
+
+### Which buckets are public
+
+A bucket allows an anonymous read when either of these makes it public, and the
+[public access block](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PublicAccessBlockConfiguration.html) of the
+bucket doesn't take it away:
+
++ its **ACL** grants the `AllUsers` group `READ` or `FULL_CONTROL`, which the canned ACL `public-read` does:
+
+  ```java
+  s3.putBucketAcl(b -> b.bucket("my-site").acl(BucketCannedACL.PUBLIC_READ));
+  ```
+
++ its **bucket policy** allows `s3:GetObject` of the key to every principal:
+
+  ```json
+  {"Version": "2012-10-17", "Statement": [{
+    "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::my-site/*"
+  }]}
+  ```
+
+  The resources are matched against the key, so a policy on `my-site/public/*` publishes that prefix alone. An
+  explicit `Deny` wins over every `Allow`. A statement with a `Condition` is skipped: LocalS3 evaluates no conditions,
+  and a policy that a condition narrows must not open the bucket wider than it says.
+
+`IgnorePublicAcls` takes the ACL away, `BlockPublicPolicy` the policy, and `RestrictPublicBuckets` either of them.
+
+Every other bucket stays private, and an unsigned request of it is rejected as before. To serve **every** bucket
+without publishing it, which is meant for local development, set `LOCAL_S3_WEBSITE_ALL_BUCKETS=true`,
+`local-s3.website.all-buckets=true` or `LocalS3.builder().websiteAllBuckets(true)`. That also lets an unsigned request
+read the objects of a private bucket, so it is off by default. `LOCAL_S3_WEBSITE=false` turns website hosting off
+altogether.
+
+### The index and error documents
+
+A bucket needs no configuration: a request for a directory is answered with `index.html` of that directory if the
+bucket has one, and a key that isn't there with a generic error page. `PutBucketWebsite` configures a bucket of its
+own, and LocalS3 applies it:
+
+| Element | What it does |
+|---|---|
+| `IndexDocument/Suffix` | The object that a request for a directory is answered with, e.g. `home.html`. |
+| `ErrorDocument/Key` | The object that a `404` is answered with, under the status of the failure rather than `200`. |
+| `RedirectAllRequestsTo` | Answers every request of the bucket with a `301` to that host, keeping the key. |
+| `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. |
+
+`LocalS3Builder.websiteIndexDocument(...)` and `websiteErrorDocument(...)`, or the matching variables and properties,
+change the documents of the buckets that have no configuration of their own.
+
+### Content types
+
+An object is served with the content type it was stored with. An object stored **without** one, which LocalS3 keeps as
+`binary/octet-stream`, is served with the content type of its extension instead, e.g. `text/html; charset=utf-8` for
+`.html` and `text/css; charset=utf-8` for `.css`, so that a directory of files copied into a bucket is a working site
+rather than a set of downloads. A content type that was chosen is never overridden.
 
 ## Lifecycle configuration
 

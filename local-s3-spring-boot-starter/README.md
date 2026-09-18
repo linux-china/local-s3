@@ -124,6 +124,26 @@ LocalS3Seeder reportSeeder() {
 }
 ```
 
+## Static website hosting
+
+A public bucket is served as a [static website](../docs/semantics.md#static-website-hosting) on the port of the S3
+API, so a page put by a test, or seeded from the classpath, opens in a browser without a second server. Only requests
+that carry no credentials are served that way; the `S3Client` of the starter, whose requests are signed, keeps its S3
+semantics.
+
+```yaml
+local-s3:
+  website:
+    enabled: true          # the default
+    all-buckets: false     # true serves every bucket, not the public ones alone
+    index-document: index.html
+    error-document: error.html
+```
+
+A bucket is public once its ACL grants the `AllUsers` group `READ`, e.g. with the `public-read` canned ACL, or its
+bucket policy allows `s3:GetObject` to every principal. `all-buckets: true` serves every bucket without publishing it,
+which is handy while developing a page locally and lets an unsigned request read any object of the service.
+
 ## Startup order
 
 `LocalS3Lifecycle` starts the service in a phase before the web server, and creating one of the client beans starts it

@@ -88,6 +88,8 @@ public class LocalS3Builder {
 
     private LocalS3IcebergCatalog icebergCatalog;
 
+    private LocalS3Website website = LocalS3Website.defaults();
+
     /**
      * Set the host that local-s3 service listens on.
      * The default value is {@code 127.0.0.1}, and local only,
@@ -697,6 +699,72 @@ public class LocalS3Builder {
     }
 
     /**
+     * Serve the buckets as static websites to the requests that carry no credentials, which is on by default: a
+     * browser that opens {@code http://localhost:{port}/{bucket}/} gets the index document of the bucket, and a key
+     * that isn't there gets its error document, while the signed requests of an S3 client keep their S3 semantics.
+     *
+     * <p>Only a bucket that was made public answers such a request, see
+     * {@linkplain com.robothy.s3.core.util.BucketPublicAccess}; {@linkplain #websiteAllBuckets(boolean)} serves every
+     * bucket instead.
+     *
+     * @param enabled {@code true} to serve static websites; {@code false} to leave every request to the S3 API.
+     * @return builder.
+     */
+    public LocalS3Builder website(boolean enabled) {
+        this.website = this.website.withEnabled(enabled);
+        return this;
+    }
+
+    /**
+     * Serve static websites with settings of your own, see {@linkplain #website(boolean)}.
+     *
+     * @param website the settings; {@code null} for the defaults.
+     * @return builder.
+     */
+    public LocalS3Builder website(LocalS3Website website) {
+        this.website = Objects.requireNonNullElseGet(website, LocalS3Website::defaults);
+        return this;
+    }
+
+    /**
+     * Serve <b>every</b> bucket as a static website, rather than the public ones alone, which also lets an unsigned
+     * request read the objects of a private bucket. It is meant for local development and tests, where publishing a
+     * bucket to open a page in a browser is busywork, and is off by default.
+     *
+     * @param allBuckets {@code true} to serve every bucket without credentials.
+     * @return builder.
+     */
+    public LocalS3Builder websiteAllBuckets(boolean allBuckets) {
+        this.website = this.website.withAllBuckets(allBuckets);
+        return this;
+    }
+
+    /**
+     * Set the index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
+     * {@code index.html}: the object that a request for a directory is answered with.
+     *
+     * @param indexDocument the index document.
+     * @return builder.
+     * @throws IllegalArgumentException if it is blank.
+     */
+    public LocalS3Builder websiteIndexDocument(@NonNull String indexDocument) {
+        this.website = this.website.withIndexDocument(indexDocument);
+        return this;
+    }
+
+    /**
+     * Set the error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
+     * {@code error.html}: the object that a request for a key that isn't there is answered with.
+     *
+     * @param errorDocument the error document; {@code null} answers a generic error page.
+     * @return builder.
+     */
+    public LocalS3Builder websiteErrorDocument(String errorDocument) {
+        this.website = this.website.withErrorDocument(errorDocument);
+        return this;
+    }
+
+    /**
      * Build the configuration of a {@linkplain LocalS3} service from the values set so far. Changing the builder
      * afterwards doesn't change the configuration.
      *
@@ -709,7 +777,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,
-                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog);
+                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website);
     }
 
     /**

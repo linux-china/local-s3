@@ -2,6 +2,7 @@ package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
+import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -78,6 +79,8 @@ public class LocalS3Properties {
 
   private final IcebergCatalog icebergCatalog = new IcebergCatalog();
 
+  private final Website website = new Website();
+
   public boolean isEnabled() {
     return enabled;
   }
@@ -136,6 +139,10 @@ public class LocalS3Properties {
 
   public IcebergCatalog getIcebergCatalog() {
     return icebergCatalog;
+  }
+
+  public Website getWebsite() {
+    return website;
   }
 
   public boolean isCompositeMultipartEtags() {
@@ -455,6 +462,70 @@ public class LocalS3Properties {
 
   }
 
+
+  /**
+   * The static website hosting that LocalS3 serves beside its S3 API, on the same port: a browser that opens
+   * {@code http://localhost:{port}/{bucket}/} gets the index document of the bucket, while the signed requests of an
+   * S3 client keep their S3 semantics. Only a public bucket answers such a request, unless
+   * {@code local-s3.website.all-buckets} is set.
+   */
+  public static class Website {
+
+    /**
+     * Whether to serve the buckets as static websites to the requests that carry no credentials.
+     */
+    private boolean enabled = true;
+
+    /**
+     * Whether to serve every bucket, not the public ones alone, which also lets an unsigned request read the objects
+     * of a private bucket. Meant for local development.
+     */
+    private boolean allBuckets = false;
+
+    /**
+     * The index document of the buckets that have no WebsiteConfiguration of their own, e.g. index.html.
+     */
+    private String indexDocument = LocalS3Website.DEFAULT_INDEX_DOCUMENT;
+
+    /**
+     * The error document of the buckets that have no WebsiteConfiguration of their own, e.g. error.html; unset
+     * answers a generic error page.
+     */
+    private String errorDocument;
+
+    public boolean isEnabled() {
+      return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    public boolean isAllBuckets() {
+      return allBuckets;
+    }
+
+    public void setAllBuckets(boolean allBuckets) {
+      this.allBuckets = allBuckets;
+    }
+
+    public String getIndexDocument() {
+      return indexDocument;
+    }
+
+    public void setIndexDocument(String indexDocument) {
+      this.indexDocument = indexDocument;
+    }
+
+    public String getErrorDocument() {
+      return errorDocument;
+    }
+
+    public void setErrorDocument(String errorDocument) {
+      this.errorDocument = errorDocument;
+    }
+
+  }
 
   /**
    * The Iceberg REST catalog that LocalS3 can serve beside its S3 API, under {@code /iceberg/v1} on the same port, so
