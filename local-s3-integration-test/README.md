@@ -1,14 +1,14 @@
 Local S3 integration test
 ==========================
 
-End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB, DuckLake and Apache Iceberg.
+End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB, DuckLake, Apache Iceberg and Delta Lake.
 
 The tests are grouped by JUnit tag:
 
 | Task            | Tag          | Tests                                                                                    |
 |-----------------|--------------|------------------------------------------------------------------------------------------|
 | `test`          | untagged     | LocalS3 with the AWS SDK; CI runs them on Linux for every pull request                   |
-| `dataToolsTest` | `data-tools` | DuckDB and Apache Iceberg, the slow ones; CI runs them in a job of their own, in parallel |
+| `dataToolsTest` | `data-tools` | DuckDB, Apache Iceberg and Delta Lake, the slow ones; CI runs them in a job of their own, in parallel |
 | `realS3Test`    | `real-s3`    | the tests of `@RealS3`, which need AWS credentials; CI doesn't run them                   |
 
 `check` runs `test` and `dataToolsTest`.
@@ -19,6 +19,8 @@ The tests are grouped by JUnit tag:
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbParquetIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckLakeIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergS3FileIOIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergRestCatalog*'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*DeltaLakeIntegrationTest'
 ./gradlew :local-s3-integration-test:test --tests '*ConcurrentRangeReadIntegrationTest'
 ```
 
@@ -124,3 +126,60 @@ Notes:
   `kms` and `sts`.
 + The Parquet writers and readers of Iceberg take a Hadoop `Configuration`, from the shaded `hadoop-client-api` and
   `hadoop-client-runtime`; reading a table with `iceberg-data` also loads `iceberg-orc`.
+
+# The built-in Iceberg REST catalog
+
+`IcebergRestCatalogIntegrationTest` drives the catalog that LocalS3 serves at `/iceberg/v1` with the real
+`RESTCatalog` of Apache Iceberg — the client that Spark, Trino, Flink and PyIceberg speak to a catalog with. LocalS3
+builds the table metadata itself, without the Iceberg library, so only a real client reading it back proves that what
+it writes is a table.
+
+| Test                                                       | Iceberg                                                      | What it proves about the catalog                                                     |
+|------------------------------------------------------------|--------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `namespaces_are_created_listed_and_dropped`                | namespace CRUD and properties                                | nested namespaces are listed under their parent only                                   |
+| `a_created_table_round_trips_through_the_catalog`          | `createTable`, `loadTable`, `listTables`                     | the schema and the UUID survive the metadata file LocalS3 wrote                        |
+| `rows_written_to_a_table_are_read_back_through_the_catalog`| Parquet appends, filtered reads                              | a snapshot the client can scan, and a history that keeps both appends                  |
+| `an_earlier_snapshot_is_still_readable_after_a_later_append` | `useSnapshot`                                              | the snapshot log makes the earlier state addressable                                   |
+| `concurrent_appends_never_lose_a_writer_s_rows`            | 4 writers appending at once, with retries                    | the compare-and-set on the table pointer: 4 snapshots, every writer's rows             |
+| `a_transaction_creates_the_table_only_once_its_data_is_written` | `createTransaction`, i.e. CTAS                           | a staged create writes nothing until the transaction commits                           |
+| `a_schema_change_is_committed_and_read_back`               | `updateSchema`, `updateProperties`                           | `last-column-id` is tracked, so the added column gets the next id                      |
+| `a_partitioned_table_keeps_its_spec`                       | an identity partition spec                                   | the spec and its field ids round trip                                                  |
+| `tables_are_renamed_and_dropped`                           | `renameTable`, `dropTable`                                   | a rename moves the pointer and keeps the table                                         |
+
+`IcebergRestCatalogPersistenceIntegrationTest` covers the two modes: a table written by a `PERSISTENCE` service is
+there after a restart and can be committed to again, and an `IN_MEMORY` service started from the same directory reads
+its tables without writing to it. `IcebergCatalogJupiterTest` covers `@LocalS3(icebergCatalog = true)`.
+
+The HTTP surface of the catalog — statuses, the `error.type` a client maps to an exception, and that the catalog stays
+off unless asked for — is covered by `IcebergCatalogEndpointTest` in `local-s3-rest`, which runs on every pull request.
+
+# Delta Lake
+
+`DeltaLakeIntegrationTest` drives [delta-kernel-java](https://delta.io/blog/delta-kernel/), the Delta client without
+Spark. Delta reaches storage through `delta-kernel-defaults`, whose engine is built on one pluggable `FileIO`
+interface, so the test plugs in `LocalS3DeltaFileIO` — a small `FileIO` backed by the AWS SDK that these tests already
+use. That keeps Hadoop's `S3A`, and the AWS SDK bundle it drags in, out of the build.
+
+**Everything here rests on one guarantee.** A version of a Delta table becomes visible by *creating*
+`_delta_log/<version>.json`, so that create must fail when another writer got there first: a `PUT` with
+`If-None-Match: *`, answered `412` for a key that is taken. `LocalS3DeltaFileIO` turns that `412` into the
+`FileAlreadyExistsException` that Delta reads as a lost commit.
+
+| Test                                                    | Delta                                                     | S3 features checked on the LocalS3 side                                     |
+|---------------------------------------------------------|-----------------------------------------------------------|-------------------------------------------------------------------------------|
+| `creating_a_table_writes_its_first_commit_to_the_delta_log` | `CREATE_TABLE`, `getLatestSnapshot`                    | version 0 is one object, `_delta_log/00000000000000000000.json`                |
+| `rows_written_are_read_back_through_delta`              | two appends of Parquet data files, then a full read       | data files beside the log, one log file per commit                            |
+| `a_second_writer_of_the_same_version_loses_the_commit`   | two writers on the same version, retries off              | `412` reaches Delta as a lost commit; the loser changed nothing               |
+| `a_writer_that_lost_the_race_retries_and_keeps_its_rows` | the same race with Delta's default retries                | the loser rebases and commits, so a conflict costs a retry and never a row     |
+| `the_commit_of_a_version_is_a_conditional_create`        | —                                                         | `If-None-Match: *` on an existing version answers `412`, on a free one `200`   |
+| `an_earlier_version_is_still_readable_by_time_travel`    | `getSnapshotAsOfVersion`                                  | the log is append-only and the data files are never rewritten                 |
+| `a_table_is_read_by_a_client_that_did_not_write_it`      | a second engine over the same bucket                      | a table is the objects, not the client that wrote them                        |
+
+Notes:
+
++ `delta-kernel-defaults` brings no Spark: `delta-storage`, `parquet-hadoop`, Jackson 2 and the shaded Hadoop client,
+  which the Iceberg tests already use. Jackson 2 lives beside the Jackson 3 of LocalS3 — different packages.
++ `hadoop-client-api` is on the compile classpath, not just at runtime: `DefaultEngine.create()` is overloaded on
+  Hadoop's `Configuration`, so `javac` needs the class to resolve the `FileIO` overload the tests use.
++ `LocalS3DeltaFileIO` is written for clarity: an object being read is fetched whole, and one being written is
+  buffered until it is closed. The tables of these tests are a few kilobytes.

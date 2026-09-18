@@ -21,6 +21,7 @@ h2MvStore="2.5.250"
 iceberg="1.11.0"
 parquet="1.17.1"
 hadoop="3.5.0"
+delta="4.4.0"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -63,6 +64,10 @@ icebergOrc = { group = "org.apache.iceberg", name = "iceberg-orc", version.ref =
 icebergParquet = { group = "org.apache.iceberg", name = "iceberg-parquet", version.ref = "iceberg" }
 # The writers of iceberg-parquet take the MessageType of parquet-column, which iceberg-parquet only has at runtime.
 parquetColumn = { group = "org.apache.parquet", name = "parquet-column", version.ref = "parquet" }
+# Delta Lake through delta-kernel-java: the Delta client without Spark. Its DefaultEngine is built on a pluggable
+# FileIO, so LocalS3 is reached with the AWS SDK that is already here rather than through Hadoop's S3A and the AWS bundle.
+deltaKernelApi = { group = "io.delta", name = "delta-kernel-api", version.ref = "delta" }
+deltaKernelDefaults = { group = "io.delta", name = "delta-kernel-defaults", version.ref = "delta" }
 # The Parquet writers and readers of Iceberg take a Hadoop Configuration: the shaded Hadoop client, without Hadoop's own dependencies.
 hadoopClientApi = { group = "org.apache.hadoop", name = "hadoop-client-api", version.ref = "hadoop" }
 hadoopClientRuntime = { group = "org.apache.hadoop", name = "hadoop-client-runtime", version.ref = "hadoop" }

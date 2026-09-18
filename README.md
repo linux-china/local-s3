@@ -70,6 +70,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
   catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works.
   [Details](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
++ **Delta Lake**: the conditional write that the Delta commit protocol rests on, covered end to end with
+  `delta-kernel-java` — create, write, read, concurrent commits and time travel.
+  [Details](docs/data-tools.md#delta-lake).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
 + **Faithful semantics**: conditional reads, writes and deletes that are atomic per key, Amazon S3 entity tags for
   multipart uploads, and the validation of Amazon S3 for bucket names and part sizes. [Semantics](docs/semantics.md).
@@ -98,7 +101,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
-| [Data tools](docs/data-tools.md) | DuckDB, DuckLake and Apache Iceberg on LocalS3, and the built-in Iceberg REST catalog. |
+| [Data tools](docs/data-tools.md) | DuckDB, DuckLake, Apache Iceberg and Delta Lake on LocalS3, and the built-in Iceberg REST catalog. |
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |

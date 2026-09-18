@@ -85,6 +85,13 @@ imported either.
 
 ### Added
 
++ **Delta Lake is covered end to end.** `DeltaLakeIntegrationTest` drives
+  [delta-kernel-java](https://delta.io/blog/delta-kernel/), the Delta client without Spark, against LocalS3: creating a
+  table, writing and reading rows, two writers racing for the same version, time travel to an earlier version, and a
+  reader that shares nothing with the writer but the bucket. It proves the claim the README makes — the commit protocol
+  of Delta rests on `If-None-Match: *` creating `_delta_log/<version>.json` only when no other writer did, and on the
+  `412` that LocalS3 answers the loser with. See [Delta Lake](docs/data-tools.md#delta-lake).
+
 + **A built-in Iceberg REST catalog**, off by default: `icebergCatalog(true)`, `@LocalS3(icebergCatalog = true)`,
   `local-s3.iceberg-catalog.enabled` or `LOCAL_S3_ICEBERG_CATALOG=true` serves an
   [Iceberg REST catalog](https://iceberg.apache.org/spec/#rest-catalog) under `/iceberg/v1` on the same port, so a

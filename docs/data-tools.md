@@ -276,7 +276,43 @@ What LocalS3 answers for Iceberg:
 + commits of catalogs that keep the table metadata on S3: `If-None-Match: *` creates a metadata version only if no
   other writer created it first, and answers `412 Precondition Failed` otherwise, which a catalog turns into the
   `CommitFailedException` that makes Iceberg refresh the table and retry. The commit protocol of Delta Lake relies
-  on the same condition for `_delta_log/<version>.json`. See [conditional requests](semantics.md#conditional-requests).
+  on the same condition for `_delta_log/<version>.json`, see [Delta Lake](#delta-lake).
+  See [conditional requests](semantics.md#conditional-requests).
 
 `IcebergS3FileIOIntegrationTest` covers these with a catalog of that kind, including writers that commit to the same
 table at once.
+
+## Delta Lake
+
+A Delta table needs nothing of LocalS3 but object storage and **one guarantee**: a version of the table becomes
+visible by *creating* `_delta_log/<version>.json`, and that create must fail if another writer got there first.
+On S3 that is a `PUT` carrying `If-None-Match: *`, which LocalS3 answers with `412 Precondition Failed` when the key
+is taken:
+
+```text
+PUT _delta_log/00000000000000000001.json   If-None-Match: *   → 200
+PUT _delta_log/00000000000000000001.json   If-None-Match: *   → 412
+```
+
+That is what turns a lost race into a retry instead of a silently overwritten commit. Without it two writers would
+both report success and one writer's rows would be gone.
+
+### Pointing a Delta client at LocalS3
+
+Delta clients reach S3 through Hadoop's `S3A`, so the settings are the Hadoop ones:
+
+```properties
+fs.s3a.endpoint=http://localhost:29090
+fs.s3a.path.style.access=true
+fs.s3a.access.key=admin
+fs.s3a.secret.key=admin
+```
+
+With Spark and `delta-spark`, the same as `spark.hadoop.fs.s3a.*`, and the table path is `s3a://my-bucket/tables/events`.
+
+`DeltaLakeIntegrationTest` drives [delta-kernel-java](https://delta.io/blog/delta-kernel/) — the Delta client without
+Spark — over `LocalS3DeltaFileIO`, a small `FileIO` backed by the AWS SDK rather than by `S3A`, so the test needs
+neither Hadoop's `S3A` nor the AWS SDK bundle it pulls in. It covers creating a table, writing and reading rows back,
+two writers racing for the same version (both with retries off, where the loser is refused, and with the retries Delta
+does by default, where the loser rebases and keeps its rows), time travel to an earlier version, and a reader that
+shares nothing with the writer but the bucket.

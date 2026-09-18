@@ -26,16 +26,20 @@ dependencies {
     testImplementation(libs.icebergParquet)
     testImplementation(libs.parquetColumn)
     testRuntimeOnly(libs.icebergOrc)
+    testImplementation(libs.deltaKernelApi)
+    testImplementation(libs.deltaKernelDefaults)
     testImplementation(libs.awssdkKms)
     testImplementation(libs.awssdkSts)
-    testRuntimeOnly(libs.hadoopClientApi)
+    // On the compile classpath, not just at runtime: DefaultEngine.create() is overloaded on Hadoop's Configuration,
+    // so javac needs the class to resolve the FileIO overload that the Delta tests use.
+    testImplementation(libs.hadoopClientApi)
     testRuntimeOnly(libs.hadoopClientRuntime)
     testRuntimeOnly(libs.logbackClassic)
 }
 
 // The tests fall into three groups, by JUnit tag:
 // - untagged: LocalS3 with the AWS SDK, which `test` runs, and the pull request builds with it;
-// - `data-tools`: DuckDB and Apache Iceberg, whose dependencies and native code make them the slow ones, which
+// - `data-tools`: DuckDB, Apache Iceberg and Delta Lake, whose dependencies and native code make them the slow ones, which
 //   `dataToolsTest` runs, in a job of their own in CI;
 // - `real-s3`: the tests of `@RealS3`, which need AWS credentials, which only `realS3Test` runs.
 tasks.named('test', Test) {
@@ -45,7 +49,7 @@ tasks.named('test', Test) {
 }
 
 def dataToolsTest = tasks.register('dataToolsTest', Test) {
-    description = 'Runs the end-to-end tests with DuckDB and Apache Iceberg.'
+    description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg and Delta Lake.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
