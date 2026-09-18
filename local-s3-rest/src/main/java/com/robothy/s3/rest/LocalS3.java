@@ -166,8 +166,34 @@ public class LocalS3 implements AutoCloseable {
         // The actual port, in case a random one was requested.
         this.port = server.port();
         log.info("LocalS3 listens on {}://{}:{}.", config.tlsEnabled() ? "https" : "http", config.bindHost(), port);
+        if (config.tls() != null) {
+            logCertificate(config.tls());
+        }
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
+    }
+
+    /**
+     * Log the certificate that the service serves HTTPS with, so that a client that refuses it can be told why.
+     *
+     * <p>A self-signed certificate is logged in PEM format as well: it was generated for this service, so the log is
+     * the only place it exists, and a client only accepts it once it is given the certificate itself. The private key
+     * is never logged.
+     *
+     * @param tls the certificate of the service.
+     */
+    private static void logCertificate(LocalS3Tls tls) {
+        if (!tls.isSelfSigned()) {
+            log.info("LocalS3 serves HTTPS with the certificate {}.", tls.describe());
+            return;
+        }
+        log.info("""
+                LocalS3 generated a self-signed certificate for this service: {}.
+                No client trusts it yet: save the certificate below to a file, e.g. local-s3.pem, and pass it to the \
+                client, with curl --cacert local-s3.pem, AWS_CA_BUNDLE=local-s3.pem for the AWS CLI and boto3, keytool \
+                -importcert for a JVM client, or LocalS3Tls.newClientSslContext() for a client in this JVM. See \
+                https://github.com/Robothy/local-s3/blob/main/docs/deployment.md#https
+                {}""", tls.describe(), tls.certificateChainPem());
     }
 
     /**

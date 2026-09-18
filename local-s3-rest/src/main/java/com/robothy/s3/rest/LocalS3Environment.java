@@ -60,6 +60,20 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_TLS_KEY = "LOCAL_S3_TLS_KEY";
 
+  /**
+   * Serve HTTPS with a certificate that the service generates for itself when it starts, where no certificate of the
+   * machine is at hand: {@code true} issues it for {@code localhost}, {@code 127.0.0.1} and {@code ::1}, and a
+   * comma-separated list of hosts, e.g. {@code localhost,127.0.0.1,s3}, issues it for those instead, which a service
+   * that clients reach by the name of its container needs. Not to be set together with
+   * {@linkplain #LOCAL_S3_TLS_CERT}.
+   *
+   * <p>Nothing trusts the certificate: the service logs it in PEM format when it starts, so that it can be saved to a
+   * file and handed to a client.
+   *
+   * @see LocalS3Tls#selfSigned(String...)
+   */
+  public static final String LOCAL_S3_TLS_SELF_SIGNED = "LOCAL_S3_TLS_SELF_SIGNED";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
@@ -100,8 +114,17 @@ public final class LocalS3Environment {
     if ((tlsCert == null) != (tlsKey == null)) {
       throw new IllegalArgumentException(LOCAL_S3_TLS_CERT + " and " + LOCAL_S3_TLS_KEY + " must be configured together.");
     }
+    LocalS3Tls selfSigned = variable(variables, LOCAL_S3_TLS_SELF_SIGNED)
+        .map(LocalS3Environment::parseSelfSignedCertificate)
+        .orElse(null);
+    if (tlsCert != null && selfSigned != null) {
+      throw new IllegalArgumentException(LOCAL_S3_TLS_SELF_SIGNED + " generates a certificate, so it must not be set"
+          + " together with " + LOCAL_S3_TLS_CERT + " and " + LOCAL_S3_TLS_KEY + ".");
+    }
     if (tlsCert != null) {
       builder.tls(tlsCert, tlsKey);
+    } else if (selfSigned != null) {
+      builder.tls(selfSigned);
     }
 
     String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
@@ -124,6 +147,27 @@ public final class LocalS3Environment {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("\"" + policyName + "\" is not a valid " + LOCAL_S3_PERSISTENCE_POLICY
           + "; expected DURABLE or FAST.");
+    }
+  }
+
+  /**
+   * Generate the certificate of {@linkplain #LOCAL_S3_TLS_SELF_SIGNED}: for the default hosts if the variable is a
+   * boolean, and for the hosts it lists otherwise. {@code false} is the only value that generates none, so that a
+   * variable that is meant to turn the feature off doesn't turn HTTPS on.
+   */
+  private static LocalS3Tls parseSelfSignedCertificate(String hosts) {
+    if ("false".equalsIgnoreCase(hosts)) {
+      return null;
+    }
+    if ("true".equalsIgnoreCase(hosts)) {
+      return LocalS3Tls.selfSigned();
+    }
+    try {
+      return LocalS3Tls.selfSigned(hosts.split(","));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("\"" + hosts + "\" is not a valid " + LOCAL_S3_TLS_SELF_SIGNED
+          + "; use true, or the comma-separated hosts to issue the certificate for, e.g."
+          + " localhost,127.0.0.1,s3: " + e.getMessage(), e);
     }
   }
 

@@ -17,10 +17,19 @@ started with a certificate serves [HTTPS](deployment.md#https) instead, and the 
 > IO Error: SSL connect error error for HTTP HEAD to 'https://localhost:29090/demo1/family.parquet'
 > ```
 >
-> The `https://` in the URL shows the cause. Add `USE_SSL false` to the secret, or run `SET s3_use_ssl = false;`, and
-> run the query again, or start LocalS3 with a [certificate](deployment.md#https) that DuckDB trusts. Because DuckDB
-> picks the secret with the longest matching scope, check that you changed the secret it actually uses; `SELECT name, scope FROM duckdb_secrets();` lists them. The exact wording of the error
-> depends on the version of DuckDB; the message above is from DuckDB 1.5.
+> The `https://` in the URL shows the cause. There are two ways out:
+>
+> + **Turn TLS off in DuckDB**: add `USE_SSL false` to the secret, or run `SET s3_use_ssl = false;`, and run the query
+>   again. Because DuckDB picks the secret with the longest matching scope, check that you changed the secret it
+>   actually uses; `SELECT name, scope FROM duckdb_secrets();` lists them.
+> + **Serve HTTPS**, and keep the DuckDB defaults: start LocalS3 with `LOCAL_S3_TLS_SELF_SIGNED=true`, which
+>   [generates a certificate](deployment.md#generate-a-certificate-on-startup) for `localhost` and logs it in PEM
+>   format, save that PEM block to a file, and point DuckDB at it with `SET ca_cert_file = 'local-s3.pem';`. Without
+>   the CA file DuckDB refuses the generated certificate with
+>   `SSL peer certificate or SSH remote key was not OK`; with a certificate of
+>   [mkcert](deployment.md#create-a-certificate-with-mkcert) it needs no CA file at all.
+>
+> The exact wording of the errors depends on the version of DuckDB; the messages here are from DuckDB 1.5.
 
 ## DuckDB
 

@@ -85,6 +85,7 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. |
 | `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS instead of plain HTTP with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
+| `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
 The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them
@@ -114,6 +115,58 @@ require, HTTPS by default, and then connect to LocalS3 without turning TLS off:
 
 With TLS configured, the port serves **only** HTTPS; plain HTTP requests to it fail. The
 [health check](#health-check) is then `https://…/_health`.
+
+There are two ways to get a certificate: LocalS3 [generates one for itself](#generate-a-certificate-on-startup), which
+needs nothing installed but has to be handed to every client, or [mkcert](#create-a-certificate-with-mkcert) issues one
+that the machine already trusts, which clients then need nothing for.
+
+### Generate a certificate on startup
+
+`LOCAL_S3_TLS_SELF_SIGNED=true`, or `tls(LocalS3Tls.selfSigned())`, generates a certificate for `localhost`,
+`127.0.0.1` and `::1` when the service starts, in a few milliseconds and with nothing to install:
+
+```shell
+# Executable jar
+LOCAL_S3_TLS_SELF_SIGNED=true java -jar local-s3-standalone-2.5.0.jar
+
+# Docker
+docker run -d -p 29090:29090 -e LOCAL_S3_TLS_SELF_SIGNED=true luofuxiang/local-s3
+```
+
+Set it to the comma-separated hosts to issue the certificate for instead of `true`, for every name that clients reach
+the service by, e.g. `LOCAL_S3_TLS_SELF_SIGNED=localhost,127.0.0.1,local-s3` for the service name in docker-compose, or
+`localhost,*.s3.local` for [virtual-hosted-style](#configuration) requests. A client verifies the host it connects to
+against them, and refuses a host that the certificate doesn't name.
+
+**No client trusts the certificate, because it signed itself.** The service logs it in PEM format when it starts, which
+is the only place it exists:
+
+```text
+LocalS3 generated a self-signed certificate for this service: CN=localhost,O=LocalS3 for
+[localhost, 127.0.0.1, 0:0:0:0:0:0:0:1], self-signed, valid until 2027-09-18T03:15:41Z, SHA-256 fingerprint 05:B7:…
+-----BEGIN CERTIFICATE-----
+MIIBtTCCAVqgAwIBAgIUBBaG2d/qt2FBS7W0dsx8AiwalSowCgYIKoZIzj0EAwIw
+…
+-----END CERTIFICATE-----
+```
+
+Save that block to a file, e.g. `local-s3.pem`, and hand it to the client as its CA: `curl --cacert local-s3.pem`,
+`AWS_CA_BUNDLE=local-s3.pem`, `SET ca_cert_file = 'local-s3.pem'` in DuckDB, or the other clients of
+[Trust the certificate in clients](#trust-the-certificate-in-clients). In the JVM that embeds the service,
+`localS3.getConfig().tls()` holds it, and `newClientSslContext()` trusts it without a file:
+
+```java
+LocalS3 localS3 = LocalS3.builder().port(29090).tls(LocalS3Tls.selfSigned()).build();
+localS3.start();
+
+LocalS3Tls tls = localS3.getConfig().tls();
+Files.writeString(Path.of("local-s3.pem"), tls.certificateChainPem()); // for a client outside the JVM
+SSLContext sslContext = tls.newClientSslContext();                     // for one inside it
+```
+
+The certificate is valid for a year, and a new one is generated on every start, so a client that was given the
+certificate of one run has to be given the next one as well. Use mkcert below where that gets in the way, e.g. for a
+machine that several people or containers develop against.
 
 ### Create a certificate with mkcert
 
@@ -155,7 +208,9 @@ or a key that doesn't belong to the certificate, fails right away.
 ### Trust the certificate in clients
 
 `mkcert -install` makes the system trust the certificate, which covers curl, DuckDB, and most Go and Rust clients.
-Other clients need the CA of mkcert, `"$(mkcert -CAROOT)/rootCA.pem"`, explicitly:
+Other clients need the CA of mkcert, `"$(mkcert -CAROOT)/rootCA.pem"`, explicitly. A
+[generated certificate](#generate-a-certificate-on-startup) is trusted by nothing, so every client below needs it, with
+the PEM file that the startup log was saved to in place of `rootCA.pem`:
 
 + **JVM** (AWS SDK for Java, Hadoop S3A, Iceberg, Spark): the JVM has its own trust store. Import the CA once, e.g.
   `keytool -importcert -noprompt -alias mkcert -cacerts -storepass changeit -file "$(mkcert -CAROOT)/rootCA.pem"`,
@@ -168,6 +223,8 @@ Other clients need the CA of mkcert, `"$(mkcert -CAROOT)/rootCA.pem"`, explicitl
 DuckDB, with the defaults of a secret, which uses HTTPS:
 
 ```sql
+-- Only for a certificate that the machine doesn't trust, e.g. a generated one; mkcert needs no CA file.
+SET ca_cert_file = 'local-s3.pem';
 CREATE SECRET local_s3 (
     TYPE s3,
     ENDPOINT 'localhost:29090',
@@ -177,6 +234,9 @@ CREATE SECRET local_s3 (
     REGION 'us-east-1'
 );
 ```
+
+Without the `ca_cert_file` of a certificate it doesn't trust, DuckDB fails with
+`IO Error: SSL peer certificate or SSH remote key was not OK`, or `SSL connect error` against a plain HTTP service.
 
 ## Data directory
 

@@ -98,9 +98,33 @@ The [health check](deployment.md#health-check) needs no authentication, so probe
 
 ### Serve HTTPS
 
-`tls(certPem, keyPem)` serves HTTPS instead of plain HTTP. Each argument is the path of a PEM file, or the PEM content
-itself, e.g. read from a secret; `tls(Path, Path)` takes the files as paths. Create the certificate and key with
-[mkcert](https://github.com/FiloSottile/mkcert), e.g. `mkcert localhost 127.0.0.1`:
+`tls(LocalS3Tls.selfSigned())` generates a certificate for `localhost`, `127.0.0.1` and `::1` when the service is
+built, so that a client that uses HTTPS by default, e.g. DuckDB, connects without a certificate to install:
+
+```java
+LocalS3Tls tls = LocalS3Tls.selfSigned();       // or selfSigned("localhost", "s3.local"), for other hosts
+LocalS3 localS3 = LocalS3.builder().tls(tls).build();
+localS3.start();
+
+// Nothing trusts a certificate that signed itself, so the client is given it:
+S3Client s3 = S3Client.builder()
+    .endpointOverride(URI.create("https://localhost:" + localS3.getPort()))
+    .httpClient(ApacheHttpClient.builder().tlsTrustManagersProvider(tls::trustManagers).build())
+    .build();
+
+// For a client outside the JVM, e.g. curl --cacert local-s3.pem or DuckDB's ca_cert_file:
+Files.writeString(Path.of("local-s3.pem"), tls.certificateChainPem());
+```
+
+`newClientSslContext()` returns an `SSLContext` that trusts the certificate for a client that takes one, e.g.
+`HttpClient` or `HttpsURLConnection`, and the service logs the certificate in PEM format when it starts. A new
+certificate is generated per call, so a client that holds the certificate of one service doesn't trust another. See
+[Generate a certificate on startup](deployment.md#generate-a-certificate-on-startup).
+
+`tls(certPem, keyPem)` serves HTTPS with a certificate of your own instead. Each argument is the path of a PEM file, or
+the PEM content itself, e.g. read from a secret; `tls(Path, Path)` takes the files as paths. Create the certificate and
+key with [mkcert](https://github.com/FiloSottile/mkcert), e.g. `mkcert localhost 127.0.0.1`, and the clients of the
+machine trust them without being given anything:
 
 ```java
 LocalS3 localS3 = LocalS3.builder()

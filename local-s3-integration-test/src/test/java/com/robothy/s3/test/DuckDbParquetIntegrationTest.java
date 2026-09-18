@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.rest.LocalS3;
+import com.robothy.s3.rest.LocalS3Tls;
 import com.robothy.s3.rest.admin.RequestStatistics;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -403,6 +404,41 @@ class DuckDbParquetIntegrationTest {
       assertTrue(denied.getMessage().contains("403"), denied.getMessage());
     } finally {
       signed.shutdown();
+    }
+  }
+
+  /**
+   * DuckDB with its TLS defaults, i.e. {@code USE_SSL true}, against a LocalS3 that generated a certificate for itself:
+   * the first connection of a client that expects HTTPS, which fails with an {@code SSL connect error} against a plain
+   * HTTP service, and which needs no certificate of the machine here. DuckDB is given the generated certificate as its
+   * CA, since nothing trusts a certificate that signed itself.
+   */
+  @Test
+  void readsAndWritesOverHttpsWithAGeneratedCertificate(@TempDir Path directory) throws Exception {
+    LocalS3Tls tls = LocalS3Tls.selfSigned();
+    LocalS3 secured = start(LocalS3.builder().port(-1).buckets(BUCKET).tls(tls));
+    // What the startup log of the service prints, saved the way a user saves it.
+    Path caCertFile = Files.writeString(directory.resolve("local-s3.pem"), tls.certificateChainPem());
+    try (Connection connection = DriverManager.getConnection("jdbc:duckdb:")) {
+      loadHttpfs(connection);
+      execute(connection, "SET ca_cert_file = '" + sqlPath(caCertFile) + "'");
+      // No USE_SSL false, unlike every other secret of these tests: the defaults of DuckDB expect HTTPS.
+      execute(connection, "CREATE SECRET local_s3_tls (TYPE s3, ENDPOINT 'localhost:" + secured.getPort() + "', "
+          + "URL_STYLE 'path', KEY_ID 'any-access-key', SECRET 'any-secret-key', REGION 'us-east-1')");
+
+      execute(connection, "COPY (SELECT i AS id, md5(i::VARCHAR) AS payload FROM range(0, 20000) t(i)) "
+          + "TO 's3://lake/over-https.parquet' (FORMAT parquet, ROW_GROUP_SIZE 5000)");
+      assertEquals(List.of(List.of(20000L, 199990000L)),
+          rows(connection, "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/over-https.parquet')"));
+      assertEquals(List.of(List.of(15150L)),
+          rows(connection, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/over-https.parquet')"
+              + " WHERE id BETWEEN 100 AND 200"),
+          "A range request over TLS, where a response is streamed rather than sent as a zero-copy file region.");
+
+      assertTrue(secured.isTlsEnabled());
+      assertEquals(List.of(), rows(connection, "SELECT 1 WHERE false"), "The connection still works.");
+    } finally {
+      secured.shutdown();
     }
   }
 

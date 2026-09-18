@@ -33,6 +33,10 @@ public class App {
         if (localS3Config.authenticationEnabled()) {
             hint.add("- Authentication: Access Key(" + localS3Config.accessKeyId() + ")");
         }
+        if (localS3Config.tlsEnabled()) {
+            // The certificate itself is logged by the service, which prints a generated one in PEM format.
+            hint.add("- HTTPS: " + localS3Config.tls().describe());
+        }
         log.info("Starting LocalS3: {}", String.join("\n", hint));
         localS3.start();
     }

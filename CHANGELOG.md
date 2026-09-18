@@ -98,6 +98,11 @@ imported either.
 + **HTTPS**: `tls(certPem, keyPem)` and `LOCAL_S3_TLS_CERT` / `LOCAL_S3_TLS_KEY` serve TLS with a PEM certificate and
   key, e.g. created by [mkcert](https://github.com/FiloSottile/mkcert), so clients that use HTTPS by default, such as
   DuckDB, Hadoop S3A or the `object_store` crate, connect without turning it off. See [HTTPS](docs/deployment.md#https).
++ **A self-signed certificate on startup**: `tls(LocalS3Tls.selfSigned())` and `LOCAL_S3_TLS_SELF_SIGNED=true` generate
+  a certificate for `localhost`, `127.0.0.1` and `::1`, or for the hosts given, so HTTPS needs nothing installed. The
+  service logs the certificate in PEM format to hand to a client, e.g. `curl --cacert`, `AWS_CA_BUNDLE` or the
+  `ca_cert_file` of DuckDB, and `LocalS3Tls.newClientSslContext()` and `trustManagers()` trust it in the JVM that
+  embeds the service. See [Generate a certificate on startup](docs/deployment.md#generate-a-certificate-on-startup).
 + **Conditional requests**: `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` for reads;
   conditional writes for `PutObject`, `CopyObject` and `CompleteMultipartUpload`; conditional deletes for
   `DeleteObject` and `DeleteObjects`; `x-amz-copy-source-if-*` for `CopyObject` and `UploadPartCopy`. See

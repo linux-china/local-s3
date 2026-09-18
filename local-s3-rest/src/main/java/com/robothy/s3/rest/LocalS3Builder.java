@@ -531,6 +531,36 @@ public class LocalS3Builder {
     }
 
     /**
+     * Serve HTTPS instead of plain HTTP with a certificate and private key that the caller holds, e.g. one generated
+     * for {@code localhost} where no certificate of the machine is at hand:
+     *
+     * <pre>{@code LocalS3.builder().tls(LocalS3Tls.selfSigned()).build()}</pre>
+     *
+     * <p>A client has to be given a {@linkplain LocalS3Tls#selfSigned() self-signed} certificate, which nothing trusts
+     * by default; the service logs it in PEM format when it starts, and
+     * {@linkplain LocalS3Tls#newClientSslContext()} trusts it in the JVM that embeds the service.
+     *
+     * @param tls the certificate and its private key; see {@linkplain #tls(String, String)}.
+     * @return builder.
+     */
+    public LocalS3Builder tls(@NonNull LocalS3Tls tls) {
+        this.tls = tls;
+        return this;
+    }
+
+    /**
+     * Serve HTTPS with a certificate generated for {@code localhost}, {@code 127.0.0.1} and {@code ::1}, i.e.
+     * {@code tls(LocalS3Tls.selfSigned())}. A client that uses HTTPS by default then connects to a local service
+     * without a certificate of the machine, once it is given the certificate or told not to verify it.
+     *
+     * @return builder.
+     * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
+     */
+    public LocalS3Builder tlsSelfSigned() {
+        return tls(LocalS3Tls.selfSigned());
+    }
+
+    /**
      * Configure the builder from the environment variables that the Docker image is configured with, read
      * from the environment or, if a variable isn't set there, from the system property of the same name.
      *

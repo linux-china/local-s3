@@ -71,8 +71,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **In-memory and persistence modes**, and in-memory services that start from the data of a directory, e.g. a fixture
   shared by many tests. Data directories of hundreds of thousands of objects open without loading all their metadata.
 + **AWS Signature Version 4** verification, path-style and virtual-hosted-style requests, CORS.
-+ **HTTPS** with a certificate of [mkcert](https://github.com/FiloSottile/mkcert), for clients that require TLS, e.g.
-  DuckDB, Hadoop S3A and Snowflake. [Details](docs/deployment.md#https).
++ **HTTPS** with a self-signed certificate that LocalS3 generates on startup, or one of
+  [mkcert](https://github.com/FiloSottile/mkcert), for clients that require TLS, e.g. DuckDB, Hadoop S3A and Snowflake.
+  [Details](docs/deployment.md#https).
 + **A stateless STS endpoint** (`AssumeRole`, `GetSessionToken`, `GetCallerIdentity`), so Iceberg REST catalogs that
   vend temporary credentials, and the engines that use them, work with LocalS3.
   [Details](docs/embedding.md#temporary-credentials-sts).
