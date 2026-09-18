@@ -119,6 +119,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   private StsController stsController;
 
+  /**
+   * Answers the KMS requests; {@code null} if the router has no KMS endpoint.
+   */
+  private KmsController kmsController;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -162,6 +167,17 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * Answer the KMS requests, see {@linkplain KmsController#isKmsRequest}, with a controller.
+   *
+   * @param kmsController the controller.
+   * @return this router.
+   */
+  LocalS3Router kms(KmsController kmsController) {
+    this.kmsController = Objects.requireNonNull(kmsController);
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -194,6 +210,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   public HttpRequestHandler match(HttpRequest request) {
     if (stsController != null && StsController.isStsRequest(request)) {
       return matchSts(request);
+    }
+    if (kmsController != null && KmsController.isKmsRequest(request)) {
+      return matchKms(request);
     }
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
@@ -232,6 +251,21 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
+   * The handler of a KMS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
+   * in the JSON error format of KMS rather than the one of Amazon S3.
+   */
+  private OperationHandler matchKms(HttpRequest request) {
+    if (requiresAuthentication(request)) {
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      if (!result.authenticated()) {
+        return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION,
+            (req, resp) -> KmsController.writeAuthenticationFailure(resp, result));
+      }
+    }
+    return new OperationHandler(KmsController.operation(request), kmsController);
+  }
+
+  /**
    * Verify the signature of a request before its body is received, so that a request with an invalid signature
    * doesn't get to upload its body. What was verified is kept, and handed to the complete request by
    * {@linkplain #requestReceived}, so that {@linkplain #match} only verifies what depends on the body: the payload hash
@@ -240,9 +274,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   @Override
   public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
     // The credentials of a form upload are fields of its body, so it can only be verified once the body is received.
-    // An STS request is small, and verified once it is received, so that a rejection is answered in the format of STS.
+    // An STS or KMS request is small, and verified once it is received, so that a rejection is answered in the error
+    // format of that service.
     if (!requiresAuthentication(head) || isFormUpload(head)
-        || stsController != null && StsController.isStsRequest(head)) {
+        || stsController != null && StsController.isStsRequest(head)
+        || kmsController != null && KmsController.isKmsRequest(head)) {
       return null;
     }
     AwsSignatureV4Verifier.HeadVerification verification = signatureVerifier.verifyHeadForBody(head);

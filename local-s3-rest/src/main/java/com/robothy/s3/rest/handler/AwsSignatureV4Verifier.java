@@ -27,6 +27,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
@@ -39,8 +41,9 @@ import javax.crypto.spec.SecretKeySpec;
  * presigned URL, or in the {@code x-amz-security-token} field of a form upload, and is signed with the secret access key
  * that is derived from the token.
  *
- * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service; any other
- * request for {@code s3} or {@code s3vectors}.
+ * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service, a KMS
+ * request, see {@linkplain KmsController#isKmsRequest}, for the {@code kms} service, and any other request for
+ * {@code s3} or {@code s3vectors}.
  */
 final class AwsSignatureV4Verifier {
 
@@ -182,7 +185,7 @@ final class AwsSignatureV4Verifier {
     CredentialScope scope = parseCredential(parsed.credential());
     Map<String, String> headers = normalizedHeaders(request);
     Credential credential = validateCredential(scope, headers.get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN),
-        StsController.isStsRequest(request));
+        signedServices(request));
     if (!credential.result().authenticated()) {
       return HeadVerification.failed(credential.result());
     }
@@ -297,7 +300,7 @@ final class AwsSignatureV4Verifier {
 
     CredentialScope scope = parseCredential(requiredQueryParameter(queryParameters, "X-Amz-Credential"));
     Credential credential = validateCredential(scope,
-        queryParameter(queryParameters, "X-Amz-Security-Token").orElse(null), StsController.isStsRequest(request));
+        queryParameter(queryParameters, "X-Amz-Security-Token").orElse(null), signedServices(request));
     if (!credential.result().authenticated()) {
       return credential.result();
     }
@@ -337,15 +340,28 @@ final class AwsSignatureV4Verifier {
         : signatureMismatch();
   }
 
-  private Credential validateCredential(CredentialScope scope, String sessionToken, boolean stsRequest) {
+  /**
+   * The services that the credential scope of a request may name: the endpoint that answers the request is the one
+   * that the request is signed for, so a request meant for another service can't be replayed against LocalS3.
+   */
+  private static Set<String> signedServices(HttpRequest request) {
+    if (StsController.isStsRequest(request)) {
+      return Set.of("sts");
+    }
+    if (KmsController.isKmsRequest(request)) {
+      return Set.of("kms");
+    }
+    return Set.of("s3", "s3vectors");
+  }
+
+  private Credential validateCredential(CredentialScope scope, String sessionToken, Set<String> services) {
     Credential credential = resolveCredential(scope.accessKeyId(), sessionToken);
     if (!credential.result().authenticated()) {
       return credential;
     }
-    if (stsRequest ? !"sts".equals(scope.service())
-        : !("s3".equals(scope.service()) || "s3vectors".equals(scope.service()))) {
-      return Credential.failed(malformed(stsRequest ? "The credential scope service must be sts."
-          : "The credential scope service must be s3 or s3vectors."));
+    if (!services.contains(scope.service())) {
+      return Credential.failed(malformed("The credential scope service must be "
+          + String.join(" or ", new TreeSet<>(services)) + "."));
     }
     return credential;
   }

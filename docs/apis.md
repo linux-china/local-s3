@@ -175,6 +175,21 @@ A stateless STS endpoint on the same port issues temporary credentials of LocalS
 + GetSessionToken
 + GetCallerIdentity
 
+## Supported AWS KMS APIs
+
+A stateless KMS endpoint on the same port wraps and unwraps data keys, so that a client which calls KMS before it
+talks to S3, e.g. the Amazon S3 Encryption Client, runs against LocalS3; see
+[embedding.md](embedding.md#envelope-encryption-kms). KMS requests are `POST /` with an `X-Amz-Target:
+TrentService.<action>` header and a JSON body. **Nothing is really encrypted**, see
+[semantics.md](semantics.md#the-kms-endpoint).
+
++ GenerateDataKey
++ GenerateDataKeyWithoutPlaintext
++ Encrypt
++ Decrypt
++ DescribeKey
++ GenerateRandom
+
 ## Known unimplemented Amazon S3 APIs
 
 LocalS3 is a mock for testing, so it implements the operations that application code exercises and leaves

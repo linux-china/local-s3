@@ -197,6 +197,39 @@ Credentials credentials = sts.assumeRole(b -> b
 + **Errors**: an STS request is answered with the errors of STS, e.g. `InvalidClientTokenId`; an S3 request signed with a
   forged or foreign token with `400 InvalidToken`, and with an expired one with `400 ExpiredToken`.
 
+### Envelope encryption (KMS)
+
+LocalS3 answers the KMS actions `GenerateDataKey`, `GenerateDataKeyWithoutPlaintext`, `Encrypt`, `Decrypt`,
+`DescribeKey` and `GenerateRandom` on its own port, so a client that encrypts objects itself and wraps the data key
+with KMS, e.g. the Amazon S3 Encryption Client, needs no second endpoint.
+
+```java
+KmsClient kms = KmsClient.builder()
+    .endpointOverride(URI.create("http://localhost:29090"))
+    .region(Region.US_EAST_1)
+    .credentialsProvider(StaticCredentialsProvider.create(
+        AwsBasicCredentials.create("access-key-id", "secret-access-key")))
+    .build();
+GenerateDataKeyResponse dataKey = kms.generateDataKey(b -> b
+    .keyId("alias/local")
+    .keySpec(DataKeySpec.AES_256)
+    .encryptionContext(Map.of("bucket", "warehouse")));
+// Encrypt the object with dataKey.plaintext(), store dataKey.ciphertextBlob() beside it, and unwrap it later:
+SdkBytes plaintext = kms.decrypt(b -> b
+    .ciphertextBlob(dataKey.ciphertextBlob())
+    .encryptionContext(Map.of("bucket", "warehouse"))).plaintext();
+```
+
++ **Nothing is kept secret**: a ciphertext blob is the plaintext in an envelope that anyone can unpack, and there is no
+  key material. A blob written by LocalS3 protects nothing; it is for tests and local development only.
++ **Stateless and keyless**: no key is stored, so every key ID, alias or ARN works, `DescribeKey` describes it, and a
+  blob is read back after a restart, in both modes.
++ **A faithful round trip**: a blob unwraps to the plaintext it was wrapped from, bound to its key ID and encryption
+  context; another context answers `InvalidCiphertextException` and another `KeyId` answers `IncorrectKeyException`,
+  see [semantics.md](semantics.md#the-kms-endpoint).
++ This is separate from the `x-amz-server-side-encryption` headers of SSE-KMS, which LocalS3 stores and echoes without
+  calling the endpoint.
+
 ### Listen to bucket and object changes
 
 `changeListener` subscribes an `S3ChangeListener`, which receives an `S3Change` whenever a bucket or an object

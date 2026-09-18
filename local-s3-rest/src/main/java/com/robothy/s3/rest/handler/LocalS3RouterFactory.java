@@ -144,7 +144,8 @@ public class LocalS3RouterFactory {
     AwsSignatureV4Verifier signatureVerifier = accessKeyId == null ? null
         : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC());
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
-        .sts(new StsController(sessionCredentialIssuer));
+        .sts(new StsController(sessionCredentialIssuer))
+        .kms(new KmsController());
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);

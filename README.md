@@ -77,6 +77,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **A stateless STS endpoint** (`AssumeRole`, `GetSessionToken`, `GetCallerIdentity`), so Iceberg REST catalogs that
   vend temporary credentials, and the engines that use them, work with LocalS3.
   [Details](docs/embedding.md#temporary-credentials-sts).
++ **A stateless KMS endpoint** (`GenerateDataKey`, `Encrypt`, `Decrypt`, `DescribeKey`), so clients that wrap data keys
+  with KMS, e.g. the Amazon S3 Encryption Client, run against LocalS3. Nothing is really encrypted.
+  [Details](docs/embedding.md#envelope-encryption-kms).
 + **Change listeners** that are told of every committed change, e.g. to assert that an upload happened.
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
 + **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 4, Testcontainers, a Docker image (JVM or native), or an

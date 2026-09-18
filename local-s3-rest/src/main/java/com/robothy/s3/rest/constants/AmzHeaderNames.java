@@ -59,6 +59,12 @@ public class AmzHeaderNames {
   public static final String X_AMZN_ERRORTYPE = "x-amzn-errortype";
 
   /**
+   * The action that a request of an AWS JSON service names, e.g. {@code TrentService.Decrypt} for the KMS endpoint,
+   * see {@linkplain com.robothy.s3.rest.handler.KmsController}.
+   */
+  public static final String X_AMZ_TARGET = "x-amz-target";
+
+  /**
    * Specifies the source object for the copy operation.
    */
   public static final String X_AMZ_COPY_SOURCE = "x-amz-copy-source";

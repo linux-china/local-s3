@@ -17,6 +17,7 @@ Amazon S3 would refuse.
 - [Appends and renames](#appends-and-renames)
 - [Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)](#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms)
 - [Server-side encryption with customer-provided keys (SSE-C)](#server-side-encryption-with-customer-provided-keys-sse-c)
+- [The KMS endpoint](#the-kms-endpoint)
 - [Change events](#change-events)
 
 ## Request validation
@@ -304,7 +305,7 @@ rename.
 
 `PutObject`, `POST Object`, `CopyObject` and `CreateMultipartUpload` accept `x-amz-server-side-encryption` (`AES256`,
 `aws:kms` or `aws:kms:dsse`), and for the KMS algorithms `x-amz-server-side-encryption-aws-kms-key-id`,
-`-context` and `-bucket-key-enabled`. **Nothing is encrypted, and KMS is never called**: LocalS3 stores what the
+`-context` and `-bucket-key-enabled`. **Nothing is encrypted, and the KMS endpoint is never called for it**: LocalS3 stores what the
 request names with the object version, or with the upload, so that client code that sets these headers, e.g. Iceberg
 `S3FileIO` with `s3.sse.type`, sees the responses it sees against Amazon S3.
 
@@ -341,6 +342,35 @@ runs as it does against Amazon S3.
   `400 InvalidRequest`.
 
 Unlike Amazon S3, LocalS3 doesn't require HTTPS for SSE-C requests.
+
+## The KMS endpoint
+
+LocalS3 answers the KMS actions `GenerateDataKey`, `GenerateDataKeyWithoutPlaintext`, `Encrypt`, `Decrypt`,
+`DescribeKey` and `GenerateRandom` on its own port, for the clients that encrypt objects themselves and call KMS to
+wrap the data key, e.g. the Amazon S3 Encryption Client, and for the code that resolves a key with `DescribeKey`
+before it sends `x-amz-server-side-encryption: aws:kms`. It is separate from the server-side encryption headers above,
+which never reach it.
+
+**Nothing is kept secret.** A ciphertext blob is the plaintext itself in a framed, base64 encoded envelope that anyone
+can unpack, and no key material exists. What LocalS3 does give is a faithful round trip, so a client that wraps a data
+key, stores the blob and unwraps it later reads its object back. A blob written by LocalS3 protects nothing; don't put
+one where a real one belongs.
+
++ The requests are AWS JSON 1.1, like KMS: `POST /` with `X-Amz-Target: TrentService.<action>`, signed for the `kms`
+  service, with the credentials of LocalS3 or with temporary credentials of its STS endpoint. The errors are the JSON
+  errors of KMS, e.g. `ValidationException`, not an `<Error>` document of S3.
++ **No keys are stored**, so every key ID, alias or ARN is valid, and `DescribeKey` describes it as an enabled
+  symmetric key. A key ID that isn't an ARN is answered as `arn:aws:kms:us-east-1:000000000000:key/<id>`, an alias as
+  `.../alias/<name>`. No key is created, deleted, rotated or disabled.
++ A blob is **bound to its key ID and encryption context**: a `Decrypt` with another context answers
+  `InvalidCiphertextException` and one with another `KeyId` answers `IncorrectKeyException`, like KMS does, so a client
+  that mixes them up is told rather than handed a plaintext. A blob that LocalS3 didn't write answers
+  `InvalidCiphertextException` too. `KeyId` is optional for `Decrypt`, as it is for a symmetric key of KMS.
++ `GenerateDataKey` returns a **fresh random plaintext** of `KeySpec` (`AES_256` by default, or `AES_128`) or of
+  `NumberOfBytes`, so no two objects share a data key; naming both answers `ValidationException`. `Encrypt` takes up to
+  4096 bytes, as KMS does. The only `EncryptionAlgorithm` is `SYMMETRIC_DEFAULT`: there are no asymmetric keys.
++ Because nothing is stored, a blob **survives a restart** and is read by any LocalS3, in memory and persistence mode
+  alike, whatever its credentials.
 
 ## Change events
 
