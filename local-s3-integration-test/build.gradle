@@ -48,6 +48,14 @@ tasks.named('test', Test) {
     }
 }
 
+def requireDuckDbTests = providers.gradleProperty('requireDuckDbTests')
+    .map { it.toBoolean() }
+    .orElse(false)
+def requiredDuckDbTestClasses = [
+    'com.robothy.s3.test.DuckDbParquetIntegrationTest',
+    'com.robothy.s3.test.DuckLakeIntegrationTest'
+] as Set
+
 def dataToolsTest = tasks.register('dataToolsTest', Test) {
     description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg and Delta Lake.'
     group = 'verification'
@@ -56,7 +64,35 @@ def dataToolsTest = tasks.register('dataToolsTest', Test) {
     useJUnitPlatform {
         includeTags 'data-tools'
     }
+
+    def successfulDuckDbTestClasses = [] as Set
+    afterTest { descriptor, result ->
+        if (result.resultType == TestResult.ResultType.SUCCESS
+            && requiredDuckDbTestClasses.contains(descriptor.className)) {
+            successfulDuckDbTestClasses.add(descriptor.className)
+        }
+    }
+    outputs.upToDateWhen { !requireDuckDbTests.get() }
+    outputs.cacheIf { !requireDuckDbTests.get() }
+    doLast {
+        if (requireDuckDbTests.get()) {
+            def missing = requiredDuckDbTestClasses - successfulDuckDbTestClasses
+            if (!missing.isEmpty()) {
+                throw new GradleException('Required DuckDB test classes ran no successful tests: ' + missing.join(', '))
+            }
+        }
+    }
     shouldRunAfter tasks.named('test')
+}
+
+// CI runs this before dataToolsTest so that extension download failures cannot turn the DuckDB tests into skips.
+tasks.register('installDuckDbExtensions', JavaExec) {
+    description = 'Installs the pinned DuckDB extensions and prints the engine, driver and extension versions.'
+    group = 'verification'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.robothy.s3.test.DuckDbExtensionInstaller'
+    args 'httpfs', 'ducklake'
 }
 
 tasks.named('check') {
