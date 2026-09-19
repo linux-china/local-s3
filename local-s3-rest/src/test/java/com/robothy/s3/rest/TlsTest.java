@@ -90,7 +90,7 @@ class TlsTest {
   @Test
   void storesAndServesObjectsOverHttps(@TempDir Path dataPath) throws Exception {
     LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.PERSISTENCE).dataPath(dataPath.toString())
-        .requestBodyFileThreshold(1024).tls(certPem.toString(), keyPem.toString()).build();
+        .netty(netty -> netty.requestBodyFileThreshold(1024)).tls(certPem.toString(), keyPem.toString()).build();
     localS3.start();
     try {
       byte[] content = new byte[512 * 1024];
@@ -129,7 +129,8 @@ class TlsTest {
 
   @Test
   void rejectsPlainHttpRequestsWhenTlsIsRequired() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).tls(certPem, keyPem).tlsRequired(true).build();
+    LocalS3 localS3 = LocalS3.builder().port(-1)
+        .tls(tls -> tls.certificate(certPem, keyPem).required(true)).build();
     localS3.start();
     try {
       HttpURLConnection connection = (HttpURLConnection) new URI("http://127.0.0.1:" + localS3.getPort() + "/_health")

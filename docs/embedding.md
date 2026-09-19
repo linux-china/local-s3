@@ -305,6 +305,39 @@ localS3.start();
 `fromEnvironment()` applies the environment variables of the Docker image, e.g. `LOCAL_S3_MODE` or `AWS_BUCKETS`, that
 are set; see [deployment.md](deployment.md#configuration).
 
+### Settings grouped by domain
+
+The settings a service is usually built with — its address, its mode and data directory, its buckets, its credentials —
+are methods of the builder itself. The settings that only some services tune are grouped behind one method per domain,
+which takes the settings of that domain and applies them, so the rarely used knobs stay out of the way:
+
+| Domain | Method | What it configures |
+|---|---|---|
+| HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds` |
+| HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
+| Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
+| Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `settings(LocalS3IcebergCatalog)` |
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .port(29090)
+    .netty(netty -> netty.childEventGroupThreadNum(8)
+        .maxRequestBodySize(64 * 1024 * 1024)
+        .idleConnectionTimeoutSeconds(30))
+    .tls(tls -> tls.selfSigned().required(true))
+    .website(website -> website.allBuckets(true).indexDocument("home.html"))
+    .icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/"))
+    .build();
+
+localS3.start();
+```
+
+Each domain also keeps the one-liner that turns it on with its defaults: `tls(certPem, keyPem)`, `tls(LocalS3Tls)`,
+`website(true)` and `icebergCatalog(true)`. Entering `icebergCatalog(iceberg -> ...)` turns the catalog on, since
+configuring one is asking for one.
+
+A settings object writes through to the builder as it is called, so it must not be kept beyond the call.
+
 ## Spring Boot
 
 `local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 4 application, configured by `local-s3.*` properties,

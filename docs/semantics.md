@@ -28,8 +28,8 @@ Amazon S3 would refuse.
 + Every part of a multipart upload except the last one must be at least 5 MiB, the
   [minimum part size](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html) of Amazon S3; otherwise
   `CompleteMultipartUpload` fails with `EntityTooSmall`. An upload with a single part may be of any size.
-+ A request body is limited to 5 GiB by default (`maxRequestBodySize`), and its header section to 16 KiB
-  (`maxRequestHeaderSize`). A body whose declared `Content-Length` is already too large is rejected with
++ A request body is limited to 5 GiB by default (`netty(netty -> netty.maxRequestBodySize(...))`), and its header
+  section to 16 KiB (`maxRequestHeaderSize`). A body whose declared `Content-Length` is already too large is rejected with
   `EntityTooLarge` before `100 Continue` is sent, so the client never uploads it.
 + A single `PutObject` or `UploadPart` may send up to 5 GiB, like Amazon S3 allows. A body larger than 2 GiB is kept
   in its temporary file and read from there, since no memory-mapped buffer holds it; a browser form upload
@@ -260,8 +260,8 @@ bucket doesn't take it away:
 
 Every other bucket stays private, and an unsigned request of it is rejected as before. To serve **every** bucket
 without publishing it, which is meant for local development, set `LOCAL_S3_WEBSITE_ALL_BUCKETS=true`,
-`local-s3.website.all-buckets=true` or `LocalS3.builder().websiteAllBuckets(true)`. That also lets an unsigned request
-read the objects of a private bucket, so it is off by default. `LOCAL_S3_WEBSITE=false` turns website hosting off
+`local-s3.website.all-buckets=true` or `LocalS3.builder().website(website -> website.allBuckets(true))`. That also
+lets an unsigned request read the objects of a private bucket, so it is off by default. `LOCAL_S3_WEBSITE=false` turns website hosting off
 altogether.
 
 ### The index and error documents
@@ -277,7 +277,7 @@ own, and LocalS3 applies it:
 | `RedirectAllRequestsTo` | Answers every request of the bucket with a `301` to that host, keeping the key. |
 | `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. |
 
-`LocalS3Builder.websiteIndexDocument(...)` and `websiteErrorDocument(...)`, or the matching variables and properties,
+`website(website -> website.indexDocument(...).errorDocument(...))`, or the matching variables and properties,
 change the documents of the buckets that have no configuration of their own.
 
 ### Content types

@@ -41,7 +41,7 @@ class RequestIdTest {
         .port(-1)
         .buckets("request-id-bucket")
         // Small enough that a modest body is rejected, to reach the error of the request decoder.
-        .maxRequestBodySize(64)
+        .netty(netty -> netty.maxRequestBodySize(64))
         .build();
     localS3.start();
     try {

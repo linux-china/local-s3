@@ -143,7 +143,7 @@ class LargeUploadTest {
         .port(-1)
         .mode(mode)
         .buckets("bucket")
-        .requestBodyFileThreshold(FILE_THRESHOLD);
+        .netty(netty -> netty.requestBodyFileThreshold(FILE_THRESHOLD));
     if (mode == LocalS3Mode.PERSISTENCE) {
       builder.dataPath(dataPath.toString());
     }

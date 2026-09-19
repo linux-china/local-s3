@@ -130,7 +130,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
       builder.credentials(s3Config.accessKey(), s3Config.secretKey());
     }
     if (s3Config.icebergCatalog()) {
-      builder.icebergWarehouse(s3Config.icebergWarehouse());
+      builder.icebergCatalog(iceberg -> iceberg.warehouse(s3Config.icebergWarehouse()));
     }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();

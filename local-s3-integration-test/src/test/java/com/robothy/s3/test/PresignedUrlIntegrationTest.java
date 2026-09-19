@@ -67,7 +67,7 @@ class PresignedUrlIntegrationTest {
   void presignedUrlsOfATlsServiceAreHttps() {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
-        .tlsSelfSigned()
+        .tls(tls -> tls.selfSigned())
         .credentials(ACCESS_KEY_ID, SECRET_ACCESS_KEY)
         .build();
     localS3.start();

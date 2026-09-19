@@ -57,8 +57,8 @@ imported either.
 | Port of the Docker image | `80` | `29090` |
 | Mode variable of the Docker image | `MODE` | `LOCAL_S3_MODE` |
 | User of the Docker image | `root` | `locals3`; a bind-mounted data directory must be writable by it |
-| Threads of an embedded service | non-daemon | daemon, so a service doesn't keep the JVM alive; `daemonThreads(false)` restores the old behavior |
-| Request handling | 4 platform threads | a virtual thread per request (`virtualThreads`) |
+| Threads of an embedded service | non-daemon | daemon, so a service doesn't keep the JVM alive; `netty(netty -> netty.daemonThreads(false))` restores the old behavior |
+| Request handling | 4 platform threads | a virtual thread per request (`netty(netty -> netty.virtualThreads(...))`) |
 | Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `compositeMultipartEtags(false)` restores the old one |
 | Bucket names | not validated | the naming rules of Amazon S3; invalid names fail with `InvalidBucketName` |
 | Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
@@ -70,6 +70,24 @@ imported either.
 
 + The builder is the top-level class `LocalS3Builder`, still returned by `LocalS3.builder()`. Code that names the type
   `LocalS3.Builder` needs to use `LocalS3Builder`.
++ **The settings of a domain are grouped behind one builder method**, so that the knobs only some services tune stay out
+  of the way of the ones every service is built with; see
+  [Settings grouped by domain](docs/embedding.md#settings-grouped-by-domain).
+
+  | 2.4 / earlier 2.5 snapshots | 2.5 |
+  |---|---|
+  | `nettyParentEventGroupThreadNum(n)` | `netty(netty -> netty.parentEventGroupThreadNum(n))` |
+  | `nettyChildEventGroupThreadNum(n)` | `netty(netty -> netty.childEventGroupThreadNum(n))` |
+  | `s3ExecutorThreadNum(n)` | `netty(netty -> netty.s3ExecutorThreadNum(n))` |
+  | `virtualThreads(b)`, `daemonThreads(b)` | `netty(netty -> netty.virtualThreads(b).daemonThreads(b))` |
+  | `maxRequestBodySize(n)`, `requestBodyFileThreshold(n)`, `maxRequestHeaderSize(n)`, `idleConnectionTimeoutSeconds(n)` | the same names under `netty(netty -> ...)` |
+  | `tlsSelfSigned()`, `tlsRequired(b)` | `tls(tls -> tls.selfSigned().required(b))` |
+  | `websiteAllBuckets(b)`, `websiteIndexDocument(s)`, `websiteErrorDocument(s)`, `website(LocalS3Website)` | `website(website -> website.allBuckets(b).indexDocument(s).errorDocument(s))`, `website(website -> website.settings(...))` |
+  | `icebergWarehouse(s)`, `icebergCatalog(LocalS3IcebergCatalog)` | `icebergCatalog(iceberg -> iceberg.warehouse(s))`, `icebergCatalog(iceberg -> iceberg.settings(...))` |
+
+  The three thread-count methods that 2.4 had are kept as deprecated delegates; the rest were added during 2.5 and are
+  gone. The one-liners that turn a domain on with its defaults stay: `tls(certPem, keyPem)`, `tls(LocalS3Tls)`,
+  `website(true)` and `icebergCatalog(true)`. The environment variables and the `local-s3.*` properties are unchanged.
 + `local-s3-jupiter` no longer injects the AWS SDK v1 `AmazonS3`, and no longer depends on the v1 SDK. Use `S3Client`.
 + `@LocalS3(inmemory = ...)`, deprecated before, is removed. Use `mode`.
 + LocalS3 uses **Jackson 3** (`tools.jackson`, 3.2) instead of Jackson 2, like Spring Boot 4 does. The types of the public
@@ -185,8 +203,8 @@ imported either.
   configuration of a service.
 + **Persistence**: `persistencePolicy(DURABLE | FAST)` / `LOCAL_S3_PERSISTENCE_POLICY`; object metadata is read lazily
   from the store, bounded by `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`, so large data directories open quickly.
-+ **Limits**: `maxRequestBodySize` (5 GiB by default), `requestBodyFileThreshold`, `maxRequestHeaderSize` and
-  `idleConnectionTimeoutSeconds`. Large request bodies are buffered in files rather than on the heap.
++ **Limits**, under `netty(netty -> ...)`: `maxRequestBodySize` (5 GiB by default), `requestBodyFileThreshold`,
+  `maxRequestHeaderSize` and `idleConnectionTimeoutSeconds`. Large request bodies are buffered in files rather than on the heap.
 + **`local-s3-spring-boot-starter`** for Spring Boot 4 applications.
 + **`local-s3-standalone`** is published to Maven Central as an executable jar.
 + **Docker image**: a `HEALTHCHECK`, `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`, and a non-root user.

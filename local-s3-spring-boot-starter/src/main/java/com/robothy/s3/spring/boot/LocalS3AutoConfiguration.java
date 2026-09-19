@@ -133,13 +133,13 @@ public class LocalS3AutoConfiguration {
 
     LocalS3Properties.IcebergCatalog iceberg = properties.getIcebergCatalog();
     if (iceberg.isEnabled()) {
-      builder.icebergCatalog(new LocalS3IcebergCatalog(iceberg.getWarehouse(), iceberg.isCreateWarehouseBucket(),
-          iceberg.isCredentialVending()));
+      builder.icebergCatalog(catalog -> catalog.settings(new LocalS3IcebergCatalog(iceberg.getWarehouse(),
+          iceberg.isCreateWarehouseBucket(), iceberg.isCredentialVending())));
     }
 
     LocalS3Properties.Website website = properties.getWebsite();
-    builder.website(new LocalS3Website(website.isEnabled(), website.isAllBuckets(), website.getIndexDocument(),
-        website.getErrorDocument()));
+    builder.website(settings -> settings.settings(new LocalS3Website(website.isEnabled(), website.isAllBuckets(),
+        website.getIndexDocument(), website.getErrorDocument())));
 
     LocalS3Properties.Credentials credentials = properties.getCredentials();
     boolean hasAccessKeyId = hasText(credentials.getAccessKeyId());
@@ -152,18 +152,18 @@ public class LocalS3AutoConfiguration {
     }
 
     LocalS3Properties.Threads threads = properties.getThreads();
-    builder.virtualThreads(threads.isVirtual())
-        .daemonThreads(threads.isDaemon())
-        .nettyParentEventGroupThreadNum(threads.getNettyParentEventGroup())
-        .nettyChildEventGroupThreadNum(threads.getNettyChildEventGroup())
-        .s3ExecutorThreadNum(threads.getExecutor());
-
     LocalS3Properties.Requests requests = properties.getRequests();
-    applyIfSet(requests.getMaxBodySize(), size -> builder.maxRequestBodySize(size.toBytes()));
-    applyIfSet(requests.getBodyFileThreshold(), size -> builder.requestBodyFileThreshold(size.toBytes()));
-    applyIfSet(requests.getMaxHeaderSize(), size -> builder.maxRequestHeaderSize(Math.toIntExact(size.toBytes())));
-    applyIfSet(requests.getIdleConnectionTimeout(),
-        timeout -> builder.idleConnectionTimeoutSeconds(timeout.toSeconds()));
+    builder.netty(netty -> {
+      netty.virtualThreads(threads.isVirtual())
+          .daemonThreads(threads.isDaemon())
+          .parentEventGroupThreadNum(threads.getNettyParentEventGroup())
+          .childEventGroupThreadNum(threads.getNettyChildEventGroup())
+          .s3ExecutorThreadNum(threads.getExecutor());
+      applyIfSet(requests.getMaxBodySize(), size -> netty.maxRequestBodySize(size.toBytes()));
+      applyIfSet(requests.getBodyFileThreshold(), size -> netty.requestBodyFileThreshold(size.toBytes()));
+      applyIfSet(requests.getMaxHeaderSize(), size -> netty.maxRequestHeaderSize(Math.toIntExact(size.toBytes())));
+      applyIfSet(requests.getIdleConnectionTimeout(), timeout -> netty.idleConnectionTimeoutSeconds(timeout.toSeconds()));
+    });
   }
 
   private static <T> void applyIfSet(T value, Consumer<T> setter) {

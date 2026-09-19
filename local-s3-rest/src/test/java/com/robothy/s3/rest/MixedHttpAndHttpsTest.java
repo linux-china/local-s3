@@ -77,7 +77,7 @@ class MixedHttpAndHttpsTest {
   @Test
   void refusesPlainHttpWhenTlsIsRequired() throws Exception {
     LocalS3Tls tls = LocalS3Tls.selfSigned();
-    LocalS3 localS3 = start(builder -> builder.tls(tls).tlsRequired(true));
+    LocalS3 localS3 = start(builder -> builder.tls(settings -> settings.certificate(tls).required(true)));
     HttpClient client = client(tls);
 
     assertFalse(localS3.getConfig().plainHttpAccepted());
@@ -87,11 +87,11 @@ class MixedHttpAndHttpsTest {
 
   /**
    * Without a certificate there is nothing to serve HTTPS with, so the port stays plain HTTP whatever
-   * {@code tlsRequired} says.
+   * {@code tls.required(...)} says.
    */
   @Test
   void servesPlainHttpWithoutACertificate() throws Exception {
-    LocalS3 localS3 = start(builder -> builder.tlsRequired(true));
+    LocalS3 localS3 = start(builder -> builder.tls(tls -> tls.required(true)));
 
     assertFalse(localS3.isTlsEnabled());
     assertTrue(localS3.getConfig().plainHttpAccepted());

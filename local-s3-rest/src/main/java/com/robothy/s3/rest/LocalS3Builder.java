@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -19,6 +20,35 @@ import org.slf4j.LoggerFactory;
 /**
  * Builds {@linkplain LocalS3} instances, and the {@linkplain LocalS3Config} they are created from. A builder can build
  * several instances; changing it afterwards doesn't affect the instances already built.
+ *
+ * <p>The settings a service is usually built with — its address, its mode and data directory, its buckets and its
+ * credentials — are methods of the builder itself. The settings of a domain that only some services tune are grouped
+ * behind one method per domain, which takes the settings of that domain and applies them:
+ *
+ * <pre>{@code
+ *  LocalS3 s3 = LocalS3.builder()
+ *      .port(29090)
+ *      .mode(LocalS3Mode.PERSISTENCE)
+ *      .dataPath("/tmp/local-s3")
+ *      .credentials("local-s3", "local-s3-secret")
+ *      .netty(netty -> netty.childEventGroupThreadNum(8).maxRequestBodySize(64 * 1024 * 1024))
+ *      .tls(tls -> tls.selfSigned().required(true))
+ *      .website(website -> website.allBuckets(true).indexDocument("home.html"))
+ *      .icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/"))
+ *      .build();
+ * }</pre>
+ *
+ * <ul>
+ *   <li>{@linkplain #netty(Consumer)} — the threads of the HTTP server and the limits of a request,
+ *       {@linkplain NettySettings};</li>
+ *   <li>{@linkplain #tls(Consumer)} — the certificate of HTTPS and whether HTTP is refused,
+ *       {@linkplain TlsSettings};</li>
+ *   <li>{@linkplain #website(Consumer)} — the static website hosting, {@linkplain WebsiteSettings};</li>
+ *   <li>{@linkplain #icebergCatalog(Consumer)} — the Iceberg REST catalog, {@linkplain IcebergCatalogSettings}.</li>
+ * </ul>
+ *
+ * <p>Each domain also has the one-liner that turns it on, e.g. {@linkplain #tls(LocalS3Tls)},
+ * {@linkplain #website(boolean)} and {@linkplain #icebergCatalog(boolean)}, for a service that takes its defaults.
  */
 public class LocalS3Builder {
 
@@ -254,22 +284,6 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set whether the threads that serve the requests are daemon threads.
-     *
-     * <p>The default value is {@code true}, so that a service that isn't {@linkplain LocalS3#shutdown() shut
-     * down}, e.g. by a test that forgets to, doesn't keep the JVM alive; the shutdown hook stops the
-     * service while the JVM exits. Set it to {@code false} to run LocalS3 as a standalone server, whose
-     * {@code main} starts the service and returns: only non-daemon threads keep such a JVM running.
-     *
-     * @param daemonThreads whether the threads that serve the requests are daemon threads.
-     * @return builder.
-     */
-    public LocalS3Builder daemonThreads(boolean daemonThreads) {
-        this.daemonThreads = daemonThreads;
-        return this;
-    }
-
-    /**
      * Set whether {@linkplain LocalS3#start()} registers a JVM shutdown hook. The default is {@code true}.
      * Disable it when the LocalS3 lifecycle is managed by a host such as an IDE plugin or Spring container,
      * and ensure that the host calls {@linkplain LocalS3#shutdown()} or {@linkplain LocalS3#close()}.
@@ -283,135 +297,71 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set the number of threads that accept connections. Default value is
-     * {@linkplain LocalS3Config#DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM}.
+     * Configure the HTTP server: the threads that serve the requests, and the limits that a request is held to. The
+     * settings of this domain are grouped, rather than spread over the builder, so that the knobs a service is rarely
+     * tuned with stay out of the way of the ones it is usually built with:
+     *
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .netty(netty -> netty.virtualThreads(false)
+     *          .s3ExecutorThreadNum(16)
+     *          .maxRequestBodySize(64 * 1024 * 1024)
+     *          .idleConnectionTimeoutSeconds(30))
+     *      .build();
+     * }</pre>
+     *
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
+     *
+     * @param netty configures the HTTP server of the service.
+     * @return builder.
+     * @throws IllegalArgumentException if a setting has an invalid value.
+     */
+    public LocalS3Builder netty(@NonNull Consumer<NettySettings> netty) {
+        netty.accept(new NettySettings());
+        return this;
+    }
+
+    /**
+     * Set the number of threads that accept connections; see
+     * {@linkplain NettySettings#parentEventGroupThreadNum(int)}.
      *
      * @param nettyParentEventGroupThreadNum netty parent event group thread number.
      * @return builder.
+     * @deprecated use {@code netty(netty -> netty.parentEventGroupThreadNum(...))}, which groups the settings of the
+     *     HTTP server.
      */
+    @Deprecated(since = "2.5.0")
     public LocalS3Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
-        this.nettyParentEventGroupThreadNum = nettyParentEventGroupThreadNum;
-        return this;
+        return netty(netty -> netty.parentEventGroupThreadNum(nettyParentEventGroupThreadNum));
     }
 
     /**
-     * Set the number of threads that read and write the connections. Netty binds a connection to one
-     * thread of this group for its whole life, and the HTTP parsing of every connection bound to a thread
-     * waits while that thread works. The body of a {@code GetObject} response is read from the storage on
-     * this thread as it is written to the connection, so serving a large object holds it for a while;
-     * raise this value to serve more connections at once. Default value is
-     * {@linkplain LocalS3Config#DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM}.
+     * Set the number of threads that read and write the connections; see
+     * {@linkplain NettySettings#childEventGroupThreadNum(int)}.
      *
      * @param nettyChildEventGroupThreadNum netty child event group thread number.
      * @return builder.
+     * @deprecated use {@code netty(netty -> netty.childEventGroupThreadNum(...))}, which groups the settings of the
+     *     HTTP server.
      */
+    @Deprecated(since = "2.5.0")
     public LocalS3Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
-        this.nettyChildEventGroupThreadNum = nettyChildEventGroupThreadNum;
-        return this;
+        return netty(netty -> netty.childEventGroupThreadNum(nettyChildEventGroupThreadNum));
     }
 
     /**
-     * Set the number of platform threads that handle the requests, where the S3 operations and their storage
-     * I/O run, when {@linkplain #virtualThreads(boolean) virtual threads} are disabled.
-     *
-     * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
-     * this is the number of requests handled at the same time. The requests of one connection are still
-     * handled one after another, in the order they were received. The threads also write the request bodies
-     * that are buffered in temporary files, see {@linkplain #requestBodyFileThreshold(long)}, one batch at a
-     * time, so the event loops never wait for the disk. Default value is
-     * {@linkplain LocalS3Config#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
+     * Set the number of platform threads that handle the requests; see
+     * {@linkplain NettySettings#s3ExecutorThreadNum(int)}.
      *
      * @param s3ExecutorThreadNum local-s3 executor thread number.
      * @return builder.
+     * @deprecated use {@code netty(netty -> netty.s3ExecutorThreadNum(...))}, which groups the settings of the HTTP
+     *     server.
      */
+    @Deprecated(since = "2.5.0")
     public LocalS3Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
-        this.s3ExecutorThreadNum = s3ExecutorThreadNum;
-        return this;
-    }
-
-    /**
-     * Set whether every request is handled on a virtual thread of its own, rather than on a pool of
-     * {@linkplain #s3ExecutorThreadNum(int) platform threads}.
-     *
-     * <p>Handling a request mostly waits, for the storage and for the locks of a bucket, so a virtual thread per
-     * request handles as many requests at once as there are connections, without a pool whose size depends on
-     * the processors of the machine, e.g. a CI machine with two of them. The requests of one connection are still
-     * handled one after another. Virtual threads are always daemon threads.
-     *
-     * <p>The default value is {@code true}.
-     *
-     * @param virtualThreads whether requests are handled on virtual threads.
-     * @return builder.
-     */
-    public LocalS3Builder virtualThreads(boolean virtualThreads) {
-        this.virtualThreads = virtualThreads;
-        return this;
-    }
-
-    /**
-     * Set the max size in bytes of a request body. Request bodies are held in memory, or buffered in a temporary
-     * file above {@linkplain #requestBodyFileThreshold(long)}, which is memory-mapped up to 2 GiB, while a request is
-     * handled, so this bounds the memory and the disk space a single request can take. A request exceeding the limit
-     * is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
-     * multipart upload instead. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}.
-     *
-     * @param maxRequestBodySize max request body size in bytes, between 1 and
-     *     {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB.
-     * @return builder.
-     */
-    public LocalS3Builder maxRequestBodySize(long maxRequestBodySize) {
-        LocalS3Config.requireMaxRequestBodySize(maxRequestBodySize);
-        this.maxRequestBodySize = maxRequestBodySize;
-        return this;
-    }
-
-    /**
-     * Set the size in bytes above which a request body is buffered in a temporary file instead of the
-     * Java heap. The file is memory-mapped while the request is handled, or only read from the file if the body is
-     * larger than 2 GiB, which no buffer holds, so large uploads take neither
-     * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
-     * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
-     * file, so that its content isn't written a second time. The file is written on the request executor, not on
-     * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
-     * read, so neither memory nor the other connections of the event loop are affected. Default value is
-     * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
-     * request bodies on the heap.
-     *
-     * @param requestBodyFileThreshold size in bytes, not negative.
-     * @return builder.
-     */
-    public LocalS3Builder requestBodyFileThreshold(long requestBodyFileThreshold) {
-        LocalS3Config.requireRequestBodyFileThreshold(requestBodyFileThreshold);
-        this.requestBodyFileThreshold = requestBodyFileThreshold;
-        return this;
-    }
-
-    /**
-     * Set the max size in bytes of the header section of a request, i.e. of all its header lines. A request
-     * whose headers exceed it is answered with {@code 400 RequestHeaderSectionTooLarge}, and its connection is
-     * closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
-     *
-     * @param maxRequestHeaderSize max request header size in bytes, positive.
-     * @return builder.
-     */
-    public LocalS3Builder maxRequestHeaderSize(int maxRequestHeaderSize) {
-        LocalS3Config.requireMaxRequestHeaderSize(maxRequestHeaderSize);
-        this.maxRequestHeaderSize = maxRequestHeaderSize;
-        return this;
-    }
-
-    /**
-     * Set the seconds after which a connection without reads or writes is closed. A connection with a
-     * request in flight is never closed. Default value is
-     * {@linkplain LocalS3Config#DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS}; {@code 0} never closes idle connections.
-     *
-     * @param idleConnectionTimeoutSeconds idle connection timeout in seconds, not negative.
-     * @return builder.
-     */
-    public LocalS3Builder idleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
-        LocalS3Config.requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
-        this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
-        return this;
+        return netty(netty -> netty.s3ExecutorThreadNum(s3ExecutorThreadNum));
     }
 
     /**
@@ -526,7 +476,7 @@ public class LocalS3Builder {
      *
      * <p>The port answers <b>both HTTP and HTTPS</b>: every connection is told apart by its first bytes, so a client
      * that speaks TLS and one that doesn't share the endpoint, and a test suite doesn't need two services to cover
-     * both. {@linkplain #tlsRequired(boolean)} serves HTTPS alone instead.
+     * both. {@code tls(tls -> tls.required(true))} serves HTTPS alone instead.
      *
      * <p>The files are read, and the certificate and key validated, when this method is called.
      *
@@ -574,31 +524,23 @@ public class LocalS3Builder {
     }
 
     /**
-     * Serve HTTPS with a certificate generated for {@code localhost}, {@code 127.0.0.1} and {@code ::1}, i.e.
-     * {@code tls(LocalS3Tls.selfSigned())}. A client that uses HTTPS by default then connects to a local service
-     * without a certificate of the machine, once it is given the certificate or told not to verify it.
+     * Configure HTTPS: the certificate the service serves, and whether it serves HTTPS alone. The settings of this
+     * domain are grouped, so that a certificate and the way it is served are configured in one place:
      *
+     * <pre>{@code
+     *  LocalS3.builder().tls(tls -> tls.selfSigned().required(true)).build();
+     *  LocalS3.builder().tls(tls -> tls.certificate(certPem, keyPem)).build();
+     * }</pre>
+     *
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
+     *
+     * @param tls configures the HTTPS of the service.
      * @return builder.
-     * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
+     * @throws IllegalArgumentException if a certificate file can't be read, or the certificate and key are invalid.
      */
-    public LocalS3Builder tlsSelfSigned() {
-        return tls(LocalS3Tls.selfSigned());
-    }
-
-    /**
-     * Serve HTTPS alone on the port, instead of answering both HTTP and HTTPS on it. A plain HTTP request to the
-     * service then fails, which is what a test asserts that its client really uses TLS with.
-     *
-     * <p>A service with {@linkplain #tls(String, String) TLS} accepts both by default, since a port that answers
-     * whatever a client speaks is one less thing to configure. Without TLS this has no effect: there is nothing to
-     * serve HTTPS with.
-     *
-     * @param tlsRequired {@code true} to refuse plain HTTP; {@code false}, the default, to answer HTTP and HTTPS on
-     *     the same port.
-     * @return builder.
-     */
-    public LocalS3Builder tlsRequired(boolean tlsRequired) {
-        this.tlsRequired = tlsRequired;
+    public LocalS3Builder tls(@NonNull Consumer<TlsSettings> tls) {
+        tls.accept(new TlsSettings());
         return this;
     }
 
@@ -642,7 +584,6 @@ public class LocalS3Builder {
         return this;
     }
 
-
     /**
      * Serve an <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> beside the S3 API, on
      * the same port, under {@code /iceberg/v1}, so that a test of Apache Iceberg needs no catalog of its own:
@@ -657,7 +598,7 @@ public class LocalS3Builder {
      * }</pre>
      *
      * <p>The tables are stored in LocalS3 itself, under the warehouse {@value LocalS3IcebergCatalog#DEFAULT_WAREHOUSE},
-     * whose bucket is created when the service starts; {@linkplain #icebergCatalog(LocalS3IcebergCatalog)} configures
+     * whose bucket is created when the service starts; {@linkplain #icebergCatalog(Consumer)} configures
      * that. An {@code IN_MEMORY} service therefore holds its tables in memory and a {@code PERSISTENCE} service keeps
      * them in its data directory, like everything else it stores.
      *
@@ -673,28 +614,29 @@ public class LocalS3Builder {
     }
 
     /**
-     * Serve an Iceberg REST catalog with settings of your own, see {@linkplain #icebergCatalog(boolean)}.
+     * Serve an Iceberg REST catalog with settings of your own, which also turns the catalog on; see
+     * {@linkplain #icebergCatalog(boolean)}. The settings of this domain are grouped:
      *
-     * @param icebergCatalog the settings of the catalog; {@code null} to serve none.
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/").credentialVending(false))
+     *      .build();
+     * }</pre>
+     *
+     * <p>A service that has no catalog yet gets one with the {@linkplain LocalS3IcebergCatalog#enabled() defaults}
+     * before the settings are applied, since configuring a catalog is asking for one;
+     * {@code icebergCatalog(iceberg -> iceberg.enabled(false))} serves none after all.
+     *
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
+     *
+     * @param iceberg configures the Iceberg REST catalog of the service.
      * @return builder.
      * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
      */
-    public LocalS3Builder icebergCatalog(LocalS3IcebergCatalog icebergCatalog) {
-        this.icebergCatalog = icebergCatalog;
-        return this;
-    }
-
-    /**
-     * Set the warehouse of the Iceberg REST catalog, which also turns the catalog on: the {@code s3://} location of a
-     * bucket of this service that the tables created without a location of their own are placed under.
-     *
-     * @param warehouse the warehouse location, e.g. {@code s3://lakehouse/}.
-     * @return builder.
-     * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
-     */
-    public LocalS3Builder icebergWarehouse(@NonNull String warehouse) {
-        this.icebergCatalog = Objects.requireNonNullElseGet(this.icebergCatalog, LocalS3IcebergCatalog::enabled)
-                .withWarehouse(warehouse);
+    public LocalS3Builder icebergCatalog(@NonNull Consumer<IcebergCatalogSettings> iceberg) {
+        this.icebergCatalog = Objects.requireNonNullElseGet(this.icebergCatalog, LocalS3IcebergCatalog::enabled);
+        iceberg.accept(new IcebergCatalogSettings());
         return this;
     }
 
@@ -704,8 +646,8 @@ public class LocalS3Builder {
      * that isn't there gets its error document, while the signed requests of an S3 client keep their S3 semantics.
      *
      * <p>Only a bucket that was made public answers such a request, see
-     * {@linkplain com.robothy.s3.core.util.BucketPublicAccess}; {@linkplain #websiteAllBuckets(boolean)} serves every
-     * bucket instead.
+     * {@linkplain com.robothy.s3.core.util.BucketPublicAccess};
+     * {@code website(website -> website.allBuckets(true))} serves every bucket instead.
      *
      * @param enabled {@code true} to serve static websites; {@code false} to leave every request to the S3 API.
      * @return builder.
@@ -716,51 +658,24 @@ public class LocalS3Builder {
     }
 
     /**
-     * Serve static websites with settings of your own, see {@linkplain #website(boolean)}.
+     * Serve static websites with settings of your own; see {@linkplain #website(boolean)}. The settings of this domain
+     * are grouped:
      *
-     * @param website the settings; {@code null} for the defaults.
-     * @return builder.
-     */
-    public LocalS3Builder website(LocalS3Website website) {
-        this.website = Objects.requireNonNullElseGet(website, LocalS3Website::defaults);
-        return this;
-    }
-
-    /**
-     * Serve <b>every</b> bucket as a static website, rather than the public ones alone, which also lets an unsigned
-     * request read the objects of a private bucket. It is meant for local development and tests, where publishing a
-     * bucket to open a page in a browser is busywork, and is off by default.
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .website(website -> website.allBuckets(true).indexDocument("home.html").errorDocument("404.html"))
+     *      .build();
+     * }</pre>
      *
-     * @param allBuckets {@code true} to serve every bucket without credentials.
-     * @return builder.
-     */
-    public LocalS3Builder websiteAllBuckets(boolean allBuckets) {
-        this.website = this.website.withAllBuckets(allBuckets);
-        return this;
-    }
-
-    /**
-     * Set the index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
-     * {@code index.html}: the object that a request for a directory is answered with.
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
      *
-     * @param indexDocument the index document.
+     * @param website configures the static website hosting of the service.
      * @return builder.
-     * @throws IllegalArgumentException if it is blank.
+     * @throws IllegalArgumentException if the index document is blank.
      */
-    public LocalS3Builder websiteIndexDocument(@NonNull String indexDocument) {
-        this.website = this.website.withIndexDocument(indexDocument);
-        return this;
-    }
-
-    /**
-     * Set the error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
-     * {@code error.html}: the object that a request for a key that isn't there is answered with.
-     *
-     * @param errorDocument the error document; {@code null} answers a generic error page.
-     * @return builder.
-     */
-    public LocalS3Builder websiteErrorDocument(String errorDocument) {
-        this.website = this.website.withErrorDocument(errorDocument);
+    public LocalS3Builder website(@NonNull Consumer<WebsiteSettings> website) {
+        website.accept(new WebsiteSettings());
         return this;
     }
 
@@ -791,6 +706,422 @@ public class LocalS3Builder {
                 config.port(), config.mode(), config.dataPath(), config.authenticationEnabled() ? "enabled" : "disabled",
                 config.tlsEnabled() ? "enabled" : "disabled");
         return new LocalS3(config);
+    }
+
+    /**
+     * The settings of the HTTP server of a service: the threads that serve the requests, and the limits that a request
+     * is held to. {@linkplain LocalS3Builder#netty(Consumer)} hands one out; every method writes the setting through to
+     * the builder it came from, so a settings object is only good while that call runs.
+     */
+    public final class NettySettings {
+
+        private NettySettings() {
+        }
+
+        /**
+         * Set the number of threads that accept connections. Default value is
+         * {@linkplain LocalS3Config#DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM}.
+         *
+         * @param threadNum netty parent event group thread number.
+         * @return these settings.
+         */
+        public NettySettings parentEventGroupThreadNum(int threadNum) {
+            LocalS3Builder.this.nettyParentEventGroupThreadNum = threadNum;
+            return this;
+        }
+
+        /**
+         * Set the number of threads that read and write the connections. Netty binds a connection to one
+         * thread of this group for its whole life, and the HTTP parsing of every connection bound to a thread
+         * waits while that thread works. The body of a {@code GetObject} response is read from the storage on
+         * this thread as it is written to the connection, so serving a large object holds it for a while;
+         * raise this value to serve more connections at once. Default value is
+         * {@linkplain LocalS3Config#DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM}.
+         *
+         * @param threadNum netty child event group thread number.
+         * @return these settings.
+         */
+        public NettySettings childEventGroupThreadNum(int threadNum) {
+            LocalS3Builder.this.nettyChildEventGroupThreadNum = threadNum;
+            return this;
+        }
+
+        /**
+         * Set the number of platform threads that handle the requests, where the S3 operations and their storage
+         * I/O run, when {@linkplain #virtualThreads(boolean) virtual threads} are disabled.
+         *
+         * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
+         * this is the number of requests handled at the same time. The requests of one connection are still
+         * handled one after another, in the order they were received. The threads also write the request bodies
+         * that are buffered in temporary files, see {@linkplain #requestBodyFileThreshold(long)}, one batch at a
+         * time, so the event loops never wait for the disk. Default value is
+         * {@linkplain LocalS3Config#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
+         *
+         * @param threadNum local-s3 executor thread number.
+         * @return these settings.
+         */
+        public NettySettings s3ExecutorThreadNum(int threadNum) {
+            LocalS3Builder.this.s3ExecutorThreadNum = threadNum;
+            return this;
+        }
+
+        /**
+         * Set whether every request is handled on a virtual thread of its own, rather than on a pool of
+         * {@linkplain #s3ExecutorThreadNum(int) platform threads}.
+         *
+         * <p>Handling a request mostly waits, for the storage and for the locks of a bucket, so a virtual thread per
+         * request handles as many requests at once as there are connections, without a pool whose size depends on
+         * the processors of the machine, e.g. a CI machine with two of them. The requests of one connection are still
+         * handled one after another. Virtual threads are always daemon threads.
+         *
+         * <p>The default value is {@code true}.
+         *
+         * @param virtualThreads whether requests are handled on virtual threads.
+         * @return these settings.
+         */
+        public NettySettings virtualThreads(boolean virtualThreads) {
+            LocalS3Builder.this.virtualThreads = virtualThreads;
+            return this;
+        }
+
+        /**
+         * Set whether the threads that serve the requests are daemon threads.
+         *
+         * <p>The default value is {@code true}, so that a service that isn't {@linkplain LocalS3#shutdown() shut
+         * down}, e.g. by a test that forgets to, doesn't keep the JVM alive; the shutdown hook stops the
+         * service while the JVM exits. Set it to {@code false} to run LocalS3 as a standalone server, whose
+         * {@code main} starts the service and returns: only non-daemon threads keep such a JVM running.
+         *
+         * @param daemonThreads whether the threads that serve the requests are daemon threads.
+         * @return these settings.
+         */
+        public NettySettings daemonThreads(boolean daemonThreads) {
+            LocalS3Builder.this.daemonThreads = daemonThreads;
+            return this;
+        }
+
+        /**
+         * Set the max size in bytes of a request body. Request bodies are held in memory, or buffered in a temporary
+         * file above {@linkplain #requestBodyFileThreshold(long)}, which is memory-mapped up to 2 GiB, while a request
+         * is handled, so this bounds the memory and the disk space a single request can take. A request exceeding the
+         * limit is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
+         * multipart upload instead. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}.
+         *
+         * @param maxRequestBodySize max request body size in bytes, between 1 and
+         *     {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB.
+         * @return these settings.
+         * @throws IllegalArgumentException if the size is outside that range.
+         */
+        public NettySettings maxRequestBodySize(long maxRequestBodySize) {
+            LocalS3Config.requireMaxRequestBodySize(maxRequestBodySize);
+            LocalS3Builder.this.maxRequestBodySize = maxRequestBodySize;
+            return this;
+        }
+
+        /**
+         * Set the size in bytes above which a request body is buffered in a temporary file instead of the
+         * Java heap. The file is memory-mapped while the request is handled, or only read from the file if the body is
+         * larger than 2 GiB, which no buffer holds, so large uploads take neither
+         * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
+         * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
+         * file, so that its content isn't written a second time. The file is written on the request executor, not on
+         * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
+         * read, so neither memory nor the other connections of the event loop are affected. Default value is
+         * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
+         * request bodies on the heap.
+         *
+         * @param requestBodyFileThreshold size in bytes, not negative.
+         * @return these settings.
+         * @throws IllegalArgumentException if the size is negative.
+         */
+        public NettySettings requestBodyFileThreshold(long requestBodyFileThreshold) {
+            LocalS3Config.requireRequestBodyFileThreshold(requestBodyFileThreshold);
+            LocalS3Builder.this.requestBodyFileThreshold = requestBodyFileThreshold;
+            return this;
+        }
+
+        /**
+         * Set the max size in bytes of the header section of a request, i.e. of all its header lines. A request
+         * whose headers exceed it is answered with {@code 400 RequestHeaderSectionTooLarge}, and its connection is
+         * closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
+         *
+         * @param maxRequestHeaderSize max request header size in bytes, positive.
+         * @return these settings.
+         * @throws IllegalArgumentException if the size isn't positive.
+         */
+        public NettySettings maxRequestHeaderSize(int maxRequestHeaderSize) {
+            LocalS3Config.requireMaxRequestHeaderSize(maxRequestHeaderSize);
+            LocalS3Builder.this.maxRequestHeaderSize = maxRequestHeaderSize;
+            return this;
+        }
+
+        /**
+         * Set the seconds after which a connection without reads or writes is closed. A connection with a
+         * request in flight is never closed. Default value is
+         * {@linkplain LocalS3Config#DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS}; {@code 0} never closes idle
+         * connections.
+         *
+         * @param idleConnectionTimeoutSeconds idle connection timeout in seconds, not negative.
+         * @return these settings.
+         * @throws IllegalArgumentException if the timeout is negative.
+         */
+        public NettySettings idleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
+            LocalS3Config.requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
+            LocalS3Builder.this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
+            return this;
+        }
+
+    }
+
+    /**
+     * The HTTPS settings of a service: the certificate it serves, and whether it serves HTTPS alone.
+     * {@linkplain LocalS3Builder#tls(Consumer)} hands one out; every method writes the setting through to the builder
+     * it came from, so a settings object is only good while that call runs.
+     */
+    public final class TlsSettings {
+
+        private TlsSettings() {
+        }
+
+        /**
+         * Serve HTTPS with a certificate and its private key in PEM format, each given either as PEM content or as
+         * the path of a PEM file; see {@linkplain LocalS3Builder#tls(String, String)} for where such a pair comes
+         * from and what the port then answers.
+         *
+         * @param certPem the certificate chain, as PEM content or as the path of a PEM file.
+         * @param keyPem the unencrypted PKCS#8 private key, as PEM content or as the path of a PEM file.
+         * @return these settings.
+         * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
+         */
+        public TlsSettings certificate(@NonNull String certPem, @NonNull String keyPem) {
+            LocalS3Builder.this.tls = LocalS3Tls.of(certPem, keyPem);
+            return this;
+        }
+
+        /**
+         * Serve HTTPS with the certificate and private key of PEM files; see
+         * {@linkplain LocalS3Builder#tls(String, String)}.
+         *
+         * @param certPemFile the PEM file of the certificate chain.
+         * @param keyPemFile the PEM file of the unencrypted PKCS#8 private key.
+         * @return these settings.
+         * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
+         */
+        public TlsSettings certificate(@NonNull Path certPemFile, @NonNull Path keyPemFile) {
+            return certificate(certPemFile.toString(), keyPemFile.toString());
+        }
+
+        /**
+         * Serve HTTPS with a certificate and private key that the caller holds; see
+         * {@linkplain LocalS3Builder#tls(LocalS3Tls)}.
+         *
+         * @param tls the certificate and its private key.
+         * @return these settings.
+         */
+        public TlsSettings certificate(@NonNull LocalS3Tls tls) {
+            LocalS3Builder.this.tls = tls;
+            return this;
+        }
+
+        /**
+         * Serve HTTPS with a certificate generated for {@code localhost}, {@code 127.0.0.1} and {@code ::1}, i.e.
+         * {@code certificate(LocalS3Tls.selfSigned())}. A client that uses HTTPS by default then connects to a local
+         * service without a certificate of the machine, once it is given the certificate or told not to verify it.
+         *
+         * @return these settings.
+         * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
+         */
+        public TlsSettings selfSigned() {
+            return certificate(LocalS3Tls.selfSigned());
+        }
+
+        /**
+         * Serve HTTPS with a certificate generated for the given host names and IP addresses, e.g. the name a
+         * container is reached by; see {@linkplain LocalS3Tls#selfSigned(String...)}.
+         *
+         * @param hosts the host names and IP addresses to issue the certificate for, at least one.
+         * @return these settings.
+         * @throws IllegalArgumentException if {@code hosts} is empty, or a host is blank or an invalid IP address.
+         * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
+         */
+        public TlsSettings selfSigned(String... hosts) {
+            return certificate(LocalS3Tls.selfSigned(hosts));
+        }
+
+        /**
+         * Serve HTTPS alone on the port, instead of answering both HTTP and HTTPS on it. A plain HTTP request to the
+         * service then fails, which is what a test asserts that its client really uses TLS with.
+         *
+         * <p>A service with a certificate accepts both by default, since a port that answers whatever a client speaks
+         * is one less thing to configure. Without a certificate this has no effect: there is nothing to serve HTTPS
+         * with.
+         *
+         * @param required {@code true} to refuse plain HTTP; {@code false}, the default, to answer HTTP and HTTPS on
+         *     the same port.
+         * @return these settings.
+         */
+        public TlsSettings required(boolean required) {
+            LocalS3Builder.this.tlsRequired = required;
+            return this;
+        }
+
+    }
+
+    /**
+     * The static website settings of a service; see {@linkplain LocalS3Website}.
+     * {@linkplain LocalS3Builder#website(Consumer)} hands one out; every method writes the setting through to the
+     * builder it came from, so a settings object is only good while that call runs.
+     */
+    public final class WebsiteSettings {
+
+        private WebsiteSettings() {
+        }
+
+        /**
+         * Set whether the buckets are served as static websites to the requests that carry no credentials; see
+         * {@linkplain LocalS3Builder#website(boolean)}.
+         *
+         * @param enabled {@code true} to serve static websites; {@code false} to leave every request to the S3 API.
+         * @return these settings.
+         */
+        public WebsiteSettings enabled(boolean enabled) {
+            LocalS3Builder.this.website = LocalS3Builder.this.website.withEnabled(enabled);
+            return this;
+        }
+
+        /**
+         * Serve <b>every</b> bucket as a static website, rather than the public ones alone, which also lets an
+         * unsigned request read the objects of a private bucket. It is meant for local development and tests, where
+         * publishing a bucket to open a page in a browser is busywork, and is off by default.
+         *
+         * @param allBuckets {@code true} to serve every bucket without credentials.
+         * @return these settings.
+         */
+        public WebsiteSettings allBuckets(boolean allBuckets) {
+            LocalS3Builder.this.website = LocalS3Builder.this.website.withAllBuckets(allBuckets);
+            return this;
+        }
+
+        /**
+         * Set the index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
+         * {@code index.html}: the object that a request for a directory is answered with.
+         *
+         * @param indexDocument the index document.
+         * @return these settings.
+         * @throws IllegalArgumentException if it is blank.
+         */
+        public WebsiteSettings indexDocument(@NonNull String indexDocument) {
+            LocalS3Builder.this.website = LocalS3Builder.this.website.withIndexDocument(indexDocument);
+            return this;
+        }
+
+        /**
+         * Set the error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
+         * {@code error.html}: the object that a request for a key that isn't there is answered with.
+         *
+         * @param errorDocument the error document; {@code null} answers a generic error page.
+         * @return these settings.
+         */
+        public WebsiteSettings errorDocument(String errorDocument) {
+            LocalS3Builder.this.website = LocalS3Builder.this.website.withErrorDocument(errorDocument);
+            return this;
+        }
+
+        /**
+         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
+         * configuration.
+         *
+         * @param website the settings; {@code null} for the defaults.
+         * @return these settings.
+         */
+        public WebsiteSettings settings(LocalS3Website website) {
+            LocalS3Builder.this.website = Objects.requireNonNullElseGet(website, LocalS3Website::defaults);
+            return this;
+        }
+
+    }
+
+    /**
+     * The settings of the Iceberg REST catalog of a service; see {@linkplain LocalS3IcebergCatalog}.
+     * {@linkplain LocalS3Builder#icebergCatalog(Consumer)} hands one out; every method writes the setting through to
+     * the builder it came from, so a settings object is only good while that call runs.
+     */
+    public final class IcebergCatalogSettings {
+
+        private IcebergCatalogSettings() {
+        }
+
+        /**
+         * Set whether the catalog is served at all, e.g. to turn off a catalog that a shared builder configured.
+         *
+         * @param enabled {@code true} to serve the catalog with the settings configured here; {@code false} to serve
+         *     none, which drops the settings.
+         * @return these settings.
+         */
+        public IcebergCatalogSettings enabled(boolean enabled) {
+            LocalS3Builder.this.icebergCatalog = enabled
+                    ? Objects.requireNonNullElseGet(LocalS3Builder.this.icebergCatalog, LocalS3IcebergCatalog::enabled)
+                    : null;
+            return this;
+        }
+
+        /**
+         * Set the warehouse of the catalog: the {@code s3://} location of a bucket of this service that the tables
+         * created without a location of their own are placed under.
+         *
+         * @param warehouse the warehouse location, e.g. {@code s3://lakehouse/}.
+         * @return these settings.
+         * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
+         */
+        public IcebergCatalogSettings warehouse(@NonNull String warehouse) {
+            return settings(catalog().withWarehouse(warehouse));
+        }
+
+        /**
+         * Set whether the bucket of the {@linkplain #warehouse(String) warehouse} is created when the service starts,
+         * if it doesn't exist. The default is {@code true}; {@code false} leaves that to the test, which then gets a
+         * clear failure if it forgot.
+         *
+         * @param createWarehouseBucket whether to create the warehouse bucket.
+         * @return these settings.
+         */
+        public IcebergCatalogSettings createWarehouseBucket(boolean createWarehouseBucket) {
+            return settings(catalog().withCreateWarehouseBucket(createWarehouseBucket));
+        }
+
+        /**
+         * Set whether a loaded table carries the settings to reach LocalS3 with — its endpoint, path-style access and
+         * the credentials of the service. The default is {@code true}, so an engine configured with the catalog URI
+         * alone reaches the storage too; {@code false} means the client is configured by hand.
+         *
+         * @param credentialVending whether a loaded table carries the settings of the service.
+         * @return these settings.
+         */
+        public IcebergCatalogSettings credentialVending(boolean credentialVending) {
+            return settings(catalog().withCredentialVending(credentialVending));
+        }
+
+        /**
+         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
+         * configuration.
+         *
+         * @param icebergCatalog the settings; {@code null} to serve no catalog.
+         * @return these settings.
+         */
+        public IcebergCatalogSettings settings(LocalS3IcebergCatalog icebergCatalog) {
+            LocalS3Builder.this.icebergCatalog = icebergCatalog;
+            return this;
+        }
+
+        /**
+         * The catalog being configured, which {@linkplain LocalS3Builder#icebergCatalog(Consumer)} turned on; the
+         * defaults again if {@linkplain #settings(LocalS3IcebergCatalog)} or {@linkplain #enabled(boolean)} dropped
+         * it, so that configuring a warehouse after that turns the catalog back on rather than failing.
+         */
+        private LocalS3IcebergCatalog catalog() {
+            return Objects.requireNonNullElseGet(LocalS3Builder.this.icebergCatalog, LocalS3IcebergCatalog::enabled);
+        }
+
     }
 
 }

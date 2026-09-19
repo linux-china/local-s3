@@ -73,7 +73,7 @@ class LocalS3Test {
   @Test
   void endpointNamesTheAddressThatClientsReach() {
     assertEquals("http://127.0.0.1:29090", LocalS3.builder().build().endpoint());
-    assertEquals("https://127.0.0.1:29090", LocalS3.builder().tlsSelfSigned().build().endpoint());
+    assertEquals("https://127.0.0.1:29090", LocalS3.builder().tls(tls -> tls.selfSigned()).build().endpoint());
     assertEquals("http://192.168.1.10:8080",
         LocalS3.builder().bindHost("192.168.1.10").port(8080).build().endpoint());
 
@@ -169,21 +169,79 @@ class LocalS3Test {
     assertEquals("127.0.0.1", loopbackOnly.getBindHost());
     assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().bindHost(" "));
     assertEquals(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE, localS3.getMaxRequestBodySize());
-    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(0));
-    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestBodySize(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE + 1L));
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().netty(netty -> netty.maxRequestBodySize(0)));
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().netty(netty -> netty.maxRequestBodySize(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE + 1L)));
     assertEquals(LocalS3Config.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS, localS3.getIdleConnectionTimeoutSeconds());
-    assertEquals(0, LocalS3.builder().idleConnectionTimeoutSeconds(0).build().getIdleConnectionTimeoutSeconds());
-    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().idleConnectionTimeoutSeconds(-1));
+    assertEquals(0, LocalS3.builder().netty(netty -> netty.idleConnectionTimeoutSeconds(0)).build()
+        .getIdleConnectionTimeoutSeconds());
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().netty(netty -> netty.idleConnectionTimeoutSeconds(-1)));
     assertEquals(LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE, localS3.getMaxRequestHeaderSize());
-    assertEquals(4096, LocalS3.builder().maxRequestHeaderSize(4096).build().getMaxRequestHeaderSize());
-    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxRequestHeaderSize(0));
+    assertEquals(4096, LocalS3.builder().netty(netty -> netty.maxRequestHeaderSize(4096)).build().getMaxRequestHeaderSize());
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().netty(netty -> netty.maxRequestHeaderSize(0)));
+  }
+
+  /**
+   * The settings of a domain are configured through the one method of that domain, which applies them to the builder
+   * as they are called; the one-liners that turn a domain on with its defaults stay beside it.
+   */
+  @Test
+  @SuppressWarnings("deprecation") // The deprecated delegates are part of what this test covers.
+  void groupsTheSettingsOfADomain() {
+    LocalS3Config config = LocalS3.builder()
+        .netty(netty -> netty.parentEventGroupThreadNum(3)
+            .childEventGroupThreadNum(5)
+            .s3ExecutorThreadNum(7)
+            .virtualThreads(false)
+            .daemonThreads(false)
+            .maxRequestBodySize(1024)
+            .requestBodyFileThreshold(512)
+            .maxRequestHeaderSize(2048)
+            .idleConnectionTimeoutSeconds(30))
+        .tls(tls -> tls.selfSigned().required(true))
+        .website(website -> website.allBuckets(true).indexDocument("home.html").errorDocument("404.html"))
+        .icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/").credentialVending(false))
+        .buildConfig();
+
+    assertEquals(3, config.nettyParentEventGroupThreadNum());
+    assertEquals(5, config.nettyChildEventGroupThreadNum());
+    assertEquals(7, config.s3ExecutorThreadNum());
+    assertFalse(config.virtualThreads());
+    assertFalse(config.daemonThreads());
+    assertEquals(1024, config.maxRequestBodySize());
+    assertEquals(512, config.requestBodyFileThreshold());
+    assertEquals(2048, config.maxRequestHeaderSize());
+    assertEquals(30, config.idleConnectionTimeoutSeconds());
+
+    assertTrue(config.tls().isSelfSigned());
+    assertTrue(config.tlsRequired());
+
+    assertTrue(config.website().enabled());
+    assertTrue(config.website().allBuckets());
+    assertEquals("home.html", config.website().indexDocument());
+    assertEquals("404.html", config.website().errorDocument());
+
+    // Configuring the catalog is asking for one, as icebergWarehouse(...) was before the settings were grouped.
+    assertEquals("s3://lakehouse/", config.icebergCatalog().warehouse());
+    assertTrue(config.icebergCatalog().createWarehouseBucket());
+    assertFalse(config.icebergCatalog().credentialVending());
+    assertNull(LocalS3.builder().icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/").enabled(false))
+        .buildConfig().icebergCatalog(), "The catalog is dropped by enabled(false).");
+    assertFalse(LocalS3.builder().website(website -> website.enabled(false)).buildConfig().website().enabled());
+
+    // The deprecated thread-count methods of 2.4 write the same settings as the netty(...) domain.
+    LocalS3Config flat = LocalS3.builder().nettyParentEventGroupThreadNum(3).nettyChildEventGroupThreadNum(5)
+        .s3ExecutorThreadNum(7).buildConfig();
+    assertEquals(3, flat.nettyParentEventGroupThreadNum());
+    assertEquals(5, flat.nettyChildEventGroupThreadNum());
+    assertEquals(7, flat.s3ExecutorThreadNum());
   }
 
   @Test
   void rejectsRequestBodyLargerThanLimit() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
-        .maxRequestBodySize(1024)
+        .netty(netty -> netty.maxRequestBodySize(1024))
         .buckets("limit-bucket")
         .build();
     localS3.start();
@@ -357,7 +415,7 @@ class LocalS3Test {
   void storesBodiesBufferedInTemporaryFiles() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
-        .requestBodyFileThreshold(1024)
+        .netty(netty -> netty.requestBodyFileThreshold(1024))
         .buckets("file-bucket")
         .build();
     localS3.start();
@@ -583,7 +641,7 @@ class LocalS3Test {
   @Test
   void servesRequestsOnNonDaemonThreadsWhenConfigured() throws Exception {
     awaitNoLocalS3Threads();
-    LocalS3 localS3 = LocalS3.builder().port(-1).daemonThreads(false).build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).netty(netty -> netty.daemonThreads(false)).build();
     localS3.start();
     try {
       List<Thread> threads = localS3Threads();

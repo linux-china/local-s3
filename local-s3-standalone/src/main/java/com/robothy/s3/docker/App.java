@@ -59,7 +59,7 @@ public class App {
                 // main() returns once the service is started, so only non-daemon threads keep the container
                 // running. Embedded services use daemon threads, which don't outlive the tests that forget
                 // to shut them down.
-                .daemonThreads(false);
+                .netty(netty -> netty.daemonThreads(false));
         // After the environment, so that a LOCAL_S3_DATA_PATH of its own is left alone.
         applyDefaultDataPath(builder, Path.of(DEFAULT_DATA_PATH));
         return builder;

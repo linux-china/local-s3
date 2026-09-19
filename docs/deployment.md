@@ -141,7 +141,7 @@ With TLS configured, the port serves **both HTTP and HTTPS**: each connection is
 client that speaks TLS and one that doesn't reach the same endpoint, and a test suite covering both needs one service
 rather than two. The [health check](#health-check) answers at `https://…/_health` and `http://…/_health` alike.
 
-Set `LOCAL_S3_TLS_REQUIRED=true`, or `tlsRequired(true)`, to serve HTTPS alone, which makes a plain HTTP request fail;
+Set `LOCAL_S3_TLS_REQUIRED=true`, or `tls(tls -> tls.required(true))`, to serve HTTPS alone, which makes a plain HTTP request fail;
 that is what a test asserting that its client really uses TLS needs. Without a certificate the setting has no effect.
 
 There are two ways to get a certificate: LocalS3 [generates one for itself](#generate-a-certificate-on-startup), which

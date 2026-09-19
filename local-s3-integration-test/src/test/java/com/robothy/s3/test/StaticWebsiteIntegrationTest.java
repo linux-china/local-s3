@@ -271,7 +271,7 @@ class StaticWebsiteIntegrationTest {
 
     @Test
     void everyBucketIsServedWhenTheServiceIsConfiguredToServeThemAll() throws Exception {
-      start(authenticated().websiteAllBuckets(true).build());
+      start(authenticated().website(website -> website.allBuckets(true)).build());
 
       HttpResponse<String> response = get("/" + PRIVATE_BUCKET + "/");
       assertEquals(200, response.statusCode());

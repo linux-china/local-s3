@@ -44,10 +44,10 @@ class LocalS3ThreadingTest {
   @Test
   void threadCountsAreConfigurable() {
     LocalS3 localS3 = LocalS3.builder().port(-1)
-        .nettyParentEventGroupThreadNum(3)
-        .nettyChildEventGroupThreadNum(5)
-        .s3ExecutorThreadNum(7)
-        .virtualThreads(false)
+        .netty(netty -> netty.parentEventGroupThreadNum(3)
+            .childEventGroupThreadNum(5)
+            .s3ExecutorThreadNum(7)
+            .virtualThreads(false))
         .build();
 
     assertEquals(3, localS3.getNettyParentEventGroupThreadNum());
@@ -68,7 +68,7 @@ class LocalS3ThreadingTest {
       LocalS3 localS3 = LocalS3.builder()
           .port(-1)
           .buckets("threads")
-          .virtualThreads(virtualThreads)
+          .netty(netty -> netty.virtualThreads(virtualThreads))
           .changeListener(change -> {
             if (change.key() == null) {
               return;
@@ -102,8 +102,7 @@ class LocalS3ThreadingTest {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
         .buckets("threads")
-        .virtualThreads(false)
-        .s3ExecutorThreadNum(2)
+        .netty(netty -> netty.virtualThreads(false).s3ExecutorThreadNum(2))
         .changeListener(change -> {
           if (change.key() == null) {
             return;

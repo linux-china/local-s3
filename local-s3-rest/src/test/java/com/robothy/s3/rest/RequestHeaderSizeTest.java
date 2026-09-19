@@ -45,7 +45,8 @@ class RequestHeaderSizeTest {
 
   @Test
   void maxRequestHeaderSizeIsConfigurable() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("headers").maxRequestHeaderSize(1024).build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("headers")
+        .netty(netty -> netty.maxRequestHeaderSize(1024)).build();
     localS3.start();
     try {
       String rejected = put(localS3, 2048);

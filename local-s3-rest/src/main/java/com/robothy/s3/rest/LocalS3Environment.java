@@ -78,7 +78,7 @@ public final class LocalS3Environment {
    * Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port: {@code true} makes a plain HTTP request
    * to a service with a certificate fail. Without a certificate it has no effect.
    *
-   * @see LocalS3Builder#tlsRequired(boolean)
+   * @see LocalS3Builder.TlsSettings#required(boolean)
    */
   public static final String LOCAL_S3_TLS_REQUIRED = "LOCAL_S3_TLS_REQUIRED";
 
@@ -94,7 +94,7 @@ public final class LocalS3Environment {
    * The warehouse of the Iceberg REST catalog, an {@code s3://} URI of a bucket of this service, e.g.
    * {@code s3://warehouse/}. Setting it turns the catalog on.
    *
-   * @see LocalS3Builder#icebergWarehouse(String)
+   * @see LocalS3Builder.IcebergCatalogSettings#warehouse(String)
    */
   public static final String LOCAL_S3_ICEBERG_WAREHOUSE = "LOCAL_S3_ICEBERG_WAREHOUSE";
 
@@ -110,21 +110,21 @@ public final class LocalS3Environment {
    * Serve <b>every</b> bucket as a static website, not the public ones alone: {@code true} turns it on. It also lets
    * an unsigned request read the objects of a private bucket, so it is off by default.
    *
-   * @see LocalS3Builder#websiteAllBuckets(boolean)
+   * @see LocalS3Builder.WebsiteSettings#allBuckets(boolean)
    */
   public static final String LOCAL_S3_WEBSITE_ALL_BUCKETS = "LOCAL_S3_WEBSITE_ALL_BUCKETS";
 
   /**
    * The index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code index.html}.
    *
-   * @see LocalS3Builder#websiteIndexDocument(String)
+   * @see LocalS3Builder.WebsiteSettings#indexDocument(String)
    */
   public static final String LOCAL_S3_WEBSITE_INDEX_DOCUMENT = "LOCAL_S3_WEBSITE_INDEX_DOCUMENT";
 
   /**
    * The error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code error.html}.
    *
-   * @see LocalS3Builder#websiteErrorDocument(String)
+   * @see LocalS3Builder.WebsiteSettings#errorDocument(String)
    */
   public static final String LOCAL_S3_WEBSITE_ERROR_DOCUMENT = "LOCAL_S3_WEBSITE_ERROR_DOCUMENT";
 
@@ -156,7 +156,7 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_IN_MEMORY_MAX_BYTES)
         .ifPresent(bytes -> builder.maxInMemoryBytes(parseMaxInMemoryBytes(bytes)));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
-        .ifPresent(virtual -> builder.virtualThreads(Boolean.parseBoolean(virtual)));
+        .ifPresent(virtual -> builder.netty(netty -> netty.virtualThreads(Boolean.parseBoolean(virtual))));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
         .ifPresent(composite -> builder.compositeMultipartEtags(Boolean.parseBoolean(composite)));
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
@@ -165,12 +165,15 @@ public final class LocalS3Environment {
     // The warehouse is applied after the switch, so that setting both turns the catalog on with that warehouse.
     variable(variables, LOCAL_S3_ICEBERG_CATALOG)
         .ifPresent(enabled -> builder.icebergCatalog(Boolean.parseBoolean(enabled)));
-    variable(variables, LOCAL_S3_ICEBERG_WAREHOUSE).ifPresent(builder::icebergWarehouse);
+    variable(variables, LOCAL_S3_ICEBERG_WAREHOUSE)
+        .ifPresent(warehouse -> builder.icebergCatalog(iceberg -> iceberg.warehouse(warehouse)));
     variable(variables, LOCAL_S3_WEBSITE).ifPresent(enabled -> builder.website(Boolean.parseBoolean(enabled)));
     variable(variables, LOCAL_S3_WEBSITE_ALL_BUCKETS)
-        .ifPresent(allBuckets -> builder.websiteAllBuckets(Boolean.parseBoolean(allBuckets)));
-    variable(variables, LOCAL_S3_WEBSITE_INDEX_DOCUMENT).ifPresent(builder::websiteIndexDocument);
-    variable(variables, LOCAL_S3_WEBSITE_ERROR_DOCUMENT).ifPresent(builder::websiteErrorDocument);
+        .ifPresent(allBuckets -> builder.website(website -> website.allBuckets(Boolean.parseBoolean(allBuckets))));
+    variable(variables, LOCAL_S3_WEBSITE_INDEX_DOCUMENT)
+        .ifPresent(indexDocument -> builder.website(website -> website.indexDocument(indexDocument)));
+    variable(variables, LOCAL_S3_WEBSITE_ERROR_DOCUMENT)
+        .ifPresent(errorDocument -> builder.website(website -> website.errorDocument(errorDocument)));
 
     String tlsCert = variable(variables, LOCAL_S3_TLS_CERT).orElse(null);
     String tlsKey = variable(variables, LOCAL_S3_TLS_KEY).orElse(null);
@@ -190,7 +193,7 @@ public final class LocalS3Environment {
       builder.tls(selfSigned);
     }
     variable(variables, LOCAL_S3_TLS_REQUIRED)
-        .ifPresent(required -> builder.tlsRequired(Boolean.parseBoolean(required)));
+        .ifPresent(required -> builder.tls(tls -> tls.required(Boolean.parseBoolean(required))));
 
     String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
     String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);

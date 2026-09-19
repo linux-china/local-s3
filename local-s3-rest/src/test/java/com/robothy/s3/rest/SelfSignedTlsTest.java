@@ -66,7 +66,7 @@ class SelfSignedTlsTest {
    */
   @Test
   void isRefusedByAClientThatWasNotGivenTheCertificate() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).tlsSelfSigned().build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).tls(tls -> tls.selfSigned()).build();
     localS3.start();
     try {
       HttpsURLConnection connection = (HttpsURLConnection) new URI("https://localhost:" + localS3.getPort()
@@ -173,7 +173,7 @@ class SelfSignedTlsTest {
     appender.start();
     logger.addAppender(appender);
     logger.setLevel(Level.INFO);
-    LocalS3 localS3 = LocalS3.builder().port(-1).tlsSelfSigned().build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).tls(tls -> tls.selfSigned()).build();
     try {
       localS3.start();
     } finally {

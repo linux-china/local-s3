@@ -12,8 +12,8 @@ public class LocalS3Server {
                 .dataPath("temp/local-s3-data")
                 .credentials("admin","admin")
                 .buckets("msst-test","demo1", "demo2", "demo3")
-                .websiteAllBuckets(true)
-                .tlsSelfSigned()
+                .website(website -> website.allBuckets(true))
+                .tls(LocalS3Builder.TlsSettings::selfSigned)
                 //.tls(Path.of("local-s3-rest/src/test/resources/127.0.0.1.pem"), Path.of("local-s3-rest/src/test/resources/127.0.0.1-key.pem"))
                 .changeListener(change -> {
                     System.out.println(change.type() + " " + change.getObjectS3Url());

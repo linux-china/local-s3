@@ -67,4 +67,24 @@ public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBuc
     return new LocalS3IcebergCatalog(newWarehouse, createWarehouseBucket, credentialVending);
   }
 
+  /**
+   * These settings with {@linkplain #createWarehouseBucket()} set.
+   *
+   * @param newCreateWarehouseBucket whether the warehouse bucket is created when the service starts.
+   * @return new settings.
+   */
+  public LocalS3IcebergCatalog withCreateWarehouseBucket(boolean newCreateWarehouseBucket) {
+    return new LocalS3IcebergCatalog(warehouse, newCreateWarehouseBucket, credentialVending);
+  }
+
+  /**
+   * These settings with {@linkplain #credentialVending()} set.
+   *
+   * @param newCredentialVending whether a loaded table carries the settings to reach LocalS3 with.
+   * @return new settings.
+   */
+  public LocalS3IcebergCatalog withCredentialVending(boolean newCredentialVending) {
+    return new LocalS3IcebergCatalog(warehouse, createWarehouseBucket, newCredentialVending);
+  }
+
 }

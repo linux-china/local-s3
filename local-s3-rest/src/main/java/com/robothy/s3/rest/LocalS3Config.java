@@ -138,7 +138,7 @@ public record LocalS3Config(
       Math.max(2, Runtime.getRuntime().availableProcessors() / 2);
 
   /**
-   * Default number of platform threads that handle the requests when {@linkplain LocalS3Builder#virtualThreads(boolean)
+   * Default number of platform threads that handle the requests when {@linkplain LocalS3Builder.NettySettings#virtualThreads(boolean)
    * virtual threads} are disabled: as many as the machine has processors, and at least 4. The threads are shared by
    * all connections, so this is the number of requests handled at the same time.
    */

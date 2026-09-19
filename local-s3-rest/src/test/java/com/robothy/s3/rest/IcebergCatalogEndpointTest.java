@@ -70,7 +70,7 @@ class IcebergCatalogEndpointTest {
   @Test
   void the_settings_are_vended_only_when_the_catalog_is_configured_to() throws Exception {
     try (LocalS3 localS3 = started(LocalS3.builder().port(-1)
-        .icebergCatalog(new LocalS3IcebergCatalog("s3://warehouse/", true, false)))) {
+        .icebergCatalog(iceberg -> iceberg.settings(new LocalS3IcebergCatalog("s3://warehouse/", true, false))))) {
       ObjectNode config = IcebergJson.read(get(localS3, "/iceberg/v1/config").body());
       assertEquals(0, config.path("defaults").size(), "Credential vending is off, so nothing is vended.");
       assertEquals("s3://warehouse", config.path("overrides").path("warehouse").asString());
@@ -158,7 +158,7 @@ class IcebergCatalogEndpointTest {
   @Test
   void a_warehouse_that_is_not_a_bucket_of_this_service_is_refused_where_it_is_configured() {
     IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().icebergWarehouse("file:///tmp/warehouse"));
+        () -> LocalS3.builder().icebergCatalog(iceberg -> iceberg.warehouse("file:///tmp/warehouse")));
     assertTrue(refused.getMessage().contains("s3://"), refused.getMessage());
   }
 

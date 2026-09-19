@@ -165,7 +165,7 @@ Elsewhere:
 
 | Where | How |
 |---|---|
-| Java | `LocalS3.builder().icebergCatalog(true)`, or `.icebergWarehouse("s3://lakehouse/")` |
+| Java | `LocalS3.builder().icebergCatalog(true)`, or `.icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/"))` |
 | JUnit 5 | `@LocalS3(icebergCatalog = true)` |
 | Spring Boot | `local-s3.iceberg-catalog.enabled=true`, `local-s3.iceberg-catalog.warehouse=s3://warehouse/` |
 | Docker / jar | `LOCAL_S3_ICEBERG_CATALOG=true`, `LOCAL_S3_ICEBERG_WAREHOUSE=s3://warehouse/` |
