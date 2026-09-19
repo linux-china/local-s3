@@ -212,6 +212,10 @@ imported either.
   `secretKey`; `@Nested` classes get the service of their enclosing class, and services work with parallel tests.
 + `LocalS3` is `AutoCloseable`.
 + `QueryVectors` returns the `distanceMetric` of the index.
++ **[Choosing an S3 mock](docs/comparison.md)**, a selection page: where LocalS3 sits next to Adobe S3Mock, s3proxy,
+  MinIO and LocalStack, what it does that they don't — the built-in Iceberg REST catalog, S3 Vectors, persistence with
+  initial data and seeders, measured startup cost, the depth of the JUnit 5 and Spring Boot integrations — and where
+  one of the others is the better choice.
 
 ### Changed
 

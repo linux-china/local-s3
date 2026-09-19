@@ -16,6 +16,9 @@ Use it to:
 + give a big data platform such as Iceberg or Delta Lake a fast, local S3 to test against — with an
   [Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog) built in, so no separate catalog is needed.
 
+Weighing it against Adobe S3Mock, s3proxy, MinIO or LocalStack? See
+[Choosing an S3 mock](docs/comparison.md).
+
 ## Quick start
 
 **Docker**
@@ -102,6 +105,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 | Document | Contents |
 |---|---|
+| [Choosing an S3 mock](docs/comparison.md) | Where LocalS3 fits next to Adobe S3Mock, s3proxy, MinIO and LocalStack, and when one of them is the better choice. |
 | [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
