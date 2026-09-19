@@ -113,7 +113,6 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |
-| [Contributing](CONTRIBUTING.md) | Building, testing, and conventions for changes. |
 
 ## References
 

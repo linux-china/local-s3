@@ -10,9 +10,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /**
- * Runs LocalS3 in a container, configured by environment variables, or by system properties of the same names.
+ * Runs LocalS3 in a container or from the executable jar, configured by the options of {@linkplain CommandLine},
+ * by environment variables, or by system properties of the same names, in that order of precedence.
  */
 @Slf4j
 public class App {
@@ -21,8 +24,36 @@ public class App {
     static final String DEFAULT_HOST = "127.0.0.1";
     static final String DEFAULT_DATA_PATH = "/data";
 
+    /**
+     * The exit code of a command line, or an environment, that the service can't be configured from. A container
+     * that is started with one stops with it, rather than serving something other than what was asked for.
+     */
+    static final int CONFIGURATION_ERROR = 2;
+
+    /**
+     * The variables of the process: the environment, or the system property of the same name where the
+     * environment doesn't set one.
+     */
+    static final UnaryOperator<String> ENVIRONMENT = name -> Optional.ofNullable(System.getenv(name))
+            .orElseGet(() -> System.getProperty(name));
+
     public static void main(String[] args) {
-        LocalS3 localS3 = configure().build();
+        LocalS3 localS3;
+        try {
+            CommandLine commandLine = CommandLine.parse(args);
+            if (commandLine.helpRequested()) {
+                System.out.println(CommandLine.help());
+                return;
+            }
+            localS3 = configure(commandLine.variables(ENVIRONMENT)).build();
+        } catch (IllegalArgumentException e) {
+            // The message of a rejected value names the setting and the values it accepts, which is the whole
+            // of what the user has to fix; a stack trace of the parser would bury it.
+            System.err.println(e.getMessage());
+            System.err.println("Run with --help to see the options.");
+            System.exit(CONFIGURATION_ERROR);
+            return;
+        }
         LocalS3Config localS3Config = localS3.getConfig();
         List<String> hint = new ArrayList<>();
         hint.add("- Mode: " + localS3Config.mode());
@@ -48,6 +79,19 @@ public class App {
      * @throws IllegalArgumentException if a variable has an invalid value.
      */
     static LocalS3Builder configure() {
+        return configure(ENVIRONMENT);
+    }
+
+    /**
+     * Configure LocalS3 with the defaults of this image, which the given variables override. A command line
+     * resolves the variables it sets itself and leaves the rest to the environment, so that an option and a
+     * variable configure the service through the same code; see {@linkplain CommandLine}.
+     *
+     * @param variables resolves the value of a variable by name; resolves to {@code null} if it isn't set.
+     * @return a builder of the configured LocalS3 service.
+     * @throws IllegalArgumentException if a variable has an invalid value.
+     */
+    static LocalS3Builder configure(UnaryOperator<String> variables) {
         LocalS3Builder builder = LocalS3.builder()
                 // The defaults of the container, which differ from the defaults of an embedded service: it
                 // serves every interface and persists to a directory that is usually bind-mounted.
@@ -55,7 +99,7 @@ public class App {
                 .bindHost(DEFAULT_HOST)
                 .mode(LocalS3Mode.IN_MEMORY)
                 // Applies the variables that are set, leaving the defaults above for the ones that aren't.
-                .fromEnvironment()
+                .fromEnvironment(variables)
                 // main() returns once the service is started, so only non-daemon threads keep the container
                 // running. Embedded services use daemon threads, which don't outlive the tests that forget
                 // to shut them down.

@@ -60,20 +60,33 @@ curl -LO https://repo1.maven.org/maven2/io/github/robothy/local-s3-standalone/2.
 java -jar local-s3-standalone-2.5.0.jar
 ```
 
-It is configured by the variables [below](#configuration), read from the environment or from the system properties of
-the same names, which is what a command line sets most easily:
+It takes an option per setting, one for each variable [below](#configuration); `--help` lists them all, beside the
+variable each one stands for:
 
 ```shell
+java -jar local-s3-standalone-2.5.0.jar --port 29292 --bucket my-bucket
+java -jar local-s3-standalone-2.5.0.jar --help
+```
+
+An option wins over the variable of that setting, which in turn wins over the system property of the same name, so the
+three configure the same service:
+
+```shell
+LOCAL_S3_MODE=PERSISTENCE java -jar local-s3-standalone-2.5.0.jar --data-path "$HOME/local-s3"
 java -DLOCAL_S3_PORT=29090 -DLOCAL_S3_MODE=IN_MEMORY -DAWS_BUCKETS=my-bucket \
     -jar local-s3-standalone-2.5.0.jar
 ```
 
+An argument that isn't an option of the service, e.g. a misspelled `--ports`, an option given twice, or a value that
+isn't valid, stops the jar with the reason and exit code `2`, rather than starting a service that isn't the one that
+was asked for.
+
 Unlike the container, the jar listens on `127.0.0.1` and runs `IN_MEMORY` by default, starting from the initial data of
-`/data` if that directory exists. Set `LOCAL_S3_HOST=0.0.0.0` to serve other hosts, and `LOCAL_S3_MODE=PERSISTENCE`
-with a `LOCAL_S3_DATA_PATH` of your own to keep the data:
+`/data` if that directory exists. Pass `--host 0.0.0.0` to serve other hosts, and `--mode PERSISTENCE` with a
+`--data-path` of your own to keep the data:
 
 ```shell
-java -DLOCAL_S3_MODE=PERSISTENCE -DLOCAL_S3_DATA_PATH="$HOME/local-s3" -jar local-s3-standalone-2.5.0.jar
+java -jar local-s3-standalone-2.5.0.jar --mode PERSISTENCE --data-path "$HOME/local-s3"
 ```
 
 A shell that a developer works in often exports `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` already, and
@@ -86,6 +99,12 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-
 ```
 
 ## Configuration
+
+Every variable of the table below is also an option of the [executable jar](#executable-jar), named after it:
+`LOCAL_S3_PORT` is `--port`, `LOCAL_S3_WEBSITE_ALL_BUCKETS` is `--website-all-buckets`, `AWS_BUCKETS` is `--buckets`
+(or `--bucket`, repeated), and `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are `--access-key` and `--secret-key`.
+The exceptions are the cache limits, which are read when a cache is created rather than applied to a service, so they
+are set by a variable alone. A container is configured by the variables; `java -jar s3.jar --help` prints the options.
 
 | Variable | Default | Description |
 |---|---|---|
