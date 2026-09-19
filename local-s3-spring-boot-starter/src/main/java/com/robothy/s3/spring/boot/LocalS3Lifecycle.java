@@ -69,13 +69,7 @@ public class LocalS3Lifecycle implements SmartLifecycle {
    */
   public URI endpoint() {
     start();
-    String host = localS3.getBindHost();
-    if ("0.0.0.0".equals(host) || "::".equals(host) || "[::]".equals(host)) {
-      host = "127.0.0.1";
-    } else if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
-      host = "[" + host + "]";
-    }
-    return URI.create((localS3.isTlsEnabled() ? "https://" : "http://") + host + ":" + localS3.getPort());
+    return URI.create(localS3.endpoint());
   }
 
 }

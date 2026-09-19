@@ -31,6 +31,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -67,6 +68,90 @@ class LocalS3Test {
     localS3.start();
     localS3.shutdown();
     localS3.shutdown();
+  }
+
+  @Test
+  void endpointNamesTheAddressThatClientsReach() {
+    assertEquals("http://127.0.0.1:29090", LocalS3.builder().build().endpoint());
+    assertEquals("https://127.0.0.1:29090", LocalS3.builder().tlsSelfSigned().build().endpoint());
+    assertEquals("http://192.168.1.10:8080",
+        LocalS3.builder().bindHost("192.168.1.10").port(8080).build().endpoint());
+
+    // Every interface is served, so the loopback address is the one that reaches it from this machine.
+    assertEquals("http://127.0.0.1:29090", LocalS3.builder().bindHost("0.0.0.0").build().endpoint());
+    assertEquals("http://127.0.0.1:29090", LocalS3.builder().bindHost("::").build().endpoint());
+    // An IPv6 address is bracketed in a URL, whether or not it is given bracketed.
+    assertEquals("http://[::1]:29090", LocalS3.builder().bindHost("::1").build().endpoint());
+    assertEquals("http://[::1]:29090", LocalS3.builder().bindHost("[::1]").build().endpoint());
+
+    LocalS3 randomPort = LocalS3.builder().port(-1).build();
+    assertThrows(IllegalStateException.class, randomPort::endpoint,
+        "The port of a service that isn't started yet isn't known.");
+    randomPort.start();
+    try {
+      assertEquals("http://127.0.0.1:" + randomPort.getPort(), randomPort.endpoint());
+    } finally {
+      randomPort.shutdown();
+    }
+  }
+
+  @Test
+  void presignsUrlsThatTheServiceAnswers() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .buckets("artifacts")
+        .credentials("local-access-key", "local-secret-access-key")
+        .build();
+    localS3.start();
+
+    try {
+      String key = "reports/q1 summary.txt";
+      String uploadUrl = localS3.presign("artifacts", key, Duration.ofMinutes(5), "PUT");
+      HttpClient client = HttpClient.newHttpClient();
+      assertEquals(200, client.send(HttpRequest.newBuilder(URI.create(uploadUrl))
+              .PUT(HttpRequest.BodyPublishers.ofString("Hello")).build(),
+          HttpResponse.BodyHandlers.discarding()).statusCode());
+
+      HttpResponse<String> downloaded = client.send(
+          HttpRequest.newBuilder(URI.create(localS3.presign("artifacts", key, Duration.ofMinutes(5)))).GET().build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, downloaded.statusCode());
+      assertEquals("Hello", downloaded.body());
+
+      String tampered = localS3.presign("artifacts", key, Duration.ofMinutes(5)).replaceAll("[0-9a-f]{64}$",
+          "0".repeat(64));
+      assertEquals(403, client.send(HttpRequest.newBuilder(URI.create(tampered)).GET().build(),
+          HttpResponse.BodyHandlers.discarding()).statusCode());
+
+      assertEquals(403, client.send(HttpRequest.newBuilder(
+              URI.create(localS3.endpoint() + "/artifacts/reports/q1%20summary.txt")).GET().build(),
+          HttpResponse.BodyHandlers.discarding()).statusCode(), "An unsigned request is still rejected.");
+
+      assertThrows(IllegalArgumentException.class, () -> localS3.presign("artifacts", key, Duration.ofDays(8)));
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void presignsPlainUrlsWithoutCredentials() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("artifacts").build();
+    localS3.start();
+
+    try {
+      // The service answers unsigned requests, so a URL of an object needs no signature and doesn't expire.
+      String url = localS3.presign("artifacts", "a b.txt", Duration.ofMinutes(5));
+      assertEquals(localS3.endpoint() + "/artifacts/a%20b.txt", url);
+
+      HttpClient client = HttpClient.newHttpClient();
+      assertEquals(200, client.send(HttpRequest.newBuilder(URI.create(url))
+              .PUT(HttpRequest.BodyPublishers.ofString("Hello")).build(),
+          HttpResponse.BodyHandlers.discarding()).statusCode());
+      assertEquals("Hello", client.send(HttpRequest.newBuilder(URI.create(url)).GET().build(),
+          HttpResponse.BodyHandlers.ofString()).body());
+    } finally {
+      localS3.shutdown();
+    }
   }
 
   @Test

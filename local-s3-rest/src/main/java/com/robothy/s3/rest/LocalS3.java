@@ -12,6 +12,7 @@ import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.admin.RequestStatistics;
 import com.robothy.s3.rest.admin.ServiceStatistics;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import com.robothy.s3.rest.handler.AwsSignatureV4Presigner;
 import com.robothy.s3.rest.handler.LocalS3RouterFactory;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
 import com.robothy.s3.rest.netty.RequestRecorder;
@@ -29,6 +30,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -47,6 +49,12 @@ public class LocalS3 implements AutoCloseable {
      * The directory in the storage directory that large request bodies are buffered in in {@code PERSISTENCE} mode.
      */
     static final String REQUEST_BODY_DIRECTORY = LocalS3Manager.REQUEST_BODY_DIRECTORY;
+
+    /**
+     * The bind hosts that serve every interface of the machine rather than one address, which {@linkplain #endpoint()}
+     * reaches at the loopback address.
+     */
+    private static final Set<String> WILDCARD_BIND_HOSTS = Set.of("0.0.0.0", "::", "[::]");
 
     private final LocalS3Config config;
 
@@ -668,6 +676,82 @@ public class LocalS3 implements AutoCloseable {
      */
     public int getPort() {
         return port;
+    }
+
+    /**
+     * The endpoint that clients reach the service at, e.g. {@code http://127.0.0.1:19090}: the host that it is bound
+     * to, or the loopback address if it is bound to every interface, and the port that it listens on. A service that
+     * serves TLS, see {@linkplain LocalS3Builder#tls(String, String)}, is reached at an {@code https} endpoint.
+     *
+     * <pre>{@code
+     *  S3Client s3 = S3Client.builder().endpointOverride(URI.create(localS3.endpoint())).build();
+     * }</pre>
+     *
+     * @return the endpoint, without a trailing slash.
+     * @throws IllegalStateException if a random port was requested and the service isn't started yet, so that the
+     *     port it listens on isn't known.
+     */
+    public String endpoint() {
+        if (port == 0) {
+            throw new IllegalStateException("A random port was requested; "
+                    + "the endpoint is only known once the service is started.");
+        }
+        String host = config.bindHost();
+        if (WILDCARD_BIND_HOSTS.contains(host)) {
+            // Every interface is served, and the loopback address is the one that reaches it from this machine.
+            host = "127.0.0.1";
+        } else if (host.indexOf(':') >= 0 && !host.startsWith("[")) {
+            // An IPv6 address is bracketed in a URL.
+            host = "[" + host + "]";
+        }
+        return (config.tlsEnabled() ? "https" : "http") + "://" + host + ":" + port;
+    }
+
+    /**
+     * Sign a URL that reads an object for a while, so that a client without credentials, e.g. a browser or a
+     * teammate that an AI agent hands an artifact to, downloads it with the URL alone.
+     *
+     * @param bucketName the bucket of the object.
+     * @param key the key of the object.
+     * @param expiration how long the URL is valid, between 1 second and 7 days.
+     * @return the presigned URL.
+     * @see #presign(String, String, Duration, String)
+     */
+    public String presign(@NonNull String bucketName, @NonNull String key, @NonNull Duration expiration) {
+        return presign(bucketName, key, expiration, "GET");
+    }
+
+    /**
+     * Sign a URL of an object that is valid for a while, e.g. a {@code PUT} URL that a client uploads an object with:
+     *
+     * <pre>{@code
+     *  String url = localS3.presign("my-bucket", "report.pdf", Duration.ofMinutes(15));
+     * }</pre>
+     *
+     * <p>The URL is path-style and signed with the credentials of the service, see
+     * {@linkplain LocalS3Builder#credentials(String, String)}. A service without credentials answers unsigned
+     * requests, so it returns the plain URL of the object instead, which doesn't expire.
+     *
+     * <p>Neither the bucket nor the object has to exist: like Amazon S3, signing a URL doesn't touch the data, and a
+     * URL that is used after the object is gone is answered with {@code 404 NoSuchKey}.
+     *
+     * @param bucketName the bucket of the object.
+     * @param key the key of the object.
+     * @param expiration how long the URL is valid, between 1 second and 7 days, the longest expiration that Amazon S3
+     *     signs.
+     * @param httpMethod the HTTP method that the URL is signed for, e.g. {@code GET} or {@code PUT}; a request of
+     *     another method is rejected, since the method is signed.
+     * @return the presigned URL.
+     * @throws IllegalArgumentException if a name or the method is blank, or the expiration is out of range.
+     * @throws IllegalStateException if the port that the service listens on isn't known yet, see
+     *     {@linkplain #endpoint()}.
+     */
+    public String presign(@NonNull String bucketName, @NonNull String key, @NonNull Duration expiration,
+            @NonNull String httpMethod) {
+        AwsSignatureV4Presigner presigner = config.authenticationEnabled()
+                ? new AwsSignatureV4Presigner(config.accessKeyId(), config.secretAccessKey())
+                : AwsSignatureV4Presigner.unsigned();
+        return presigner.presign(endpoint(), httpMethod, bucketName, key, expiration);
     }
 
     /*

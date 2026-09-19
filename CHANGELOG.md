@@ -85,6 +85,16 @@ imported either.
 
 ### Added
 
++ **`localS3.endpoint()` and `localS3.presign(...)`.** `endpoint()` is the URL that clients reach the running service
+  at, e.g. `http://127.0.0.1:29090`, instead of every embedding application assembling it from the scheme, the bind
+  host and the port; a service bound to every interface is named by its loopback address, and one serving TLS by an
+  `https` URL. `presign(bucket, key, expiration)` signs a URL of an object that is valid for a while — `GET` by
+  default, `presign(bucket, key, expiration, "PUT")` for an upload slot — so an application that holds the service can
+  hand an artifact to a browser, a teammate or a tool without credentials and without building a second client. The
+  URL carries the signature that the service already verifies; a service without `credentials(...)` answers unsigned
+  requests, so it returns the plain URL of the object instead. See
+  [Presigned URLs](docs/embedding.md#presigned-urls).
+
 + **A service that is open to the network says so when it starts.** A service that has no credentials and binds an
   address other than a loopback one — which the Docker image does, since a container serves its host — answers every
   request, whoever sends it. It now logs a `WARN` naming the address it listens on and how to close it, so that

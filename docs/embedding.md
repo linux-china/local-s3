@@ -43,6 +43,19 @@ localS3.shutdown();
 `port(0)` binds a random free port, which `getPort()` returns once the service is started. `acceptFromAnyHost()` binds
 every interface instead of `127.0.0.1`.
 
+`endpoint()` is the URL that clients reach the running service at, so nothing has to assemble it from the scheme, the
+bind host and the port:
+
+```java
+S3Client s3 = S3Client.builder()
+    .endpointOverride(URI.create(localS3.endpoint()))   // e.g. http://127.0.0.1:29090
+    .build();
+```
+
+A service bound to every interface is reached at the loopback address, `127.0.0.1`, an IPv6 bind host is bracketed, and
+a service that serves [HTTPS](#serve-https) has an `https` endpoint. A service that was given a random port has none
+until it is started, so `endpoint()` throws an `IllegalStateException` before that.
+
 ### Persistence mode
 
 When LocalS3 runs in persistence mode, a data path is required. LocalS3 loads data from and stores all data into
@@ -118,6 +131,34 @@ localS3.start();
 ```
 
 The [health check](deployment.md#health-check) needs no authentication, so probes keep working.
+
+### Presigned URLs
+
+`presign(bucket, key, expiration)` signs a URL that reads an object for a while, so that whoever holds the URL — a
+browser, a teammate an AI agent hands an artifact to, a tool that takes a download link — gets the object without
+credentials:
+
+```java
+String url = localS3.presign("artifacts", "reports/q1 summary.pdf", Duration.ofMinutes(15));
+// http://127.0.0.1:29090/artifacts/reports/q1%20summary.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&...
+```
+
+The fourth argument is the HTTP method that the URL is signed for, `GET` by default; `PUT` hands out an upload slot:
+
+```java
+String uploadUrl = localS3.presign("artifacts", "input.csv", Duration.ofMinutes(15), "PUT");
+```
+
++ **The same signature the service verifies**: the URL is path-style, signed with AWS Signature Version 4 for the
+  credentials of the service, and expires after the given duration — between 1 second and 7 days, as with Amazon S3.
+  A request of another method, another key or with an edited signature is answered `403`.
++ **Without `credentials(...)`** the service answers unsigned requests, so the plain URL of the object is returned
+  instead, which doesn't expire.
++ **Nothing is touched**: neither the bucket nor the object has to exist when a URL is signed, and a URL used after the
+  object is gone is answered `404 NoSuchKey`, exactly as Amazon S3 behaves.
+
+An AWS SDK `S3Presigner` pointed at `localS3.endpoint()` signs URLs that the service accepts too; `presign(...)` is for
+the embedding application that has the service at hand and doesn't want to build a second client to share a file.
 
 ### Serve HTTPS
 

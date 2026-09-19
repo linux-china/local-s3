@@ -47,15 +47,15 @@ import javax.crypto.spec.SecretKeySpec;
  */
 final class AwsSignatureV4Verifier {
 
-  private static final String ALGORITHM = "AWS4-HMAC-SHA256";
+  static final String ALGORITHM = "AWS4-HMAC-SHA256";
   private static final String CHUNK_ALGORITHM = "AWS4-HMAC-SHA256-PAYLOAD";
   private static final String TRAILER_ALGORITHM = "AWS4-HMAC-SHA256-TRAILER";
   private static final String TERMINATOR = "aws4_request";
   private static final String UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
   private static final String EMPTY_SHA256 = sha256Hex(new byte[0]);
   private static final Duration ALLOWED_CLOCK_SKEW = Duration.ofMinutes(15);
-  private static final int MAX_PRESIGNED_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
-  private static final DateTimeFormatter AMZ_DATE_FORMAT =
+  static final int MAX_PRESIGNED_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+  static final DateTimeFormatter AMZ_DATE_FORMAT =
       DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
   private static final Pattern WHITESPACE = Pattern.compile("[\\t\\n\\r ]+");
   private static final Pattern HEX_SHA256 = Pattern.compile("[0-9a-fA-F]{64}");
@@ -562,18 +562,32 @@ final class AwsSignatureV4Verifier {
   }
 
   private static byte[] signingKey(String secretAccessKey, CredentialScope scope) {
-    byte[] dateKey = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), scope.date());
-    byte[] regionKey = hmac(dateKey, scope.region());
-    byte[] serviceKey = hmac(regionKey, scope.service());
+    return signingKey(secretAccessKey, scope.date(), scope.region(), scope.service());
+  }
+
+  /**
+   * The signing key of a credential scope, which {@linkplain AwsSignatureV4Presigner} derives the same way, so that
+   * the URLs it signs are the ones this verifier accepts.
+   *
+   * @param secretAccessKey the secret access key that the key is derived from.
+   * @param date the date of the scope, {@code yyyyMMdd}.
+   * @param region the region of the scope.
+   * @param service the service of the scope, e.g. {@code s3}.
+   * @return the signing key.
+   */
+  static byte[] signingKey(String secretAccessKey, String date, String region, String service) {
+    byte[] dateKey = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), date);
+    byte[] regionKey = hmac(dateKey, region);
+    byte[] serviceKey = hmac(regionKey, service);
     return hmac(serviceKey, TERMINATOR);
   }
 
-  private static String stringToSign(String amzDate, String scope, String canonicalRequest) {
+  static String stringToSign(String amzDate, String scope, String canonicalRequest) {
     return ALGORITHM + '\n' + amzDate + '\n' + scope + '\n'
         + sha256Hex(canonicalRequest.getBytes(StandardCharsets.UTF_8));
   }
 
-  private static String signature(byte[] signingKey, String stringToSign) {
+  static String signature(byte[] signingKey, String stringToSign) {
     return HexFormat.of().formatHex(hmac(signingKey, stringToSign));
   }
 
@@ -813,7 +827,7 @@ final class AwsSignatureV4Verifier {
         || value >= 'A' && value <= 'F';
   }
 
-  private static boolean isUnreserved(int value) {
+  static boolean isUnreserved(int value) {
     return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
         || value >= '0' && value <= '9' || value == '-' || value == '_'
         || value == '.' || value == '~';
