@@ -38,9 +38,9 @@ class LocalS3ConfigTest {
 
   @Test
   void aConfigDoesNotChangeWithItsBuilder() {
-    LocalS3Builder builder = LocalS3.builder().port(-1).buckets("first").virtualHostDomains("s3");
+    LocalS3Builder builder = LocalS3.builder().port(-1).buckets("first").s3Api(s3 -> s3.virtualHostDomains("s3"));
     LocalS3Config config = builder.buildConfig();
-    builder.buckets("second").virtualHostDomains("s3.local").bindHost("0.0.0.0");
+    builder.buckets("second").s3Api(s3 -> s3.virtualHostDomains("s3.local")).bindHost("0.0.0.0");
 
     assertEquals(0, config.port(), "A random port is configured as port 0.");
     assertEquals(List.of("first"), config.buckets());
@@ -100,7 +100,8 @@ class LocalS3ConfigTest {
   void theRequestRecorderReceivesEveryAnsweredRequest() throws Exception {
     java.util.List<String> recorded = new java.util.concurrent.CopyOnWriteArrayList<>();
     LocalS3 localS3 = LocalS3.builder().port(-1)
-        .requestRecorder((request, operation, status, requestId, durationNanos) -> recorded.add(operation + " " + status))
+        .netty(netty -> netty.requestRecorder(
+            (request, operation, status, requestId, durationNanos) -> recorded.add(operation + " " + status)))
         .build();
     assertSame(com.robothy.s3.rest.netty.RequestRecorder.NONE, LocalS3.builder().buildConfig().requestRecorder());
     localS3.start();

@@ -101,7 +101,7 @@ The version that an operation reports in `x-amz-version-id` follows from it:
 
 The object of a completed multipart upload gets the entity tag of Amazon S3: the MD5 of the concatenated MD5 digests
 of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the MD5 of the whole content instead;
-`compositeMultipartEtags(false)`, `@LocalS3(compositeMultipartEtags = false)` or
+`s3Api(s3 -> s3.compositeMultipartEtags(false))`, `@LocalS3(compositeMultipartEtags = false)` or
 `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS=false` bring that back for tests that depend on it.
 
 ## Browser form uploads (POST Object)
@@ -492,8 +492,9 @@ Only a change of a bucket leaves `key()` `null`, which tells the two apart. `ver
 never been versioned.
 
 By default, the listeners run **synchronously on the thread that made the change**, so the change of a request is
-delivered before the S3 response is sent. With a `changeListenerExecutor`, changes are delivered asynchronously, so
-that slow listeners don't hold up request handling; a single-threaded executor keeps the changes in order.
+delivered before the S3 response is sent. With an executor, `events(events -> events.executor(...))`, changes are
+delivered asynchronously, so that slow listeners don't hold up request handling; a single-threaded executor keeps the
+changes in order.
 
 LocalS3 does not shut the executor down; that stays with the code that created it. Either way, an exception
 thrown by a listener is logged and never fails the S3 request, and a change that the executor rejects is

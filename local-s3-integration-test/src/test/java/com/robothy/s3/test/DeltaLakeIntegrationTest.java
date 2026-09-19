@@ -95,7 +95,7 @@ class DeltaLakeIntegrationTest {
     localS3 = LocalS3.builder()
         .port(-1)
         .credentials("delta-key", "delta-secret")
-        .registerShutdownHook(false)
+        .netty(netty -> netty.registerShutdownHook(false))
         .build();
     localS3.start();
 

@@ -152,15 +152,15 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_MODE).ifPresent(modeName -> builder.mode(parseMode(modeName)));
     variable(variables, LOCAL_S3_PORT).ifPresent(port -> builder.port(parsePort(port)));
     variable(variables, LOCAL_S3_PERSISTENCE_POLICY)
-        .ifPresent(policy -> builder.persistencePolicy(parsePersistencePolicy(policy)));
+        .ifPresent(policy -> builder.storage(storage -> storage.persistencePolicy(parsePersistencePolicy(policy))));
     variable(variables, LOCAL_S3_IN_MEMORY_MAX_BYTES)
-        .ifPresent(bytes -> builder.maxInMemoryBytes(parseMaxInMemoryBytes(bytes)));
+        .ifPresent(bytes -> builder.storage(storage -> storage.maxInMemoryBytes(parseMaxInMemoryBytes(bytes))));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
         .ifPresent(virtual -> builder.netty(netty -> netty.virtualThreads(Boolean.parseBoolean(virtual))));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
-        .ifPresent(composite -> builder.compositeMultipartEtags(Boolean.parseBoolean(composite)));
+        .ifPresent(composite -> builder.s3Api(s3 -> s3.compositeMultipartEtags(Boolean.parseBoolean(composite))));
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
-        .ifPresent(domains -> builder.virtualHostDomains(domains.split(",")));
+        .ifPresent(domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.split(","))));
     variable(variables, AWS_BUCKETS).ifPresent(names -> builder.buckets(names.split(",")));
     // The warehouse is applied after the switch, so that setting both turns the catalog on with that warehouse.
     variable(variables, LOCAL_S3_ICEBERG_CATALOG)

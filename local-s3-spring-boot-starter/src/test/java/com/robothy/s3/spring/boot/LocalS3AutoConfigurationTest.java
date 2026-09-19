@@ -285,7 +285,7 @@ class LocalS3AutoConfigurationTest {
 
     @Bean
     LocalS3BuilderCustomizer bucketsCustomizer() {
-      return builder -> builder.buckets("from-customizer").changeListenerExecutor(EXECUTOR);
+      return builder -> builder.buckets("from-customizer").events(events -> events.executor(EXECUTOR));
     }
 
   }

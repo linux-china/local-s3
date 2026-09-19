@@ -37,8 +37,8 @@ public class ConcurrentInstanceConfigIntegrationTest {
    */
   @Test
   void eachInstanceKeepsItsOwnMultipartEtags() {
-    LocalS3 composite = LocalS3.builder().port(-1).compositeMultipartEtags(true).build();
-    LocalS3 plain = LocalS3.builder().port(-1).compositeMultipartEtags(false).build();
+    LocalS3 composite = LocalS3.builder().port(-1).s3Api(s3 -> s3.compositeMultipartEtags(true)).build();
+    LocalS3 plain = LocalS3.builder().port(-1).s3Api(s3 -> s3.compositeMultipartEtags(false)).build();
     composite.start();
     // The plain service starts last, so a shared registry would give its policy to the composite one.
     plain.start();

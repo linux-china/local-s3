@@ -59,10 +59,10 @@ imported either.
 | User of the Docker image | `root` | `locals3`; a bind-mounted data directory must be writable by it |
 | Threads of an embedded service | non-daemon | daemon, so a service doesn't keep the JVM alive; `netty(netty -> netty.daemonThreads(false))` restores the old behavior |
 | Request handling | 4 platform threads | a virtual thread per request (`netty(netty -> netty.virtualThreads(...))`) |
-| Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `compositeMultipartEtags(false)` restores the old one |
+| Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `s3Api(s3 -> s3.compositeMultipartEtags(false))` restores the old one |
 | Bucket names | not validated | the naming rules of Amazon S3; invalid names fail with `InvalidBucketName` |
 | Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
-| Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`maxInMemoryBytes`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
+| Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`storage(storage -> storage.maxInMemoryBytes(...))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
 
 `LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
 
@@ -76,18 +76,25 @@ imported either.
 
   | 2.4 / earlier 2.5 snapshots | 2.5 |
   |---|---|
+  | `persistencePolicy(p)`, `maxInMemoryBytes(n)`, `initialDataCacheEnabled(b)` | the same names under `storage(storage -> ...)`, which also takes `mode(m)` and `dataPath(p)` |
   | `nettyParentEventGroupThreadNum(n)` | `netty(netty -> netty.parentEventGroupThreadNum(n))` |
   | `nettyChildEventGroupThreadNum(n)` | `netty(netty -> netty.childEventGroupThreadNum(n))` |
   | `s3ExecutorThreadNum(n)` | `netty(netty -> netty.s3ExecutorThreadNum(n))` |
   | `virtualThreads(b)`, `daemonThreads(b)` | `netty(netty -> netty.virtualThreads(b).daemonThreads(b))` |
   | `maxRequestBodySize(n)`, `requestBodyFileThreshold(n)`, `maxRequestHeaderSize(n)`, `idleConnectionTimeoutSeconds(n)` | the same names under `netty(netty -> ...)` |
+  | `registerShutdownHook(b)`, `requestRecorder(r)` | the same names under `netty(netty -> ...)` |
+  | `virtualHostDomains(d...)`, `compositeMultipartEtags(b)` | the same names under `s3Api(s3 -> ...)` |
+  | `changeListenerExecutor(e)` | `events(events -> events.executor(e))`, which also takes `listener(l)` |
   | `tlsSelfSigned()`, `tlsRequired(b)` | `tls(tls -> tls.selfSigned().required(b))` |
   | `websiteAllBuckets(b)`, `websiteIndexDocument(s)`, `websiteErrorDocument(s)`, `website(LocalS3Website)` | `website(website -> website.allBuckets(b).indexDocument(s).errorDocument(s))`, `website(website -> website.settings(...))` |
   | `icebergWarehouse(s)`, `icebergCatalog(LocalS3IcebergCatalog)` | `icebergCatalog(iceberg -> iceberg.warehouse(s))`, `icebergCatalog(iceberg -> iceberg.settings(...))` |
 
-  The three thread-count methods that 2.4 had are kept as deprecated delegates; the rest were added during 2.5 and are
-  gone. The one-liners that turn a domain on with its defaults stay: `tls(certPem, keyPem)`, `tls(LocalS3Tls)`,
-  `website(true)` and `icebergCatalog(true)`. The environment variables and the `local-s3.*` properties are unchanged.
+  The methods that 2.4 had are kept as deprecated delegates, so code of 2.4 still compiles and behaves the same; the
+  ones added during 2.5 are gone. What every service is built with stays a method of the builder itself: `bindHost`,
+  `acceptFromAnyHost`, `port`, `mode`, `dataPath`, `buckets`, `credentials`, `seeder`, `changeListener` and
+  `fromEnvironment`, beside the one-liners that turn a domain on with its defaults, `tls(certPem, keyPem)`,
+  `tls(LocalS3Tls)`, `website(true)` and `icebergCatalog(true)`. The environment variables and the `local-s3.*`
+  properties are unchanged.
 + `local-s3-jupiter` no longer injects the AWS SDK v1 `AmazonS3`, and no longer depends on the v1 SDK. Use `S3Client`.
 + `@LocalS3(inmemory = ...)`, deprecated before, is removed. Use `mode`.
 + LocalS3 uses **Jackson 3** (`tools.jackson`, 3.2) instead of Jackson 2, like Spring Boot 4 does. The types of the public
@@ -141,8 +148,8 @@ imported either.
   table metadata itself and gains no dependency on Iceberg.
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 
-+ **Bounded in-memory storage**: `maxInMemoryBytes(bytes)`, `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and
-  `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
++ **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,
+  `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
   heap by default. An upload beyond it is answered with `507 InsufficientStorage`, whose message suggests the
   `PERSISTENCE` mode, instead of an `OutOfMemoryError` that takes the embedding application or IDE down.
 + **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and
@@ -192,16 +199,17 @@ imported either.
   Paginated `ListBuckets`. Operations that LocalS3 knows but doesn't implement answer `501 NotImplemented` naming the
   operation; see [the API list](docs/apis.md).
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
-  and for the domains of `virtualHostDomains` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
-+ **Change listeners**: `changeListener` and `changeListenerExecutor` deliver an `S3Change` for every committed change
-  of a bucket or an object. See [semantics](docs/semantics.md#change-events).
+  and for the domains of `s3Api(s3 -> s3.virtualHostDomains(...))` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
++ **Change listeners**: `changeListener` and `events(events -> events.listener(...).executor(...))` deliver an
+  `S3Change` for every committed change of a bucket or an object. See
+  [semantics](docs/semantics.md#change-events).
 + **Operations endpoints**: the health check `GET /_health`, and `GET /_admin/stats`, `GET /_admin/requests` and
   `POST /_admin/reset`, also available as `LocalS3#statistics()` and `LocalS3#reset()`. See
   [deployment](docs/deployment.md#admin-endpoints).
 + **Configuration from the environment**: `LocalS3Builder.fromEnvironment()` and the `LOCAL_S3_*` variables, also as
   system properties; `buckets(...)` / `AWS_BUCKETS` create buckets on startup. The immutable `LocalS3Config` holds the
   configuration of a service.
-+ **Persistence**: `persistencePolicy(DURABLE | FAST)` / `LOCAL_S3_PERSISTENCE_POLICY`; object metadata is read lazily
++ **Persistence**: `storage(storage -> storage.persistencePolicy(DURABLE | FAST))` / `LOCAL_S3_PERSISTENCE_POLICY`; object metadata is read lazily
   from the store, bounded by `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`, so large data directories open quickly.
 + **Limits**, under `netty(netty -> ...)`: `maxRequestBodySize` (5 GiB by default), `requestBodyFileThreshold`,
   `maxRequestHeaderSize` and `idleConnectionTimeoutSeconds`. Large request bodies are buffered in files rather than on the heap.

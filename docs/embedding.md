@@ -25,8 +25,9 @@ By default, LocalS3 runs in `IN_MEMORY` mode and listens on `127.0.0.1:29090`; a
 
 The objects of an `IN_MEMORY` service take at most half the max heap by default, so that tests which write large files,
 e.g. Parquet files of DuckDB or Iceberg, don't run the application or IDE that embeds LocalS3 out of heap: an upload
-beyond the limit is answered with `507 InsufficientStorage`. Set the limit with `maxInMemoryBytes(bytes)`,
-`LOCAL_S3_IN_MEMORY_MAX_BYTES` or `local-s3.in-memory.max-size`, or use `PERSISTENCE` mode for data that large.
+beyond the limit is answered with `507 InsufficientStorage`. Set the limit with
+`storage(storage -> storage.maxInMemoryBytes(bytes))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES` or
+`local-s3.in-memory.max-size`, or use `PERSISTENCE` mode for data that large.
 
 ```java
 LocalS3 localS3 = LocalS3.builder().build();
@@ -293,8 +294,8 @@ order.
 ExecutorService executor = Executors.newSingleThreadExecutor();
 
 LocalS3 localS3 = LocalS3.builder()
-    .changeListenerExecutor(executor)
-    .changeListener(change -> index("s3://" + change.bucketName() + "/" + change.key()))
+    .events(events -> events.executor(executor)
+        .listener(change -> index("s3://" + change.bucketName() + "/" + change.key())))
     .build();
 
 localS3.start();
@@ -313,7 +314,10 @@ which takes the settings of that domain and applies them, so the rarely used kno
 
 | Domain | Method | What it configures |
 |---|---|---|
-| HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds` |
+| Storage | `storage(storage -> ...)` | `mode`, `dataPath`, `persistencePolicy`, `maxInMemoryBytes`, `initialDataCacheEnabled` |
+| HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds`, `registerShutdownHook`, `requestRecorder` |
+| S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags` |
+| Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
 | Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `settings(LocalS3IcebergCatalog)` |
@@ -321,9 +325,13 @@ which takes the settings of that domain and applies them, so the rarely used kno
 ```java
 LocalS3 localS3 = LocalS3.builder()
     .port(29090)
+    .storage(storage -> storage.mode(LocalS3Mode.PERSISTENCE)
+        .dataPath("/tmp/local-s3")
+        .persistencePolicy(PersistencePolicy.FAST))
     .netty(netty -> netty.childEventGroupThreadNum(8)
         .maxRequestBodySize(64 * 1024 * 1024)
         .idleConnectionTimeoutSeconds(30))
+    .s3Api(s3 -> s3.virtualHostDomains("s3.local"))
     .tls(tls -> tls.selfSigned().required(true))
     .website(website -> website.allBuckets(true).indexDocument("home.html"))
     .icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/"))
@@ -332,9 +340,11 @@ LocalS3 localS3 = LocalS3.builder()
 localS3.start();
 ```
 
-Each domain also keeps the one-liner that turns it on with its defaults: `tls(certPem, keyPem)`, `tls(LocalS3Tls)`,
-`website(true)` and `icebergCatalog(true)`. Entering `icebergCatalog(iceberg -> ...)` turns the catalog on, since
-configuring one is asking for one.
+The settings every service is built with stay methods of the builder itself: `bindHost`, `acceptFromAnyHost`, `port`,
+`mode`, `dataPath`, `buckets`, `credentials`, `seeder`, `changeListener` and `fromEnvironment`. Each domain also keeps
+the one-liner that turns it on with its defaults: `tls(certPem, keyPem)`, `tls(LocalS3Tls)`, `website(true)` and
+`icebergCatalog(true)`. Entering `icebergCatalog(iceberg -> ...)` turns the catalog on, since configuring one is asking
+for one.
 
 A settings object writes through to the builder as it is called, so it must not be kept beyond the call.
 

@@ -266,8 +266,8 @@ public class S3ChangeListenerIntegrationTest {
     BlockingQueue<String> listenerThreads = new LinkedBlockingQueue<>();
     LocalS3 async = LocalS3.builder()
         .port(-1)
-        .changeListenerExecutor(executor)
-        .changeListener(change -> listenerThreads.add(Thread.currentThread().getName()))
+        .events(events -> events.executor(executor)
+            .listener(change -> listenerThreads.add(Thread.currentThread().getName())))
         .build();
     async.start();
     try (S3Client client = client(async.getPort())) {

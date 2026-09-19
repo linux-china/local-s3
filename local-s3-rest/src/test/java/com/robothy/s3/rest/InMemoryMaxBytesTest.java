@@ -19,7 +19,8 @@ class InMemoryMaxBytesTest {
 
   @Test
   void anUploadBeyondTheLimitIsInsufficientStorage() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("bucket").maxInMemoryBytes(1024).build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("bucket")
+        .storage(storage -> storage.maxInMemoryBytes(1024)).build();
     localS3.start();
     try {
       HttpClient client = HttpClient.newHttpClient();
@@ -52,7 +53,8 @@ class InMemoryMaxBytesTest {
       assertThrows(IllegalArgumentException.class, () -> LocalS3.builder()
           .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_IN_MEMORY_MAX_BYTES, invalid)::get), invalid);
     }
-    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().maxInMemoryBytes(0));
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().storage(storage -> storage.maxInMemoryBytes(0)));
   }
 
   private static HttpResponse<String> put(HttpClient client, LocalS3 localS3, String key, byte[] content)

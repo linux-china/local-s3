@@ -183,7 +183,7 @@ class IcebergCatalogEndpointTest {
   }
 
   private static LocalS3 started(LocalS3Builder builder) {
-    LocalS3 localS3 = builder.registerShutdownHook(false).build();
+    LocalS3 localS3 = builder.netty(netty -> netty.registerShutdownHook(false)).build();
     localS3.start();
     return localS3;
   }

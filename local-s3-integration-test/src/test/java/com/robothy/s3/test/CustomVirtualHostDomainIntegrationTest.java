@@ -27,7 +27,7 @@ class CustomVirtualHostDomainIntegrationTest {
 
   @Test
   void accessesBucketsUnderConfiguredDomain() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).virtualHostDomains("s3.local").build();
+    LocalS3 localS3 = LocalS3.builder().port(-1).s3Api(s3 -> s3.virtualHostDomains("s3.local")).build();
     localS3.start();
     List<String> hosts = new CopyOnWriteArrayList<>();
     try (S3Client s3 = S3Client.builder()

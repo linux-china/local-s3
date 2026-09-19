@@ -124,7 +124,7 @@ class IcebergRestCatalogPersistenceIntegrationTest {
         .mode(mode)
         .dataPath(dataPath.toString())
         .icebergCatalog(true)
-        .registerShutdownHook(false)
+        .netty(netty -> netty.registerShutdownHook(false))
         .build();
     localS3.start();
     RESTCatalog catalog = new RESTCatalog();

@@ -80,7 +80,7 @@ class IcebergRestCatalogIntegrationTest {
     localS3 = LocalS3.builder()
         .port(-1)
         .icebergCatalog(true)
-        .registerShutdownHook(false)
+        .netty(netty -> netty.registerShutdownHook(false))
         .build();
     localS3.start();
     catalog = new RESTCatalog();

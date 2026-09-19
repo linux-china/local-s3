@@ -64,18 +64,18 @@ public class LocalS3AutoConfiguration {
                          ObjectProvider<LocalS3Seeder> seeders) {
     LocalS3Builder builder = LocalS3.builder()
         // The application context stops the service; a hook of its own would stop it before the beans that use it.
-        .registerShutdownHook(false);
+        .netty(netty -> netty.registerShutdownHook(false));
     apply(properties, builder);
     LocalS3ApplicationEventPublisher events = eventPublisher.getIfAvailable();
     if (events != null) {
       // Published on the thread that made the change, so that a listener of a change made in a transaction takes part
       // in it, e.g. a @TransactionalEventListener of a put through getS3Manager() in a @Transactional method.
-      builder.changeListener(events);
+      builder.events(listeners -> listeners.listener(events));
     }
     List<RequestRecorder> recorders = requestRecorders.orderedStream().toList();
     if (!recorders.isEmpty()) {
-      builder.requestRecorder((request, operation, status, requestId, durationNanos) -> recorders.forEach(
-          recorder -> recorder.record(request, operation, status, requestId, durationNanos)));
+      builder.netty(netty -> netty.requestRecorder((request, operation, status, requestId, durationNanos) ->
+          recorders.forEach(recorder -> recorder.record(request, operation, status, requestId, durationNanos))));
     }
     // The objects that the service starts with, and that a reset puts back, before the customizers, so that one of
     // them can seed on top of the fixtures of local-s3.seed.classpath.
@@ -126,10 +126,12 @@ public class LocalS3AutoConfiguration {
       builder.dataPath(properties.getDataPath());
     }
     applyIfSet(properties.getBuckets(), buckets -> builder.buckets(buckets.toArray(String[]::new)));
-    builder.initialDataCacheEnabled(properties.isInitialDataCacheEnabled());
-    applyIfSet(properties.getInMemory().getMaxSize(), size -> builder.maxInMemoryBytes(size.toBytes()));
-    builder.compositeMultipartEtags(properties.isCompositeMultipartEtags());
-    applyIfSet(properties.getVirtualHostDomains(), domains -> builder.virtualHostDomains(domains.toArray(String[]::new)));
+    builder.storage(storage -> storage.initialDataCacheEnabled(properties.isInitialDataCacheEnabled()));
+    applyIfSet(properties.getInMemory().getMaxSize(),
+        size -> builder.storage(storage -> storage.maxInMemoryBytes(size.toBytes())));
+    builder.s3Api(s3 -> s3.compositeMultipartEtags(properties.isCompositeMultipartEtags()));
+    applyIfSet(properties.getVirtualHostDomains(),
+        domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.toArray(String[]::new))));
 
     LocalS3Properties.IcebergCatalog iceberg = properties.getIcebergCatalog();
     if (iceberg.isEnabled()) {

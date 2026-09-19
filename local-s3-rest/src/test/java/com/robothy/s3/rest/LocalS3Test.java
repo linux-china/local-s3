@@ -279,7 +279,7 @@ class LocalS3Test {
   void canDisableShutdownHookRegistration() throws Exception {
     LocalS3 localS3 = LocalS3.builder()
         .port(-1)
-        .registerShutdownHook(false)
+        .netty(netty -> netty.registerShutdownHook(false))
         .build();
     localS3.start();
     try {

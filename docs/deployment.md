@@ -297,14 +297,14 @@ A `PERSISTENCE` service commits the metadata of every change by default, so a pr
 answered a request for. A commit appends a chunk to `buckets.mvstore` rather than replacing what it supersedes, so a
 bulk load leaves one chunk per object: the file grows far beyond the metadata it holds while the load runs.
 
-`persistencePolicy(FAST)`, or `LOCAL_S3_PERSISTENCE_POLICY=FAST`, lets the store commit in the background instead, at
-most a second after a change, and commits what is left when the service is shut down:
+`storage(storage -> storage.persistencePolicy(FAST))`, or `LOCAL_S3_PERSISTENCE_POLICY=FAST`, lets the store commit
+in the background instead, at most a second after a change, and commits what is left when the service is shut down:
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
-    .mode(LocalS3Mode.PERSISTENCE)
-    .dataPath("/data")
-    .persistencePolicy(PersistencePolicy.FAST)
+    .storage(storage -> storage.mode(LocalS3Mode.PERSISTENCE)
+        .dataPath("/data")
+        .persistencePolicy(PersistencePolicy.FAST))
     .build();
 ```
 
