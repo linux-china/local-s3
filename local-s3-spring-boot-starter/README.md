@@ -1,6 +1,7 @@
 # local-s3-spring-boot-starter
 
-`local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 4 application.
+`local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot application. One artifact serves **Spring Boot 3 and
+Spring Boot 4**: see [Spring Boot 3](#spring-boot-3) for what an application on Spring Boot 3 has to set.
 
 ```xml
 <dependency>
@@ -30,7 +31,43 @@ too:
 The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. `netty-nio-client`
 depends on Netty 4.1, while LocalS3 needs Netty 4.2: let the dependency management of Spring Boot (the
 `spring-boot-starter-parent` or the `spring-boot-dependencies` BOM) pick the Netty version, rather than the nearest
-declaration, or LocalS3 fails to start with a `NoClassDefFoundError`.
+declaration, or LocalS3 fails to start with a `NoClassDefFoundError`. Spring Boot 4 manages Netty 4.2; on Spring Boot 3,
+override it as below.
+
+## Spring Boot 3
+
+The starter is compiled against Spring Boot 4 and runs on Spring Boot 3.x as well. The auto-configurations only use the
+annotations that both lines have in the same packages, and the integrations that Spring Boot 4 moved to modules of its
+own ship with an adapter per layout, of which only the one whose API is on the classpath is ever loaded:
+
+| Integration                         | Spring Boot 3                     | Spring Boot 4            |
+|-------------------------------------|-----------------------------------|--------------------------|
+| Actuator health (`localS3`)         | `spring-boot-actuator`            | `spring-boot-health`     |
+| `@AutoConfigureLocalS3` properties  | `spring-boot-test-autoconfigure`  | `spring-boot-test`       |
+
+Spring Boot 3 pins Netty to 4.1, which LocalS3 does not run on, so an application on Spring Boot 3 has to raise it to
+4.2. With Maven, in the properties of the POM that inherits `spring-boot-starter-parent`:
+
+```xml
+<properties>
+    <netty.version>4.2.18.Final</netty.version>
+</properties>
+```
+
+With Gradle and the Spring Boot plugin:
+
+```groovy
+ext['netty.version'] = '4.2.18.Final'
+```
+
+The POM of the starter names `spring-boot-autoconfigure` at the Spring Boot 4 version, as the version it was built
+against. The dependency management of the application — `spring-boot-starter-parent`, the `spring-boot-dependencies`
+BOM or the Gradle plugin — pins it back to the version of the application, as it does for every other Spring module;
+keep it in place rather than resolving the starter on its own.
+
+Nothing else differs: `local-s3.*`, the beans, the events, the seeding and `@AutoConfigureLocalS3` behave the same. The
+one exception is that `@AutoConfigureLocalS3(reset = ...)` also shows up as a `local-s3.reset` property on Spring Boot 3,
+which the binding of `LocalS3Properties` ignores.
 
 ```yaml
 local-s3:

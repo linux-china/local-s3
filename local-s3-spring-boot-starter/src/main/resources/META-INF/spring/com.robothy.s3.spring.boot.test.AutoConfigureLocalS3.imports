@@ -1,3 +1,4 @@
+com.robothy.s3.spring.boot.LocalS3MetricsAutoConfiguration
 com.robothy.s3.spring.boot.LocalS3AutoConfiguration
 com.robothy.s3.spring.boot.LocalS3HealthAutoConfiguration
-com.robothy.s3.spring.boot.LocalS3MetricsAutoConfiguration
+com.robothy.s3.spring.boot.LocalS3ActuatorHealthAutoConfiguration

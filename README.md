@@ -95,7 +95,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   [Details](docs/embedding.md#envelope-encryption-kms).
 + **Change listeners** that are told of every committed change, e.g. to assert that an upload happened.
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
-+ **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 4, Testcontainers, a Docker image (JVM or native), or an
++ **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 3 and 4, Testcontainers, a Docker image (JVM or native), or an
   executable jar.
 
 ## Documentation

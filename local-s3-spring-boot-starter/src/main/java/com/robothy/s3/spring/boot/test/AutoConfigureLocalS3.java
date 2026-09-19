@@ -24,6 +24,11 @@ import org.springframework.boot.test.context.PropertyMapping;
  * </ul>
  *
  * <p>The attributes override the {@code local-s3.*} properties of the application.
+ *
+ * <p>The annotation carries the {@code @PropertyMapping} of both Spring Boot layouts, because Spring Boot 4 moved it
+ * from {@code org.springframework.boot.test.autoconfigure.properties} of {@code spring-boot-test-autoconfigure} to
+ * {@code org.springframework.boot.test.context} of {@code spring-boot-test}. The JVM leaves out the annotations whose
+ * type is missing from the classpath, so each Spring Boot reads its own and ignores the other.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -31,6 +36,7 @@ import org.springframework.boot.test.context.PropertyMapping;
 @Inherited
 @ImportAutoConfiguration
 @PropertyMapping("local-s3")
+@org.springframework.boot.test.autoconfigure.properties.PropertyMapping("local-s3")
 public @interface AutoConfigureLocalS3 {
 
   /**
@@ -54,6 +60,10 @@ public @interface AutoConfigureLocalS3 {
    *
    * @return whether to reset the service after each test method.
    */
+  // Only the Spring Boot 4 mapping skips it. The Spring Boot 3 one takes its Skip from a top-level enum, and naming
+  // a constant of a class that a Spring Boot 4 application doesn't have makes javac warn on every source that uses
+  // this annotation. On Spring Boot 3, reset() is mapped to local-s3.reset instead, which LocalS3Properties has no
+  // field for and the lenient binding of @ConfigurationProperties ignores.
   @PropertyMapping(skip = PropertyMapping.Skip.YES)
   boolean reset() default true;
 

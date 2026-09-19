@@ -7,20 +7,17 @@ import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 
-import java.time.Duration;
 import java.util.List;
+import java.util.function.Consumer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.context.properties.PropertyMapper;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.unit.DataSize;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -49,7 +46,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  */
 @AutoConfiguration
 @ConditionalOnClass(LocalS3.class)
-@ConditionalOnBooleanProperty(name = "local-s3.enabled", matchIfMissing = true)
+@ConditionalOnProperty(name = "local-s3.enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(LocalS3Properties.class)
 public class LocalS3AutoConfiguration {
 
@@ -89,7 +86,7 @@ public class LocalS3AutoConfiguration {
 
   @Bean
   @ConditionalOnMissingBean
-  @ConditionalOnBooleanProperty(name = "local-s3.events.enabled", matchIfMissing = true)
+  @ConditionalOnProperty(name = "local-s3.events.enabled", havingValue = "true", matchIfMissing = true)
   public LocalS3ApplicationEventPublisher localS3ApplicationEventPublisher(ApplicationContext applicationContext) {
     return new LocalS3ApplicationEventPublisher(applicationContext);
   }
@@ -104,7 +101,7 @@ public class LocalS3AutoConfiguration {
    */
   @Bean
   @ConditionalOnMissingBean
-  @ConditionalOnBooleanProperty(name = "local-s3.seed.enabled", matchIfMissing = true)
+  @ConditionalOnProperty(name = "local-s3.seed.enabled", havingValue = "true", matchIfMissing = true)
   @ConditionalOnProperty(name = "local-s3.seed.classpath")
   public ClasspathLocalS3Seeder classpathLocalS3Seeder(LocalS3Properties properties, ApplicationContext context) {
     // The context resolves the location with the class loader of the application, e.g. the one of a launched jar.
@@ -117,18 +114,22 @@ public class LocalS3AutoConfiguration {
     return new LocalS3Lifecycle(localS3);
   }
 
+  // Set directly rather than through PropertyMapper: Spring Boot 4 changed the parameter of Source.as() from a
+  // Function to a Source.Adapter, and made Source.to() skip a null value, so a starter compiled against one line
+  // fails on the other with a NoClassDefFoundError, or applies the nulls. A value that isn't configured is left out,
+  // like Spring Boot 4 does, so that LocalS3Builder keeps its own default.
   static void apply(LocalS3Properties properties, LocalS3Builder builder) {
-    PropertyMapper map = PropertyMapper.get();
-    map.from(properties::getBindHost).to(builder::bindHost);
-    map.from(properties::getPort).to(builder::port);
-    map.from(properties::getMode).to(builder::mode);
-    map.from(properties::getDataPath).whenHasText().to(builder::dataPath);
-    map.from(properties::getBuckets).to(buckets -> builder.buckets(buckets.toArray(String[]::new)));
-    map.from(properties::isInitialDataCacheEnabled).to(builder::initialDataCacheEnabled);
-    map.from(properties.getInMemory()::getMaxSize).as(DataSize::toBytes).to(builder::maxInMemoryBytes);
-    map.from(properties::isCompositeMultipartEtags).to(builder::compositeMultipartEtags);
-    map.from(properties::getVirtualHostDomains)
-        .to(domains -> builder.virtualHostDomains(domains.toArray(String[]::new)));
+    applyIfSet(properties.getBindHost(), builder::bindHost);
+    builder.port(properties.getPort());
+    applyIfSet(properties.getMode(), builder::mode);
+    if (hasText(properties.getDataPath())) {
+      builder.dataPath(properties.getDataPath());
+    }
+    applyIfSet(properties.getBuckets(), buckets -> builder.buckets(buckets.toArray(String[]::new)));
+    builder.initialDataCacheEnabled(properties.isInitialDataCacheEnabled());
+    applyIfSet(properties.getInMemory().getMaxSize(), size -> builder.maxInMemoryBytes(size.toBytes()));
+    builder.compositeMultipartEtags(properties.isCompositeMultipartEtags());
+    applyIfSet(properties.getVirtualHostDomains(), domains -> builder.virtualHostDomains(domains.toArray(String[]::new)));
 
     LocalS3Properties.IcebergCatalog iceberg = properties.getIcebergCatalog();
     if (iceberg.isEnabled()) {
@@ -158,11 +159,17 @@ public class LocalS3AutoConfiguration {
         .s3ExecutorThreadNum(threads.getExecutor());
 
     LocalS3Properties.Requests requests = properties.getRequests();
-    map.from(requests::getMaxBodySize).as(DataSize::toBytes).to(builder::maxRequestBodySize);
-    map.from(requests::getBodyFileThreshold).as(DataSize::toBytes).to(builder::requestBodyFileThreshold);
-    map.from(requests::getMaxHeaderSize).as(size -> Math.toIntExact(size.toBytes())).to(builder::maxRequestHeaderSize);
-    map.from(requests::getIdleConnectionTimeout).as(Duration::toSeconds)
-        .to(builder::idleConnectionTimeoutSeconds);
+    applyIfSet(requests.getMaxBodySize(), size -> builder.maxRequestBodySize(size.toBytes()));
+    applyIfSet(requests.getBodyFileThreshold(), size -> builder.requestBodyFileThreshold(size.toBytes()));
+    applyIfSet(requests.getMaxHeaderSize(), size -> builder.maxRequestHeaderSize(Math.toIntExact(size.toBytes())));
+    applyIfSet(requests.getIdleConnectionTimeout(),
+        timeout -> builder.idleConnectionTimeoutSeconds(timeout.toSeconds()));
+  }
+
+  private static <T> void applyIfSet(T value, Consumer<T> setter) {
+    if (value != null) {
+      setter.accept(value);
+    }
   }
 
   private static boolean hasText(String value) {
@@ -176,7 +183,7 @@ public class LocalS3AutoConfiguration {
    */
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass(S3Client.class)
-  @ConditionalOnBooleanProperty(name = "local-s3.clients.enabled", matchIfMissing = true)
+  @ConditionalOnProperty(name = "local-s3.clients.enabled", havingValue = "true", matchIfMissing = true)
   static class ClientsConfiguration {
 
     @Bean

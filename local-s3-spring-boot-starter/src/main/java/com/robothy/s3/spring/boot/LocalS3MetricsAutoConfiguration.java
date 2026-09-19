@@ -3,9 +3,9 @@ package com.robothy.s3.spring.boot;
 import com.robothy.s3.rest.LocalS3;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 /**
@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration(before = LocalS3AutoConfiguration.class)
 @ConditionalOnClass(name = "io.micrometer.core.instrument.MeterRegistry")
-@ConditionalOnBooleanProperty(name = "local-s3.enabled", matchIfMissing = true)
+@ConditionalOnProperty(name = "local-s3.enabled", havingValue = "true", matchIfMissing = true)
 public class LocalS3MetricsAutoConfiguration {
 
   @Bean

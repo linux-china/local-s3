@@ -4,6 +4,17 @@ plugins {
     id 'local-s3.publish'
 }
 
+// The starter is one artifact for Spring Boot 3 and Spring Boot 4. The auto-configurations only use the annotations of
+// spring-boot-autoconfigure, which both lines have in the same packages, and the integrations that Spring Boot 4 moved
+// to modules of its own have an adapter per layout, kept apart by @ConditionalOnClass on the name of its API: the
+// Actuator health indicator (spring-boot-actuator on Boot 3, spring-boot-health on Boot 4) and the @PropertyMapping of
+// @AutoConfigureLocalS3 (spring-boot-test-autoconfigure on Boot 3, spring-boot-test on Boot 4). Both layouts are
+// compiled against, and neither is a dependency of the application, which brings the one of its Spring Boot.
+sourceSets {
+    // Runs the tests of boot3Test against Spring Boot 3, on the jar that Spring Boot 4 is compiled against.
+    boot3Test
+}
+
 dependencies {
     // Types of the public API: the auto-configured LocalS3 and the events that are published to the application context.
     api project(":local-s3-rest")
@@ -21,6 +32,13 @@ dependencies {
     // application, which bring spring-boot-test.
     compileOnly(libs.springBootTest)
 
+    // The Spring Boot 3 layout of the same two APIs, for LocalS3ActuatorHealthIndicator and the second
+    // @PropertyMapping of @AutoConfigureLocalS3. Only the annotations and the Health API are used, so the transitive
+    // Spring Boot 3 modules are left out rather than resolved next to the Spring Boot 4 ones above.
+    compileOnly(libs.springBoot3Actuator) { transitive = false }
+    compileOnly(libs.springBoot3ActuatorAutoconfigure) { transitive = false }
+    compileOnly(libs.springBoot3TestAutoconfigure) { transitive = false }
+
     annotationProcessor(libs.springBootConfigurationProcessor)
 
     // The tests run against the versions that a Spring Boot application gets, e.g. its Jackson and Netty.
@@ -35,4 +53,39 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-micrometer-metrics")
     testImplementation("org.springframework:spring-tx")
     testRuntimeOnly(libs.logbackClassic)
+
+    // The same starter on Spring Boot 3, on a classpath of its own: the Spring Boot 3 BOM rather than the Spring Boot 4
+    // one, and no spring-boot-health, so that only the Actuator health of Spring Boot 3 can match. The netty-bom keeps
+    // Netty on 4.2, which LocalS3 needs and Spring Boot 3 pins to 4.1; an application on Spring Boot 3 has to do the
+    // same, which the README of the starter states. The dependencies are declared rather than inherited from the test
+    // source set, whose Spring Boot 4 BOM would win over the Spring Boot 3 one.
+    boot3TestImplementation(platform(libs.springBoot3Bom))
+    boot3TestImplementation(platform(libs.nettyBom))
+    boot3TestImplementation(sourceSets.main.output)
+    boot3TestImplementation(project(":local-s3-rest"))
+    boot3TestImplementation("org.springframework.boot:spring-boot-autoconfigure")
+    boot3TestImplementation(libs.springBoot3Actuator)
+    boot3TestImplementation(libs.springBoot3ActuatorAutoconfigure)
+    boot3TestImplementation(libs.springBoot3TestAutoconfigure)
+    boot3TestImplementation("io.micrometer:micrometer-core")
+    boot3TestImplementation(libs.awssdkS3)
+    boot3TestImplementation(libs.awssdkNettyNioClient)
+    boot3TestImplementation(libs.junit5)
+    boot3TestImplementation("org.assertj:assertj-core")
+    boot3TestRuntimeOnly(libs.junit5JupiterEngine)
+    boot3TestRuntimeOnly(libs.junitPlatformLauncher)
+    boot3TestRuntimeOnly(libs.logbackClassic)
+}
+
+tasks.register('boot3Test', Test) {
+    description = 'Runs the starter against Spring Boot 3, to check that one artifact serves Boot 3 and Boot 4.'
+    group = 'verification'
+    testClassesDirs = sourceSets.boot3Test.output.classesDirs
+    classpath = sourceSets.boot3Test.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('boot3Test')
 }

@@ -15,6 +15,9 @@ robothyCnRepo = "1.18"
 gradleLombok = "5.0.0"
 jspecify="1.0.1"
 springBoot = "4.1.1"
+# The starter is compiled against Spring Boot 4 and runs on Spring Boot 3 too: springBoot3 is the baseline that the
+# Actuator health adapter is compiled against, and that the compatibility tests of the starter run on.
+springBoot3 = "3.5.16"
 micrometer = "1.17.1"
 duckdb="1.5.5.1"
 h2MvStore="2.5.250"
@@ -76,6 +79,13 @@ springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-b
 springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }
 springBootConfigurationProcessor = { group = "org.springframework.boot", name = "spring-boot-configuration-processor", version.ref = "springBoot" }
 springBootTest = { group = "org.springframework.boot", name = "spring-boot-test", version.ref = "springBoot" }
+# Spring Boot 3: spring-boot-actuator holds the Health API that Boot 4 moved to spring-boot-health, and
+# spring-boot-test-autoconfigure the @PropertyMapping that Boot 4 moved to spring-boot-test. The starter compiles
+# against both layouts and picks one at runtime, so that one artifact serves Boot 3 and Boot 4.
+springBoot3Bom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot3" }
+springBoot3Actuator = { group = "org.springframework.boot", name = "spring-boot-actuator", version.ref = "springBoot3" }
+springBoot3ActuatorAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-actuator-autoconfigure", version.ref = "springBoot3" }
+springBoot3TestAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-test-autoconfigure", version.ref = "springBoot3" }
 micrometerCore = { group = "io.micrometer", name = "micrometer-core", version.ref = "micrometer" }
 awssdkNettyNioClient = { group = "software.amazon.awssdk", name = "netty-nio-client", version.ref = "awssdkS3" }
 nettyBuffer = { group = "io.netty", name = "netty-buffer", version.ref = "netty" }
