@@ -572,28 +572,95 @@
   }
 
   /* Uploads go through XMLHttpRequest rather than fetch, which reports no progress of a request body. */
-  function put(file, bucket, key, onProgress) {
+  function xhr(method, url, body, contentType, onProgress) {
     return new Promise(function (resolve, reject) {
       var request = new XMLHttpRequest();
-      request.open("PUT", API + "/object?" + query({bucket: bucket, key: key}));
+      request.open(method, url);
       request.setRequestHeader("X-LocalS3-Console", "1");
-      if (file.type) { request.setRequestHeader("Content-Type", file.type); }
-      request.upload.addEventListener("progress", function (event) {
-        if (event.lengthComputable) { onProgress(event.loaded, event.total); }
-      });
+      if (contentType) { request.setRequestHeader("Content-Type", contentType); }
+      if (onProgress) {
+        request.upload.addEventListener("progress", function (event) {
+          if (event.lengthComputable) { onProgress(event.loaded); }
+        });
+      }
       request.addEventListener("load", function () {
+        var answer = {};
+        try { answer = JSON.parse(request.responseText); } catch (e) { /* not JSON */ }
         if (request.status >= 200 && request.status < 300) {
-          onProgress(file.size, file.size);
-          resolve();
+          resolve(answer);
           return;
         }
-        var message = request.status + " " + request.statusText;
-        try { message = JSON.parse(request.responseText).message || message; } catch (e) { /* not JSON */ }
-        reject(new Error(message));
+        reject(new Error(answer.message || (request.status + " " + request.statusText)));
       });
       request.addEventListener("error", function () { reject(new Error("The connection failed.")); });
       request.addEventListener("abort", function () { reject(new Error("Cancelled.")); });
-      request.send(file);
+      request.send(body);
+    });
+  }
+
+  /*
+   * A file larger than MULTIPART_THRESHOLD is uploaded in parts, like an S3 client uploads it, so that no request is
+   * larger than a part: a single PUT of a large dataset would outgrow the largest body the service accepts.
+   */
+  var MULTIPART_THRESHOLD = 64 * 1024 * 1024;
+  var PART_SIZE = 16 * 1024 * 1024;
+  var MAX_PARTS = 10000;
+  var PARALLEL_PARTS = 3;
+
+  function put(file, bucket, key, onProgress) {
+    if (file.size > MULTIPART_THRESHOLD) {
+      return putInParts(file, bucket, key, onProgress);
+    }
+    return xhr("PUT", API + "/object?" + query({bucket: bucket, key: key}), file, file.type, function (loaded) {
+      onProgress(loaded, file.size);
+    }).then(function () { onProgress(file.size, file.size); });
+  }
+
+  function putInParts(file, bucket, key, onProgress) {
+    var params = {bucket: bucket, key: key};
+    // Parts of 16 MB, or larger ones for a file that would otherwise take more parts than S3 allows.
+    var partSize = Math.max(PART_SIZE, Math.ceil(file.size / MAX_PARTS));
+    var count = Math.ceil(file.size / partSize);
+    var loaded = new Array(count).fill(0);
+    var etags = new Array(count);
+    var report = function () {
+      onProgress(loaded.reduce(function (sum, bytes) { return sum + bytes; }, 0), file.size);
+    };
+
+    return xhr("POST", API + "/multipart?" + query(params), null, file.type).then(function (created) {
+      var uploadId = created.uploadId;
+      var next = 0;
+      var failed = null;
+      var worker = function () {
+        if (failed || next >= count) { return Promise.resolve(); }
+        var index = next++;
+        var start = index * partSize;
+        var part = file.slice(start, Math.min(start + partSize, file.size));
+        var url = API + "/multipart?" + query({bucket: bucket, key: key, uploadId: uploadId, partNumber: index + 1});
+        return xhr("PUT", url, part, "application/octet-stream", function (bytes) {
+          loaded[index] = bytes;
+          report();
+        }).then(function (stored) {
+          loaded[index] = part.size;
+          etags[index] = stored.etag;
+          report();
+          return worker();
+        }, function (error) {
+          failed = failed || error;
+        });
+      };
+      var workers = [];
+      for (var i = 0; i < Math.min(PARALLEL_PARTS, count); i++) { workers.push(worker()); }
+      return Promise.all(workers).then(function () {
+        if (failed) { throw failed; }
+        var parts = etags.map(function (etag, index) { return {partNumber: index + 1, etag: etag}; });
+        return xhr("POST", API + "/multipart/complete?" + query({bucket: bucket, key: key, uploadId: uploadId}),
+          JSON.stringify({parts: parts}), "application/json");
+      }).catch(function (error) {
+        // Drop the parts that were stored, so a failed upload leaves nothing behind; the error is what is reported.
+        var abort = API + "/multipart?" + query({bucket: bucket, key: key, uploadId: uploadId});
+        return xhr("DELETE", abort, null, null).then(function () { throw error; }, function () { throw error; });
+      });
     });
   }
 

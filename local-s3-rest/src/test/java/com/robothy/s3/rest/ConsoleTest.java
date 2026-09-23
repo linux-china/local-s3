@@ -158,6 +158,73 @@ class ConsoleTest {
   }
 
   /**
+   * A large file, which the page uploads in parts so that no request outgrows the largest body the service accepts:
+   * the object is stored whole, and a failed upload is aborted without leaving an object behind.
+   */
+  private static final int MIB = 1024 * 1024;
+
+  @Test
+  void uploadsALargeObjectInParts() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).buckets("bucket")
+        .netty(netty -> netty.maxRequestBodySize(6 * MIB))
+        .build();
+    localS3.start();
+    try {
+      // Larger than the largest body the service accepts, in parts of the 5 MiB that S3 requires but of the last.
+      String content = "a".repeat(5 * MIB) + "b".repeat(5 * MIB) + "c".repeat(10);
+      assertEquals(400, send(localS3, "PUT", "/_admin/ui/object?bucket=bucket&key=data%2Flarge.csv", null, content,
+          CONSOLE_HEADER).statusCode());
+      String params = "bucket=bucket&key=data%2Flarge.csv";
+      // Without the header, which only the page sends, a multipart upload is refused like any other write.
+      assertEquals(403, send(localS3, "POST", "/_admin/ui/multipart?" + params, null, null, null).statusCode());
+
+      HttpResponse<String> created = send(localS3, "POST", "/_admin/ui/multipart?" + params, null, null,
+          CONSOLE_HEADER);
+      assertEquals(200, created.statusCode(), created.body());
+      String uploadId = json(created).get("uploadId").asText();
+      String upload = params + "&uploadId=" + uploadId;
+
+      StringBuilder parts = new StringBuilder();
+      for (int i = 0; i * 5 * MIB < content.length(); i++) {
+        String part = content.substring(i * 5 * MIB, Math.min((i + 1) * 5 * MIB, content.length()));
+        HttpResponse<String> stored = send(localS3, "PUT", "/_admin/ui/multipart?" + upload + "&partNumber=" + (i + 1),
+            null, part, CONSOLE_HEADER);
+        assertEquals(200, stored.statusCode(), stored.body());
+        assertEquals(i + 1, json(stored).get("partNumber").asInt());
+        parts.append(i == 0 ? "" : ",").append("{\"partNumber\":").append(i + 1)
+            .append(",\"etag\":\"").append(json(stored).get("etag").asText()).append("\"}");
+      }
+      assertEquals(400, send(localS3, "PUT", "/_admin/ui/multipart?" + upload + "&partNumber=x", null, "x",
+          CONSOLE_HEADER).statusCode());
+
+      HttpResponse<String> completed = send(localS3, "POST", "/_admin/ui/multipart/complete?" + upload, null,
+          "{\"parts\":[" + parts + "]}", CONSOLE_HEADER);
+      assertEquals(200, completed.statusCode(), completed.body());
+      assertEquals("data/large.csv", json(completed).get("key").asText());
+      assertEquals(content.length(), json(completed).get("size").asLong());
+
+      HttpResponse<String> read = send(localS3, "GET", "/bucket/data/large.csv", null, null);
+      assertEquals(200, read.statusCode());
+      assertEquals(content, read.body());
+      assertEquals("text/csv; charset=utf-8", read.headers().firstValue("Content-Type").orElseThrow());
+
+      // An upload that failed is aborted, and completing it afterwards finds no upload.
+      String aborted = "bucket=bucket&key=data%2Faborted.csv&uploadId=" + json(send(localS3, "POST",
+          "/_admin/ui/multipart?bucket=bucket&key=data%2Faborted.csv", null, null, CONSOLE_HEADER)).get("uploadId")
+          .asText();
+      assertEquals(200, send(localS3, "PUT", "/_admin/ui/multipart?" + aborted + "&partNumber=1", null, "x",
+          CONSOLE_HEADER).statusCode());
+      assertEquals(200, send(localS3, "DELETE", "/_admin/ui/multipart?" + aborted, null, null, CONSOLE_HEADER)
+          .statusCode());
+      assertEquals(404, send(localS3, "POST", "/_admin/ui/multipart/complete?" + aborted, null,
+          "{\"parts\":[{\"partNumber\":1,\"etag\":\"x\"}]}", CONSOLE_HEADER).statusCode());
+      assertEquals(404, send(localS3, "GET", "/bucket/data/aborted.csv", null, null).statusCode());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
    * The bucket that {@code + NEW} creates: an ordinary bucket of the service, in the default region, whose name
    * follows the naming rules of Amazon S3 like {@code CreateBucket} requires.
    */

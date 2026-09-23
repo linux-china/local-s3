@@ -452,14 +452,19 @@ charts, reports and datasets the agent produced instead of listing keys.
 | Delete | `Delete` on a row, after a confirmation. In a versioned bucket it puts a delete marker, like `DeleteObject` does. |
 | Connect | `Connect` shows what DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach the service, written by the service itself, with a `Copy` button: the [connection snippets](#admin-endpoints) of the bucket or the folder that is open. `DuckDB SQL` in the preview of an object shows the DuckDB script that ends with a query of that object, e.g. `SELECT * FROM 's3://lake/events.parquet' LIMIT 10;`, which `Copy query` copies alone. |
 
-Behind the page are seven endpoints of its own, which call the same services the S3 operations do:
+Behind the page are endpoints of its own, which call the same services the S3 operations do:
 `GET /_admin/ui/buckets`, `GET /_admin/ui/objects?bucket=&prefix=&continuation-token=`,
 `GET /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/object?bucket=&key=`,
-`DELETE /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/bucket?bucket=` and `GET /_admin/ui/snippets?bucket=&key=`.
-They answer JSON, or the content of the object.
+`DELETE /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/bucket?bucket=`, `GET /_admin/ui/snippets?bucket=&key=`,
+and the multipart upload of a large file: `POST /_admin/ui/multipart?bucket=&key=` starts it and answers its
+`uploadId`, `PUT /_admin/ui/multipart?bucket=&key=&uploadId=&partNumber=` stores a part,
+`POST /_admin/ui/multipart/complete?bucket=&key=&uploadId=` completes it with `{"parts": [{"partNumber": 1, "etag":
+"..."}]}`, and `DELETE /_admin/ui/multipart?bucket=&key=&uploadId=` aborts it. They answer JSON, or the content of
+the object.
 
-An upload is a single `PutObject` of the whole file rather than the multipart upload an S3 client would use for a
-large one, so a file the browser can hold and send is one the console can store. The console **deletes no bucket** and
+A file of up to 64 MiB is uploaded with a single `PutObject`; a larger one is uploaded **in parts** of 16 MiB, three
+at a time, like an S3 client would, so a large dataset dragged onto the page is stored even when it is larger than
+`maxRequestBodySize`, and a failed upload is aborted. The console **deletes no bucket** and
 changes no bucket configuration — versioning, policies, CORS and the rest: for those, use the S3 API.
 
 A browser can't sign a request with AWS Signature Version 4, so the console is guarded with **HTTP Basic

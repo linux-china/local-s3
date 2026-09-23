@@ -5,19 +5,26 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.model.Bucket;
+import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
 import com.robothy.s3.core.model.answers.PutObjectAns;
+import com.robothy.s3.core.model.answers.UploadPartAns;
+import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
+import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
+import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import com.robothy.s3.rest.service.BucketNameValidator;
+import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ByteBufUtils;
 import com.robothy.s3.rest.utils.RequestUtils;
@@ -40,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -56,6 +64,10 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@code PUT /_admin/ui/object?bucket=name&key=k}: store the body as that object, which is what a file
  *   dropped on the page is uploaded with;</li>
  *   <li>{@code DELETE /_admin/ui/object?bucket=name&key=k&versionId=v}: delete the object, or a version of it;</li>
+ *   <li>{@code POST /_admin/ui/multipart?bucket=name&key=k}: start a multipart upload of a large file, which answers
+ *   its {@code uploadId}; {@code PUT /_admin/ui/multipart?bucket=name&key=k&uploadId=u&partNumber=n} stores a part
+ *   of it, {@code POST /_admin/ui/multipart/complete?bucket=name&key=k&uploadId=u} completes it with the parts
+ *   given as JSON, and {@code DELETE /_admin/ui/multipart?bucket=name&key=k&uploadId=u} aborts it;</li>
  *   <li>{@code PUT /_admin/ui/bucket?bucket=name}: create a bucket, in the default region;</li>
  *   <li>{@code GET /_admin/ui/snippets?bucket=name&key=k}: the configuration of DuckDB and the other clients that
  *   reach this service, with a query of the bucket or the object the page shows, see
@@ -69,16 +81,16 @@ import tools.jackson.databind.ObjectMapper;
  * credentials, which answers unsigned S3 requests anyway, answers the console to anyone who reaches the port, see
  * {@linkplain com.robothy.s3.rest.LocalS3#warnIfOpenToTheNetwork()}.
  *
- * <p>The three endpoints that change the data also want the {@linkplain #CONSOLE_HEADER} header, which only the page
+ * <p>The endpoints that change the data also want the {@linkplain #CONSOLE_HEADER} header, which only the page
  * itself sends: a browser lets another origin send neither that header nor a {@code PUT} or a {@code DELETE} without
  * asking this service first, so a page a user has open elsewhere can't write into their buckets through the console.
  *
  * <p>The console creates a bucket, and deletes none: a bucket of a test or of a local environment is worth a click,
  * while dropping one, with everything in it, is left to the S3 API.
  *
- * <p>An upload is a single {@code PutObject} of the whole file, like {@code PUT Object} of the API and unlike the
- * multipart upload an S3 client would use for a large file, so what a browser can hold and send is what the console
- * can store.
+ * <p>The page uploads a small file with a single {@code PutObject}, and a large one in parts, like an S3 client
+ * does, so that no request of the console is larger than a part and a file larger than the largest body the service
+ * accepts is stored as well.
  */
 class ConsoleController implements HttpRequestHandler {
 
@@ -104,14 +116,25 @@ class ConsoleController implements HttpRequestHandler {
 
   static final String SNIPPETS_OPERATION = "ConsoleConnectionSnippets";
 
+  static final String CREATE_MULTIPART_UPLOAD_OPERATION = "ConsoleCreateMultipartUpload";
+
+  static final String UPLOAD_PART_OPERATION = "ConsoleUploadPart";
+
+  static final String COMPLETE_MULTIPART_UPLOAD_OPERATION = "ConsoleCompleteMultipartUpload";
+
+  static final String ABORT_MULTIPART_UPLOAD_OPERATION = "ConsoleAbortMultipartUpload";
+
   static final Set<String> OPERATIONS = Set.of(PAGE_OPERATION, BUCKETS_OPERATION, OBJECTS_OPERATION, OBJECT_OPERATION,
-      PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION, SNIPPETS_OPERATION);
+      PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION, SNIPPETS_OPERATION,
+      CREATE_MULTIPART_UPLOAD_OPERATION, UPLOAD_PART_OPERATION, COMPLETE_MULTIPART_UPLOAD_OPERATION,
+      ABORT_MULTIPART_UPLOAD_OPERATION);
 
   /**
-   * The methods of the console: reading the page and the data, creating a bucket, uploading an object and deleting
-   * one. A request of any other method addresses a bucket rather than the console, see {@linkplain LocalS3Router}.
+   * The methods of the console: reading the page and the data, creating a bucket, uploading an object, in one
+   * request or in parts, and deleting one. A request of any other method addresses a bucket rather than the console,
+   * see {@linkplain LocalS3Router}.
    */
-  static final Set<HttpMethod> METHODS = Set.of(HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE);
+  static final Set<HttpMethod> METHODS = Set.of(HttpMethod.GET, HttpMethod.PUT, HttpMethod.POST, HttpMethod.DELETE);
 
   /**
    * The header that the page sends with every request that changes a bucket. A browser sends a header of this name
@@ -129,6 +152,10 @@ class ConsoleController implements HttpRequestHandler {
   private static final String BUCKET_PATH = PATH + "/bucket";
 
   private static final String SNIPPETS_PATH = PATH + "/snippets";
+
+  private static final String MULTIPART_PATH = PATH + "/multipart";
+
+  private static final String COMPLETE_PATH = MULTIPART_PATH + "/complete";
 
   /**
    * The HTML page, which is on the classpath beside this class. It is read once: the page of a build never changes.
@@ -174,6 +201,11 @@ class ConsoleController implements HttpRequestHandler {
 
   private final ConnectionSnippets snippets;
 
+  /**
+   * What completing an upload of the console applies, like {@code CompleteMultipartUpload} of the API does.
+   */
+  private final MultipartUploadPolicy multipartUploadPolicy;
+
   private final byte[] page;
 
   ConsoleController(ServiceFactory serviceFactory, @Nullable String accessKeyId, @Nullable String secretAccessKey) {
@@ -187,6 +219,9 @@ class ConsoleController implements HttpRequestHandler {
     this.secretAccessKey = secretAccessKey;
     this.snippets = new ConnectionSnippets(serviceFactory.containsInstance(LocalS3Config.class)
         ? serviceFactory.getInstance(LocalS3Config.class) : null);
+    this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
+        ? serviceFactory.getInstance(MultipartUploadPolicy.class)
+        : MultipartUploadPolicy.of(true);
     this.page = readPage();
   }
 
@@ -208,11 +243,18 @@ class ConsoleController implements HttpRequestHandler {
    * @return the operation.
    */
   static String operation(HttpMethod method, String path) {
+    if (HttpMethod.POST.equals(method)) {
+      return COMPLETE_PATH.equals(path) ? COMPLETE_MULTIPART_UPLOAD_OPERATION : CREATE_MULTIPART_UPLOAD_OPERATION;
+    }
     if (HttpMethod.PUT.equals(method)) {
-      return BUCKET_PATH.equals(path) ? CREATE_BUCKET_OPERATION : PUT_OBJECT_OPERATION;
+      return switch (path) {
+        case BUCKET_PATH -> CREATE_BUCKET_OPERATION;
+        case MULTIPART_PATH -> UPLOAD_PART_OPERATION;
+        default -> PUT_OBJECT_OPERATION;
+      };
     }
     if (HttpMethod.DELETE.equals(method)) {
-      return DELETE_OBJECT_OPERATION;
+      return MULTIPART_PATH.equals(path) ? ABORT_MULTIPART_UPLOAD_OPERATION : DELETE_OBJECT_OPERATION;
     }
     return switch (path) {
       case BUCKETS_PATH -> BUCKETS_OPERATION;
@@ -233,7 +275,7 @@ class ConsoleController implements HttpRequestHandler {
     String path = trimPath(Objects.toString(request.getPath(), ""));
     HttpMethod method = request.getMethod();
     try {
-      if (HttpMethod.PUT.equals(method) || HttpMethod.DELETE.equals(method)) {
+      if (!HttpMethod.GET.equals(method)) {
         write(request, response, path, method);
         return;
       }
@@ -321,14 +363,16 @@ class ConsoleController implements HttpRequestHandler {
   }
 
   /**
-   * Upload an object, or delete one: the two requests of the console that change a bucket, and the only ones that
-   * want the {@linkplain #CONSOLE_HEADER} header.
+   * Create a bucket, upload an object, in one request or in parts, or delete one: the requests of the console that
+   * change the data, and the only ones that want the {@linkplain #CONSOLE_HEADER} header.
    */
   private void write(HttpRequest request, HttpResponse response, String path, HttpMethod method) {
     boolean createsBucket = BUCKET_PATH.equals(path) && HttpMethod.PUT.equals(method);
-    if (!createsBucket && !OBJECT_PATH.equals(path)) {
+    boolean multipart = MULTIPART_PATH.equals(path) || (COMPLETE_PATH.equals(path) && HttpMethod.POST.equals(method));
+    boolean object = OBJECT_PATH.equals(path) && !HttpMethod.POST.equals(method);
+    if (!createsBucket && !multipart && !object) {
       error(response, HttpResponseStatus.NOT_FOUND, "NotFound", "The console changes the data through "
-          + OBJECT_PATH + " and " + BUCKET_PATH + " alone; it deletes no bucket.");
+          + OBJECT_PATH + ", " + MULTIPART_PATH + " and " + BUCKET_PATH + " alone; it deletes no bucket.");
       return;
     }
     if (request.header(CONSOLE_HEADER).isEmpty()) {
@@ -338,6 +382,8 @@ class ConsoleController implements HttpRequestHandler {
     }
     if (createsBucket) {
       createBucket(request, response);
+    } else if (multipart) {
+      multipart(request, response, path, method);
     } else if (HttpMethod.PUT.equals(method)) {
       putObject(request, response);
     } else {
@@ -370,6 +416,59 @@ class ConsoleController implements HttpRequestHandler {
         .build());
     json(response, HttpResponseStatus.OK,
         new ConsoleUpload(key, stored.getSize(), stored.getEtag(), stored.getVersionId()));
+  }
+
+  /**
+   * A step of the multipart upload of a large file: start it, store a part of it, complete it, or abort it. The page
+   * uploads a file in parts once it is larger than what it sends in one request, which keeps every request below the
+   * largest body the service accepts.
+   */
+  private void multipart(HttpRequest request, HttpResponse response, String path, HttpMethod method) {
+    String bucket = required(request, "bucket");
+    String key = required(request, "key");
+    if (HttpMethod.POST.equals(method) && MULTIPART_PATH.equals(path)) {
+      String uploadId = objectService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
+          .contentType(uploadContentType(request, key))
+          .build());
+      json(response, HttpResponseStatus.OK, new ConsoleMultipartUpload(key, uploadId));
+      return;
+    }
+
+    String uploadId = required(request, "uploadId");
+    if (HttpMethod.PUT.equals(method)) {
+      int partNumber = partNumber(request);
+      DecodedAmzRequestBody body = RequestUtils.getBody(request);
+      UploadPartAns part = objectService.uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
+          .contentLength(body.getDecodedContentLength())
+          .data(body.getDecodedBody())
+          .dataFile(body.getBodyFile())
+          .build());
+      json(response, HttpResponseStatus.OK, new ConsolePart(partNumber, part.getEtag()));
+    } else if (HttpMethod.POST.equals(method)) {
+      ConsoleParts given;
+      try (InputStream in = RequestBodies.inputStream(request.getBody())) {
+        given = objectMapper.readValue(in, ConsoleParts.class);
+      } catch (IOException | JacksonException e) {
+        throw new IllegalArgumentException("The body must list the parts as {\"parts\": [{\"partNumber\": 1, "
+            + "\"etag\": \"...\"}]}.", e);
+      }
+      if (given == null || given.parts() == null || given.parts().isEmpty()) {
+        throw new IllegalArgumentException("The body must list the parts of the upload.");
+      }
+      List<CompleteMultipartUploadPartOption> parts = given.parts().stream()
+          .map(part -> CompleteMultipartUploadPartOption.builder()
+              .partNumber(part.partNumber())
+              .etag(part.etag())
+              .build())
+          .toList();
+      CompleteMultipartUploadAns stored = objectService.completeMultipartUpload(bucket, key, uploadId, parts,
+          multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags());
+      json(response, HttpResponseStatus.OK,
+          new ConsoleUpload(key, stored.getSize(), stored.getEtag(), stored.getVersionId()));
+    } else {
+      objectService.abortMultipartUpload(bucket, key, uploadId);
+      json(response, HttpResponseStatus.OK, new ConsoleMultipartUpload(key, uploadId));
+    }
   }
 
   private void deleteObject(HttpRequest request, HttpResponse response) {
@@ -515,6 +614,15 @@ class ConsoleController implements HttpRequestHandler {
     return value;
   }
 
+  private static int partNumber(HttpRequest request) {
+    String value = required(request, "partNumber");
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("The partNumber parameter must be a number, not " + value + ".");
+    }
+  }
+
   /**
    * The path of a request without its trailing slash, so that {@code /_admin/ui/} is the page as well.
    */
@@ -585,6 +693,30 @@ class ConsoleController implements HttpRequestHandler {
    * @param versionId the version that was stored; {@code null} in a bucket that was never versioned.
    */
   private record ConsoleUpload(String key, long size, @Nullable String etag, @Nullable String versionId) {
+  }
+
+  /**
+   * A multipart upload that was started, or aborted.
+   *
+   * @param key the key the upload stores its object under.
+   * @param uploadId what the parts of the upload, its completion and its abort are requested with.
+   */
+  private record ConsoleMultipartUpload(String key, String uploadId) {
+  }
+
+  /**
+   * A part that was stored, which the page lists again when it completes the upload.
+   *
+   * @param partNumber the number of the part.
+   * @param etag its entity tag.
+   */
+  private record ConsolePart(int partNumber, String etag) {
+  }
+
+  /**
+   * The parts that complete an upload, in the order of their numbers.
+   */
+  private record ConsoleParts(List<ConsolePart> parts) {
   }
 
   /**

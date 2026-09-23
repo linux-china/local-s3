@@ -137,8 +137,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   `aws s3 ls`, which matters when LocalS3 is embedded in an IDE or an application, and when an AI agent stores its
   artifacts in it and a person has to review them.
 
-  Behind the page are six endpoints — `/_admin/ui/buckets`, `/_admin/ui/objects`, `GET`, `PUT` and `DELETE` of
-  `/_admin/ui/object`, and `PUT /_admin/ui/bucket` — which call the same services the S3 operations do, so what the
+  A file larger than 64 MiB is uploaded in parts of 16 MiB through `/_admin/ui/multipart`, like an S3 client would,
+  so a large dataset dropped on the page isn't bounded by `maxRequestBodySize`.
+
+  Behind the page are its own endpoints — `/_admin/ui/buckets`, `/_admin/ui/objects`, `GET`, `PUT` and `DELETE` of
+  `/_admin/ui/object`, `PUT /_admin/ui/bucket`, and the multipart upload of `/_admin/ui/multipart` — which call the same services the S3 operations do, so what the
   console creates, uploads and deletes reaches the change listeners like any other change. It deletes no bucket and
   changes no bucket configuration. A browser can't sign a request with SigV4, so the console is guarded with HTTP
   Basic authentication instead: a service configured with credentials asks for the access key ID and the secret
