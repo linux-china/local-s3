@@ -161,7 +161,7 @@ Clients rarely talk to S3 alone. LocalS3 answers, on the same port:
 + [static website hosting](semantics.md#static-website-hosting) for unsigned requests, with index and error documents,
   directory redirects and routing rules, while an S3 client's signed requests keep their S3 semantics;
 + [HTTPS](deployment.md#https) with a certificate LocalS3 generates on startup, or one of mkcert, for clients that
-  insist on TLS such as DuckDB, Hadoop S3A and Snowflake — on the same port as plain HTTP, so both kinds of client
+  insist on TLS such as DuckDB — on the same port as plain HTTP, so both kinds of client
   share one endpoint;
 + a [built-in console](deployment.md#console) at `/_admin/ui` — one self-contained HTML page that lists the buckets
   and creates one, walks a bucket by its prefixes, previews or downloads an object, and uploads a file dropped on it

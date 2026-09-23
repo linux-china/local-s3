@@ -98,9 +98,9 @@ was never configured answers an empty `NotificationConfiguration`. To hear of ch
 [change events](semantics.md#change-events). The deprecated `PutBucketNotification` and `GetBucketNotification` send
 the same requests, and are answered the same way.
 
-Transfer acceleration, access logging, requester pays, static website hosting and ownership controls are **stored and
-returned as they were put, but never applied**: nothing is accelerated, logged, billed to the requester or served as a
-website, and ACLs keep working whatever the object ownership. They exist so that clients that read or write them, e.g.
+Transfer acceleration, access logging, requester pays and ownership controls are **stored and returned as they were
+put, but never applied**: nothing is accelerated, logged or billed to the requester, and ACLs keep working whatever the
+object ownership. They exist so that clients that read or write them, e.g.
 Terraform refreshing an `aws_s3_bucket`, or CDK and SDK tool chains setting the ownership controls, work against
 LocalS3. A bucket that was never configured answers like a new bucket of Amazon S3 does:
 
@@ -109,8 +109,12 @@ LocalS3. A bucket that was never configured answers like a new bucket of Amazon 
 | `GetBucketAccelerateConfiguration` | an empty `AccelerateConfiguration`                       | –                                    |
 | `GetBucketLogging`                 | an empty `BucketLoggingStatus`                           | –                                    |
 | `GetBucketRequestPayment`          | `<Payer>BucketOwner</Payer>`                             | –                                    |
-| `GetBucketWebsite`                 | `404 NoSuchWebsiteConfiguration`                         | `404 NoSuchWebsiteConfiguration`     |
 | `GetBucketOwnershipControls`       | `<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership>` | `404 OwnershipControlsNotFoundError` |
+
+The website configuration of a bucket (`PutBucketWebsite`, `GetBucketWebsite`, `DeleteBucketWebsite`) **is applied**:
+its index and error documents, redirects and routing rules decide how the bucket is served as a website on the port of
+the S3 API, see [semantics.md](semantics.md#static-website-hosting). A bucket that was never configured, or whose
+configuration was deleted, answers `GetBucketWebsite` with `404 NoSuchWebsiteConfiguration`.
 
 Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` headers of `PutObject`, `CopyObject` and
 `CreateMultipartUpload`, retention and legal holds) protects object versions from being deleted, see

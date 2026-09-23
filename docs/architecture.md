@@ -20,7 +20,7 @@ storage, and the layout of a data directory.
 | `local-s3-jupiter` | The JUnit 5 extension `@LocalS3`, which injects `S3Client` and `S3VectorsClient`. |
 | `local-s3-testcontainers` | `LocalS3Container`. |
 | `local-s3-standalone` | The executable fat jar and the Docker images (JVM and GraalVM native). |
-| `local-s3-spring-boot-starter` | The starter for Spring Boot 4 applications. |
+| `local-s3-spring-boot-starter` | The starter for Spring Boot 3/4 applications. |
 | `local-s3-integration-test` | End-to-end tests with the AWS SDK v2, DuckDB and Apache Iceberg. Not published. |
 
 `local-s3-core` knows nothing of HTTP, so the services can be called directly, e.g. through

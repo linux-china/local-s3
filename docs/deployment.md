@@ -152,8 +152,6 @@ require, HTTPS by default, and then connect to LocalS3 without turning TLS off:
 | Client | Default that expects HTTPS |
 |---|---|
 | DuckDB `httpfs` | `USE_SSL true` in a secret, `s3_use_ssl = true` |
-| Hadoop S3A | `fs.s3a.connection.ssl.enabled=true` |
-| Snowflake | S3-compatible storage must be reached over HTTPS |
 | `object_store` (Rust) and some Go clients | an `http://` endpoint is refused unless e.g. `allow_http` is set |
 
 With TLS configured, the port serves **both HTTP and HTTPS**: each connection is told apart by its first bytes, so a
