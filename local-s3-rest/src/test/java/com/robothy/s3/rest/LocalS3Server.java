@@ -20,7 +20,8 @@ public class LocalS3Server {
                 })
                 .build();
         localS3.start();
-        System.out.println("port: "+localS3.getPort());
+        System.out.println("listen port: "+localS3.getPort());
+        System.out.println("Admin UI: http://localhost:"+localS3.getPort()+"/_admin/ui");
         CountDownLatch latch = new CountDownLatch(1);
         latch.await();
         localS3.close();
