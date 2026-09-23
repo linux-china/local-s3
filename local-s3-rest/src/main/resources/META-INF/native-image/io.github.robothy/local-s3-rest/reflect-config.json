@@ -22,5 +22,17 @@
     "allDeclaredFields":true,
     "allDeclaredMethods":true,
     "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.rest.handler.ConnectionSnippets$Snippets",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.rest.handler.ConnectionSnippets$Snippet",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
   }
 ]

@@ -4,6 +4,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -30,6 +31,10 @@ import tools.jackson.databind.ObjectMapper;
  *   buckets, which LocalS3 never does by itself, at a time: {@code now} is an ISO 8601 instant, or {@code days} a number
  *   of days from the current time, and neither for the current time; without {@code bucket}, every bucket that has a
  *   configuration. It answers the actions taken.</li>
+ *   <li>{@code GET /_admin/snippets?bucket=name&key=k}: the configuration that DuckDB, the AWS CLI, boto3, PyIceberg
+ *   and Spark need to reach this service, as JSON, see {@linkplain ConnectionSnippets};
+ *   {@code GET /_admin/snippets/duckdb} answers one of them as text, to paste or to hand to its client, e.g.
+ *   {@code duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)}.</li>
  * </ul>
  * Like the operations of Amazon S3, and unlike the health check, the endpoints must be signed if the service requires
  * credentials.
@@ -44,6 +49,8 @@ class AdminController {
 
   static final String LIFECYCLE_PATH = "/_admin/lifecycle";
 
+  static final String SNIPPETS_PATH = "/_admin/snippets";
+
   static final String STATS_OPERATION = "AdminStats";
 
   static final String REQUESTS_OPERATION = "AdminRecentRequests";
@@ -52,16 +59,24 @@ class AdminController {
 
   static final String LIFECYCLE_OPERATION = "AdminApplyLifecycle";
 
+  static final String SNIPPETS_OPERATION = "AdminConnectionSnippets";
+
+  static final String SNIPPET_OPERATION = "AdminConnectionSnippet";
+
   static final Set<String> OPERATIONS = Set.of(STATS_OPERATION, REQUESTS_OPERATION, RESET_OPERATION,
-      LIFECYCLE_OPERATION);
+      LIFECYCLE_OPERATION, SNIPPETS_OPERATION, SNIPPET_OPERATION);
 
   private final LocalS3Admin admin;
 
   private final ObjectMapper objectMapper;
 
+  private final ConnectionSnippets snippets;
+
   AdminController(ServiceFactory serviceFactory) {
     this.admin = serviceFactory.getInstance(LocalS3Admin.class);
     this.objectMapper = serviceFactory.getInstance(ObjectMapper.class);
+    this.snippets = new ConnectionSnippets(serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class) : null);
   }
 
   void stats(HttpRequest request, HttpResponse response) throws Exception {
@@ -129,6 +144,27 @@ class AdminController {
       return;
     }
     json(response, HttpResponseStatus.OK, Map.of("now", now.toString(), "actions", actions));
+  }
+
+  void snippets(HttpRequest request, HttpResponse response) throws Exception {
+    json(response, HttpResponseStatus.OK, snippets.all(request, request.parameter("bucket").orElse(null),
+        request.parameter("key").orElse(null)));
+  }
+
+  /**
+   * One snippet, as text rather than JSON, so that it is pasted, or piped into its client, as it is.
+   *
+   * @param id the name of the snippet, e.g. {@code duckdb}.
+   * @return the handler of {@code GET /_admin/snippets/<id>}.
+   */
+  com.robothy.netty.http.HttpRequestHandler snippet(String id) {
+    return (request, response) -> {
+      ConnectionSnippets.Snippet snippet = snippets.one(id, request, request.parameter("bucket").orElse(null),
+          request.parameter("key").orElse(null)).orElseThrow();
+      response.status(HttpResponseStatus.OK)
+          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
+          .write(snippet.content());
+    };
   }
 
   private void json(HttpResponse response, HttpResponseStatus status, Object body) throws Exception {

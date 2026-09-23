@@ -427,12 +427,13 @@ charts, reports and datasets the agent produced instead of listing keys.
 | An object | A preview of text, JSON, CSV, Markdown, images, audio, video, PDF and HTML, the rest as a download; `Download` saves it, and `Copy URL` copies the S3 URL of the object. |
 | Upload | **Drop files or folders** anywhere on the listing, or use `Upload`: each file is stored under the prefix that is open, a dropped folder becomes a prefix, and a panel shows the progress of the batch, three files at a time. A file that the browser knows no type for is stored with the content type of its extension. |
 | Delete | `Delete` on a row, after a confirmation. In a versioned bucket it puts a delete marker, like `DeleteObject` does. |
+| Connect | `Connect` shows what DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach the service, written by the service itself, with a `Copy` button: the [connection snippets](#admin-endpoints) of the bucket or the folder that is open. `DuckDB SQL` in the preview of an object shows the DuckDB script that ends with a query of that object, e.g. `SELECT * FROM 's3://lake/events.parquet' LIMIT 10;`, which `Copy query` copies alone. |
 
-Behind the page are six endpoints of its own, which call the same services the S3 operations do:
+Behind the page are seven endpoints of its own, which call the same services the S3 operations do:
 `GET /_admin/ui/buckets`, `GET /_admin/ui/objects?bucket=&prefix=&continuation-token=`,
 `GET /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/object?bucket=&key=`,
-`DELETE /_admin/ui/object?bucket=&key=` and `PUT /_admin/ui/bucket?bucket=`. They answer JSON, or the content of the
-object.
+`DELETE /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/bucket?bucket=` and `GET /_admin/ui/snippets?bucket=&key=`.
+They answer JSON, or the content of the object.
 
 An upload is a single `PutObject` of the whole file rather than the multipart upload an S3 client would use for a
 large one, so a file the browser can hold and send is one the console can store. The console **deletes no bucket** and
@@ -475,6 +476,8 @@ A running service answers a few endpoints for local development and tests, with 
 | `GET /_admin/stats` | The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), how much object metadata the service keeps in heap (`loadedObjects` and `loadedObjectMetadataBytes`, see [Opening a large data path](#opening-a-large-data-path)), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. |
 | `GET /_admin/requests?limit=n` | The last 100 requests, the most recent first: time, method, URI, operation, status, latency and `x-amz-request-id`. The values of the credentials of presigned URLs are hidden. |
 | `POST /_admin/lifecycle` | Apply the lifecycle configurations of the buckets, which LocalS3 never does by itself, and answer the actions taken. `bucket=name` applies one bucket's only; `now=2030-01-01T00:00:00Z` applies them at that instant, or `days=31` that many days from now, instead of the current time. See [lifecycle configuration](semantics.md#lifecycle-configuration). |
+| `GET /_admin/snippets?bucket=&key=` | The configuration that DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach the service, as JSON: `endpoint`, `region`, `icebergCatalog`, `snippets` (each with `id`, `title`, `language` and `content`), and with `bucket` the DuckDB query of that bucket, prefix or object as `duckdbQuery`. The endpoint is the host the request addressed, so a client in a container is given the name it reaches the service by; plain HTTP unless the service [serves HTTPS alone](#https). The snippets carry the credentials of the service, which only a caller that signed with them receives, and a placeholder key pair if it has none. |
+| `GET /_admin/snippets/<id>` | One snippet as text, for `duckdb`, `aws-cli`, `boto3`, `pyiceberg` or `spark`, to paste, or to hand to the client: `duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)` opens a DuckDB that reaches the service. Takes `bucket` and `key` too, after which the DuckDB script ends with a query of that object, which `curl ... \| duckdb` runs and exits. |
 | `POST /_admin/reset` | Replace the data of an `IN_MEMORY` service with the data it started with, i.e. none, or the initial data of its data path, and create the `AWS_BUCKETS` again. The requests recorded for the statistics are forgotten too. A `PERSISTENCE` service answers `409 Conflict`, since a reset would delete its data path. |
 
 Resetting a service between the tests that share it is much quicker than restarting it. The requests in progress
@@ -483,6 +486,8 @@ are finished first, and the requests that arrive meanwhile wait for the reset. A
 
 ```shell
 curl -s http://localhost:29090/_admin/stats
+curl -s "http://localhost:29090/_admin/snippets/duckdb?bucket=lake&key=events.parquet" | duckdb
+duckdb -init <(curl -s http://localhost:29090/_admin/snippets/duckdb)
 curl -s -X POST http://localhost:29090/_admin/reset
 curl -s -X POST "http://localhost:29090/_admin/lifecycle?days=31"
 ```

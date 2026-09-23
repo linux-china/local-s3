@@ -13,6 +13,7 @@ import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
@@ -55,7 +56,10 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@code PUT /_admin/ui/object?bucket=name&key=k}: store the body as that object, which is what a file
  *   dropped on the page is uploaded with;</li>
  *   <li>{@code DELETE /_admin/ui/object?bucket=name&key=k&versionId=v}: delete the object, or a version of it;</li>
- *   <li>{@code PUT /_admin/ui/bucket?bucket=name}: create a bucket, in the default region.</li>
+ *   <li>{@code PUT /_admin/ui/bucket?bucket=name}: create a bucket, in the default region;</li>
+ *   <li>{@code GET /_admin/ui/snippets?bucket=name&key=k}: the configuration of DuckDB and the other clients that
+ *   reach this service, with a query of the bucket or the object the page shows, see
+ *   {@linkplain ConnectionSnippets}.</li>
  * </ul>
  *
  * <p>The endpoints call the same services the S3 operations do, so the console shows and changes what a client sees,
@@ -98,8 +102,10 @@ class ConsoleController implements HttpRequestHandler {
 
   static final String CREATE_BUCKET_OPERATION = "ConsoleCreateBucket";
 
+  static final String SNIPPETS_OPERATION = "ConsoleConnectionSnippets";
+
   static final Set<String> OPERATIONS = Set.of(PAGE_OPERATION, BUCKETS_OPERATION, OBJECTS_OPERATION, OBJECT_OPERATION,
-      PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION);
+      PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION, SNIPPETS_OPERATION);
 
   /**
    * The methods of the console: reading the page and the data, creating a bucket, uploading an object and deleting
@@ -121,6 +127,8 @@ class ConsoleController implements HttpRequestHandler {
   private static final String OBJECT_PATH = PATH + "/object";
 
   private static final String BUCKET_PATH = PATH + "/bucket";
+
+  private static final String SNIPPETS_PATH = PATH + "/snippets";
 
   /**
    * The HTML page, which is on the classpath beside this class. It is read once: the page of a build never changes.
@@ -164,6 +172,8 @@ class ConsoleController implements HttpRequestHandler {
 
   private final @Nullable String secretAccessKey;
 
+  private final ConnectionSnippets snippets;
+
   private final byte[] page;
 
   ConsoleController(ServiceFactory serviceFactory, @Nullable String accessKeyId, @Nullable String secretAccessKey) {
@@ -175,6 +185,8 @@ class ConsoleController implements HttpRequestHandler {
         : new BucketNameValidator();
     this.accessKeyId = accessKeyId;
     this.secretAccessKey = secretAccessKey;
+    this.snippets = new ConnectionSnippets(serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class) : null);
     this.page = readPage();
   }
 
@@ -206,6 +218,7 @@ class ConsoleController implements HttpRequestHandler {
       case BUCKETS_PATH -> BUCKETS_OPERATION;
       case OBJECTS_PATH -> OBJECTS_OPERATION;
       case OBJECT_PATH -> OBJECT_OPERATION;
+      case SNIPPETS_PATH -> SNIPPETS_OPERATION;
       default -> PAGE_OPERATION;
     };
   }
@@ -229,6 +242,8 @@ class ConsoleController implements HttpRequestHandler {
         case BUCKETS_PATH -> buckets(response);
         case OBJECTS_PATH -> objects(request, response);
         case OBJECT_PATH -> object(request, response);
+        case SNIPPETS_PATH -> json(response, HttpResponseStatus.OK, snippets.all(request,
+            request.parameter("bucket").orElse(null), request.parameter("key").orElse(null)));
         default -> error(response, HttpResponseStatus.NOT_FOUND, "NotFound",
             "The console has no endpoint " + path + ".");
       }

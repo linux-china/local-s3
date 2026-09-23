@@ -63,6 +63,23 @@ SET s3_access_key_id = 'admin';
 SET s3_secret_access_key = 'admin';
 ```
 
+A running LocalS3 writes this secret itself, for the host, the port, the scheme and the credentials it actually has —
+and the `ATTACH` of its [Iceberg catalog](#duckdb-on-the-built-in-catalog) if it serves one:
+
+```shell
+# A DuckDB shell with the secret, and the ATTACH of the catalog, already run.
+duckdb -init <(curl -s http://localhost:29090/_admin/snippets/duckdb)
+# One query of an object, and exit.
+curl -s "http://localhost:29090/_admin/snippets/duckdb?bucket=demo1&key=family.parquet" | duckdb
+
+# A LocalS3 that requires credentials wants the admin endpoints signed, like every other request.
+duckdb -init <(curl -s --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+    http://localhost:29090/_admin/snippets/duckdb)
+```
+
+The [console](deployment.md#console) shows the same script under `Connect`, and `DuckDB SQL` in the preview of an
+object adds a query of it. See [admin endpoints](deployment.md#admin-endpoints).
+
 Then:
 
 ```sql

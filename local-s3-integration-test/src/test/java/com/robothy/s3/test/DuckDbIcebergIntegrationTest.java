@@ -340,6 +340,37 @@ class DuckDbIcebergIntegrationTest {
         column(duckdb, "SELECT id FROM iceberg_scan('" + metadata + "') ORDER BY id"));
   }
 
+  /**
+   * The DuckDB script of {@code GET /_admin/ui/snippets} attaches the catalog of the service in a DuckDB that was
+   * given nothing else, and the table it then writes is a table of the catalog.
+   */
+  @Test
+  void the_duckdb_snippet_of_the_console_attaches_the_catalog() throws Exception {
+    String basic = java.util.Base64.getEncoder().encodeToString((ACCESS_KEY + ":" + SECRET_KEY).getBytes());
+    java.net.http.HttpResponse<String> response = java.net.http.HttpClient.newHttpClient().send(
+        java.net.http.HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + localS3.getPort() + "/_admin/ui/snippets"))
+            .header("Authorization", "Basic " + basic).build(),
+        java.net.http.HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, response.statusCode(), response.body());
+    String script = new tools.jackson.databind.ObjectMapper().readTree(response.body())
+        .get("snippets").get(0).get("content").asText();
+
+    try (Connection pasted = DriverManager.getConnection("jdbc:duckdb:")) {
+      DuckDb.loadExtension(pasted, "httpfs");
+      DuckDb.loadExtension(pasted, "iceberg");
+      String code = script.lines().filter(line -> !line.startsWith("--")).reduce("", (a, b) -> a + b + "\n");
+      for (String statement : code.split(";\\s*\n")) {
+        if (!statement.isBlank()) {
+          execute(pasted, statement.trim());
+        }
+      }
+      execute(pasted, "CREATE SCHEMA ice.pasted");
+      execute(pasted, "CREATE TABLE ice.pasted.t AS SELECT range AS id FROM range(5)");
+      assertEquals(10L, single(pasted, "SELECT sum(id)::BIGINT FROM ice.pasted.t"));
+    }
+    assertTrue(catalog.tableExists(TableIdentifier.of("pasted", "t")));
+  }
+
   private String catalogUri() {
     return "http://127.0.0.1:" + localS3.getPort() + "/iceberg";
   }

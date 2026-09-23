@@ -302,6 +302,60 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  dialog#connect {
+    width: min(760px, 94vw);
+    max-height: 88vh;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+  dialog#connect .frame { display: grid; grid-template-rows: auto auto 1fr auto; max-height: 86vh; }
+  dialog#connect .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  dialog#connect .bar .title { font-weight: 600; }
+  dialog#connect .bar .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  dialog#connect .tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px 0; }
+  dialog#connect .tabs button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  dialog#connect .query {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 14px 0;
+    padding: 6px 8px 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+  }
+  dialog#connect .query[hidden] { display: none; }
+  dialog#connect .query code {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  dialog#connect pre {
+    margin: 10px 14px;
+    padding: 12px 14px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    white-space: pre;
+  }
+  dialog#connect .row { display: flex; justify-content: flex-end; gap: 8px; padding: 0 14px 14px; }
   .toast {
     position: fixed;
     bottom: 18px;
@@ -330,6 +384,7 @@
   <span class="brand"><span class="dot"></span>LocalS3</span>
   <span class="endpoint" id="endpoint"></span>
   <span class="spacer"></span>
+  <button id="connect-open" title="The configuration of DuckDB, the AWS CLI, boto3, PyIceberg and Spark">Connect</button>
   <button id="refresh" title="Reload the buckets and the current folder">Refresh</button>
 </header>
 
@@ -369,6 +424,7 @@
       <span class="title" id="preview-title"></span>
       <span class="spacer" style="flex:1"></span>
       <span class="meta" id="preview-meta"></span>
+      <button id="preview-query" title="Query this object with DuckDB">DuckDB SQL</button>
       <a class="btn" id="preview-download" download>Download</a>
       <button id="preview-close">Close</button>
     </div>
@@ -405,6 +461,27 @@
     <div class="row">
       <button id="confirm-cancel">Cancel</button>
       <button id="confirm-ok" class="danger">Delete</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="connect">
+  <div class="frame">
+    <div class="bar">
+      <span class="title">Connect to LocalS3</span>
+      <span class="meta" id="connect-endpoint"></span>
+    </div>
+    <div class="tabs" id="connect-tabs"></div>
+    <div>
+      <div class="query" id="connect-query" hidden>
+        <code id="connect-query-text"></code>
+        <button id="connect-query-copy" title="Copy the query alone">Copy query</button>
+      </div>
+      <pre id="connect-snippet"></pre>
+    </div>
+    <div class="row">
+      <button id="connect-copy">Copy</button>
+      <button id="connect-close">Close</button>
     </div>
   </div>
 </dialog>
@@ -554,8 +631,8 @@
     toastTimer = setTimeout(function () { node.classList.remove("on"); }, 1600);
   }
 
-  function copy(text) {
-    var done = function () { toast("Copied " + text); };
+  function copy(text, label) {
+    var done = function () { toast("Copied " + (label || text)); };
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(done, function () { toast(text); });
       return;
@@ -988,6 +1065,46 @@
     });
   }
 
+  /* Connect: the configuration of the clients, written by the service for the bucket or the object shown. */
+
+  var connect = {snippets: [], selected: "duckdb", query: null};
+
+  function openConnect(bucket, key) {
+    $("connect-snippet").textContent = "Loading…";
+    $("connect-query").hidden = true;
+    $("connect-tabs").replaceChildren();
+    $("connect").showModal();
+    api("/snippets", {bucket: bucket, key: key}).then(function (body) {
+      connect.snippets = body.snippets || [];
+      connect.query = body.duckdbQuery || null;
+      $("connect-endpoint").textContent = body.endpoint || "";
+      renderConnect();
+    }).catch(function (error) {
+      $("connect-snippet").textContent = error.message;
+    });
+  }
+
+  function selectedSnippet() {
+    return connect.snippets.find(function (snippet) { return snippet.id === connect.selected; })
+      || connect.snippets[0];
+  }
+
+  function renderConnect() {
+    var current = selectedSnippet();
+    $("connect-tabs").replaceChildren.apply($("connect-tabs"), connect.snippets.map(function (snippet) {
+      return el("button", {
+        class: current && snippet.id === current.id ? "on" : "",
+        text: snippet.title,
+        onclick: function () { connect.selected = snippet.id; renderConnect(); }
+      });
+    }));
+    $("connect-snippet").textContent = current ? current.content : "";
+    // The query alone is what is pasted into a DuckDB that already has the secret.
+    var showQuery = !!connect.query && current && current.id === "duckdb";
+    $("connect-query").hidden = !showQuery;
+    $("connect-query-text").textContent = showQuery ? connect.query : "";
+  }
+
   /* Wiring. */
 
   var filterTimer;
@@ -1006,6 +1123,19 @@
     if (state.bucket) { open(state.bucket, state.prefix); }
   });
   $("preview-close").addEventListener("click", function () { $("preview").close(); });
+  $("preview-query").addEventListener("click", function () {
+    connect.selected = "duckdb";
+    openConnect(state.bucket, $("preview-title").textContent);
+  });
+  $("connect-open").addEventListener("click", function () { openConnect(state.bucket, state.prefix); });
+  $("connect-close").addEventListener("click", function () { $("connect").close(); });
+  $("connect-copy").addEventListener("click", function () {
+    var current = selectedSnippet();
+    if (current) { copy(current.content, "the " + current.title + " snippet"); }
+  });
+  $("connect-query-copy").addEventListener("click", function () {
+    if (connect.query) { copy(connect.query); }
+  });
   $("upload").addEventListener("click", function () {
     if (!state.bucket) { toast("Pick a bucket first."); return; }
     $("files").click();

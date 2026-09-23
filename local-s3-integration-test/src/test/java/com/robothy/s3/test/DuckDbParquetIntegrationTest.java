@@ -506,6 +506,55 @@ class DuckDbParquetIntegrationTest {
   }
 
   /**
+   * The DuckDB script that the console hands out, {@code GET /_admin/ui/snippets}, run as it is in a DuckDB that was
+   * given nothing else: the secret it creates must reach a LocalS3 that verifies signatures, and the query it writes
+   * for an object must read that object.
+   */
+  @Test
+  void runsTheDuckDbSnippetOfTheConsoleAsItIs() throws Exception {
+    LocalS3 signed = start(LocalS3.builder().port(-1).buckets(BUCKET).credentials(ACCESS_KEY, SECRET_KEY));
+    try (Connection writer = duckDb(signed.getPort(), ACCESS_KEY, SECRET_KEY);
+         Connection pasted = DriverManager.getConnection("jdbc:duckdb:")) {
+      execute(writer, "COPY (SELECT i AS id FROM range(0, 10) t(i)) TO 's3://lake/snippets/it''s.parquet' "
+          + "(FORMAT parquet)");
+
+      String basic = java.util.Base64.getEncoder().encodeToString((ACCESS_KEY + ":" + SECRET_KEY).getBytes());
+      HttpResponse<String> response = httpClient.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"
+              + signed.getPort() + "/_admin/ui/snippets?bucket=lake&key=snippets%2Fit%27s.parquet"))
+          .header("Authorization", "Basic " + basic).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, response.statusCode(), response.body());
+      JsonNode snippets = objectMapper.readTree(response.body());
+      String script = snippets.get("snippets").get(0).get("content").asText();
+
+      loadHttpfs(pasted);
+      List<String> statements = statements(script);
+      String query = statements.remove(statements.size() - 1);
+      assertEquals(snippets.get("duckdbQuery").asText(), query + ";", "The script ends with the query of the object.");
+      for (String statement : statements) {
+        execute(pasted, statement);
+      }
+      assertEquals(45L, single(pasted, "SELECT sum(id)::BIGINT FROM (" + query.replace(" LIMIT 10", "") + ")"));
+      assertEquals(10L, single(pasted, "SELECT count(*) FROM (" + query + ")"));
+    } finally {
+      signed.shutdown();
+    }
+  }
+
+  /**
+   * The statements of a script, without their comments and their semicolons.
+   */
+  private static List<String> statements(String script) {
+    String code = script.lines().filter(line -> !line.startsWith("--")).reduce("", (a, b) -> a + b + "\n");
+    List<String> statements = new ArrayList<>();
+    for (String statement : code.split(";\\s*\n")) {
+      if (!statement.isBlank()) {
+        statements.add(statement.trim());
+      }
+    }
+    return statements;
+  }
+
+  /**
    * DuckDB with its TLS defaults, i.e. {@code USE_SSL true}, against a LocalS3 that generated a certificate for itself:
    * the first connection of a client that expects HTTPS, which fails with an {@code SSL connect error} against a plain
    * HTTP service, and which needs no certificate of the machine here. DuckDB is given the generated certificate as its

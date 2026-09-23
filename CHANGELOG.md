@@ -145,6 +145,14 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   something also wants the `X-LocalS3-Console` header, which no other origin can send, so a page open elsewhere in
   the browser can't write through it. The S3 API is unaffected, and the requests of the console aren't recorded in
   the statistics. See [Console](docs/deployment.md#console).
++ **Connection snippets**, written by the service for the service: `GET /_admin/snippets` answers the configuration
+  that DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach it — the host the request addressed, plain HTTP
+  or HTTPS, path-style addressing, the credentials and, if it serves one, the `ATTACH` of the Iceberg catalog — and
+  `GET /_admin/snippets/duckdb` answers one of them as text, so
+  `duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)` opens a DuckDB that reaches LocalS3. With `bucket`
+  and `key`, the DuckDB script ends with a query of that object or prefix, which `curl ... | duckdb` runs. The console shows them under `Connect`, and `DuckDB SQL` in the preview of an object. The mismatched
+  `USE_SSL`, `URL_STYLE` or `ENDPOINT` of a hand-written DuckDB secret is the most common first failure; these are
+  generated instead. See [Admin endpoints](docs/deployment.md#admin-endpoints).
 
 + **`localS3.endpoint()` and `localS3.presign(...)`.** `endpoint()` is the URL that clients reach the running service
   at, e.g. `http://127.0.0.1:29090`, instead of every embedding application assembling it from the scheme, the bind

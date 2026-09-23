@@ -73,7 +73,8 @@ public class LocalS3RouterFactory {
    */
   public static final Set<String> UNRECORDED_OPERATIONS = Stream.concat(
       Stream.of("HealthCheck", "HeadHealthCheck", AdminController.STATS_OPERATION,
-          AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION, AdminController.LIFECYCLE_OPERATION),
+          AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION, AdminController.LIFECYCLE_OPERATION,
+          AdminController.SNIPPETS_OPERATION, AdminController.SNIPPET_OPERATION),
       ConsoleController.OPERATIONS.stream()).collect(Collectors.toUnmodifiableSet());
 
   /**
@@ -306,7 +307,13 @@ public class LocalS3RouterFactory {
           .add(AdminController.STATS_OPERATION, GET, AdminController.STATS_PATH, admin::stats)
           .add(AdminController.REQUESTS_OPERATION, GET, AdminController.REQUESTS_PATH, admin::requests)
           .add(AdminController.RESET_OPERATION, POST, AdminController.RESET_PATH, admin::reset)
-          .add(AdminController.LIFECYCLE_OPERATION, POST, AdminController.LIFECYCLE_PATH, admin::lifecycle);
+          .add(AdminController.LIFECYCLE_OPERATION, POST, AdminController.LIFECYCLE_PATH, admin::lifecycle)
+          .add(AdminController.SNIPPETS_OPERATION, GET, AdminController.SNIPPETS_PATH, admin::snippets);
+      // A path of its own per snippet, which is exact and therefore wins over GetObject of a bucket named _admin.
+      for (String id : ConnectionSnippets.IDS) {
+        routes.add(AdminController.SNIPPET_OPERATION, GET, AdminController.SNIPPETS_PATH + "/" + id,
+            admin.snippet(id));
+      }
     }
   }
 

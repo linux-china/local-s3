@@ -322,6 +322,46 @@ class ConsoleTest {
   }
 
   /**
+   * The Connect dialog of the page: the snippets name the host the browser addressed, and the credentials of the
+   * service, which only a user who gave them to the console is answered.
+   */
+  @Test
+  void answersTheConnectionSnippetsOfTheObjectItShows() throws Exception {
+    String accessKeyId = "console-access-key";
+    String secretAccessKey = "console-secret-key";
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY)
+        .credentials(accessKeyId, secretAccessKey).build();
+    localS3.start();
+    try {
+      String path = "/_admin/ui/snippets?bucket=lake&key=data%2Ft.parquet";
+      assertEquals(401, send(localS3, "GET", path, null, null).statusCode());
+
+      JsonNode body = json(send(localS3, "GET", path, basic(accessKeyId, secretAccessKey), null));
+      assertEquals("SELECT * FROM 's3://lake/data/t.parquet' LIMIT 10;", body.get("duckdbQuery").asText());
+      assertFalse(body.get("icebergCatalog").asBoolean());
+      String sql = body.get("snippets").get(0).get("content").asText();
+      assertTrue(sql.contains("KEY_ID '" + accessKeyId + "'"), sql);
+      assertTrue(sql.contains("SECRET '" + secretAccessKey + "'"), sql);
+      assertTrue(sql.contains("SELECT * FROM 's3://lake/data/t.parquet' LIMIT 10;"), sql);
+      assertFalse(sql.contains("ATTACH"), "The service serves no Iceberg catalog: " + sql);
+
+      // A client in a container reaches the service by another name, which the snippets then name.
+      String authorization = basic(accessKeyId, secretAccessKey);
+      String container = exchange(localS3, "GET /_admin/ui/snippets HTTP/1.1\r\nHost: local-s3:29090\r\n"
+          + "Authorization: " + authorization + "\r\nConnection: close\r\n\r\n");
+      assertTrue(container.contains("\"endpoint\":\"http://local-s3:29090\""), container);
+      // A Host that isn't a host is never written into a snippet.
+      String forged = exchange(localS3, "GET /_admin/ui/snippets HTTP/1.1\r\nHost: x');DROP TABLE t;--\r\n"
+          + "Authorization: " + authorization + "\r\nConnection: close\r\n\r\n");
+      assertTrue(forged.contains("\"endpoint\":\"http://localhost:<port>\""),
+          "A random port isn't known to the configuration: " + forged);
+      assertFalse(forged.contains("DROP TABLE"), forged);
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
    * Send a raw HTTP request on a connection of its own, e.g. one that names a {@code Host} that the HTTP client of
    * the JDK refuses to set, and read the whole response.
    */

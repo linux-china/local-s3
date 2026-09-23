@@ -10,6 +10,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
@@ -120,6 +122,77 @@ class AdminEndpointsTest {
   }
 
   /**
+   * The snippets are written from the configuration of the service: the host the request addressed, plain HTTP, the
+   * path-style addressing that a local endpoint needs, and the Iceberg catalog if the service serves one.
+   */
+  @Test
+  void answersTheConnectionSnippetsOfTheService() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).icebergCatalog(true).build();
+    localS3.start();
+    try {
+      String host = "127.0.0.1:" + localS3.getPort();
+      HttpResponse<String> response = send(localS3, "GET", "/_admin/snippets", null);
+      assertEquals(200, response.statusCode(), response.body());
+      JsonNode body = objectMapper.readTree(response.body());
+      assertEquals("http://" + host, body.get("endpoint").asText());
+      assertTrue(body.get("icebergCatalog").asBoolean());
+      assertFalse(body.has("duckdbQuery"), "No bucket was asked about.");
+      List<String> ids = new ArrayList<>();
+      body.get("snippets").forEach(snippet -> ids.add(snippet.get("id").asText()));
+      assertEquals(List.of("duckdb", "aws-cli", "boto3", "pyiceberg", "spark"), ids);
+
+      // One snippet is text, to paste or to pipe into its client.
+      HttpResponse<String> duckdb = send(localS3, "GET", "/_admin/snippets/duckdb", null);
+      assertEquals(200, duckdb.statusCode(), duckdb.body());
+      assertEquals("text/plain; charset=utf-8", duckdb.headers().firstValue("Content-Type").orElseThrow());
+      String sql = duckdb.body();
+      assertTrue(sql.contains("ENDPOINT '" + host + "'"), sql);
+      assertTrue(sql.contains("URL_STYLE 'path'"), sql);
+      assertTrue(sql.contains("USE_SSL false"), sql);
+      assertTrue(sql.contains("ENDPOINT 'http://" + host + "/iceberg'"), sql);
+      assertTrue(sql.contains("AUTHORIZATION_TYPE 'none'"), sql);
+      assertTrue(send(localS3, "GET", "/_admin/snippets/pyiceberg", null).body()
+          .contains("uri=\"http://" + host + "/iceberg\""));
+      assertEquals(404, send(localS3, "GET", "/_admin/snippets/unknown", null).statusCode(),
+          "An unknown snippet is an object of a bucket named _admin, which doesn't exist.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * The example query of an object reads its rows if DuckDB knows its format, and its files otherwise; a key is quoted
+   * for each language it is written into.
+   */
+  @Test
+  void writesTheQueryOfAnObjectOrAPrefix() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).build();
+    localS3.start();
+    try {
+      assertEquals("SELECT * FROM 's3://lake/events/day=1/part-0.parquet' LIMIT 10;",
+          query(localS3, "bucket=lake&key=events%2Fday%3D1%2Fpart-0.parquet"));
+      assertEquals("SELECT * FROM glob('s3://lake/events/**') LIMIT 100;", query(localS3, "bucket=lake&key=events%2F"));
+      assertEquals("SELECT * FROM glob('s3://lake/**') LIMIT 100;", query(localS3, "bucket=lake"));
+      assertEquals("SELECT filename, size, last_modified FROM read_blob('s3://lake/model.bin');",
+          query(localS3, "bucket=lake&key=model.bin"));
+      assertEquals("SELECT * FROM 's3://lake/it''s.csv' LIMIT 10;", query(localS3, "bucket=lake&key=it%27s.csv"));
+
+      String boto3 = send(localS3, "GET", "/_admin/snippets/boto3?bucket=lake&key=a%22b.csv", null).body();
+      assertTrue(boto3.contains("Key=\"a\\\"b.csv\""), boto3);
+      String cli = send(localS3, "GET", "/_admin/snippets/aws-cli?bucket=lake&key=it%27s.csv", null).body();
+      assertTrue(cli.contains("aws s3 cp 's3://lake/it'\\''s.csv' -"), cli);
+
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  private String query(LocalS3 localS3, String parameters) throws Exception {
+    return objectMapper.readTree(send(localS3, "GET", "/_admin/snippets?" + parameters, null).body())
+        .get("duckdbQuery").asText();
+  }
+
+  /**
    * Unlike the health check, the admin endpoints must be signed if the service requires credentials.
    */
   @Test
@@ -131,6 +204,8 @@ class AdminEndpointsTest {
       assertEquals(200, send(localS3, "GET", "/_health", null).statusCode());
       assertEquals(403, send(localS3, "GET", "/_admin/stats", null).statusCode());
       assertEquals(403, send(localS3, "POST", "/_admin/reset", null).statusCode());
+      assertEquals(403, send(localS3, "GET", "/_admin/snippets/duckdb", null).statusCode(),
+          "The snippets carry the credentials of the service.");
     } finally {
       localS3.shutdown();
     }
