@@ -65,6 +65,8 @@ imported either.
 | Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`storage(storage -> storage.maxInMemoryBytes(...))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
 
 `LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
+Docker allocates its host port now, so `getPort()` is answered once the container has started, and raises an
+`IllegalStateException` before that rather than returning `0`; `withHttpPort(port)` still binds a port of your own.
 
 #### API
 
@@ -229,6 +231,15 @@ imported either.
   MinIO and LocalStack, what it does that they don't — the built-in Iceberg REST catalog, S3 Vectors, persistence with
   initial data and seeders, measured startup cost, the depth of the JUnit 5 and Spring Boot integrations — and where
   one of the others is the better choice.
++ **`LocalS3Container` configures the whole image.** `withCredentials(accessKey, secretKey)`, `withBuckets(...)`,
+  `withIcebergCatalog(...)` with `withIcebergWarehouse(...)`, `withPersistencePolicy(...)`,
+  `withInMemoryMaxBytes(...)`, `withVirtualHostDomains(...)`, `withSelfSignedTls(...)` with `withTlsRequired(...)`,
+  and `withWebsite(...)` with `withWebsiteAllBuckets(...)` set the environment variables that a test used to spell out
+  with `withEnv`. `getEndpoint()` and `getEndpointUri()` are the URL of the running container, which
+  `endpointOverride` takes, and `getAccessKey()` with `getSecretKey()` read back the credentials it requires.
+  `withDataPath(Path)` takes a `@TempDir`, and the `DockerImageName` constructor is public, so an image of a private
+  registry declared `asCompatibleSubstituteFor(LocalS3Container.IMAGE_NAME)` runs. See
+  [Testcontainers](docs/embedding.md#testcontainers).
 
 ### Changed
 
@@ -316,6 +327,13 @@ imported either.
 + `max-keys`, opaque continuation tokens, `x-amz-version-id: null`, and `Last-Modified` and `ETag` headers behave like
   Amazon S3.
 + Reading an object on Windows no longer holds a lock that prevents deleting it.
++ **`LocalS3Container` lets Docker allocate the host port**, rather than picking a free one itself and binding it as a
+  fixed port. Between opening a `ServerSocket(0)` to find the port and the container binding it, any other process
+  could take it, so test classes running at the same time failed now and then with `port is already allocated`. The
+  port is now allocated by Docker while it creates the container, and `getPort()` answers with it once the container
+  has started; before that it fails with an `IllegalStateException` instead of answering `0`, a port nothing listens
+  on. `withRandomHttpPort()` still selects this behaviour, which is now the default, and `withHttpPort(port)` still
+  binds a port of your own — and no longer leaves the earlier binding in place when it is called twice.
 
 ## [2.4] - 2026-04-03
 

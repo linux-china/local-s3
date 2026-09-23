@@ -473,51 +473,38 @@ and method rather than per thread, so they work the same when tests run in paral
 
 ```java
 @Testcontainers
-public class AppTest {
+class AppTest {
 
   @Container
-  public LocalS3Container container = new LocalS3Container("latest")
+  LocalS3Container localS3 = new LocalS3Container("latest")
       .withMode(LocalS3Container.Mode.IN_MEMORY)
-      .withRandomHttpPort();
+      .withCredentials("local-s3", "local-s3-secret")
+      .withBuckets("my-bucket");
 
   @Test
-  void testS3Operations() {
-    assertTrue(container.isRunning());
-    int port = container.getPort();
-
-    // Create S3Client for regular S3 operations
-    S3Client s3Client = S3Client.builder()
-        .endpointOverride(URI.create("http://localhost:" + port))
+  void s3Operations() {
+    S3Client s3 = S3Client.builder()
+        .endpointOverride(localS3.getEndpointUri())
         .region(Region.US_EAST_1)
         .credentialsProvider(StaticCredentialsProvider.create(
-            AwsBasicCredentials.create("test", "test")))
-        .serviceConfiguration(S3Configuration.builder()
-            .pathStyleAccessEnabled(true)
-            .build())
+            AwsBasicCredentials.create(localS3.getAccessKey(), localS3.getSecretKey())))
+        .forcePathStyle(true)
         .build();
 
-    // Test regular S3 operations
-    s3Client.createBucket(b -> b.bucket("my-bucket"));
-    s3Client.putObject(b -> b.bucket("my-bucket").key("test.txt"),
-        RequestBody.fromString("Hello World"));
+    s3.putObject(b -> b.bucket("my-bucket").key("test.txt"), RequestBody.fromString("Hello World"));
   }
 
   @Test
-  void testS3VectorOperations() {
-    assertTrue(container.isRunning());
-    int port = container.getPort();
-
-    // Create S3VectorsClient for vector operations
-    S3VectorsClient vectorsClient = S3VectorsClient.builder()
-        .endpointOverride(URI.create("http://localhost:" + port))
+  void s3VectorOperations() {
+    S3VectorsClient vectors = S3VectorsClient.builder()
+        .endpointOverride(localS3.getEndpointUri())
         .region(Region.US_EAST_1)
         .credentialsProvider(StaticCredentialsProvider.create(
-            AwsBasicCredentials.create("test", "test")))
+            AwsBasicCredentials.create(localS3.getAccessKey(), localS3.getSecretKey())))
         .build();
 
-    // Test vector operations
-    vectorsClient.createVectorBucket(b -> b.vectorBucketName("my-vector-bucket"));
-    vectorsClient.createIndex(b -> b
+    vectors.createVectorBucket(b -> b.vectorBucketName("my-vector-bucket"));
+    vectors.createIndex(b -> b
         .vectorBucketName("my-vector-bucket")
         .indexName("my-index")
         .dimension(128)
@@ -526,6 +513,47 @@ public class AppTest {
   }
 
 }
+```
+
+### The port
+
+**Docker allocates the host port** when the container starts, and `getPort()` returns it, so that test classes which
+run at the same time can't pick the same port. `getEndpoint()` and `getEndpointUri()` assemble the URL from it, which
+is what `endpointOverride` takes; `getPort()` before the container has started fails with an `IllegalStateException`
+rather than answering a port nothing listens on.
+
+`withHttpPort(29090)` binds a port of your own instead, for the cases that need one known in advance, e.g. a URL in a
+configuration file; that port has to be free when the container starts. `withRandomHttpPort()` goes back to letting
+Docker choose.
+
+### Configuration
+
+Every setting of the image is reachable. The methods below set the [environment
+variables](deployment.md#configuration) of the same meaning, and anything they don't cover is `withEnv(name, value)`.
+
+| Method | Sets |
+|---|---|
+| `withMode(Mode)` | `LOCAL_S3_MODE`: `IN_MEMORY` or `PERSISTENCE` |
+| `withDataPath(String \| Path)` | binds a host directory at `/data` |
+| `withPersistencePolicy(PersistencePolicy)` | `LOCAL_S3_PERSISTENCE_POLICY`: `DURABLE` or `FAST` |
+| `withInMemoryMaxBytes("512m")` | `LOCAL_S3_IN_MEMORY_MAX_BYTES` |
+| `withCredentials(accessKey, secretKey)` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`; `getAccessKey()` and `getSecretKey()` read them back |
+| `withBuckets("one", "two")` | `AWS_BUCKETS`: the buckets to create on startup |
+| `withIcebergCatalog(true)` | `LOCAL_S3_ICEBERG_CATALOG`: serve `/iceberg/v1` |
+| `withIcebergWarehouse("s3://warehouse/")` | `LOCAL_S3_ICEBERG_WAREHOUSE` |
+| `withVirtualHostDomains("s3", "s3.local")` | `LOCAL_S3_VIRTUAL_HOST_DOMAINS` |
+| `withSelfSignedTls(hosts...)` | `LOCAL_S3_TLS_SELF_SIGNED`; `getEndpoint()` becomes an `https://` URL |
+| `withTlsRequired(true)` | `LOCAL_S3_TLS_REQUIRED`: refuse plain HTTP |
+| `withWebsite(false)` / `withWebsiteAllBuckets(true)` | `LOCAL_S3_WEBSITE`, `LOCAL_S3_WEBSITE_ALL_BUCKETS` |
+
+Without `withCredentials(...)` the service accepts unsigned requests, so a client may sign with anything, and
+`getAccessKey()` answers `null`.
+
+An image of a private registry is run by the `DockerImageName` constructor:
+
+```java
+new LocalS3Container(DockerImageName.parse("registry.internal/local-s3:2.5.0")
+    .asCompatibleSubstituteFor(LocalS3Container.IMAGE_NAME));
 ```
 
 To wait for the health check rather than the startup log message, see [deployment.md](deployment.md#health-check).
