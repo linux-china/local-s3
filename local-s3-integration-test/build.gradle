@@ -36,6 +36,9 @@ dependencies {
     testImplementation(libs.deltaKernelDefaults)
     testImplementation(libs.awssdkKms)
     testImplementation(libs.awssdkSts)
+    // The Amazon S3 Encryption Client, for S3EncryptionClientIntegrationTest. Taken with its dependencies as they are:
+    // it encodes the metadata of an object with the MIME utilities of saaj-impl, so that one isn't excludable.
+    testImplementation(libs.awsS3EncryptionClient)
     // On the compile classpath, not just at runtime: DefaultEngine.create() is overloaded on Hadoop's Configuration,
     // so javac needs the class to resolve the FileIO overload that the Delta tests use.
     testImplementation(libs.hadoopClientApi)

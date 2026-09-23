@@ -395,6 +395,10 @@ rename.
 request names with the object version, or with the upload, so that client code that sets these headers, e.g. Iceberg
 `S3FileIO` with `s3.sse.type`, sees the responses it sees against Amazon S3.
 
+What LocalS3 proves is that your code sends the right headers and reads the right responses, and nothing beyond it.
+**Don't use LocalS3 to verify encryption strength, key rotation, or that a KMS key policy allows an object to be
+read**: there is no ciphertext to be strong, no key to rotate, and no policy to deny. Those belong against Amazon S3.
+
 + The headers are validated: an unknown algorithm, a key ID or a context without a KMS algorithm, a context that isn't
   a base64 encoded JSON object, a `bucket-key-enabled` other than `true` or `false` with a KMS algorithm, and an
   algorithm together with an SSE-C key all answer `400 InvalidArgument`. The KMS key ID isn't resolved or checked.
@@ -418,7 +422,8 @@ request names with the object version, or with the upload, so that client code t
 `GetObjectAttributes` accept the `x-amz-server-side-encryption-customer-algorithm`, `-customer-key` and
 `-customer-key-MD5` headers, and the `x-amz-copy-source-server-side-encryption-customer-*` ones for the source of a
 copy. **Nothing is encrypted**: LocalS3 stores the MD5 of the key, never the key, so that client code that uses SSE-C
-runs as it does against Amazon S3.
+runs as it does against Amazon S3. The boundary above holds here too: what LocalS3 checks is that the key you read an
+object with is the key you wrote it with, not that the object was ever protected by it.
 
 + The headers are validated like Amazon S3 validates them: all three, `AES256` (`400 InvalidEncryptionAlgorithmError`
   otherwise), a base64 256-bit key, and its MD5 (`400 InvalidArgument` otherwise).
@@ -441,6 +446,10 @@ which never reach it.
 can unpack, and no key material exists. What LocalS3 does give is a faithful round trip, so a client that wraps a data
 key, stores the blob and unwraps it later reads its object back. A blob written by LocalS3 protects nothing; don't put
 one where a real one belongs.
+
+The Amazon S3 Encryption Client runs over this endpoint end to end — `GenerateDataKey`, the client encrypting the
+object, `PutObject`, `GetObject`, `Decrypt` — and `S3EncryptionClientIntegrationTest` keeps it that way. Such an object
+really is encrypted, by the client, but under a key that LocalS3 hands out and wraps in the clear.
 
 + The requests are AWS JSON 1.1, like KMS: `POST /` with `X-Amz-Target: TrentService.<action>`, signed for the `kms`
   service, with the credentials of LocalS3 or with temporary credentials of its STS endpoint. The errors are the JSON

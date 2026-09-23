@@ -36,7 +36,7 @@ import software.amazon.awssdk.services.sts.model.Credentials;
  * The KMS endpoint of LocalS3 wraps and unwraps the data keys of a client that encrypts objects itself, e.g. the
  * Amazon S3 Encryption Client, on the port that serves S3. Nothing is really encrypted; what the endpoint guarantees
  * is that a blob unwraps to the plaintext it was wrapped from, under the key ID and the encryption context it was
- * wrapped with.
+ * wrapped with. {@linkplain S3EncryptionClientIntegrationTest} runs that client over this endpoint end to end.
  */
 class KmsIntegrationTest {
 

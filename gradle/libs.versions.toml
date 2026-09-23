@@ -26,6 +26,7 @@ parquet="1.17.1"
 hadoop="3.5.0"
 delta="4.4.0"
 assertj="3.27.7"
+s3EncryptionClient="4.0.2"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -37,6 +38,9 @@ awssdkS3tables = { group = "software.amazon.awssdk", name = "s3tables", version.
 awssdkKms = { group = "software.amazon.awssdk", name = "kms", version.ref = "awssdkS3" }
 awssdkSts = { group = "software.amazon.awssdk", name = "sts", version.ref = "awssdkS3" }
 awss3ApacheClient = { group = "software.amazon.awssdk", name = "apache-client", version.ref = "awssdkS3" }
+# The Amazon S3 Encryption Client, the client that encrypts objects itself and calls KMS to wrap the data key of each
+# one. It is what the KMS endpoint of LocalS3 exists for, and S3EncryptionClientIntegrationTest runs it end to end.
+awsS3EncryptionClient = { group = "software.amazon.encryption.s3", name = "amazon-s3-encryption-client-java", version.ref = "s3EncryptionClient" }
 # Jackson 3, whose annotations are still those of Jackson 2, com.fasterxml.jackson.annotation, which databind brings.
 # Optional, java.time and parameter names are supported by databind itself, without modules.
 jacksonDatabind = { group = "tools.jackson.core", name = "jackson-databind", version.ref = "jackson" }
