@@ -112,6 +112,12 @@ tasks.register('buildGraalVMNativeImage', Exec) {
     inputs.property("graalvm-native-image", graalvmNativeImage)
     outputs.file(project.layout.buildDirectory.file("bin/s3"))
             .withPropertyName("s3-native-image")
+    // `--initialize-at-run-time=io.netty.handler.ssl.JdkSslServerContext`: netty-codec-http asks for the whole
+    // of `io.netty` to be initialized at build time, but the class initializer of JdkSslServerContext parses a
+    // certificate, which initializes the buffer classes that netty-buffer asks to be initialized at run time,
+    // and the build fails over them. `--no-fallback`: a fallback image needs a JDK to run, which the image that
+    // carries this executable doesn't have, so a build that cannot produce a native executable must fail instead
+    // of quietly producing one (H2 MVStore reaching Java serialization is what makes the builder consider it).
     // language=bash
     def runLocalS3 = """docker run --rm \
 -v ${dockerProjectDir}:/project \
@@ -119,6 +125,8 @@ tasks.register('buildGraalVMNativeImage', Exec) {
 ${graalvmNativeImage} \
 -jar /project/build/libs/s3.jar \
 --initialize-at-build-time=ch.qos.logback,org.slf4j \
+--initialize-at-run-time=io.netty.handler.ssl.JdkSslServerContext \
+--no-fallback \
 --install-exit-handlers \
 --class-path /project/build/reachability-metadata
 """

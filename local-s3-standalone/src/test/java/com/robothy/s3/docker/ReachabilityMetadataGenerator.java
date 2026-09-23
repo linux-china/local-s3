@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.github.dockerjava.api.command.StopContainerCmd;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
@@ -159,12 +160,15 @@ public class ReachabilityMetadataGenerator {
           .contentType("plain/text")
           .build());
 
+      // Every part but the last one must be at least 5 MiB, which LocalS3 checks when an upload is completed.
+      byte[] firstPart = new byte[5 * 1024 * 1024];
+      Arrays.fill(firstPart, (byte) 'a');
       UploadPartResponse part1Response = s3.uploadPart(UploadPartRequest.builder()
           .bucket(bucketName)
           .key("my-object")
           .uploadId(initResult.uploadId())
           .partNumber(1)
-          .build(), RequestBody.fromBytes("Hello".getBytes()));
+          .build(), RequestBody.fromBytes(firstPart));
 
       UploadPartResponse part2Response = s3.uploadPart(UploadPartRequest.builder()
           .bucket(bucketName)
