@@ -14,7 +14,8 @@ class BucketNamingRulesTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"abc", "my-bucket", "my.bucket.2024", "1bucket", "bucket1", "xn-bucket",
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "my-bucket--usw2-az1--x-s3", "logs--usw2-lax1-az1--x-s3"})
   void acceptsNamesFollowingTheRules(String bucketName) {
     assertEquals(bucketName, BucketAssertions.assertBucketNameFollowsNamingRules(bucketName));
   }
@@ -36,6 +37,7 @@ class BucketNamingRulesTest {
       "bucket--ol-s3, '--ol-s3'",
       "bucket.mrap, '.mrap'",
       "bucket--x-s3, '--x-s3'",
+      "my.bucket--usw2-az1--x-s3, '--x-s3'",
       "bucket--table-s3, '--table-s3'",
   })
   void rejectsNamesBreakingTheRules(String bucketName, String rule) {

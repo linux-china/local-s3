@@ -102,6 +102,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 + **A stateless STS endpoint** (`AssumeRole`, `GetSessionToken`, `GetCallerIdentity`), so Iceberg REST catalogs that
   vend temporary credentials, and the engines that use them, work with LocalS3.
   [Details](docs/embedding.md#temporary-credentials-sts).
++ **S3 Express One Zone**: a bucket named like a directory bucket (`name--usw2-az1--x-s3`) works with the S3 Express
+  path of the AWS SDKs, i.e. `CreateSession` and its session credentials, plus appends and `RenameObject`.
+  [Details](docs/semantics.md#s3-express-one-zone-directory-buckets).
 + **A stateless KMS endpoint** (`GenerateDataKey`, `Encrypt`, `Decrypt`, `DescribeKey`), so clients that wrap data keys
   with KMS, e.g. the Amazon S3 Encryption Client, run against LocalS3. Nothing is really encrypted.
   [Details](docs/embedding.md#envelope-encryption-kms).

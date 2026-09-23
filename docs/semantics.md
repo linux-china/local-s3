@@ -15,6 +15,7 @@ Amazon S3 would refuse.
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Object Lock](#object-lock)
 - [Appends and renames](#appends-and-renames)
+- [S3 Express One Zone directory buckets](#s3-express-one-zone-directory-buckets)
 - [Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)](#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms)
 - [Server-side encryption with customer-provided keys (SSE-C)](#server-side-encryption-with-customer-provided-keys-sse-c)
 - [The KMS endpoint](#the-kms-endpoint)
@@ -386,6 +387,26 @@ rename.
   `If-Modified-Since` and `If-Unmodified-Since` are evaluated against the destination, and the
   `x-amz-rename-source-if-*` headers against the source; either answers `412 PreconditionFailed`. The source is in the
   same bucket, named as `/bucket/key` or as the key alone. `x-amz-client-token` is accepted and ignored.
+
+## S3 Express One Zone directory buckets
+
+A bucket may be named like a directory bucket, `base-name--zone-id--x-s3`, e.g. `my-bucket--usw2-az1--x-s3`, which is
+otherwise a reserved suffix. An AWS SDK addresses such a bucket the S3 Express way, and LocalS3 answers it the same way
+it answers any bucket, so that client code written for S3 Express One Zone runs against LocalS3 unchanged:
+
++ **CreateSession**: `GET /bucket?session` answers session credentials, issued statelessly like the temporary
+  credentials of the [STS endpoint](embedding.md#temporary-credentials-sts): they are valid for five minutes, across
+  restarts, and the SDK renews them before they expire. `x-amz-create-session-mode` must be `ReadWrite` or `ReadOnly`,
+  but a `ReadOnly` session may write too, and a session isn't bound to its bucket. The `x-amz-server-side-encryption*`
+  headers are echoed, `AES256` by default. The bucket needn't exist: with an endpoint override, the AWS SDK for Java
+  creates a session even for `CreateBucket`, which Amazon S3 answers through its control endpoint without one.
++ **Session credentials**: the requests of the session are signed for the `s3express` service, and carry the session
+  token in `x-amz-s3session-token`, or in `X-Amz-S3session-Token` for a presigned URL. LocalS3 accepts `s3express`
+  wherever it accepts `s3`.
++ By default the SDK addresses a directory bucket virtual-hosted style, e.g. `my-bucket--usw2-az1--x-s3.localhost:9090`,
+  so the host must resolve to LocalS3, which `*.localhost` does on most systems; with `forcePathStyle` it works as well.
++ The bucket behaves like a general purpose bucket otherwise: the `Location` and `Bucket` of the
+  `CreateBucketConfiguration` are ignored, and versioning, which directory buckets lack, isn't refused.
 
 ## Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)
 

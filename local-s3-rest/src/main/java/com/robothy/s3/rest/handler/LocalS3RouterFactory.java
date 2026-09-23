@@ -173,7 +173,7 @@ public class LocalS3RouterFactory {
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
     serviceRoutes(routes, serviceFactory);
-    bucketReadRoutes(routes, serviceFactory, shared);
+    bucketReadRoutes(routes, serviceFactory, shared, sessionCredentialIssuer);
     bucketWriteRoutes(routes, serviceFactory, shared, signatureVerifier);
     objectReadRoutes(routes, serviceFactory, shared);
     objectWriteRoutes(routes, serviceFactory, shared);
@@ -319,10 +319,16 @@ public class LocalS3RouterFactory {
 
   /**
    * The operations that read a bucket, its configuration or the list of buckets, i.e. the {@code GET}
-   * and {@code HEAD} requests addressed at one.
+   * and {@code HEAD} requests addressed at one. {@code CreateSession} of S3 Express One Zone is here as well: it is
+   * a {@code GET} of a bucket, which answers credentials rather than reading the bucket.
+   *
+   * @param sessionCredentialIssuer issues the credentials of an S3 Express One Zone session.
    */
-  private static void bucketReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared) {
+  private static void bucketReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared,
+                                       SessionCredentialIssuer sessionCredentialIssuer) {
     routes
+        .add("CreateSession", GET, BUCKET_PATH, has("session"),
+            new CreateSessionController(sessionCredentialIssuer))
         .add("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate"),
             shared.storedConfiguration().get(ACCELERATE))
         .add("GetBucketAcl", GET, BUCKET_PATH, has("acl"), new GetBucketAclController(factory))

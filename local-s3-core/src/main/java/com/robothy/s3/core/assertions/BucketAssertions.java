@@ -70,9 +70,30 @@ public class BucketAssertions {
   private static final List<String> RESERVED_SUFFIXES = List.of("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3");
 
   /**
+   * The name of an S3 Express One Zone directory bucket, {@code base-name--zone-id--x-s3}, e.g.
+   * {@code my-bucket--usw2-az1--x-s3}. The base name has no periods, and the zone ID is the ID of an Availability
+   * Zone or a Local Zone, e.g. {@code usw2-az1} or {@code usw2-lax1-az1}.
+   */
+  private static final Pattern DIRECTORY_BUCKET_NAME =
+      Pattern.compile("[a-z0-9]([a-z0-9-]*[a-z0-9])?--[a-z0-9]+(-[a-z0-9]+)+--x-s3");
+
+  /**
+   * Whether a bucket name is the name of an
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html">S3 Express
+   * One Zone directory bucket</a>, which the AWS SDKs address through {@code CreateSession} and the
+   * {@code s3express} signing name.
+   *
+   * @param bucketName the bucket name.
+   * @return {@code true} if it is.
+   */
+  public static boolean isDirectoryBucketName(String bucketName) {
+    return bucketName != null && bucketName.length() <= 63 && DIRECTORY_BUCKET_NAME.matcher(bucketName).matches();
+  }
+
+  /**
    * Assert that the bucket name follows the
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">naming rules</a>
-   * of Amazon S3 general purpose buckets.
+   * of Amazon S3 general purpose buckets, or is the name of a {@linkplain #isDirectoryBucketName directory bucket}.
    *
    * @param bucketName bucket name to validate.
    * @return valid bucket name.
@@ -105,6 +126,9 @@ public class BucketAssertions {
       if (bucketName.startsWith(prefix)) {
         return "Bucket names must not start with the prefix '" + prefix + "'.";
       }
+    }
+    if (isDirectoryBucketName(bucketName)) {
+      return null;
     }
     for (String suffix : RESERVED_SUFFIXES) {
       if (bucketName.endsWith(suffix)) {

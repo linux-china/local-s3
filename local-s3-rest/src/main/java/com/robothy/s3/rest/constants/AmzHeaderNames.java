@@ -31,6 +31,17 @@ public class AmzHeaderNames {
    */
   public static final String X_AMZ_SECURITY_TOKEN = "x-amz-security-token";
 
+  /**
+   * The session token of the S3 Express One Zone session credentials, issued by {@code CreateSession}, that a request
+   * to a directory bucket is signed with.
+   */
+  public static final String X_AMZ_S3SESSION_TOKEN = "x-amz-s3session-token";
+
+  /**
+   * The mode of an S3 Express One Zone session to create, {@code ReadWrite} or {@code ReadOnly}.
+   */
+  public static final String X_AMZ_CREATE_SESSION_MODE = "x-amz-create-session-mode";
+
   public static final String X_AMZ_STORAGE_CLASS = "x-amz-storage-class";
 
   public static final String X_AMZ_TAGGING = "x-amz-tagging";

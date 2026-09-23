@@ -13,6 +13,7 @@ versioning, see [semantics.md](semantics.md).
 + CopyObject
 + CreateBucket
 + CreateMultipartUpload
++ CreateSession
 + CompleteMultipartUpload
 + DeleteBucket
 + DeleteBucketCors
@@ -122,7 +123,9 @@ Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` heade
 
 `RenameObject` and appends (`PutObject` with `x-amz-write-offset-bytes`), which Amazon S3 offers for S3 Express One Zone
 directory buckets, work on the buckets whose versioning was never enabled, see
-[semantics.md](semantics.md#appends-and-renames).
+[semantics.md](semantics.md#appends-and-renames). A bucket named like a directory bucket, e.g.
+`my-bucket--usw2-az1--x-s3`, is addressed by the AWS SDKs the S3 Express way, with the stateless session credentials
+of `CreateSession`, see [semantics.md](semantics.md#s3-express-one-zone-directory-buckets).
 
 Server-side encryption with customer-provided keys (SSE-C) is accepted and echoed, but nothing is encrypted, see
 [semantics.md](semantics.md#server-side-encryption-with-customer-provided-keys-sse-c).

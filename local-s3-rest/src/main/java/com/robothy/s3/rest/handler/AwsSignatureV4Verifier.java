@@ -42,12 +42,14 @@ import javax.crypto.spec.SecretKeySpec;
  * STS endpoint of LocalS3 issued with it, see {@linkplain SessionCredentialIssuer}. A request signed with temporary
  * credentials carries their session token in {@code x-amz-security-token}, in {@code X-Amz-Security-Token} for a
  * presigned URL, or in the {@code x-amz-security-token} field of a form upload, and is signed with the secret access key
- * that is derived from the token.
+ * that is derived from the token. The session credentials of S3 Express One Zone, which {@code CreateSession} issues the
+ * same way, carry their token in {@code x-amz-s3session-token}, or in {@code X-Amz-S3session-Token} for a presigned
+ * URL.
  *
  * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service, a KMS
  * request, see {@linkplain KmsController#isKmsRequest}, for the {@code kms} service, a request of the S3 Tables API,
- * see {@linkplain S3TablesController#isS3TablesRequest}, for {@code s3tables}, and any other request for {@code s3}
- * or {@code s3vectors}.
+ * see {@linkplain S3TablesController#isS3TablesRequest}, for {@code s3tables}, and any other request for {@code s3},
+ * {@code s3vectors} or {@code s3express}.
  *
  * <p>The service of the scope is <em>checked</em> rather than trusted: a request that the router sent to the S3 Tables
  * endpoint because its scope said {@code s3tables} is verified for that service, so claiming a scope buys a client
@@ -192,8 +194,10 @@ final class AwsSignatureV4Verifier {
     ParsedAuthorization parsed = parseAuthorization(authorization);
     CredentialScope scope = parseCredential(parsed.credential());
     Map<String, String> headers = normalizedHeaders(request);
-    Credential credential = validateCredential(scope, headers.get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN),
-        signedServices(request));
+    // A request to a directory bucket carries the token of its S3 Express session in a header of its own.
+    String sessionToken = Optional.ofNullable(headers.get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN))
+        .orElse(headers.get(AmzHeaderNames.X_AMZ_S3SESSION_TOKEN));
+    Credential credential = validateCredential(scope, sessionToken, signedServices(request));
     if (!credential.result().authenticated()) {
       return HeadVerification.failed(credential.result());
     }
@@ -308,7 +312,9 @@ final class AwsSignatureV4Verifier {
 
     CredentialScope scope = parseCredential(requiredQueryParameter(queryParameters, "X-Amz-Credential"));
     Credential credential = validateCredential(scope,
-        queryParameter(queryParameters, "X-Amz-Security-Token").orElse(null), signedServices(request));
+        queryParameter(queryParameters, "X-Amz-Security-Token")
+            .or(() -> queryParameter(queryParameters, "X-Amz-S3session-Token"))
+            .orElse(null), signedServices(request));
     if (!credential.result().authenticated()) {
       return credential.result();
     }
@@ -370,7 +376,8 @@ final class AwsSignatureV4Verifier {
       // for either, and the credentials it signed with are the same ones.
       return Set.of(S3TablesArn.SERVICE, "s3");
     }
-    return Set.of("s3", "s3vectors");
+    // 's3express' for the S3 Express One Zone directory buckets, whose requests the AWS SDKs sign for it.
+    return Set.of("s3", "s3vectors", "s3express");
   }
 
   private Credential validateCredential(CredentialScope scope, String sessionToken, Set<String> services) {
@@ -482,12 +489,14 @@ final class AwsSignatureV4Verifier {
   }
 
   /**
-   * The canonical path of a request. Amazon S3 signs its path encoded once, as it is sent; every other service, e.g.
-   * S3 Vectors, whose tagging operations carry an encoded ARN in their path, signs it encoded twice.
+   * The canonical path of a request. Amazon S3, and S3 Express One Zone alike, signs its path encoded once, as it is
+   * sent; every other service, e.g. S3 Vectors, whose tagging operations carry an encoded ARN in their path, signs it
+   * encoded twice.
    */
   private static String canonicalPath(String rawPath, CredentialScope scope) {
     String canonical = canonicalizeRaw(rawPath, true);
-    return "s3".equals(scope.service()) ? canonical : canonical.replace("%", "%25");
+    return "s3".equals(scope.service()) || "s3express".equals(scope.service())
+        ? canonical : canonical.replace("%", "%25");
   }
 
   private static String canonicalQuery(List<QueryParameter> parameters, boolean presigned) {
