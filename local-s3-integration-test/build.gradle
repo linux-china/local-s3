@@ -24,6 +24,11 @@ dependencies {
     testImplementation(libs.icebergAws)
     testImplementation(libs.icebergData)
     testImplementation(libs.icebergParquet)
+    // The test jars of Iceberg, for IcebergRestCatalogComplianceTest: CatalogTests lives in the one of iceberg-core and
+    // the TestHelpers it uses in the one of iceberg-api, and both of them assert with AssertJ.
+    testImplementation(variantOf(libs.icebergCore) { classifier('tests') })
+    testImplementation(variantOf(libs.icebergApi) { classifier('tests') })
+    testImplementation(libs.assertjCore)
     testImplementation(libs.parquetColumn)
     testRuntimeOnly(libs.icebergOrc)
     testImplementation(libs.deltaKernelApi)

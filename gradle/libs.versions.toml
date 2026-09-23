@@ -25,6 +25,7 @@ iceberg="1.11.0"
 parquet="1.17.1"
 hadoop="3.5.0"
 delta="4.4.0"
+assertj="3.27.7"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -65,6 +66,13 @@ icebergData = { group = "org.apache.iceberg", name = "iceberg-data", version.ref
 # iceberg-data registers the readers and writers of every format, ORC included, when it reads a table.
 icebergOrc = { group = "org.apache.iceberg", name = "iceberg-orc", version.ref = "iceberg" }
 icebergParquet = { group = "org.apache.iceberg", name = "iceberg-parquet", version.ref = "iceberg" }
+# The `tests` variants of these two, taken with variantOf(), are the test jars of Iceberg: iceberg-core holds
+# org.apache.iceberg.catalog.CatalogTests, the suite Iceberg verifies a catalog implementation with, and iceberg-api the
+# TestHelpers it asserts schemas with. They are what keeps the hand-written REST catalog of LocalS3 from drifting away
+# from the spec; see IcebergRestCatalogComplianceTest.
+icebergApi = { group = "org.apache.iceberg", name = "iceberg-api", version.ref = "iceberg" }
+# CatalogTests asserts with AssertJ, so running it needs AssertJ on the test classpath next to JUnit.
+assertjCore = { group = "org.assertj", name = "assertj-core", version.ref = "assertj" }
 # The writers of iceberg-parquet take the MessageType of parquet-column, which iceberg-parquet only has at runtime.
 parquetColumn = { group = "org.apache.parquet", name = "parquet-column", version.ref = "parquet" }
 # Delta Lake through delta-kernel-java: the Delta client without Spark. Its DefaultEngine is built on a pluggable

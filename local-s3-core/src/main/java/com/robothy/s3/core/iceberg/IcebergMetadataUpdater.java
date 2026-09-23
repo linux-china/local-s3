@@ -3,6 +3,7 @@ package com.robothy.s3.core.iceberg;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -227,6 +228,10 @@ final class IcebergMetadataUpdater {
     if (current < 2 && requested >= 2 && !metadata.has("last-sequence-number")) {
       metadata.put("last-sequence-number", 0);
     }
+    if (requested >= TableMetadataFactory.ROW_LINEAGE_FORMAT_VERSION && !metadata.hasNonNull("next-row-id")) {
+      // From v3 on, every row has an ID, and next-row-id is a required field: a v3 table without it can't be read.
+      metadata.put("next-row-id", 0L);
+    }
     metadata.put("format-version", requested);
   }
 
@@ -313,11 +318,30 @@ final class IcebergMetadataUpdater {
         throw IcebergCatalogException.badRequest("Snapshot already exists for id: " + snapshotId);
       }
     }
-    if (metadata.path("format-version").asInt(TableMetadataFactory.DEFAULT_FORMAT_VERSION) > 1) {
+    int formatVersion = metadata.path("format-version").asInt(TableMetadataFactory.DEFAULT_FORMAT_VERSION);
+    if (formatVersion > 1) {
       long sequenceNumber = snapshot.path("sequence-number").asLong(0);
       metadata.put("last-sequence-number", Math.max(metadata.path("last-sequence-number").asLong(0), sequenceNumber));
     }
+    if (formatVersion >= TableMetadataFactory.ROW_LINEAGE_FORMAT_VERSION) {
+      advanceRowId(metadata, snapshot);
+    }
     snapshots.add(snapshot);
+  }
+
+  /**
+   * Move {@code next-row-id} past the rows that a snapshot added, which is what hands the next snapshot a range of row
+   * IDs of its own.
+   *
+   * <p>The client takes the first row ID of the snapshot it builds from the {@code next-row-id} of the table it read,
+   * and the catalog is what makes that count go up. A catalog that left it alone would hand two appends the same range,
+   * and the rows of a v3 table would share IDs — which is exactly the kind of thing row lineage exists to prevent.
+   */
+  private static void advanceRowId(ObjectNode metadata, ObjectNode snapshot) {
+    long nextRowId = metadata.path("next-row-id").asLong(0);
+    long firstRowId = snapshot.path("first-row-id").asLong(nextRowId);
+    long addedRows = snapshot.path("added-rows").asLong(0);
+    metadata.put("next-row-id", Math.max(nextRowId, firstRowId + addedRows));
   }
 
   private static void removeSnapshots(ObjectNode metadata, JsonNode update) {
@@ -494,17 +518,101 @@ final class IcebergMetadataUpdater {
    * View updates.
    */
 
+  /**
+   * Add a version to a view, which is what creating or replacing one does.
+   *
+   * <p>The version ID the client asks for is a proposal rather than a decision, the same way the schema ID of a table
+   * is. A client builds the version it wants from the view it read, so two clients that replace the same view both ask
+   * for the same next ID; the one that commits second must be given the ID after it instead, or its version would
+   * overwrite the other's and the history of the view would lose a version. A version identical to one the view already
+   * has is that version, and keeps its ID: replacing a view with what it already says changes nothing.
+   *
+   * <p>{@code schema-id} of {@code -1} means "the schema this commit added", like the {@code -1} of a table's
+   * {@code set-current-schema}, and is resolved here: it can only be resolved while the updates of the commit are being
+   * applied, and a version that kept it would leave the view unreadable.
+   */
   private static void addViewVersion(ObjectNode metadata, JsonNode update) {
     ObjectNode version = objectField(update, "view-version");
     ArrayNode versions = array(metadata, "versions");
-    int versionId = version.hasNonNull("version-id") && version.path("version-id").asInt() > 0
-        ? version.path("version-id").asInt() : nextId(versions, "version-id");
+    if (version.path("schema-id").asInt(0) == -1) {
+      version.put("schema-id", lastAdded(metadata, "__last-added-schema-id", "schema"));
+    }
+    int schemaId = version.path("schema-id").asInt(0);
+    if (findById(array(metadata, "schemas"), "schema-id", schemaId) == null) {
+      throw IcebergCatalogException.badRequest("Cannot add version with unknown schema: " + schemaId);
+    }
+    checkOneQueryPerDialect(version);
+
+    Integer same = sameVersionId(versions, version);
+    int versionId = same != null ? same : nextVersionId(versions, version.path("version-id").asInt(1));
     version.put("version-id", versionId);
     if (!version.hasNonNull("timestamp-ms")) {
       version.put("timestamp-ms", System.currentTimeMillis());
     }
-    replaceById(versions, "version-id", versionId, version);
+    if (findById(versions, "version-id", versionId) == null) {
+      versions.add(version);
+    }
     metadata.put("__last-added-version-id", versionId);
+  }
+
+  /**
+   * The ID of the version of the view that says the same as this one, which is then the version being added.
+   *
+   * @return the ID; {@code null} if the view has no such version.
+   */
+  @Nullable
+  private static Integer sameVersionId(ArrayNode versions, ObjectNode version) {
+    for (JsonNode existing : versions) {
+      if (sameVersion(existing, version)) {
+        return existing.path("version-id").asInt();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Whether two versions of a view would behave the same: the same query in the same dialects, resolved against the
+   * same schema, and the same catalog and namespace that an unqualified name in the query is read in. The ID and the
+   * timestamp are not part of it, nor is the summary, which carries who made the change and when.
+   */
+  private static boolean sameVersion(JsonNode one, JsonNode two) {
+    return one.path("schema-id").asInt(0) == two.path("schema-id").asInt(0)
+        && one.path("default-catalog").asString("").equals(two.path("default-catalog").asString(""))
+        && one.path("default-namespace").equals(two.path("default-namespace"))
+        && one.path("representations").equals(two.path("representations"));
+  }
+
+  /**
+   * The ID to give a new version of a view: the one the client asked for, moved past every version the view already
+   * has, so that a commit that raced another doesn't overwrite what that one added.
+   */
+  private static int nextVersionId(ArrayNode versions, int requested) {
+    int versionId = requested;
+    for (JsonNode existing : versions) {
+      int existingId = existing.path("version-id").asInt(0);
+      if (existingId >= versionId) {
+        versionId = existingId + 1;
+      }
+    }
+    return versionId;
+  }
+
+  /**
+   * Check that a version of a view holds at most one query per SQL dialect, which is what makes a dialect resolvable:
+   * a view with two Trino queries has no answer to "what is this view in Trino".
+   */
+  static void checkOneQueryPerDialect(ObjectNode version) {
+    Set<String> dialects = new HashSet<>();
+    for (JsonNode representation : version.path("representations")) {
+      if (!"sql".equals(representation.path("type").asString(""))) {
+        continue;
+      }
+      String dialect = representation.path("dialect").asString("").toLowerCase(Locale.ROOT);
+      if (!dialects.add(dialect)) {
+        throw IcebergCatalogException.badRequest(
+            "Invalid view version: Cannot add multiple queries for dialect " + dialect);
+      }
+    }
   }
 
   private static void setCurrentViewVersion(ObjectNode metadata, JsonNode update) {

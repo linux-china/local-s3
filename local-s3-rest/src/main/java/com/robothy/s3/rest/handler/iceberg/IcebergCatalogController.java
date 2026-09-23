@@ -9,6 +9,7 @@ import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -109,7 +110,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    */
   public static String operation(HttpRequest request) {
     try {
-      return operationOf(request.getMethod(), segments(request.getPath()));
+      return operationOf(request.getMethod(), segments(request));
     } catch (RuntimeException e) {
       return UNKNOWN_OPERATION;
     }
@@ -129,7 +130,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
 
   private void dispatch(HttpRequest request, HttpResponse response) {
     HttpMethod method = request.getMethod();
-    List<String> path = segments(request.getPath());
+    List<String> path = segments(request);
     switch (operationOf(method, path)) {
       case "IcebergGetConfig" -> writeJson(response, 200, clientConfig.configResponse(request, catalog.warehouse()));
       case "IcebergGetToken" -> writeJson(response, 200, token());
@@ -149,7 +150,9 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       case "IcebergCreateTable" -> writeJson(response, 200,
           withConfig(request, catalog.createTable(namespace(path), body(request))));
       case "IcebergRegisterTable" -> writeJson(response, 200,
-          withConfig(request, catalog.registerTable(namespace(path), body(request))));
+          withConfig(request, catalog.registerTable(namespace(path), body(request), false)));
+      case "IcebergRegisterView" -> writeJson(response, 200,
+          catalog.registerTable(namespace(path), body(request), true));
       case "IcebergLoadTable" -> writeJson(response, 200,
           withConfig(request, catalog.loadTable(identifier(path), false)));
       case "IcebergTableExists" ->
@@ -231,6 +234,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
         return switch (resource) {
           case "properties" -> post ? "IcebergUpdateNamespaceProperties" : UNKNOWN_OPERATION;
           case "register" -> post ? "IcebergRegisterTable" : UNKNOWN_OPERATION;
+          case "register-view" -> post ? "IcebergRegisterView" : UNKNOWN_OPERATION;
           case "tables" -> get ? "IcebergListTables" : post ? "IcebergCreateTable" : UNKNOWN_OPERATION;
           case "views" -> get ? "IcebergListViews" : post ? "IcebergCreateView" : UNKNOWN_OPERATION;
           default -> UNKNOWN_OPERATION;
@@ -278,14 +282,21 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   }
 
   /**
-   * The path segments under {@value #API_PREFIX}, which the decoder has already URL-decoded.
+   * The path segments under {@value #API_PREFIX}, each one URL-decoded.
+   *
+   * <p>The path is split before it is decoded, and that order is the whole point: a namespace level, or a table name,
+   * may hold a {@code /}, which the Iceberg client escapes as {@code %2F} so that it stays inside one segment. Reading
+   * the decoded path of the request instead would split {@code tab%2Fle} into two segments and lose the table, so the
+   * raw URI is taken here and the segments are decoded one at a time. Only {@code %XX} is decoded — a {@code +} in a
+   * path is a plus, not a space.
    *
    * <p>The REST catalog allows a {@code prefix} segment between the version and the resource, which a catalog that
    * serves several warehouses uses. LocalS3 serves one, and answers no {@code prefix} in its configuration, so a
    * request that carries one anyway is read as if it didn't: the segment before a known resource is skipped.
    */
-  private static List<String> segments(String path) {
-    if (path == null || !path.startsWith(PATH_PREFIX)) {
+  private static List<String> segments(HttpRequest request) {
+    String path = rawPath(request);
+    if (!path.startsWith(PATH_PREFIX)) {
       return List.of();
     }
     String rest = path.length() > API_PREFIX.length() && path.startsWith(API_PREFIX)
@@ -293,7 +304,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     List<String> segments = new ArrayList<>();
     for (String segment : rest.split("/")) {
       if (!segment.isEmpty()) {
-        segments.add(segment);
+        segments.add(decode(segment));
       }
     }
     // Skip a prefix segment, e.g. /v1/my-warehouse/namespaces, which isn't a resource of the API.
@@ -301,6 +312,59 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       segments.remove(0);
     }
     return segments;
+  }
+
+  /**
+   * The path of a request as it arrived, without its query string and without the escapes decoded.
+   */
+  private static String rawPath(HttpRequest request) {
+    String uri = request.getUri();
+    if (uri == null) {
+      return Objects.toString(request.getPath(), "");
+    }
+    int end = uri.length();
+    for (int i = 0; i < uri.length(); i++) {
+      char c = uri.charAt(i);
+      if (c == '?' || c == '#') {
+        end = i;
+        break;
+      }
+    }
+    return uri.substring(0, end);
+  }
+
+  /**
+   * Decode the {@code %XX} escapes of one path segment, as UTF-8.
+   *
+   * @throws IcebergCatalogException if an escape is malformed, which a client shouldn't send.
+   */
+  private static String decode(String segment) {
+    if (segment.indexOf('%') < 0) {
+      return segment;
+    }
+    ByteBuf decoded = Unpooled.buffer(segment.length());
+    try {
+      for (int i = 0; i < segment.length(); i++) {
+        char c = segment.charAt(i);
+        if (c != '%') {
+          decoded.writeCharSequence(String.valueOf(c), StandardCharsets.UTF_8);
+          continue;
+        }
+        if (i + 2 >= segment.length()) {
+          throw IcebergCatalogException.badRequest("Malformed escape in the path: " + segment);
+        }
+        int high = Character.digit(segment.charAt(i + 1), 16);
+        int low = Character.digit(segment.charAt(i + 2), 16);
+        if (high < 0 || low < 0) {
+          throw IcebergCatalogException.badRequest("Malformed escape in the path: " + segment);
+        }
+        decoded.writeByte((high << 4) + low);
+        i += 2;
+      }
+      return decoded.toString(StandardCharsets.UTF_8);
+    } finally {
+      decoded.release();
+    }
   }
 
   private static boolean isResource(String segment) {

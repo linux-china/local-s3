@@ -52,13 +52,20 @@ public class IcebergCatalogException extends RuntimeException {
   }
 
   /**
-   * A request that the catalog can't read, e.g. one whose schema is missing.
+   * A request that the catalog can't read or can't apply, e.g. one whose schema is missing, or whose partition spec
+   * names a field the schema doesn't hold.
+   *
+   * <p>The type is {@code IllegalArgumentException} because that is what a catalog built on the Iceberg library raises
+   * for a request like this — every {@code Preconditions.checkArgument} of its metadata builders — and the Java client
+   * reads the type: a {@code 400} that names it is re-raised as an {@link IllegalArgumentException} with this message,
+   * and one that names anything else as a {@code BadRequestException} with "Malformed request" in front of it. A client
+   * that tells the two apart, as the Iceberg test suites do, would otherwise see the wrong one.
    *
    * @param message what is wrong with the request.
    * @return the exception.
    */
   public static IcebergCatalogException badRequest(String message) {
-    return new IcebergCatalogException(400, "BadRequestException", message);
+    return new IcebergCatalogException(400, "IllegalArgumentException", message);
   }
 
   /**
@@ -95,6 +102,44 @@ public class IcebergCatalogException extends RuntimeException {
 
   public static IcebergCatalogException viewExists(IcebergIdentifier identifier) {
     return new IcebergCatalogException(409, "AlreadyExistsException", "View already exists: " + identifier);
+  }
+
+  /**
+   * A table or a view that is created under a name a table already holds, which the REST API tells apart from a name
+   * the same kind of thing holds: a client that asked for a view and finds a table has to be told which of the two it
+   * found, and its message is the one the specification uses.
+   *
+   * @param identifier the name that is taken.
+   * @return the exception.
+   */
+  public static IcebergCatalogException tableWithSameNameExists(IcebergIdentifier identifier) {
+    return new IcebergCatalogException(409, "AlreadyExistsException",
+        "Table with same name already exists: " + identifier);
+  }
+
+  /**
+   * A table or a view that is created under a name a view already holds.
+   *
+   * @param identifier the name that is taken.
+   * @return the exception.
+   */
+  public static IcebergCatalogException viewWithSameNameExists(IcebergIdentifier identifier) {
+    return new IcebergCatalogException(409, "AlreadyExistsException",
+        "View with same name already exists: " + identifier);
+  }
+
+  /**
+   * A rename whose destination is taken, by a table or by a view.
+   *
+   * @param source the name being renamed.
+   * @param destination the name that is taken.
+   * @param destinationIsView whether what holds the destination is a view.
+   * @return the exception.
+   */
+  public static IcebergCatalogException renameTargetExists(IcebergIdentifier source, IcebergIdentifier destination,
+                                                           boolean destinationIsView) {
+    return new IcebergCatalogException(409, "AlreadyExistsException", "Cannot rename " + source + " to " + destination
+        + ". " + (destinationIsView ? "View" : "Table") + " already exists");
   }
 
   public static IcebergCatalogException namespaceNotEmpty(List<String> namespace) {

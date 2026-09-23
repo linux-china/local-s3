@@ -70,7 +70,7 @@ class IcebergCatalogEndpointTest {
   @Test
   void the_settings_are_vended_only_when_the_catalog_is_configured_to() throws Exception {
     try (LocalS3 localS3 = started(LocalS3.builder().port(-1)
-        .icebergCatalog(iceberg -> iceberg.settings(new LocalS3IcebergCatalog("s3://warehouse/", true, false))))) {
+        .icebergCatalog(iceberg -> iceberg.settings(new LocalS3IcebergCatalog("s3://warehouse/", true, false, false))))) {
       ObjectNode config = IcebergJson.read(get(localS3, "/iceberg/v1/config").body());
       assertEquals(0, config.path("defaults").size(), "Credential vending is off, so nothing is vended.");
       assertEquals("s3://warehouse", config.path("overrides").path("warehouse").asString());

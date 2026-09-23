@@ -1386,6 +1386,22 @@ public class LocalS3Builder {
         }
 
         /**
+         * Set whether the default location of a table ends in a random suffix, e.g.
+         * {@code s3://warehouse/db/orders-8f1c...}, rather than in the name of the table. The default is {@code false},
+         * which is Iceberg's: the location of a table is then derived from its name, and a test can assert on it.
+         *
+         * <p>{@code true} is the {@code unique-table-location} of the Iceberg catalogs. It matters when a table is
+         * dropped, or renamed, and another is created under the old name: with locations derived from the name, the new
+         * table lives among the files of the old one, and purging one of them takes the other's files with it.
+         *
+         * @param uniqueTableLocation whether the default location of a table carries a random suffix.
+         * @return these settings.
+         */
+        public IcebergCatalogSettings uniqueTableLocation(boolean uniqueTableLocation) {
+            return settings(catalog().withUniqueTableLocation(uniqueTableLocation));
+        }
+
+        /**
          * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
          * configuration.
          *

@@ -136,7 +136,7 @@ public class LocalS3AutoConfiguration {
     LocalS3Properties.IcebergCatalog iceberg = properties.getIcebergCatalog();
     if (iceberg.isEnabled()) {
       builder.icebergCatalog(catalog -> catalog.settings(new LocalS3IcebergCatalog(iceberg.getWarehouse(),
-          iceberg.isCreateWarehouseBucket(), iceberg.isCredentialVending())));
+          iceberg.isCreateWarehouseBucket(), iceberg.isCredentialVending(), iceberg.isUniqueTableLocation())));
     }
 
     LocalS3Properties.Website website = properties.getWebsite();

@@ -545,13 +545,14 @@ public class LocalS3 implements AutoCloseable {
             log.info("Created in-memory Iceberg REST catalog with the warehouse {}.", catalog.warehouse());
             // Starts from the catalog of the data path, if any, which it never changes, like the objects of the path.
             return LocalS3IcebergManager.createInMemory(config.dataPath(), manager.bucketService(),
-                    manager.objectService(), catalog.warehouse());
+                    manager.objectService(), catalog.warehouse(), catalog.uniqueTableLocation());
         }
         log.info("Created file system Iceberg REST catalog with the warehouse {}.", catalog.warehouse());
         // The same data path as the S3 buckets: the catalog records are written to the store of the path too, which
         // is shared, so the policy has to be the same one.
         return LocalS3IcebergManager.createFileSystem(config.dataPath(), config.persistencePolicy(),
-                manager.bucketService(), manager.objectService(), catalog.warehouse());
+                manager.bucketService(), manager.objectService(), catalog.warehouse(),
+                catalog.uniqueTableLocation());
     }
 
     /**

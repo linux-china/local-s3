@@ -38,11 +38,11 @@ final class InMemoryLocalS3IcebergManager implements LocalS3IcebergManager {
   private final IcebergCatalogService icebergCatalogService;
 
   InMemoryLocalS3IcebergManager(@Nullable Path initialDataDirectory, BucketService bucketService,
-                                ObjectService objectService, String warehouse) {
+                                ObjectService objectService, String warehouse, boolean uniqueTableLocation) {
     this.initialDataDirectory = initialDataDirectory;
     loadInitialRecords();
     this.icebergCatalogService = new IcebergCatalogService(catalogStore,
-        new IcebergMetadataFiles(bucketService, objectService), warehouse);
+        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation);
   }
 
   private void loadInitialRecords() {

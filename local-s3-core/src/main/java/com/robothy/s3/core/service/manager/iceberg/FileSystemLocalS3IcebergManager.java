@@ -25,12 +25,12 @@ final class FileSystemLocalS3IcebergManager implements LocalS3IcebergManager {
   private final IcebergCatalogService icebergCatalogService;
 
   FileSystemLocalS3IcebergManager(Path dataPath, PersistencePolicy persistencePolicy, BucketService bucketService,
-                                  ObjectService objectService, String warehouse) {
+                                  ObjectService objectService, String warehouse, boolean uniqueTableLocation) {
     Objects.requireNonNull(dataPath, "A data directory is required to persist the Iceberg catalog.");
     Objects.requireNonNull(persistencePolicy, "persistencePolicy");
     this.localS3Store = LocalS3Store.persistent(dataPath, persistencePolicy);
     this.icebergCatalogService = new IcebergCatalogService(IcebergCatalogStore.create(localS3Store),
-        new IcebergMetadataFiles(bucketService, objectService), warehouse);
+        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation);
   }
 
   @Override

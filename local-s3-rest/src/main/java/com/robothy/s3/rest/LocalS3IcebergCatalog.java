@@ -20,8 +20,15 @@ import java.util.Objects;
  * @param credentialVending whether a loaded table carries the settings to reach LocalS3 with — its endpoint, path-style
  *     access and the credentials of the service. An engine configured with the catalog URI alone then reaches the
  *     storage too; {@code false} means the client is configured by hand.
+ * @param uniqueTableLocation whether the default location of a table ends in a random suffix, e.g.
+ *     {@code s3://warehouse/db/orders-8f1c...}, rather than in its name alone. The default is {@code false}, which is
+ *     Iceberg's: a location that is derived from the name is the predictable one, and the one a test asserts on.
+ *     {@code true} is the {@code unique-table-location} of the Iceberg catalogs, and it matters when a table is
+ *     dropped and another created under the same name — with a shared location, the new table lives among the files of
+ *     the old one.
  */
-public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBucket, boolean credentialVending) {
+public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBucket, boolean credentialVending,
+                                    boolean uniqueTableLocation) {
 
   /**
    * The warehouse of a catalog that isn't configured with one.
@@ -54,7 +61,7 @@ public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBuc
    * @return the settings.
    */
   public static LocalS3IcebergCatalog enabled() {
-    return new LocalS3IcebergCatalog(DEFAULT_WAREHOUSE, true, true);
+    return new LocalS3IcebergCatalog(DEFAULT_WAREHOUSE, true, true, false);
   }
 
   /**
@@ -64,7 +71,7 @@ public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBuc
    * @return new settings.
    */
   public LocalS3IcebergCatalog withWarehouse(String newWarehouse) {
-    return new LocalS3IcebergCatalog(newWarehouse, createWarehouseBucket, credentialVending);
+    return new LocalS3IcebergCatalog(newWarehouse, createWarehouseBucket, credentialVending, uniqueTableLocation);
   }
 
   /**
@@ -74,7 +81,7 @@ public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBuc
    * @return new settings.
    */
   public LocalS3IcebergCatalog withCreateWarehouseBucket(boolean newCreateWarehouseBucket) {
-    return new LocalS3IcebergCatalog(warehouse, newCreateWarehouseBucket, credentialVending);
+    return new LocalS3IcebergCatalog(warehouse, newCreateWarehouseBucket, credentialVending, uniqueTableLocation);
   }
 
   /**
@@ -84,7 +91,17 @@ public record LocalS3IcebergCatalog(String warehouse, boolean createWarehouseBuc
    * @return new settings.
    */
   public LocalS3IcebergCatalog withCredentialVending(boolean newCredentialVending) {
-    return new LocalS3IcebergCatalog(warehouse, createWarehouseBucket, newCredentialVending);
+    return new LocalS3IcebergCatalog(warehouse, createWarehouseBucket, newCredentialVending, uniqueTableLocation);
+  }
+
+  /**
+   * These settings with {@linkplain #uniqueTableLocation()} set.
+   *
+   * @param newUniqueTableLocation whether the default location of a table carries a random suffix.
+   * @return new settings.
+   */
+  public LocalS3IcebergCatalog withUniqueTableLocation(boolean newUniqueTableLocation) {
+    return new LocalS3IcebergCatalog(warehouse, createWarehouseBucket, credentialVending, newUniqueTableLocation);
   }
 
 }

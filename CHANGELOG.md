@@ -145,7 +145,12 @@ imported either.
   `s3://warehouse/` by default, so an `IN_MEMORY` service holds them in memory and a `PERSISTENCE` service keeps them
   in its data directory. `GET /v1/config` and every loaded table vend the endpoint, path-style access and the
   credentials of the service, so a client configured with the catalog URI alone reaches the storage. LocalS3 builds the
-  table metadata itself and gains no dependency on Iceberg.
+  table metadata itself and gains no dependency on Iceberg — and because it does, the catalog is run against **Iceberg's
+  own suites for a catalog implementation**, `CatalogTests` and `ViewCatalogTests` of the `iceberg-core` test jar, so
+  that a new Iceberg release is checked by bumping the version and running `dataToolsTest` rather than by a user hitting
+  the gap; `IcebergProtocolCoverageTest` asks the Iceberg library which commit updates and requirements exist and checks
+  that the catalog knows every one of them. `icebergCatalog(iceberg -> iceberg.uniqueTableLocation(true))` gives every
+  table a location of its own, the `unique-table-location` of the Iceberg catalogs.
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 
 + **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,

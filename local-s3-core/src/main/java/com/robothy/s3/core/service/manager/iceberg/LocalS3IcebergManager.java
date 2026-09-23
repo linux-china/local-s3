@@ -36,11 +36,14 @@ public interface LocalS3IcebergManager {
    * @param bucketService the buckets of the service.
    * @param objectService the objects of the service, which the metadata files of the tables are.
    * @param warehouse the warehouse location, e.g. {@code s3://warehouse/}.
+   * @param uniqueTableLocation whether the default location of a table ends in a random suffix.
    * @return an in-memory manager.
    */
   static LocalS3IcebergManager createInMemory(@Nullable Path initialDataDirectory, BucketService bucketService,
-                                              ObjectService objectService, String warehouse) {
-    return new InMemoryLocalS3IcebergManager(initialDataDirectory, bucketService, objectService, warehouse);
+                                              ObjectService objectService, String warehouse,
+                                              boolean uniqueTableLocation) {
+    return new InMemoryLocalS3IcebergManager(initialDataDirectory, bucketService, objectService, warehouse,
+        uniqueTableLocation);
   }
 
   /**
@@ -53,13 +56,14 @@ public interface LocalS3IcebergManager {
    * @param bucketService the buckets of the service.
    * @param objectService the objects of the service, which the metadata files of the tables are.
    * @param warehouse the warehouse location, e.g. {@code s3://warehouse/}.
+   * @param uniqueTableLocation whether the default location of a table ends in a random suffix.
    * @return a persistent manager.
    */
   static LocalS3IcebergManager createFileSystem(Path dataDirectory, PersistencePolicy persistencePolicy,
                                                 BucketService bucketService, ObjectService objectService,
-                                                String warehouse) {
+                                                String warehouse, boolean uniqueTableLocation) {
     return new FileSystemLocalS3IcebergManager(dataDirectory, persistencePolicy, bucketService, objectService,
-        warehouse);
+        warehouse, uniqueTableLocation);
   }
 
   /**

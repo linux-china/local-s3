@@ -13,10 +13,10 @@ import tools.jackson.databind.node.ObjectNode;
  * {@code metadata.json} of the table holds and what a {@code LoadTableResult} carries.
  *
  * <p>LocalS3 builds this JSON itself, rather than through the Iceberg library, so that a service stays as small and
- * quick to start as it is. The client has already assigned the field IDs of the schema it sends — the REST API passes
- * a complete {@code Schema} object — so what is left here is what a catalog decides: the table UUID, the IDs that the
- * schema, the partition spec and the sort order are registered under, and the derived {@code last-column-id} and
- * {@code last-partition-id} that a later commit asserts against.
+ * quick to start as it is. What it decides is what a catalog decides: the table UUID, the field IDs of the schema,
+ * which are re-assigned from {@code 1} (see {@linkplain FreshSchemaIds}), the IDs that the schema, the partition spec
+ * and the sort order are registered under, and the derived {@code last-column-id} and {@code last-partition-id} that a
+ * later commit asserts against.
  */
 final class TableMetadataFactory {
 
@@ -43,6 +43,12 @@ final class TableMetadataFactory {
    * unpartitioned table.
    */
   static final int PARTITION_FIELD_ID_START = 1000;
+
+  /**
+   * The first format version that assigns a row ID to every row, which is what {@code next-row-id} counts. A table of
+   * this version or newer carries it, and a commit that adds a snapshot advances it.
+   */
+  static final int ROW_LINEAGE_FORMAT_VERSION = 3;
 
   private TableMetadataFactory() {
   }
@@ -75,21 +81,28 @@ final class TableMetadataFactory {
 
     ObjectNode currentSchema = (ObjectNode) schema.deepCopy();
     currentSchema.put("schema-id", 0);
-    metadata.put("last-column-id", IcebergJson.maxFieldId(currentSchema));
+    ObjectNode spec = partitionSpec(request.get("partition-spec"));
+    ObjectNode sortOrder = sortOrder(request.get("write-order"));
+    // The IDs of a new table are the catalog's to assign, and the spec and the order follow the fields they sort and
+    // partition by, so the three are numbered together.
+    metadata.put("last-column-id", FreshSchemaIds.assign(currentSchema, spec, sortOrder));
     metadata.set("schemas", IcebergJson.newArray().add(currentSchema));
     metadata.put("current-schema-id", 0);
 
-    ObjectNode spec = partitionSpec(request.get("partition-spec"));
     metadata.set("partition-specs", IcebergJson.newArray().add(spec));
     metadata.put("default-spec-id", 0);
     metadata.put("last-partition-id", lastPartitionId(spec));
 
-    ObjectNode sortOrder = sortOrder(request.get("write-order"));
     metadata.set("sort-orders", IcebergJson.newArray().add(sortOrder));
     metadata.put("default-sort-order-id", sortOrder.path("order-id").asInt(0));
 
     metadata.set("properties", properties);
     metadata.put("current-snapshot-id", -1L);
+    if (formatVersion >= ROW_LINEAGE_FORMAT_VERSION) {
+      // Row lineage is always on from v3 on, and next-row-id is not optional there: a client cannot read a v3 table
+      // whose metadata is missing it.
+      metadata.put("next-row-id", 0L);
+    }
     metadata.set("refs", IcebergJson.newObject());
     metadata.set("snapshots", IcebergJson.newArray());
     metadata.set("statistics", IcebergJson.newArray());
@@ -130,6 +143,7 @@ final class TableMetadataFactory {
     ObjectNode viewVersion = (ObjectNode) version.deepCopy();
     viewVersion.put("version-id", 1);
     viewVersion.put("schema-id", 0);
+    IcebergMetadataUpdater.checkOneQueryPerDialect(viewVersion);
     if (!viewVersion.has("timestamp-ms")) {
       viewVersion.put("timestamp-ms", System.currentTimeMillis());
     }
@@ -246,9 +260,12 @@ final class TableMetadataFactory {
    * @param namespaceLocation the {@code location} property of the namespace; {@code null} if it has none.
    * @param namespace the levels of the namespace.
    * @param name the name of the table.
+   * @param unique whether to end the location in a random suffix rather than in the name alone, so that a table
+   *     created under the name of a dropped one doesn't land among the files of that one.
    * @return the location.
    */
-  static String defaultLocation(String warehouse, String namespaceLocation, List<String> namespace, String name) {
+  static String defaultLocation(String warehouse, String namespaceLocation, List<String> namespace, String name,
+                                boolean unique) {
     StringBuilder location = new StringBuilder();
     if (namespaceLocation != null && !namespaceLocation.isBlank()) {
       location.append(IcebergJson.stripTrailingSlash(namespaceLocation));
@@ -258,7 +275,12 @@ final class TableMetadataFactory {
         location.append('/').append(level);
       }
     }
-    return location.append('/').append(name).toString();
+    location.append('/').append(name);
+    if (unique) {
+      // The suffix that the Iceberg catalogs add for unique-table-location: the name, a dash and a random ID.
+      location.append('-').append(UUID.randomUUID().toString().replace("-", ""));
+    }
+    return location.toString();
   }
 
   /**

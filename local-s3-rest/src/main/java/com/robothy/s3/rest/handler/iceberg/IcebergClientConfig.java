@@ -4,8 +4,10 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -49,6 +51,43 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
   private static final String DEFAULT_HOST = "localhost:29090";
 
   /**
+   * The routes of the catalog, as {@code GET /v1/{prefix}/namespaces}, which {@code GET /v1/config} answers so that a
+   * client knows what it may call.
+   *
+   * <p>This is not documentation: a client that is told nothing assumes a default set, and the default set holds the
+   * table routes but <em>not</em> the view ones. A catalog that serves views and doesn't say so is a catalog whose
+   * views no client will call — {@code catalog.createView(...)} fails with "Server does not support endpoint" before a
+   * request is even sent. Every route that {@linkplain IcebergCatalogController} answers is listed here, and nothing
+   * else: the scan planning and the remote signing of the specification aren't served, and a client that is told so
+   * falls back to reading the table itself rather than failing.
+   */
+  private static final List<String> ENDPOINTS = List.of(
+      "GET /v1/{prefix}/namespaces",
+      "POST /v1/{prefix}/namespaces",
+      "GET /v1/{prefix}/namespaces/{namespace}",
+      "HEAD /v1/{prefix}/namespaces/{namespace}",
+      "DELETE /v1/{prefix}/namespaces/{namespace}",
+      "POST /v1/{prefix}/namespaces/{namespace}/properties",
+      "GET /v1/{prefix}/namespaces/{namespace}/tables",
+      "POST /v1/{prefix}/namespaces/{namespace}/tables",
+      "GET /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+      "HEAD /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+      "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+      "DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}",
+      "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics",
+      "POST /v1/{prefix}/namespaces/{namespace}/register",
+      "POST /v1/{prefix}/tables/rename",
+      "POST /v1/{prefix}/transactions/commit",
+      "GET /v1/{prefix}/namespaces/{namespace}/views",
+      "POST /v1/{prefix}/namespaces/{namespace}/views",
+      "GET /v1/{prefix}/namespaces/{namespace}/views/{view}",
+      "HEAD /v1/{prefix}/namespaces/{namespace}/views/{view}",
+      "POST /v1/{prefix}/namespaces/{namespace}/views/{view}",
+      "DELETE /v1/{prefix}/namespaces/{namespace}/views/{view}",
+      "POST /v1/{prefix}/views/rename",
+      "POST /v1/{prefix}/namespaces/{namespace}/register-view");
+
+  /**
    * The answer of {@code GET /v1/config}, which a client reads before anything else.
    *
    * <p>{@code overrides} wins over what the client was configured with, and carries the warehouse: the client is
@@ -66,6 +105,9 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
     ObjectNode response = IcebergJson.newObject();
     response.set("defaults", IcebergJson.fromStringMap(tableConfig(request)));
     response.set("overrides", overrides);
+    ArrayNode endpoints = IcebergJson.newArray();
+    ENDPOINTS.forEach(endpoints::add);
+    response.set("endpoints", endpoints);
     return response;
   }
 

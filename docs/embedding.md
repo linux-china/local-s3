@@ -320,7 +320,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 | Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
-| Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `settings(LocalS3IcebergCatalog)` |
+| Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `uniqueTableLocation`, `settings(LocalS3IcebergCatalog)` |
 
 ```java
 LocalS3 localS3 = LocalS3.builder()

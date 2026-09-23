@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -36,10 +38,17 @@ public final class IcebergCatalogService {
   static final String LOCATION_PROPERTY = "location";
 
   /**
+   * The property with which a table or a view keeps its metadata files somewhere else than under its own location.
+   */
+  private static final String METADATA_LOCATION_PROPERTY = "write.metadata.path";
+
+  /**
    * The number of superseded metadata files that a table records when it doesn't configure
    * {@code write.metadata.previous-versions-max}, which is the default of Iceberg.
    */
   private static final int DEFAULT_PREVIOUS_VERSIONS_MAX = 100;
+
+  private static final Logger log = LoggerFactory.getLogger(IcebergCatalogService.class);
 
   private final IcebergCatalogStore store;
 
@@ -51,16 +60,37 @@ public final class IcebergCatalogService {
   private final String warehouse;
 
   /**
-   * Create the catalog.
+   * Whether the location of a table that is created without one of its own carries a random suffix.
+   */
+  private final boolean uniqueTableLocation;
+
+  /**
+   * Create the catalog with locations derived from the names of the tables.
    *
    * @param store the namespaces and the table pointers.
    * @param files the metadata files, which are objects of the service.
    * @param warehouse the warehouse location, e.g. {@code s3://warehouse/}.
    */
   public IcebergCatalogService(IcebergCatalogStore store, IcebergMetadataFiles files, String warehouse) {
+    this(store, files, warehouse, false);
+  }
+
+  /**
+   * Create the catalog.
+   *
+   * @param store the namespaces and the table pointers.
+   * @param files the metadata files, which are objects of the service.
+   * @param warehouse the warehouse location, e.g. {@code s3://warehouse/}.
+   * @param uniqueTableLocation whether the location of a table that is created without one of its own ends in a random
+   *     suffix, which is the {@code unique-table-location} of the Iceberg catalogs: it keeps a table that is created
+   *     under the name of a dropped one from landing among the files of that one.
+   */
+  public IcebergCatalogService(IcebergCatalogStore store, IcebergMetadataFiles files, String warehouse,
+                               boolean uniqueTableLocation) {
     this.store = Objects.requireNonNull(store, "store");
     this.files = Objects.requireNonNull(files, "files");
     this.warehouse = IcebergJson.stripTrailingSlash(Objects.requireNonNull(warehouse, "warehouse"));
+    this.uniqueTableLocation = uniqueTableLocation;
   }
 
   /**
@@ -227,14 +257,12 @@ public final class IcebergCatalogService {
     IcebergNamespaceRecord namespaceRecord = requireNamespace(namespace);
     String name = requireName(request);
     IcebergIdentifier identifier = IcebergIdentifier.of(namespace, name);
-    if (store.getTable(identifier) != null) {
-      throw IcebergCatalogException.tableExists(identifier);
-    }
+    requireNameFree(identifier, false);
 
     String location = request.path("location").asString(null);
     if (location == null || location.isBlank()) {
       location = TableMetadataFactory.defaultLocation(warehouse,
-          namespaceRecord.properties().get(LOCATION_PROPERTY), namespace, name);
+          namespaceRecord.properties().get(LOCATION_PROPERTY), namespace, name, uniqueTableLocation);
     }
     location = IcebergJson.stripTrailingSlash(location);
     ObjectNode metadata = TableMetadataFactory.createTableMetadata(location, request);
@@ -246,37 +274,37 @@ public final class IcebergCatalogService {
     String metadataLocation = writeMetadata(location, 0, metadata);
     IcebergTableRecord record = new IcebergTableRecord(namespace, name, false, metadataLocation, null, 0);
     if (!store.putTableIfAbsent(record)) {
-      throw IcebergCatalogException.tableExists(identifier);
+      throw nameTaken(identifier, false);
     }
     return loadTableResult(metadataLocation, metadata);
   }
 
   /**
-   * Register a table that already has a metadata file, e.g. one written by another catalog.
+   * Register a table, or a view, that already has a metadata file, e.g. one written by another catalog or one left
+   * behind by a table that was dropped without purging it.
    *
    * @param namespace the levels of the namespace.
    * @param request a {@code RegisterTableRequest}: its {@code name} and its {@code metadata-location}.
-   * @return a {@code LoadTableResult}.
-   * @throws IcebergCatalogException if the namespace doesn't exist, the table does, or the metadata can't be read.
+   * @param views whether to register a view rather than a table.
+   * @return a {@code LoadTableResult}, or a {@code LoadViewResult}.
+   * @throws IcebergCatalogException if the namespace doesn't exist, the name is taken, or the metadata can't be read.
    */
-  public ObjectNode registerTable(List<String> namespace, ObjectNode request) {
+  public ObjectNode registerTable(List<String> namespace, ObjectNode request, boolean views) {
     requireNamespace(namespace);
     String name = requireName(request);
     IcebergIdentifier identifier = IcebergIdentifier.of(namespace, name);
-    if (store.getTable(identifier) != null) {
-      throw IcebergCatalogException.tableExists(identifier);
-    }
+    requireNameFree(identifier, views);
     String metadataLocation = request.path("metadata-location").asString(null);
     if (metadataLocation == null || metadataLocation.isBlank()) {
-      throw IcebergCatalogException.badRequest("Invalid register table request: metadata-location is required.");
+      throw IcebergCatalogException.badRequest("Invalid register request: metadata-location is required.");
     }
     ObjectNode metadata = IcebergJson.read(files.read(metadataLocation));
-    IcebergTableRecord record = new IcebergTableRecord(namespace, name, false, metadataLocation, null,
+    IcebergTableRecord record = new IcebergTableRecord(namespace, name, views, metadataLocation, null,
         versionOf(metadataLocation));
     if (!store.putTableIfAbsent(record)) {
-      throw IcebergCatalogException.tableExists(identifier);
+      throw nameTaken(identifier, views);
     }
-    return loadTableResult(metadataLocation, metadata);
+    return views ? loadViewResult(metadataLocation, metadata) : loadTableResult(metadataLocation, metadata);
   }
 
   /**
@@ -399,6 +427,11 @@ public final class IcebergCatalogService {
   private Commit prepareCommit(IcebergIdentifier identifier, ObjectNode request, boolean views) {
     IcebergTableRecord record = store.getTable(identifier);
     if (record != null && record.view() != views) {
+      // A commit that creates, which is how a transaction of the client creates a table, is told that the name is
+      // taken by the other kind of thing; one that changes something is told that what it addressed isn't there.
+      if (hasCreateRequirement(request)) {
+        throw nameTaken(identifier, views);
+      }
       throw views ? IcebergCatalogException.noSuchView(identifier)
           : IcebergCatalogException.noSuchTable(identifier);
     }
@@ -420,7 +453,8 @@ public final class IcebergCatalogService {
 
     String location = metadata.path("location").asString(null);
     if (location == null || location.isBlank()) {
-      location = TableMetadataFactory.defaultLocation(warehouse, null, identifier.namespace(), identifier.name());
+      location = TableMetadataFactory.defaultLocation(warehouse, null, identifier.namespace(), identifier.name(),
+          uniqueTableLocation);
       metadata.put("location", location);
     }
     int version = record == null ? 0 : record.version() + 1;
@@ -430,6 +464,14 @@ public final class IcebergCatalogService {
 
   /**
    * Drop a table, or a view.
+   *
+   * <p>A purge deletes everything under the location of the table — its metadata files, its manifests and its data
+   * files all live there — unless another table or view of the catalog lives under that location too. Two tables share
+   * a location when one is created under the name a dropped or renamed one had, because the default location of a table
+   * is derived from its name; purging then would delete the files of a table the catalog still points at, and losing a
+   * live table is worse than leaving a dropped one's files behind. {@linkplain
+   * com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager#createInMemory unique table locations} keep the
+   * two apart in the first place.
    *
    * @param identifier the identifier.
    * @param views whether to drop a view rather than a table.
@@ -450,7 +492,12 @@ public final class IcebergCatalogService {
     }
     store.removeTable(identifier);
     if (purge && location != null) {
-      files.purge(location);
+      if (store.anyTableUnder(location)) {
+        log.warn("Dropped {} without purging {}: another table of the catalog keeps its metadata there, and deleting"
+            + " the location would take that table's files with it.", identifier, location);
+      } else {
+        files.purge(location);
+      }
     }
   }
 
@@ -466,13 +513,13 @@ public final class IcebergCatalogService {
     IcebergIdentifier destination = identifier(request.get("destination"));
     IcebergTableRecord record = requireTable(source, views);
     requireNamespace(destination.namespace());
-    if (store.getTable(destination) != null) {
-      throw views ? IcebergCatalogException.viewExists(destination)
-          : IcebergCatalogException.tableExists(destination);
+    IcebergTableRecord taken = store.getTable(destination);
+    if (taken != null) {
+      throw IcebergCatalogException.renameTargetExists(source, destination, taken.view());
     }
     if (!store.putTableIfAbsent(record.renamedTo(destination))) {
-      throw views ? IcebergCatalogException.viewExists(destination)
-          : IcebergCatalogException.tableExists(destination);
+      IcebergTableRecord raced = store.getTable(destination);
+      throw IcebergCatalogException.renameTargetExists(source, destination, raced != null ? raced.view() : views);
     }
     store.removeTable(source);
   }
@@ -493,19 +540,17 @@ public final class IcebergCatalogService {
     IcebergNamespaceRecord namespaceRecord = requireNamespace(namespace);
     String name = requireName(request);
     IcebergIdentifier identifier = IcebergIdentifier.of(namespace, name);
-    if (store.getTable(identifier) != null) {
-      throw IcebergCatalogException.viewExists(identifier);
-    }
+    requireNameFree(identifier, true);
     String location = request.path("location").asString(null);
     if (location == null || location.isBlank()) {
       location = TableMetadataFactory.defaultLocation(warehouse,
-          namespaceRecord.properties().get(LOCATION_PROPERTY), namespace, name);
+          namespaceRecord.properties().get(LOCATION_PROPERTY), namespace, name, uniqueTableLocation);
     }
     location = IcebergJson.stripTrailingSlash(location);
     ObjectNode metadata = TableMetadataFactory.createViewMetadata(location, request);
     String metadataLocation = writeMetadata(location, 0, metadata);
     if (!store.putTableIfAbsent(new IcebergTableRecord(namespace, name, true, metadataLocation, null, 0))) {
-      throw IcebergCatalogException.viewExists(identifier);
+      throw nameTaken(identifier, true);
     }
     return loadViewResult(metadataLocation, metadata);
   }
@@ -590,13 +635,18 @@ public final class IcebergCatalogService {
   }
 
   /**
-   * Write the metadata file of a version of a table, recording the file it supersedes in the metadata log, which is
-   * what lets a reader walk back through the versions of the table.
+   * Write the metadata file of a version of a table or a view.
+   *
+   * <p>It goes under {@code metadata/} of the location, unless the table sets {@code write.metadata.path}, the property
+   * with which Iceberg keeps the metadata of a table somewhere else than its data — another prefix, or another bucket.
    *
    * @return the location of the file that was written.
    */
   private String writeMetadata(String location, int version, ObjectNode metadata) {
-    String metadataLocation = location + "/metadata/" + TableMetadataFactory.metadataFileName(version);
+    String configured = metadata.path("properties").path(METADATA_LOCATION_PROPERTY).asString(null);
+    String directory = configured == null || configured.isBlank()
+        ? location + "/metadata" : IcebergJson.stripTrailingSlash(configured);
+    String metadataLocation = directory + "/" + TableMetadataFactory.metadataFileName(version);
     files.write(metadataLocation, IcebergJson.write(metadata));
     return metadataLocation;
   }
@@ -674,6 +724,40 @@ public final class IcebergCatalogService {
       throw IcebergCatalogException.noSuchNamespace(namespace);
     }
     return record;
+  }
+
+  /**
+   * Check that a name holds neither a table nor a view before one is created under it.
+   *
+   * @param identifier the name.
+   * @param views whether what is being created is a view.
+   * @throws IcebergCatalogException if the name is taken.
+   */
+  private void requireNameFree(IcebergIdentifier identifier, boolean views) {
+    if (store.getTable(identifier) != null) {
+      throw nameTaken(identifier, views);
+    }
+  }
+
+  /**
+   * The failure of creating a table, or a view, under a name that is taken: one message when the same kind of thing
+   * holds it, and another that names the other kind, which is what a client needs to tell the two apart.
+   *
+   * @param identifier the name that is taken.
+   * @param views whether what was being created is a view.
+   * @return the exception to raise.
+   */
+  private IcebergCatalogException nameTaken(IcebergIdentifier identifier, boolean views) {
+    IcebergTableRecord existing = store.getTable(identifier);
+    // Gone again already: another request dropped it between the failure and this lookup, and there is nothing left to
+    // tell apart, so the name is reported as taken by the kind that was being created.
+    boolean existingIsView = existing != null ? existing.view() : views;
+    if (existingIsView == views) {
+      return views ? IcebergCatalogException.viewExists(identifier)
+          : IcebergCatalogException.tableExists(identifier);
+    }
+    return existingIsView ? IcebergCatalogException.viewWithSameNameExists(identifier)
+        : IcebergCatalogException.tableWithSameNameExists(identifier);
   }
 
   private IcebergTableRecord requireTable(IcebergIdentifier identifier, boolean views) {

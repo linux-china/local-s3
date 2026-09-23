@@ -200,6 +200,38 @@ the Iceberg client retries on — it refreshes the table, replays its changes an
 converge instead of overwriting one another. `IcebergRestCatalogIntegrationTest` asserts exactly that: four writers
 appending at once end with four snapshots and every writer's rows.
 
+### What it is checked against
+
+LocalS3 builds the table metadata itself, without the Iceberg library, which is what keeps `local-s3-core` free of a
+heavy dependency and a service quick to start. The risk that comes with it is drift: the specification moves, and a
+hand-written catalog doesn't move with it by itself.
+
+So the catalog is run against **Iceberg's own test suites for a catalog implementation**, taken from the test jars of
+`iceberg-core` rather than written here:
+
+| Suite | Where | What it covers |
+|---|---|---|
+| `org.apache.iceberg.catalog.CatalogTests` | `IcebergRestCatalogComplianceTest` | 102 cases: namespace semantics, field-ID assignment, requirement evaluation, concurrent commits, staged creates, `replaceTransaction`, metadata-log trimming, table registration |
+| `org.apache.iceberg.view.ViewCatalogTests` | `IcebergRestViewCatalogComplianceTest` | 50 cases: view versions and their history, replacing a version, dialects, views and tables sharing a namespace |
+
+`IcebergProtocolCoverageTest` adds what those two can't cover: they only reach the updates their own operations send, so
+it asks the Iceberg library itself which updates and requirements exist and checks the catalog against that list.
+
+All three run in `./gradlew :local-s3-integration-test:dataToolsTest`. **The way to check a new Iceberg release is to bump
+`iceberg` in `gradle/libs.versions.toml` and run that task**; what the suites don't accept is drift, whatever the
+version says.
+
+Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it that a catalog decides:
+
++ all 25 `MetadataUpdate` actions of the table and the view protocol, and all 9 `UpdateRequirement` types, which
+  `IcebergProtocolCoverageTest` checks by reading the names out of the parsers of the Iceberg library rather than from a
+  list of its own. An update, or a requirement, that LocalS3 doesn't know is **refused** rather than ignored, because
+  applying a commit only in part would hand a client metadata that isn't what it asked for;
++ a table created at, or upgraded to, **v3** carries `next-row-id`, and a commit that adds a snapshot advances it past
+  the rows the snapshot added, so the row IDs of two appends don't overlap;
++ the field IDs of a new table are **re-assigned from 1**, like `TableMetadata.newTableMetadata` does, and the
+  `source-id` of every partition and sort field moves with them.
+
 ### Limits
 
 + Requests to the catalog are **not signature-verified**. The REST protocol authenticates with an OAuth2 bearer token
@@ -207,11 +239,24 @@ appending at once end with four snapshots and every writer's rows.
   that a client configured with `credential` starts. The S3 requests the engine then makes are verified as usual.
 + The catalog serves **one warehouse**, so it answers no `prefix`; a request that carries one anyway is read as if it
   didn't.
++ A table, a view and their metadata files live **in LocalS3**. A create request whose `location`, or whose
+  `write.metadata.path`, names anything but an `s3://` URI of a bucket of this service is refused: the catalog has no
+  way to write a `file:` or `gs:` location.
++ The **empty namespace** is not served, and neither is it by the REST catalog of Iceberg itself: a table lives in a
+  namespace of at least one level.
++ `GET /v1/config` answers the routes it serves in `endpoints`, and the ones it doesn't are therefore not called:
+  **scan planning** (`/plan`, `/tasks`), **remote signing** (`/sign`) and the **credentials endpoint** of a table
+  (`/credentials`) — a client reads the table itself, and takes the credentials from the `config` of the loaded table
+  instead.
 + A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
   the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
   compare-and-sets can see part of it.
-+ Views are served, but they get far less use — and far less testing — than tables.
-+ Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`.
++ Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`. A purge
+  deletes everything under the location of the table, and is **skipped** when another table of the catalog keeps its
+  metadata under that location — which happens when a table is created under the name of a dropped or renamed one,
+  because the default location of a table is derived from its name. `icebergCatalog(iceberg ->
+  iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the
+  `unique-table-location` of the Iceberg catalogs.
 
 ## Iceberg REST catalogs that vend credentials
 

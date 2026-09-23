@@ -237,6 +237,23 @@ public final class IcebergCatalogStore {
   }
 
   /**
+   * Whether any table or view keeps its metadata file under a location, which is what makes purging that location
+   * unsafe: the files there belong to something the catalog still points at.
+   *
+   * @param location the location, without a trailing {@code /}, e.g. {@code s3://warehouse/db/orders}.
+   * @return {@code true} if a table or a view of the catalog lives under it.
+   */
+  public boolean anyTableUnder(String location) {
+    String prefix = IcebergJson.stripTrailingSlash(location) + "/";
+    for (String json : tables.values()) {
+      if (json != null && JsonUtils.fromJson(json, IcebergTableRecord.class).metadataLocation().startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * The tables of a namespace, or its views.
    *
    * @param namespace the levels of the namespace.

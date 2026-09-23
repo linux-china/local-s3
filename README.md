@@ -71,7 +71,8 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
 + **A built-in Iceberg REST catalog**, off by default, served under `/iceberg/v1` on the same port: a lakehouse test
   needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
-  catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works.
+  catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works. It is
+  verified against `CatalogTests` and `ViewCatalogTests`, the suites Apache Iceberg checks a catalog implementation with.
   [Details](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 + **Delta Lake**: the conditional write that the Delta commit protocol rests on, covered end to end with
   `delta-kernel-java` — create, write, read, concurrent commits and time travel.

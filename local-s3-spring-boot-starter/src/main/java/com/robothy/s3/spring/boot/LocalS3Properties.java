@@ -556,6 +556,12 @@ public class LocalS3Properties {
      */
     private boolean credentialVending = true;
 
+    /**
+     * Whether the default location of a table ends in a random suffix rather than in the name of the table, which is
+     * the unique-table-location of the Iceberg catalogs.
+     */
+    private boolean uniqueTableLocation = false;
+
     public boolean isEnabled() {
       return enabled;
     }
@@ -586,6 +592,14 @@ public class LocalS3Properties {
 
     public void setCredentialVending(boolean credentialVending) {
       this.credentialVending = credentialVending;
+    }
+
+    public boolean isUniqueTableLocation() {
+      return uniqueTableLocation;
+    }
+
+    public void setUniqueTableLocation(boolean uniqueTableLocation) {
+      this.uniqueTableLocation = uniqueTableLocation;
     }
   }
 

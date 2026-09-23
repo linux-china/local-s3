@@ -36,7 +36,7 @@ class IcebergCatalogServiceTest {
     LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
     s3Manager.bucketService().createBucket("warehouse");
     LocalS3IcebergManager manager = LocalS3IcebergManager.createInMemory(null, s3Manager.bucketService(),
-        s3Manager.objectService(), "s3://warehouse/");
+        s3Manager.objectService(), "s3://warehouse/", false);
     catalog = manager.icebergCatalogService();
   }
 
