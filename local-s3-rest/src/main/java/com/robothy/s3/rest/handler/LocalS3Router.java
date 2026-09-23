@@ -141,6 +141,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   private StaticWebsiteController websiteController;
 
+  /**
+   * Serves the built-in console; {@code null} if the service serves none, e.g. a router of handlers alone.
+   */
+  private ConsoleController consoleController;
+
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
   }
@@ -234,6 +239,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * Serve the built-in console under {@linkplain ConsoleController#PATH}, see {@linkplain ConsoleController}. Its
+   * requests come from a browser, which can't sign them, so they are guarded with HTTP Basic authentication by the
+   * controller rather than verified as signatures here.
+   *
+   * @param consoleController the controller; {@code null} to serve no console, which leaves {@code /_admin/ui} to
+   *     the S3 routes, i.e. to a bucket named {@code _admin}.
+   * @return this router.
+   */
+  LocalS3Router console(ConsoleController consoleController) {
+    this.consoleController = consoleController;
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -264,6 +283,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   @Override
   public HttpRequestHandler match(HttpRequest request) {
+    // Before everything else: the console is a path of the service, and its own controller guards it.
+    if (isConsoleRequest(request)) {
+      return new OperationHandler(ConsoleController.operation(request.getMethod(), trimPath(request.getPath())),
+          consoleController);
+    }
     if (stsController != null && StsController.isStsRequest(request)) {
       return matchSts(request);
     }
@@ -417,8 +441,30 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   private boolean requiresAuthentication(HttpRequest request) {
-    // Neither health checks nor the CORS preflight requests of browsers are signed.
-    return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request);
+    // Neither health checks nor the CORS preflight requests of browsers are signed, and the console is guarded with
+    // HTTP Basic authentication instead, which is the only kind of credentials a browser can be asked for.
+    return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request)
+        && !isConsoleRequest(request);
+  }
+
+  /**
+   * Whether a request is one of the built-in console, i.e. a request of {@linkplain ConsoleController#PATH} or of a
+   * path below it, of one of {@linkplain ConsoleController#METHODS}, addressed at the service rather than at a
+   * bucket.
+   *
+   * <p>A virtual-hosted request is never one: its path is the key of an object of the bucket of its {@code Host},
+   * so {@code /_admin/ui} there asks for an object, which is read with a signature like every other object.
+   */
+  private boolean isConsoleRequest(HttpRequest request) {
+    if (consoleController == null || !ConsoleController.METHODS.contains(request.getMethod())) {
+      return false;
+    }
+    Optional<BucketRegion> bucketRegion =
+        virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
+    if (bucketRegion.isPresent() && bucketRegion.get().getBucketName().isPresent()) {
+      return false;
+    }
+    return ConsoleController.isConsolePath(trimPath(Objects.toString(request.getPath(), "")));
   }
 
   /**

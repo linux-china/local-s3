@@ -133,6 +133,23 @@ localS3.start();
 
 The [health check](deployment.md#health-check) needs no authentication, so probes keep working.
 
+### Look at what is in the service
+
+An embedded service has no window of its own, so `GET /_admin/ui` serves a [built-in console](deployment.md#console):
+a single HTML page that lists the buckets and creates one, walks a bucket by its prefixes, previews or downloads an
+object, and uploads files dropped on it or deletes one. A service logs its address when it starts, and `endpoint()`
+names it as well:
+
+```java
+localS3.start();
+Desktop.getDesktop().browse(URI.create(localS3.endpoint() + "/_admin/ui"));
+```
+
+A service configured with `credentials(...)` asks for them as HTTP Basic authentication, since a browser can't sign a
+request with SigV4. What the console creates, uploads and deletes reaches the
+[change listeners](#listen-to-bucket-and-object-changes) like every other change, so a fixture dropped on the page is
+seen by the application that holds the service.
+
 ### Presigned URLs
 
 `presign(bucket, key, expiration)` signs a URL that reads an object for a while, so that whoever holds the URL — a

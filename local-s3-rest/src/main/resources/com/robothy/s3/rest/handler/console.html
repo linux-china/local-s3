@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>LocalS3 console</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128230;</text></svg>">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #fbfbfc;
+    --border: #e3e6ea;
+    --text: #1b1f24;
+    --muted: #6b7581;
+    --accent: #2f6feb;
+    --accent-soft: #e8f0fe;
+    --danger: #b3261e;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --panel: #1b1f26;
+      --panel-2: #20252d;
+      --border: #2c333d;
+      --text: #e6e9ee;
+      --muted: #97a1ae;
+      --accent: #6ea0ff;
+      --accent-soft: #1e2a42;
+      --danger: #ff8a80;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  header .brand { font-weight: 650; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+  header .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: #34a853; }
+  header .endpoint {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40vw;
+  }
+  header .spacer { flex: 1; }
+  button, .btn {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 10px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+  aside {
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 0;
+  }
+  aside .head { padding: 12px 12px 8px; display: grid; gap: 8px; }
+  aside h2 {
+    margin: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+  input[type=search], input[type=text] {
+    font: inherit;
+    width: 100%;
+    padding: 6px 9px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .buckets { overflow: auto; padding: 0 8px 12px; }
+  .bucket {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    padding: 7px 9px;
+    border-radius: 7px;
+    cursor: pointer;
+    color: inherit;
+  }
+  .bucket:hover { background: var(--panel-2); color: inherit; }
+  .bucket.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .bucket small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+  .bucket.active small { color: var(--accent); opacity: .8; }
+  main { display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; position: relative; }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-wrap: wrap;
+  }
+  .crumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-family: var(--mono); font-size: 13px; }
+  .crumbs button { border: 0; background: none; padding: 2px 4px; border-radius: 5px; }
+  .crumbs button:hover { background: var(--accent-soft); }
+  .crumbs span { color: var(--muted); }
+  .toolbar .filter { margin-left: auto; width: 220px; }
+  .content { overflow: auto; padding: 0 0 40px; min-height: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    font-weight: 600;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    z-index: 1;
+  }
+  tbody td { padding: 7px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:hover { background: var(--panel); }
+  td.name { width: 100%; }
+  td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+  td.date { white-space: nowrap; color: var(--muted); }
+  td.actions { white-space: nowrap; text-align: right; }
+  .entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    max-width: 100%;
+    text-align: left;
+  }
+  .entry:hover { color: var(--accent); }
+  .entry .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icon { width: 16px; height: 16px; flex: none; color: var(--muted); }
+  .entry:hover .icon { color: var(--accent); }
+  .actions button { padding: 3px 7px; font-size: 12px; margin-left: 4px; }
+  button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .dropzone {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    place-items: center;
+    background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
+    border: 2px dashed var(--accent);
+    border-radius: 10px;
+    margin: 8px;
+    color: var(--accent);
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+  }
+  .dropzone.on { display: grid; }
+  .dropzone small { display: block; font-weight: 400; color: var(--muted); margin-top: 6px; }
+  .uploads {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    width: min(380px, calc(100vw - 36px));
+    max-height: 46vh;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    z-index: 10;
+  }
+  .uploads[hidden] { display: none; }
+  .uploads .head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .uploads .head button { padding: 2px 8px; font-size: 12px; }
+  .uploads .list { overflow: auto; padding: 6px 12px 10px; }
+  .upload { padding: 6px 0; font-size: 12.5px; }
+  .upload .line { display: flex; gap: 8px; align-items: baseline; }
+  .upload .key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); flex: 1; }
+  .upload .status { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .upload.failed .status { color: var(--danger); }
+  .upload .bar { height: 3px; border-radius: 3px; background: var(--border); margin-top: 5px; overflow: hidden; }
+  .upload .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .upload.done .bar i { background: #34a853; }
+  .upload.failed .bar i { background: var(--danger); }
+  dialog#new-bucket, dialog#confirm {
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    width: min(440px, 92vw);
+  }
+  dialog#new-bucket .ask, dialog#confirm .ask { padding: 18px; display: grid; gap: 10px; }
+  dialog#new-bucket h3, dialog#confirm h3 { margin: 0; font-size: 15px; }
+  dialog#confirm .target { font-family: var(--mono); font-size: 12.5px; color: var(--muted); word-break: break-all; }
+  dialog#new-bucket .row, dialog#confirm .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  dialog#new-bucket input { font-family: var(--mono); }
+  dialog#new-bucket .hint { font-size: 12px; color: var(--muted); }
+  dialog#new-bucket .hint.error { color: var(--danger); }
+  aside h2 button {
+    border: 0;
+    background: none;
+    padding: 0 2px;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .state { padding: 40px 16px; text-align: center; color: var(--muted); }
+  .state.error { color: var(--danger); }
+  .more { padding: 16px; text-align: center; }
+  dialog#preview {
+    width: min(1100px, 92vw);
+    height: min(800px, 88vh);
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  dialog::backdrop { background: rgba(10, 12, 16, .5); }
+  dialog#preview .frame { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  dialog#preview .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  dialog#preview .bar .title { font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+  dialog#preview .bar .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  dialog#preview .body { overflow: auto; background: var(--bg); display: grid; }
+  dialog#preview .body > img { max-width: 100%; max-height: 100%; margin: auto; display: block; }
+  dialog#preview .body > iframe, dialog#preview .body > video { width: 100%; height: 100%; border: 0; background: #000; }
+  dialog#preview .body > audio { margin: auto; }
+  dialog#preview pre {
+    margin: 0;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .toast {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s;
+  }
+  .toast.on { opacity: .92; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--border); max-height: 34vh; }
+    td.date, th.date { display: none; }
+    header .endpoint { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand"><span class="dot"></span>LocalS3</span>
+  <span class="endpoint" id="endpoint"></span>
+  <span class="spacer"></span>
+  <button id="refresh" title="Reload the buckets and the current folder">Refresh</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="head">
+      <h2>
+        <span>Buckets <span id="bucket-count"></span></span>
+        <button id="new-bucket-open" title="Create a bucket">+ NEW</button>
+      </h2>
+      <input type="search" id="bucket-filter" placeholder="Filter buckets" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="buckets" id="buckets"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <nav class="crumbs" id="crumbs"></nav>
+      <input type="search" class="filter" id="key-filter" placeholder="Filter by prefix" autocomplete="off"
+             spellcheck="false">
+      <button id="upload" title="Upload files into this prefix">Upload</button>
+      <input type="file" id="files" multiple hidden>
+    </div>
+    <div class="content" id="content"></div>
+    <div class="dropzone" id="dropzone">
+      <div>
+        <span id="dropzone-text">Drop to upload</span>
+        <small>Files and folders keep their names; a folder becomes a prefix.</small>
+      </div>
+    </div>
+  </main>
+</div>
+
+<dialog id="preview">
+  <div class="frame">
+    <div class="bar">
+      <span class="title" id="preview-title"></span>
+      <span class="spacer" style="flex:1"></span>
+      <span class="meta" id="preview-meta"></span>
+      <a class="btn" id="preview-download" download>Download</a>
+      <button id="preview-close">Close</button>
+    </div>
+    <div class="body" id="preview-body"></div>
+  </div>
+</dialog>
+
+<div class="uploads" id="uploads" hidden>
+  <div class="head">
+    <span id="uploads-title">Uploads</span>
+    <span style="flex:1"></span>
+    <button id="uploads-close">Close</button>
+  </div>
+  <div class="list" id="uploads-list"></div>
+</div>
+
+<dialog id="new-bucket">
+  <div class="ask">
+    <h3>Create a bucket</h3>
+    <input type="text" id="new-bucket-name" placeholder="my-bucket" autocomplete="off" spellcheck="false"
+           autocapitalize="off">
+    <div class="hint" id="new-bucket-hint">3 to 63 characters: lowercase letters, digits, dots and hyphens.</div>
+    <div class="row">
+      <button id="new-bucket-cancel">Cancel</button>
+      <button id="new-bucket-create">Create</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="confirm">
+  <div class="ask">
+    <h3 id="confirm-title">Delete this object?</h3>
+    <div class="target" id="confirm-target"></div>
+    <div class="row">
+      <button id="confirm-cancel">Cancel</button>
+      <button id="confirm-ok" class="danger">Delete</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var API = "/_admin/ui";
+  var state = {buckets: [], bucket: null, prefix: "", filter: "", rows: null, token: null, truncated: false};
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* Elements are built rather than templated: an object key is data, and never markup. */
+  function el(tag, props, children) {
+    var node = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (key) {
+      if (key === "class") { node.className = props[key]; }
+      else if (key === "text") { node.textContent = props[key]; }
+      else if (key.slice(0, 2) === "on") { node.addEventListener(key.slice(2), props[key]); }
+      else if (props[key] !== null && props[key] !== undefined) { node.setAttribute(key, props[key]); }
+    });
+    (children || []).forEach(function (child) { node.appendChild(child); });
+    return node;
+  }
+
+  var ICONS = {
+    folder: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z",
+    file: "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5"
+  };
+
+  function icon(name) {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.6");
+    svg.setAttribute("stroke-linejoin", "round");
+    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", ICONS[name]);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function query(params) {
+    return Object.keys(params)
+      .filter(function (key) { return params[key] !== null && params[key] !== undefined && params[key] !== ""; })
+      .map(function (key) { return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]); })
+      .join("&");
+  }
+
+  function api(path, params) {
+    var url = API + path + (params ? "?" + query(params) : "");
+    return fetch(url, {credentials: "same-origin", headers: {"Accept": "application/json"}}).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) { throw new Error(body.message || (res.status + " " + res.statusText)); }
+        return body;
+      });
+    });
+  }
+
+  /* The header that says a write came from the console rather than from another page of the browser. */
+  var WRITE_HEADERS = {"X-LocalS3-Console": "1"};
+
+  function del(params) {
+    return fetch(API + "/object?" + query(params), {
+      method: "DELETE", credentials: "same-origin", headers: WRITE_HEADERS
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) { throw new Error(body.message || (res.status + " " + res.statusText)); }
+        return body;
+      });
+    });
+  }
+
+  function createBucket(name) {
+    return fetch(API + "/bucket?" + query({bucket: name}), {
+      method: "PUT", credentials: "same-origin", headers: WRITE_HEADERS
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) { throw new Error(body.message || (res.status + " " + res.statusText)); }
+        return body;
+      });
+    });
+  }
+
+  /* Uploads go through XMLHttpRequest rather than fetch, which reports no progress of a request body. */
+  function put(file, bucket, key, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var request = new XMLHttpRequest();
+      request.open("PUT", API + "/object?" + query({bucket: bucket, key: key}));
+      request.setRequestHeader("X-LocalS3-Console", "1");
+      if (file.type) { request.setRequestHeader("Content-Type", file.type); }
+      request.upload.addEventListener("progress", function (event) {
+        if (event.lengthComputable) { onProgress(event.loaded, event.total); }
+      });
+      request.addEventListener("load", function () {
+        if (request.status >= 200 && request.status < 300) {
+          onProgress(file.size, file.size);
+          resolve();
+          return;
+        }
+        var message = request.status + " " + request.statusText;
+        try { message = JSON.parse(request.responseText).message || message; } catch (e) { /* not JSON */ }
+        reject(new Error(message));
+      });
+      request.addEventListener("error", function () { reject(new Error("The connection failed.")); });
+      request.addEventListener("abort", function () { reject(new Error("Cancelled.")); });
+      request.send(file);
+    });
+  }
+
+  function objectUrl(bucket, key, download) {
+    return API + "/object?" + query({bucket: bucket, key: key, download: download ? "1" : null});
+  }
+
+  /* The S3 URL of an object, which is what a client or a browser reads it at. */
+  function shareUrl(bucket, key) {
+    return location.origin + "/" + encodeURIComponent(bucket) + "/"
+      + key.split("/").map(encodeURIComponent).join("/");
+  }
+
+  function size(bytes) {
+    if (bytes < 1024) { return bytes + " B"; }
+    var units = ["KB", "MB", "GB", "TB"];
+    var value = bytes / 1024;
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+    return (value < 10 ? value.toFixed(1) : Math.round(value)) + " " + units[unit];
+  }
+
+  function when(iso) {
+    if (!iso) { return ""; }
+    var date = new Date(iso);
+    return isNaN(date.getTime()) ? iso : date.toLocaleString();
+  }
+
+  var toastTimer;
+  function toast(message) {
+    var node = $("toast");
+    node.textContent = message;
+    node.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { node.classList.remove("on"); }, 1600);
+  }
+
+  function copy(text) {
+    var done = function () { toast("Copied " + text); };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(done, function () { toast(text); });
+      return;
+    }
+    var input = el("input", {type: "text", value: text});
+    document.body.appendChild(input);
+    input.select();
+    try { document.execCommand("copy"); done(); } catch (e) { toast(text); }
+    document.body.removeChild(input);
+  }
+
+  /* The location of the page: #/bucket/prefix, so that a folder is a link and the back button walks up. */
+  function readHash() {
+    var hash = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+    var slash = hash.indexOf("/");
+    if (!hash) { return {bucket: null, prefix: ""}; }
+    return slash < 0 ? {bucket: hash, prefix: ""}
+      : {bucket: hash.slice(0, slash), prefix: hash.slice(slash + 1)};
+  }
+
+  function go(bucket, prefix) {
+    var hash = bucket ? "#/" + encodeURIComponent(bucket + "/" + (prefix || "")).replace(/%2F/g, "/") : "#/";
+    if (location.hash === hash) { open(bucket, prefix); } else { location.hash = hash; }
+  }
+
+  /* Buckets. */
+
+  function loadBuckets() {
+    return api("/buckets").then(function (body) {
+      state.buckets = body.buckets || [];
+      renderBuckets();
+    }).catch(function (error) {
+      $("buckets").replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function renderBuckets() {
+    var filter = $("bucket-filter").value.trim().toLowerCase();
+    var shown = state.buckets.filter(function (bucket) {
+      return !filter || bucket.name.toLowerCase().indexOf(filter) >= 0;
+    });
+    $("bucket-count").textContent = state.buckets.length ? String(state.buckets.length) : "";
+    if (!shown.length) {
+      $("buckets").replaceChildren(el("div", {
+        class: "state",
+        text: state.buckets.length ? "No bucket matches." : "No buckets yet."
+      }));
+      return;
+    }
+    $("buckets").replaceChildren.apply($("buckets"), shown.map(function (bucket) {
+      return el("button", {
+        class: "bucket" + (bucket.name === state.bucket ? " active" : ""),
+        onclick: function () { go(bucket.name, ""); }
+      }, [
+        el("span", {text: bucket.name}),
+        el("small", {text: bucket.region + " · " + when(bucket.creationDate)})
+      ]);
+    }));
+  }
+
+  /* Objects. */
+
+  function open(bucket, prefix) {
+    state.bucket = bucket;
+    state.prefix = prefix || "";
+    state.rows = null;
+    state.token = null;
+    state.truncated = false;
+    $("key-filter").value = state.filter = "";
+    renderBuckets();
+    renderCrumbs();
+    if (!bucket) {
+      $("content").replaceChildren(el("div", {class: "state", text: "Pick a bucket to see what is in it."}));
+      return;
+    }
+    listObjects();
+  }
+
+  /* List the current prefix again, keeping where the user is, e.g. after an upload or a delete. */
+  function reload() {
+    state.rows = null;
+    state.token = null;
+    return listObjects();
+  }
+
+  function listObjects() {
+    var bucket = state.bucket;
+    var loading = el("div", {class: "state", text: "Loading…"});
+    if (!state.rows) { $("content").replaceChildren(loading); }
+    return api("/objects", {
+      bucket: bucket,
+      prefix: state.prefix + state.filter,
+      "continuation-token": state.token
+    }).then(function (body) {
+      if (state.bucket !== bucket) { return; }
+      var page = (body.prefixes || []).map(function (prefix) { return {prefix: prefix}; })
+        .concat(body.objects || []);
+      state.rows = (state.rows || []).concat(page);
+      state.truncated = !!body.truncated;
+      state.token = body.nextContinuationToken || null;
+      renderObjects();
+    }).catch(function (error) {
+      if (state.bucket !== bucket) { return; }
+      $("content").replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function renderCrumbs() {
+    var crumbs = $("crumbs");
+    if (!state.bucket) { crumbs.replaceChildren(); return; }
+    var nodes = [el("button", {text: state.bucket, onclick: function () { go(state.bucket, ""); }})];
+    var walked = "";
+    state.prefix.split("/").filter(Boolean).forEach(function (segment) {
+      walked += segment + "/";
+      var target = walked;
+      nodes.push(el("span", {text: "/"}));
+      nodes.push(el("button", {text: segment, onclick: function () { go(state.bucket, target); }}));
+    });
+    nodes.push(el("span", {text: "/"}));
+    crumbs.replaceChildren.apply(crumbs, nodes);
+  }
+
+  function renderObjects() {
+    var rows = state.rows || [];
+    if (!rows.length) {
+      $("content").replaceChildren(el("div", {class: "state"}, [
+        el("p", {text: state.prefix || state.filter ? "Nothing under this prefix." : "This bucket is empty."}),
+        el("p", {text: "Drop files here to upload them."})
+      ]));
+      return;
+    }
+
+    var body = el("tbody", {}, rows.map(function (row) {
+      return row.prefix ? folderRow(row.prefix) : objectRow(row);
+    }));
+    var table = el("table", {}, [
+      el("thead", {}, [el("tr", {}, [
+        el("th", {class: "name", text: "Name"}),
+        el("th", {class: "num", text: "Size"}),
+        el("th", {class: "date", text: "Last modified"}),
+        el("th", {text: ""})
+      ])]),
+      body
+    ]);
+
+    var children = [table];
+    if (state.truncated) {
+      var more = el("button", {text: "Load more", onclick: function () {
+        more.disabled = true;
+        more.textContent = "Loading…";
+        listObjects();
+      }});
+      children.push(el("div", {class: "more"}, [more]));
+    }
+    $("content").replaceChildren.apply($("content"), children);
+  }
+
+  function folderRow(prefix) {
+    var name = prefix.slice(state.prefix.length).replace(/\/$/, "");
+    return el("tr", {}, [
+      el("td", {class: "name"}, [
+        el("button", {class: "entry", onclick: function () { go(state.bucket, prefix); }}, [
+          icon("folder"), el("span", {class: "label", text: name || prefix})
+        ])
+      ]),
+      el("td", {class: "num", text: "—"}),
+      el("td", {class: "date", text: ""}),
+      el("td", {class: "actions"})
+    ]);
+  }
+
+  function objectRow(object) {
+    var name = object.key.slice(state.prefix.length) || object.key;
+    return el("tr", {}, [
+      el("td", {class: "name"}, [
+        el("button", {class: "entry", title: object.key, onclick: function () { preview(object); }}, [
+          icon("file"), el("span", {class: "label", text: name})
+        ])
+      ]),
+      el("td", {class: "num", text: size(object.size)}),
+      el("td", {class: "date", text: when(object.lastModified)}),
+      el("td", {class: "actions"}, [
+        el("a", {class: "btn", href: objectUrl(state.bucket, object.key, true), download: "", text: "Download"}),
+        el("button", {
+          text: "Copy URL",
+          title: "Copy the S3 URL of this object",
+          onclick: function () { copy(shareUrl(state.bucket, object.key)); }
+        }),
+        el("button", {
+          class: "danger",
+          text: "Delete",
+          title: "Delete this object",
+          onclick: function () { remove(object); }
+        })
+      ])
+    ]);
+  }
+
+  /* Preview. */
+
+  var TEXT = /\.(txt|log|md|markdown|json|jsonl|ndjson|xml|ya?ml|csv|tsv|ini|toml|properties|conf|cfg|sql|sh|bash|zsh|py|rb|go|rs|java|kt|scala|c|h|cpp|js|mjs|ts|tsx|jsx|css|scss|env|gitignore|dockerfile|avsc)$/i;
+  var IMAGE = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+  var VIDEO = /\.(mp4|webm|ogv|mov)$/i;
+  var AUDIO = /\.(mp3|wav|ogg|flac|m4a|aac)$/i;
+  var FRAME = /\.(pdf|html?|xhtml)$/i;
+  var MAX_TEXT = 2 * 1024 * 1024;
+
+  function preview(object) {
+    var url = objectUrl(state.bucket, object.key, false);
+    $("preview-title").textContent = object.key;
+    $("preview-title").title = object.key;
+    $("preview-meta").textContent = size(object.size) + " · " + when(object.lastModified);
+    $("preview-download").href = objectUrl(state.bucket, object.key, true);
+    var body = $("preview-body");
+    body.replaceChildren(el("div", {class: "state", text: "Loading…"}));
+    $("preview").showModal();
+
+    if (IMAGE.test(object.key)) {
+      body.replaceChildren(el("img", {src: url, alt: object.key}));
+    } else if (VIDEO.test(object.key)) {
+      body.replaceChildren(el("video", {src: url, controls: ""}));
+    } else if (AUDIO.test(object.key)) {
+      body.replaceChildren(el("audio", {src: url, controls: ""}));
+    } else if (FRAME.test(object.key)) {
+      body.replaceChildren(el("iframe", {src: url, sandbox: "allow-scripts allow-popups allow-downloads"}));
+    } else if (TEXT.test(object.key) || object.size === 0) {
+      showText(object, url);
+    } else {
+      body.replaceChildren(el("div", {class: "state"}, [
+        el("p", {text: "No preview for this file type."}),
+        el("a", {class: "btn", href: objectUrl(state.bucket, object.key, true), download: "", text: "Download it"})
+      ]));
+    }
+  }
+
+  /* Text is fetched and written as text, so that a stored page is read rather than rendered as the console. */
+  function showText(object, url) {
+    var body = $("preview-body");
+    fetch(url, {credentials: "same-origin"}).then(function (res) {
+      if (!res.ok) { throw new Error(res.status + " " + res.statusText); }
+      return res.text();
+    }).then(function (text) {
+      var clipped = text.length > MAX_TEXT;
+      body.replaceChildren(el("pre", {text: clipped ? text.slice(0, MAX_TEXT) + "\n\n… truncated" : text}));
+    }).catch(function (error) {
+      body.replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  /* Uploading. */
+
+  /* At most this many files are sent at once, so a folder of many small files doesn't open a socket per file. */
+  var PARALLEL_UPLOADS = 3;
+  var queue = [];
+  var running = 0;
+
+  /**
+   * Upload files into the prefix that is open, each under its own name; a file dropped as part of a folder keeps the
+   * path inside that folder, so the folder becomes a prefix.
+   */
+  function upload(files) {
+    if (!state.bucket || !files.length) { return; }
+    var bucket = state.bucket;
+    files.forEach(function (entry) {
+      queue.push({
+        bucket: bucket,
+        key: state.prefix + (entry.path || entry.file.name),
+        file: entry.file,
+        loaded: 0,
+        total: entry.file.size,
+        status: "waiting"
+      });
+    });
+    renderUploads();
+    pump();
+  }
+
+  function pump() {
+    while (running < PARALLEL_UPLOADS) {
+      var next = queue.find(function (item) { return item.status === "waiting"; });
+      if (!next) { break; }
+      running++;
+      next.status = "sending";
+      send(next);
+    }
+    renderUploads();
+  }
+
+  function send(item) {
+    put(item.file, item.bucket, item.key, function (loaded, total) {
+      item.loaded = loaded;
+      item.total = total || item.total;
+      renderUploads();
+    }).then(function () {
+      item.status = "done";
+    }, function (error) {
+      item.status = "failed";
+      item.error = error.message;
+    }).then(function () {
+      running--;
+      renderUploads();
+      pump();
+      // Show what landed as soon as the batch is quiet, and only for the bucket that is still open.
+      if (!running && item.bucket === state.bucket) {
+        reload();
+      }
+    });
+  }
+
+  function renderUploads() {
+    var panel = $("uploads");
+    if (!queue.length) { panel.hidden = true; return; }
+    panel.hidden = false;
+
+    var done = queue.filter(function (item) { return item.status === "done"; }).length;
+    var failed = queue.filter(function (item) { return item.status === "failed"; }).length;
+    $("uploads-title").textContent = running || done + failed < queue.length
+      ? "Uploading " + (done + failed + 1) + " of " + queue.length
+      : queue.length + " uploaded" + (failed ? ", " + failed + " failed" : "");
+
+    var list = $("uploads-list");
+    list.replaceChildren.apply(list, queue.map(function (item) {
+      var percent = item.total ? Math.round(100 * item.loaded / item.total) : 100;
+      var status = item.status === "failed" ? item.error
+        : item.status === "done" ? size(item.total)
+        : item.status === "waiting" ? "waiting" : percent + "%";
+      return el("div", {class: "upload " + item.status}, [
+        el("div", {class: "line"}, [
+          el("span", {class: "key", text: item.key, title: item.key}),
+          el("span", {class: "status", text: status})
+        ]),
+        el("div", {class: "bar"}, [
+          el("i", {style: "width:" + (item.status === "done" || item.status === "failed" ? 100 : percent) + "%"})
+        ])
+      ]);
+    }));
+  }
+
+  /**
+   * The files of a drop, with the path each one keeps: a dropped folder is walked, so its files are uploaded under
+   * the prefix of the folder. A browser without the entry API drops its files without their paths.
+   */
+  function droppedFiles(transfer) {
+    var entries = Array.prototype.map.call(transfer.items || [], function (item) {
+      return item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+    }).filter(Boolean);
+    if (!entries.length) {
+      return Promise.resolve(Array.prototype.map.call(transfer.files, function (file) { return {file: file}; }));
+    }
+    return Promise.all(entries.map(function (entry) { return walk(entry, ""); }))
+      .then(function (found) { return found.flat(); });
+  }
+
+  function walk(entry, path) {
+    if (entry.isFile) {
+      return new Promise(function (resolve) {
+        entry.file(function (file) { resolve([{file: file, path: path + file.name}]); },
+          function () { resolve([]); });
+      });
+    }
+    var reader = entry.createReader();
+    var children = [];
+    // readEntries answers a batch at a time, and an empty batch means the directory is read to its end.
+    var readBatch = function () {
+      return new Promise(function (resolve) {
+        reader.readEntries(function (batch) {
+          if (!batch.length) { resolve(children); return; }
+          children = children.concat(batch);
+          resolve(readBatch());
+        }, function () { resolve(children); });
+      });
+    };
+    return readBatch().then(function (found) {
+      return Promise.all(found.map(function (child) { return walk(child, path + entry.name + "/"); }));
+    }).then(function (found) { return found.flat(); });
+  }
+
+  /* Deleting. */
+
+  var confirmed;
+
+  function ask(target) {
+    $("confirm-target").textContent = target;
+    $("confirm").showModal();
+    return new Promise(function (resolve) { confirmed = resolve; });
+  }
+
+  function remove(object) {
+    ask(state.bucket + "/" + object.key).then(function (yes) {
+      if (!yes) { return; }
+      del({bucket: state.bucket, key: object.key}).then(function () {
+        toast("Deleted " + object.key);
+        reload();
+      }, function (error) {
+        toast(error.message);
+      });
+    });
+  }
+
+  /* Creating a bucket. */
+
+  function openNewBucket() {
+    $("new-bucket-name").value = "";
+    hint("3 to 63 characters: lowercase letters, digits, dots and hyphens.", false);
+    $("new-bucket").showModal();
+    $("new-bucket-name").focus();
+  }
+
+  function hint(message, isError) {
+    var node = $("new-bucket-hint");
+    node.textContent = message;
+    node.classList.toggle("error", !!isError);
+  }
+
+  function submitNewBucket() {
+    var name = $("new-bucket-name").value.trim();
+    if (!name) { hint("A bucket needs a name.", true); return; }
+    $("new-bucket-create").disabled = true;
+    hint("Creating…", false);
+    createBucket(name).then(function (bucket) {
+      $("new-bucket-create").disabled = false;
+      $("new-bucket").close();
+      toast("Created " + bucket.name);
+      // Show it in the sidebar, and open it: an empty bucket is where files are dropped next.
+      loadBuckets().then(function () { go(bucket.name, ""); });
+    }, function (error) {
+      $("new-bucket-create").disabled = false;
+      // What the service rejected the name with, e.g. a name that is taken or breaks the naming rules.
+      hint(error.message, true);
+    });
+  }
+
+  /* Wiring. */
+
+  var filterTimer;
+  $("key-filter").addEventListener("input", function () {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(function () {
+      state.filter = $("key-filter").value;
+      state.rows = null;
+      state.token = null;
+      listObjects();
+    }, 200);
+  });
+  $("bucket-filter").addEventListener("input", renderBuckets);
+  $("refresh").addEventListener("click", function () {
+    loadBuckets();
+    if (state.bucket) { open(state.bucket, state.prefix); }
+  });
+  $("preview-close").addEventListener("click", function () { $("preview").close(); });
+  $("upload").addEventListener("click", function () {
+    if (!state.bucket) { toast("Pick a bucket first."); return; }
+    $("files").click();
+  });
+  $("files").addEventListener("change", function () {
+    upload(Array.prototype.map.call($("files").files, function (file) { return {file: file}; }));
+    $("files").value = "";
+  });
+  $("uploads-close").addEventListener("click", function () {
+    queue = queue.filter(function (item) { return item.status === "sending" || item.status === "waiting"; });
+    renderUploads();
+  });
+  $("new-bucket-open").addEventListener("click", openNewBucket);
+  $("new-bucket-cancel").addEventListener("click", function () { $("new-bucket").close(); });
+  $("new-bucket-create").addEventListener("click", submitNewBucket);
+  $("new-bucket-name").addEventListener("keydown", function (event) {
+    if (event.key === "Enter") { event.preventDefault(); submitNewBucket(); }
+  });
+  $("confirm-cancel").addEventListener("click", function () { $("confirm").close(); });
+  $("confirm-ok").addEventListener("click", function () { $("confirm").close("delete"); });
+  $("confirm").addEventListener("close", function () {
+    if (confirmed) { confirmed($("confirm").returnValue === "delete"); confirmed = null; }
+  });
+
+  // Dropping anywhere over the listing uploads into the prefix that is open; dragging over the rest of the window
+  // must be cancelled as well, or the browser opens the file instead.
+  var dragDepth = 0;
+  var dropTarget = window.document.querySelector("main");
+  ["dragenter", "dragover"].forEach(function (name) {
+    dropTarget.addEventListener(name, function (event) {
+      if (!state.bucket) { return; }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      if (name === "dragenter") { dragDepth++; }
+      $("dropzone-text").textContent = "Drop to upload into " + state.bucket + "/" + state.prefix;
+      $("dropzone").classList.add("on");
+    });
+  });
+  dropTarget.addEventListener("dragleave", function () {
+    if (--dragDepth <= 0) { dragDepth = 0; $("dropzone").classList.remove("on"); }
+  });
+  dropTarget.addEventListener("drop", function (event) {
+    if (!state.bucket) { return; }
+    event.preventDefault();
+    dragDepth = 0;
+    $("dropzone").classList.remove("on");
+    droppedFiles(event.dataTransfer).then(upload);
+  });
+  window.addEventListener("dragover", function (event) { event.preventDefault(); });
+  window.addEventListener("drop", function (event) { event.preventDefault(); });
+  $("preview").addEventListener("close", function () { $("preview-body").replaceChildren(); });
+  window.addEventListener("hashchange", function () {
+    var target = readHash();
+    open(target.bucket, target.prefix);
+  });
+
+  $("endpoint").textContent = location.origin;
+  var initial = readHash();
+  open(initial.bucket, initial.prefix);
+  loadBuckets();
+})();
+</script>
+</body>
+</html>

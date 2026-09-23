@@ -412,6 +412,62 @@ spec:
 Run a single replica: a data directory is served by one process at a time, and the replicas of an `IN_MEMORY`
 deployment would each hold data of their own.
 
+## Console
+
+LocalS3 serves a built-in console at `GET /_admin/ui`: a single self-contained HTML page, with no build step and no
+frontend framework, that lists the buckets and creates one, walks the objects of a bucket by their prefixes, previews
+or downloads what is in them, and uploads or deletes an object. Open `http://localhost:29090/_admin/ui` in a browser.
+
+It answers the question a mock service otherwise leaves to `aws s3 ls`: what is actually in there? That matters when
+LocalS3 is embedded in an IDE or an application, and when an AI agent stores artifacts in it — a person then reads the
+charts, reports and datasets the agent produced instead of listing keys.
+
+| What it does | |
+|---|---|
+| Buckets | Name, region and creation date, with a filter. `+ NEW` creates one, in the default region and under the naming rules of Amazon S3, and opens it. |
+| Objects | The objects and the directories under a prefix, with size and last-modified time, a prefix filter, and a page of 200 at a time. |
+| An object | A preview of text, JSON, CSV, Markdown, images, audio, video, PDF and HTML, the rest as a download; `Download` saves it, and `Copy URL` copies the S3 URL of the object. |
+| Upload | **Drop files or folders** anywhere on the listing, or use `Upload`: each file is stored under the prefix that is open, a dropped folder becomes a prefix, and a panel shows the progress of the batch, three files at a time. A file that the browser knows no type for is stored with the content type of its extension. |
+| Delete | `Delete` on a row, after a confirmation. In a versioned bucket it puts a delete marker, like `DeleteObject` does. |
+
+Behind the page are six endpoints of its own, which call the same services the S3 operations do:
+`GET /_admin/ui/buckets`, `GET /_admin/ui/objects?bucket=&prefix=&continuation-token=`,
+`GET /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/object?bucket=&key=`,
+`DELETE /_admin/ui/object?bucket=&key=` and `PUT /_admin/ui/bucket?bucket=`. They answer JSON, or the content of the
+object.
+
+An upload is a single `PutObject` of the whole file rather than the multipart upload an S3 client would use for a
+large one, so a file the browser can hold and send is one the console can store. The console **deletes no bucket** and
+changes no bucket configuration — versioning, policies, CORS and the rest: for those, use the S3 API.
+
+A browser can't sign a request with AWS Signature Version 4, so the console is guarded with **HTTP Basic
+authentication** rather than a signature: a service configured with credentials asks for the access key ID as the user
+name and the secret access key as the password, and a service without credentials, which answers unsigned S3 requests
+anyway, serves the console to everyone who reaches the port. The S3 API of the same service is unaffected: it keeps
+requiring signatures.
+
+The three endpoints that change the data also want the `X-LocalS3-Console` header, which the page sends and which a
+browser lets no other origin send without this service allowing it first. So a page a user has open elsewhere can't
+create, upload or delete through the console, whether the service has credentials or not.
+
+```shell
+curl -s -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" "http://localhost:29090/_admin/ui/objects?bucket=my-bucket"
+curl -s -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -H "X-LocalS3-Console: 1" \
+    -X PUT "http://localhost:29090/_admin/ui/bucket?bucket=my-bucket"
+curl -s -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" -H "X-LocalS3-Console: 1" \
+    -X PUT --data-binary @report.html "http://localhost:29090/_admin/ui/object?bucket=my-bucket&key=report.html"
+```
+
+The content of an object is served with `Content-Security-Policy: sandbox`, so a stored HTML page is previewed in a
+sandbox of its own rather than as a page of the console; an object stored without a content type is previewed as the
+type of its extension, the way [static website hosting](semantics.md#static-website-hosting) serves one. The requests
+of the console aren't recorded in the statistics of the service, so browsing doesn't show up as traffic of the
+application under test; the bucket it creates and what it uploads and deletes do reach the
+[change listeners](embedding.md#listen-to-bucket-and-object-changes), like every other change.
+
+Being paths of the service, `/_admin/ui` and the paths below it are the console rather than the objects of a bucket
+named `_admin`, like the other `/_admin` endpoints and `/_health` are.
+
 ## Admin endpoints
 
 A running service answers a few endpoints for local development and tests, with JSON:

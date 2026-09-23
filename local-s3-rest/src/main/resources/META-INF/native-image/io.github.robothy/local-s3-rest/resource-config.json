@@ -1,0 +1,10 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "comment": "The page of the built-in console, which ConsoleController reads from the classpath.",
+        "pattern": "\\Qcom/robothy/s3/rest/handler/console.html\\E"
+      }
+    ]
+  }
+}

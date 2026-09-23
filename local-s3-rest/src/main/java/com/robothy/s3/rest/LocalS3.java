@@ -204,6 +204,8 @@ public class LocalS3 implements AutoCloseable {
         } else {
             log.info("LocalS3 listens on {}://{}:{}.", config.tlsEnabled() ? "https" : "http", config.bindHost(), port);
         }
+        // Where to look at what the service holds, which an embedded service gives no other sign of.
+        log.info("LocalS3 console: {}/_admin/ui", endpoint());
         if (config.tls() != null) {
             logCertificate(config.tls());
         }

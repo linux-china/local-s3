@@ -105,6 +105,11 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   with KMS, e.g. the Amazon S3 Encryption Client, run against LocalS3. Nothing is really encrypted.
   [Details](docs/embedding.md#envelope-encryption-kms).
 + **Change listeners** that are told of every committed change, e.g. to assert that an upload happened.
++ **A built-in console** at `/_admin/ui`: one self-contained HTML page, no build step and no new dependency, that
+  lists the buckets and creates one, walks a bucket by its prefixes, previews or downloads an object, and uploads
+  files and folders by dropping them on the page or deletes one — so what an embedded service or an AI agent put in
+  there can be looked at and changed, rather than listed with `aws s3 ls`. Guarded with HTTP Basic authentication when
+  credentials are configured. [Details](docs/deployment.md#console).
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
 + **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 3 and 4, Testcontainers, a Docker image (JVM or native), or an
   executable jar.
@@ -118,7 +123,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
 | [Data tools](docs/data-tools.md) | DuckDB, DuckLake, Apache Iceberg and Delta Lake on LocalS3, the built-in Iceberg REST catalog, and Amazon S3 Tables. |
-| [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
+| [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check, the console and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |
 

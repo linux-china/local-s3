@@ -163,6 +163,10 @@ Clients rarely talk to S3 alone. LocalS3 answers, on the same port:
 + [HTTPS](deployment.md#https) with a certificate LocalS3 generates on startup, or one of mkcert, for clients that
   insist on TLS such as DuckDB, Hadoop S3A and Snowflake — on the same port as plain HTTP, so both kinds of client
   share one endpoint;
++ a [built-in console](deployment.md#console) at `/_admin/ui` — one self-contained HTML page that lists the buckets
+  and creates one, walks a bucket by its prefixes, previews or downloads an object, and uploads a file dropped on it
+  or deletes one, so what is in the service can be looked at and changed rather than listed with `aws s3 ls`. It is
+  far less than the MinIO console, and it is the thing one usually opens it for;
 + [health check and admin endpoints](deployment.md#health-check) for statistics, recent requests and resetting a
   service between tests.
 

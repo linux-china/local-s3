@@ -126,6 +126,26 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   metrics, replication and record expiration are stored and read back, and nothing happens. See
   [Amazon S3 Tables](docs/data-tools.md#amazon-s3-tables).
 
++ **A built-in console**, served at `GET /_admin/ui`. One self-contained HTML page — no build step, no frontend
+  framework and no new dependency — that lists the buckets and creates one, walks the objects of a bucket by their
+  prefixes, previews or downloads an object, and uploads or deletes one. Text, JSON, CSV, Markdown, images, audio,
+  video, PDF and HTML render in the page and anything else is a download; `Copy URL` yields the S3 URL of the object;
+  **files and folders dropped on the page** are uploaded into the prefix that is open, a dropped folder becoming a
+  prefix, with a panel showing the progress of the batch; `Delete` removes an object after a confirmation; and
+  `+ NEW` creates a bucket, under the naming rules of Amazon S3. It answers what an S3 mock otherwise leaves to
+  `aws s3 ls`, which matters when LocalS3 is embedded in an IDE or an application, and when an AI agent stores its
+  artifacts in it and a person has to review them.
+
+  Behind the page are six endpoints — `/_admin/ui/buckets`, `/_admin/ui/objects`, `GET`, `PUT` and `DELETE` of
+  `/_admin/ui/object`, and `PUT /_admin/ui/bucket` — which call the same services the S3 operations do, so what the
+  console creates, uploads and deletes reaches the change listeners like any other change. It deletes no bucket and
+  changes no bucket configuration. A browser can't sign a request with SigV4, so the console is guarded with HTTP
+  Basic authentication instead: a service configured with credentials asks for the access key ID and the secret
+  access key, and one without them serves the console like it serves unsigned S3 requests. A request that changes
+  something also wants the `X-LocalS3-Console` header, which no other origin can send, so a page open elsewhere in
+  the browser can't write through it. The S3 API is unaffected, and the requests of the console aren't recorded in
+  the statistics. See [Console](docs/deployment.md#console).
+
 + **`localS3.endpoint()` and `localS3.presign(...)`.** `endpoint()` is the URL that clients reach the running service
   at, e.g. `http://127.0.0.1:29090`, instead of every embedding application assembling it from the scheme, the bind
   host and the port; a service bound to every interface is named by its loopback address, and one serving TLS by an

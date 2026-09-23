@@ -61,16 +61,20 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class LocalS3RouterFactory {
 
   /**
    * The operations whose requests aren't worth recording in the statistics of the requests: the health check, which a
-   * probe requests every few seconds, and the administration endpoints, which would record themselves.
+   * probe requests every few seconds, the administration endpoints, which would record themselves, and the console,
+   * which would report the browsing of a user as traffic of the application under test.
    */
-  public static final Set<String> UNRECORDED_OPERATIONS = Set.of("HealthCheck", "HeadHealthCheck",
-      AdminController.STATS_OPERATION, AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION,
-      AdminController.LIFECYCLE_OPERATION);
+  public static final Set<String> UNRECORDED_OPERATIONS = Stream.concat(
+      Stream.of("HealthCheck", "HeadHealthCheck", AdminController.STATS_OPERATION,
+          AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION, AdminController.LIFECYCLE_OPERATION),
+      ConsoleController.OPERATIONS.stream()).collect(Collectors.toUnmodifiableSet());
 
   /**
    * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
@@ -160,7 +164,10 @@ public class LocalS3RouterFactory {
         // Told apart from an S3 request by the service in its credential scope rather than by its path, which it
         // shares with the S3 routes; see S3TablesController.
         .s3Tables(s3TablesController(serviceFactory))
-        .website(websiteController(serviceFactory));
+        .website(websiteController(serviceFactory))
+        // The console reads the same services the S3 operations do; a service without them, e.g. a router of
+        // handlers alone, serves none.
+        .console(consoleController(serviceFactory, accessKeyId, secretAccessKey));
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
@@ -230,6 +237,25 @@ public class LocalS3RouterFactory {
         ? serviceFactory.getInstance(LocalS3Config.class).website()
         : LocalS3Website.defaults();
     return website.enabled() ? new StaticWebsiteController(serviceFactory, website) : null;
+  }
+
+  /**
+   * The controller of the built-in console of a service.
+   *
+   * @param serviceFactory the services of the service.
+   * @param accessKeyId the access key ID that the console asks for as the user name; {@code null} if the service
+   *     has no credentials, which serves the console to every request.
+   * @param secretAccessKey the secret access key of {@code accessKeyId}.
+   * @return the controller; {@code null} if the service holds no data to show, which is the case for a router of
+   *     handlers alone.
+   */
+  private static ConsoleController consoleController(ServiceFactory serviceFactory, String accessKeyId,
+                                                     String secretAccessKey) {
+    if (!serviceFactory.containsInstance(BucketService.class)
+        || !serviceFactory.containsInstance(ObjectService.class)) {
+      return null;
+    }
+    return new ConsoleController(serviceFactory, accessKeyId, secretAccessKey);
   }
 
   /**
