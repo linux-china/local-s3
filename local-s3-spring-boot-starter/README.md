@@ -3,13 +3,57 @@
 `local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot application. One artifact serves **Spring Boot 3 and
 Spring Boot 4**: see [Spring Boot 3](#spring-boot-3) for what an application on Spring Boot 3 has to set.
 
+> [!WARNING]
+> Keep the starter out of the production artifact. It is on by default (`local-s3.enabled` defaults to `true`), so
+> an application jar that includes it starts an S3 service on port 29090 and, with the AWS SDK, registers an
+> `S3Client` that points at it. Unless the application defines its own client, its S3 traffic goes to the embedded
+> service without any warning. Declare the starter for development and tests only, as shown below, or set
+> `local-s3.enabled=false` in the production configuration (see
+> [LocalS3 locally, Amazon S3 in production](#locals3-locally-amazon-s3-in-production)).
+
+With Gradle and the Spring Boot plugin, use `developmentOnly`, which `bootRun` sees and `bootJar`/`bootWar` leave
+out. Use `testAndDevelopmentOnly` (Spring Boot 3.2+) to put it on the test classpath too:
+
+```groovy
+dependencies {
+    testAndDevelopmentOnly 'io.github.robothy:local-s3-spring-boot-starter:last_version'
+    // or only for tests:
+    // testImplementation 'io.github.robothy:local-s3-spring-boot-starter:last_version'
+}
+```
+
+With Maven, use `test` scope for tests. For local runs, put the dependency in a profile that is off by default, e.g.
+`mvn spring-boot:run -Plocal-s3`. `<optional>true</optional>` alone isn't enough, because `spring-boot:repackage`
+still puts optional dependencies into the fat jar:
+
 ```xml
+<!-- tests -->
 <dependency>
     <groupId>io.github.robothy</groupId>
     <artifactId>local-s3-spring-boot-starter</artifactId>
     <version>last_version</version>
+    <scope>test</scope>
 </dependency>
+
+<!-- local runs: mvn spring-boot:run -Plocal-s3 -->
+<profiles>
+    <profile>
+        <id>local-s3</id>
+        <dependencies>
+            <dependency>
+                <groupId>io.github.robothy</groupId>
+                <artifactId>local-s3-spring-boot-starter</artifactId>
+                <version>last_version</version>
+            </dependency>
+        </dependencies>
+    </profile>
+</profiles>
 ```
+
+With these declarations, `src/main` can't reference starter types such as `LocalS3Seeder` or `S3Change`. Put code
+that needs them in test sources, or in a `@Configuration` that only the development classpath contains. Use a plain
+`implementation`/compile dependency only when the embedded service is part of the product, for example an application
+that serves S3 to DuckDB or Spark on the same host.
 
 The starter only brings LocalS3 itself: an application that embeds the service for other processes, e.g. DuckDB or a
 Spark job, doesn't get the AWS SDK. To have the starter define the clients that point at the service, add the AWS SDK
@@ -252,6 +296,10 @@ local-s3:
   seed:
     classpath: s3-fixtures
 ```
+
+This setup also works when the production artifact doesn't contain the starter, e.g. with `developmentOnly`.
+`local-s3.enabled: false` in `application.yml` still selects `AmazonS3Configuration`, and the setting has no other
+effect when the starter is absent.
 
 An application that only ever embeds LocalS3 for the processes around it, e.g. DuckDB or a Spark job, needs none of
 this: it doesn't use a client itself, and doesn't have the AWS SDK on the classpath, so the starter defines no client

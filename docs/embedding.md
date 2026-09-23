@@ -374,7 +374,9 @@ and, when the application has the AWS SDK, which is an optional dependency, defi
 and an `S3Presigner` that point at it. `local-s3.seed.classpath` names a directory tree of the classpath that the
 service starts with, as `<bucket>/<key>`. `local-s3.website.*` configures
 [static website hosting](semantics.md#static-website-hosting): `enabled`, `all-buckets`, `index-document` and
-`error-document`. See [its README](../local-s3-spring-boot-starter/README.md).
+`error-document`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
+`testAndDevelopmentOnly`, a Maven `test` scope or profile). If the production jar includes it, the application
+starts a local service and its `S3Client` points at it.
 
 ## JUnit 5
 
