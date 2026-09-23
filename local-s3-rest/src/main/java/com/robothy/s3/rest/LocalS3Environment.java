@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * The environment variables that the Docker image is configured with, and that
@@ -16,6 +17,7 @@ import java.util.function.UnaryOperator;
  * its own default for it: a container applies the defaults of a container, e.g. binding every interface,
  * before reading the environment, while an embedded service keeps the defaults of the builder.
  */
+@Slf4j
 public final class LocalS3Environment {
 
   public static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
@@ -130,8 +132,37 @@ public final class LocalS3Environment {
 
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
+  /**
+   * The access key ID that requests must be signed with. Set together with {@linkplain #LOCAL_S3_SECRET_ACCESS_KEY};
+   * unset, the service answers unsigned requests.
+   *
+   * @see LocalS3Builder#credentials(String, String)
+   */
+  public static final String LOCAL_S3_ACCESS_KEY_ID = "LOCAL_S3_ACCESS_KEY_ID";
+
+  /**
+   * The secret access key of {@linkplain #LOCAL_S3_ACCESS_KEY_ID}.
+   */
+  public static final String LOCAL_S3_SECRET_ACCESS_KEY = "LOCAL_S3_SECRET_ACCESS_KEY";
+
+  /**
+   * Read the credentials of the service from {@linkplain #AWS_ACCESS_KEY_ID} and {@linkplain #AWS_SECRET_ACCESS_KEY}
+   * where {@linkplain #LOCAL_S3_ACCESS_KEY_ID} isn't set: {@code true} turns it on. It is off by default, because
+   * those are the variables that the AWS SDKs, the AWS CLI and DuckDB read the <b>client</b> credentials of a
+   * developer from, e.g. the real key of a company account, which a service started from the same shell would
+   * otherwise require every request to be signed with. The Docker images turn it on, since a container doesn't
+   * inherit the shell of the developer.
+   */
+  public static final String LOCAL_S3_CREDENTIALS_FROM_AWS_ENV = "LOCAL_S3_CREDENTIALS_FROM_AWS_ENV";
+
+  /**
+   * The access key ID of the service where {@linkplain #LOCAL_S3_CREDENTIALS_FROM_AWS_ENV} is {@code true}.
+   */
   public static final String AWS_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
 
+  /**
+   * The secret access key of the service where {@linkplain #LOCAL_S3_CREDENTIALS_FROM_AWS_ENV} is {@code true}.
+   */
   public static final String AWS_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
 
   private LocalS3Environment() {
@@ -195,15 +226,53 @@ public final class LocalS3Environment {
     variable(variables, LOCAL_S3_TLS_REQUIRED)
         .ifPresent(required -> builder.tls(tls -> tls.required(Boolean.parseBoolean(required))));
 
-    String accessKeyId = variable(variables, AWS_ACCESS_KEY_ID).orElse(null);
-    String secretAccessKey = variable(variables, AWS_SECRET_ACCESS_KEY).orElse(null);
+    applyCredentials(builder, variables);
+  }
+
+  /**
+   * Apply the credentials of {@linkplain #LOCAL_S3_ACCESS_KEY_ID}, or, where it isn't set and
+   * {@linkplain #LOCAL_S3_CREDENTIALS_FROM_AWS_ENV} allows it, of {@linkplain #AWS_ACCESS_KEY_ID}, and log which
+   * variables they came from, so that a client answered with {@code 403} can tell which key it has to sign with.
+   */
+  private static void applyCredentials(LocalS3Builder builder, UnaryOperator<String> variables) {
+    String idVariable = LOCAL_S3_ACCESS_KEY_ID;
+    String secretVariable = LOCAL_S3_SECRET_ACCESS_KEY;
+    boolean fromAwsEnv = variable(variables, LOCAL_S3_CREDENTIALS_FROM_AWS_ENV).map(Boolean::parseBoolean)
+        .orElse(false);
+    if (variable(variables, LOCAL_S3_ACCESS_KEY_ID).isEmpty() && variable(variables, LOCAL_S3_SECRET_ACCESS_KEY).isEmpty()) {
+      if (fromAwsEnv) {
+        idVariable = AWS_ACCESS_KEY_ID;
+        secretVariable = AWS_SECRET_ACCESS_KEY;
+      } else if (variable(variables, AWS_ACCESS_KEY_ID).isPresent()) {
+        log.info("{} is set but not used as the credentials of LocalS3; set {} and {}, or {}=true, to require"
+                + " signed requests.", AWS_ACCESS_KEY_ID, LOCAL_S3_ACCESS_KEY_ID, LOCAL_S3_SECRET_ACCESS_KEY,
+            LOCAL_S3_CREDENTIALS_FROM_AWS_ENV);
+      }
+    }
+    String accessKeyId = variable(variables, idVariable).orElse(null);
+    String secretAccessKey = variable(variables, secretVariable).orElse(null);
     if ((accessKeyId == null) != (secretAccessKey == null)) {
-      throw new IllegalArgumentException(AWS_ACCESS_KEY_ID + " and " + AWS_SECRET_ACCESS_KEY
-          + " must be configured together.");
+      throw new IllegalArgumentException(idVariable + " and " + secretVariable + " must be configured together.");
     }
     if (accessKeyId != null) {
       builder.credentials(accessKeyId, secretAccessKey);
+      log.info("LocalS3 credentials from the variables {} and {}: access key ID {}.", idVariable, secretVariable,
+          maskAccessKeyId(accessKeyId));
     }
+  }
+
+  /**
+   * Mask an access key ID for a log, keeping its first and last four characters, e.g. {@code AKIA****1234}, which
+   * tells keys apart without printing one that may be a real key.
+   *
+   * @param accessKeyId a non-empty access key ID.
+   * @return the masked access key ID.
+   */
+  public static String maskAccessKeyId(String accessKeyId) {
+    if (accessKeyId.length() <= 8) {
+      return accessKeyId.charAt(0) + "****";
+    }
+    return accessKeyId.substring(0, 4) + "****" + accessKeyId.substring(accessKeyId.length() - 4);
   }
 
   /**

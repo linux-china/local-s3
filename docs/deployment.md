@@ -35,14 +35,14 @@ your own user instead, and keep the ownership of the directory, start the contai
 >
 > ```
 > !! LocalS3 is listening on 0.0.0.0:29090 without authentication: everyone who reaches this port can read, write and delete every bucket.
-> !! Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require signed requests; bind 127.0.0.1 to serve this machine alone.
+> !! Set LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require signed requests; bind 127.0.0.1 to serve this machine alone.
 > ```
 >
 > On a shared network, e.g. an office network or a CI machine, set credentials, or publish the port to the loopback
 > address of the host alone:
 >
 > ```shell
-> docker run -d -p 29090:29090 -e AWS_ACCESS_KEY_ID=local -e AWS_SECRET_ACCESS_KEY=local luofuxiang/local-s3
+> docker run -d -p 29090:29090 -e LOCAL_S3_ACCESS_KEY_ID=local -e LOCAL_S3_SECRET_ACCESS_KEY=local luofuxiang/local-s3
 > docker run -d -p 127.0.0.1:29090:29090 luofuxiang/local-s3
 > ```
 >
@@ -89,20 +89,23 @@ Unlike the container, the jar listens on `127.0.0.1` and runs `IN_MEMORY` by def
 java -jar local-s3-standalone-2.5.0.jar --mode PERSISTENCE --data-path "$HOME/local-s3"
 ```
 
-A shell that a developer works in often exports `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` already, and
-the jar reads the environment it inherits, so it would require every request to be signed with those
-credentials. A container starts with a clean environment and doesn't run into this; clear them for the jar
-if you don't mean to sign:
+A shell that a developer works in often exports `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, the client
+credentials of the AWS SDKs, e.g. a real key of a company account. The jar and an embedded service don't take those
+for their own credentials: they read `LOCAL_S3_ACCESS_KEY_ID` and `LOCAL_S3_SECRET_ACCESS_KEY` (or `--access-key` and
+`--secret-key`), and `AWS_*` only with `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`. The Docker images set that flag, since
+a container doesn't inherit the shell of a developer, so `-e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=...` keeps
+working there. When credentials are configured, the startup log names the variables they came from and the access key
+ID, masked:
 
-```shell
-env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY java -jar local-s3-standalone-2.5.0.jar
+```
+LocalS3 credentials from the variables LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY: access key ID AKIA****1234.
 ```
 
 ## Configuration
 
 Every variable of the table below is also an option of the [executable jar](#executable-jar), named after it:
 `LOCAL_S3_PORT` is `--port`, `LOCAL_S3_WEBSITE_ALL_BUCKETS` is `--website-all-buckets`, `AWS_BUCKETS` is `--buckets`
-(or `--bucket`, repeated), and `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are `--access-key` and `--secret-key`.
+(or `--bucket`, repeated), and `LOCAL_S3_ACCESS_KEY_ID` and `LOCAL_S3_SECRET_ACCESS_KEY` are `--access-key` and `--secret-key`.
 The exceptions are the cache limits, which are read when a cache is created rather than applied to a service, so they
 are set by a variable alone. A container is configured by the variables; `java -jar s3.jar --help` prints the options.
 
@@ -121,7 +124,8 @@ are set by a variable alone. A container is configured by the variables; `java -
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES` | `1024` | `IN_MEMORY` mode with initial data: the max number of data paths whose loaded data the JVM caches. |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
 | `AWS_BUCKETS` | | Comma-separated buckets to create on startup. |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. Unset, every request is answered, whoever sends it; a service that also binds an address other than a loopback one warns about that when it starts, see [Docker](#docker). |
+| `LOCAL_S3_ACCESS_KEY_ID`, `LOCAL_S3_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. Unset, every request is answered, whoever sends it; a service that also binds an address other than a loopback one warns about that when it starts, see [Docker](#docker). |
+| `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV` | `false`; `true` in the image | Read the key pair from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where `LOCAL_S3_ACCESS_KEY_ID` isn't set. Off outside the image, because those are the client credentials that a developer's shell exports; see [Executable jar](#executable-jar). |
 | `LOCAL_S3_WEBSITE` | `true` | Serve the buckets as [static websites](semantics.md#static-website-hosting) to the requests that carry no credentials. Only a public bucket answers one; the signed requests of an S3 client are never affected. |
 | `LOCAL_S3_WEBSITE_ALL_BUCKETS` | `false` | Serve **every** bucket as a static website, not the public ones alone, which also lets an unsigned request read the objects of a private bucket. Meant for local development. |
 | `LOCAL_S3_WEBSITE_INDEX_DOCUMENT` | `index.html` | The index document of the buckets that have no `WebsiteConfiguration` of their own. |

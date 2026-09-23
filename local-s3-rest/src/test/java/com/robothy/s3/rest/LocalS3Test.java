@@ -33,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -554,8 +555,8 @@ class LocalS3Test {
     Map<String, String> variables = Map.of(
         LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
         LocalS3Environment.AWS_BUCKETS, "a, b,",
-        LocalS3Environment.AWS_ACCESS_KEY_ID, "access-key-id",
-        LocalS3Environment.AWS_SECRET_ACCESS_KEY, "secret-access-key");
+        LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "access-key-id",
+        LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY, "secret-access-key");
     LocalS3 localS3 = LocalS3.builder().port(-1).fromEnvironment(variables::get).build();
 
     assertEquals(List.of("s3", "s3.local"), localS3.getVirtualHostDomains());
@@ -570,8 +571,39 @@ class LocalS3Test {
     assertThrows(IllegalArgumentException.class,
         () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_MODE, "CLOUD")::get));
     assertThrows(IllegalArgumentException.class,
-        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.AWS_ACCESS_KEY_ID, "access-key-id")::get),
+        () -> LocalS3.builder().fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "access-key-id")::get),
         "The access key ID and the secret access key are configured together.");
+  }
+
+  /**
+   * {@code AWS_ACCESS_KEY_ID} is where the AWS SDKs read the client credentials of a developer from, e.g. a real key,
+   * so a service reads its own credentials from it only when it is told to, as the Docker images are.
+   */
+  @Test
+  void fromEnvironmentReadsTheAwsCredentialsOnlyWhenToldTo() {
+    Map<String, String> aws = Map.of(
+        LocalS3Environment.AWS_ACCESS_KEY_ID, "AKIAREALKEY00001234",
+        LocalS3Environment.AWS_SECRET_ACCESS_KEY, "real-secret");
+    assertFalse(LocalS3.builder().fromEnvironment(aws::get).buildConfig().authenticationEnabled());
+
+    Map<String, String> fromAws = new HashMap<>(aws);
+    fromAws.put(LocalS3Environment.LOCAL_S3_CREDENTIALS_FROM_AWS_ENV, "true");
+    LocalS3Config config = LocalS3.builder().fromEnvironment(fromAws::get).buildConfig();
+    assertEquals("AKIAREALKEY00001234", config.accessKeyId());
+    assertEquals("real-secret", config.secretAccessKey());
+
+    Map<String, String> both = new HashMap<>(fromAws);
+    both.put(LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "local");
+    both.put(LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY, "local-secret");
+    config = LocalS3.builder().fromEnvironment(both::get).buildConfig();
+    assertEquals("local", config.accessKeyId(), "The variables of LocalS3 win over the ones of AWS.");
+    assertEquals("local-secret", config.secretAccessKey());
+  }
+
+  @Test
+  void masksTheAccessKeyIdForTheLog() {
+    assertEquals("AKIA****1234", LocalS3Environment.maskAccessKeyId("AKIAREALKEY00001234"));
+    assertEquals("l****", LocalS3Environment.maskAccessKeyId("local"));
   }
 
   @Test

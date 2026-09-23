@@ -28,6 +28,9 @@ USER locals3
 
 ENV LOCAL_S3_HOST="0.0.0.0"
 ENV LOCAL_S3_MODE=PERSISTENCE
+# A container doesn't inherit the shell of a developer, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can't be the
+# client credentials of one there: keep reading them as the credentials of the service, as the image always did.
+ENV LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true
 
 # Size the heap by the memory limit of the container. Override JAVA_OPTS to tune the JVM.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"

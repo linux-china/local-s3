@@ -39,8 +39,8 @@ class CommandLineTest {
         assertEquals(Map.of(LocalS3Environment.LOCAL_S3_PORT, "29292",
                 LocalS3Environment.LOCAL_S3_MODE, "PERSISTENCE",
                 LocalS3Environment.LOCAL_S3_DATA_PATH, "/var/lib/local-s3",
-                LocalS3Environment.AWS_ACCESS_KEY_ID, "local",
-                LocalS3Environment.AWS_SECRET_ACCESS_KEY, "local-secret"), values);
+                LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "local",
+                LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY, "local-secret"), values);
     }
 
     /**
@@ -227,10 +227,20 @@ class CommandLineTest {
                 .toList();
     }
 
+    /**
+     * The variables that stand for the client credentials of the AWS SDKs, which a service reads its own from only in
+     * a container; {@code --access-key} and {@code --secret-key} set its credentials on the command line instead.
+     */
+    private static final List<String> VARIABLES_WITHOUT_OPTIONS = List.of(
+            LocalS3Environment.LOCAL_S3_CREDENTIALS_FROM_AWS_ENV,
+            LocalS3Environment.AWS_ACCESS_KEY_ID,
+            LocalS3Environment.AWS_SECRET_ACCESS_KEY);
+
     private static List<String> declaredVariables() {
         return List.of(LocalS3Environment.class.getDeclaredFields()).stream()
                 .filter(field -> Modifier.isStatic(field.getModifiers()) && field.getType() == String.class)
                 .map(CommandLineTest::value)
+                .filter(variable -> !VARIABLES_WITHOUT_OPTIONS.contains(variable))
                 .toList();
     }
 

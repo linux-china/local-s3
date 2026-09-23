@@ -3,6 +3,7 @@ package com.robothy.s3.docker;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
 import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3Environment;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import lombok.extern.slf4j.Slf4j;
 
@@ -62,7 +63,8 @@ public class App {
             hint.add("- Data Path: " + localS3Config.dataPath());
         }
         if (localS3Config.authenticationEnabled()) {
-            hint.add("- Authentication: Access Key(" + localS3Config.accessKeyId() + ")");
+            hint.add("- Authentication: Access Key("
+                    + LocalS3Environment.maskAccessKeyId(localS3Config.accessKeyId()) + ")");
         }
         if (localS3Config.tlsEnabled()) {
             // The certificate itself is logged by the service, which prints a generated one in PEM format.

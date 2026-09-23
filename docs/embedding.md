@@ -321,7 +321,9 @@ localS3.start();
 ### Configure from the environment
 
 `fromEnvironment()` applies the environment variables of the Docker image, e.g. `LOCAL_S3_MODE` or `AWS_BUCKETS`, that
-are set; see [deployment.md](deployment.md#configuration).
+are set; see [deployment.md](deployment.md#configuration). The credentials come from `LOCAL_S3_ACCESS_KEY_ID` and
+`LOCAL_S3_SECRET_ACCESS_KEY`; `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, which an IDE or an application inherits
+from the shell of the developer as client credentials, are read only with `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`.
 
 ### Settings grouped by domain
 

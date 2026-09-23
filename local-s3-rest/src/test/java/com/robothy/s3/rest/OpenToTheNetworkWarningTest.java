@@ -44,7 +44,7 @@ class OpenToTheNetworkWarningTest {
     assertTrue(log.contains(WARNING), log);
     assertTrue(log.contains("0.0.0.0:29090"), log);
     assertTrue(log.contains("read, write and delete every bucket"), log);
-    assertTrue(log.contains("AWS_ACCESS_KEY_ID"), "The warning says how to turn it off: " + log);
+    assertTrue(log.contains("LOCAL_S3_ACCESS_KEY_ID"), "The warning says how to turn it off: " + log);
   }
 
   @Test

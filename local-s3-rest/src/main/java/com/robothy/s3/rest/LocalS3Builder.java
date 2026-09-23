@@ -268,7 +268,10 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Environment#LOCAL_S3_TLS_KEY}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_REQUIRED},
      * {@linkplain LocalS3Environment#LOCAL_S3_ICEBERG_CATALOG},
      * {@linkplain LocalS3Environment#LOCAL_S3_ICEBERG_WAREHOUSE}, {@linkplain LocalS3Environment#AWS_BUCKETS},
-     * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}.
+     * {@linkplain LocalS3Environment#LOCAL_S3_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#LOCAL_S3_SECRET_ACCESS_KEY}.
+     * {@linkplain LocalS3Environment#AWS_ACCESS_KEY_ID} and {@linkplain LocalS3Environment#AWS_SECRET_ACCESS_KEY}, which
+     * hold the client credentials of a developer, are read only where
+     * {@linkplain LocalS3Environment#LOCAL_S3_CREDENTIALS_FROM_AWS_ENV} is {@code true}.
      *
      * @return builder.
      * @throws IllegalArgumentException if a variable has an invalid value.

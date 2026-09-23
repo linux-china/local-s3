@@ -234,7 +234,7 @@ public class LocalS3 implements AutoCloseable {
         log.warn("""
                 !! LocalS3 is listening on {}:{} without authentication: everyone who reaches this port can read, \
                 write and delete every bucket.
-                !! Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require \
+                !! Set LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require \
                 signed requests; bind 127.0.0.1 to serve this machine alone.""", config.bindHost(), port);
     }
 

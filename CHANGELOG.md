@@ -62,6 +62,7 @@ imported either.
 | Entity tag of a completed multipart upload | MD5 of the whole content | MD5 of the part digests with a `-<parts>` suffix, like Amazon S3; `s3Api(s3 -> s3.compositeMultipartEtags(false))` restores the old one |
 | Bucket names | not validated | the naming rules of Amazon S3; invalid names fail with `InvalidBucketName` |
 | Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
+| Credentials variables of the jar and `fromEnvironment()` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `LOCAL_S3_ACCESS_KEY_ID`, `LOCAL_S3_SECRET_ACCESS_KEY`; `AWS_*` only with `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`, which the Docker images set |
 | Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`storage(storage -> storage.maxInMemoryBytes(...))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
 
 `LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
@@ -203,8 +204,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
   heap by default. An upload beyond it is answered with `507 InsufficientStorage`, whose message suggests the
   `PERSISTENCE` mode, instead of an `OutOfMemoryError` that takes the embedding application or IDE down.
-+ **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` and
-  `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of a request is received.
++ **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `LOCAL_S3_ACCESS_KEY_ID` /
+  `LOCAL_S3_SECRET_ACCESS_KEY` and `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of
+  a request is received. `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, where the AWS SDKs read the client credentials
+  of a developer from, are read only with `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`, which the Docker images set, so a
+  jar or an embedded service started from a shell with a real AWS key doesn't require every request to be signed with
+  it. The startup log names the variables the credentials came from, with the access key ID masked, e.g. `AKIA****1234`.
 + **STS temporary credentials**: a stateless STS endpoint on the same port answers `AssumeRole`, `GetSessionToken` and
   `GetCallerIdentity`, like the one of MinIO, and requests signed with the temporary credentials it issues are accepted,
   with their session token in `x-amz-security-token`, a presigned URL or a form upload. The credentials survive restarts
