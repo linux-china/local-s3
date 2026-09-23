@@ -1,5 +1,6 @@
 package com.robothy.s3.spring.boot;
 
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.LocalS3Website;
@@ -42,6 +43,14 @@ public class LocalS3Properties {
    * Data directory in {@code PERSISTENCE} mode, or the initial data of an {@code IN_MEMORY} service.
    */
   private String dataPath;
+
+  /**
+   * When the changes of a {@code PERSISTENCE} service reach the disk. {@code FAST}, the default of an embedded service,
+   * commits them in the background, at most a second after a change, and on shutdown: a killed application loses the
+   * changes of the last second, in exchange for far fewer writes. {@code DURABLE} commits every change, so that a killed
+   * application loses nothing, which is the default of a standalone service.
+   */
+  private PersistencePolicy persistencePolicy = PersistencePolicy.FAST;
 
   /**
    * Buckets to create when LocalS3 starts.
@@ -119,6 +128,14 @@ public class LocalS3Properties {
 
   public void setDataPath(String dataPath) {
     this.dataPath = dataPath;
+  }
+
+  public PersistencePolicy getPersistencePolicy() {
+    return persistencePolicy;
+  }
+
+  public void setPersistencePolicy(PersistencePolicy persistencePolicy) {
+    this.persistencePolicy = persistencePolicy;
   }
 
   public List<String> getBuckets() {

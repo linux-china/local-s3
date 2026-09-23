@@ -262,6 +262,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   configuration of a service.
 + **Persistence**: `storage(storage -> storage.persistencePolicy(DURABLE | FAST))` / `LOCAL_S3_PERSISTENCE_POLICY`; object metadata is read lazily
   from the store, bounded by `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`, so large data directories open quickly.
+  `DURABLE` (the default of `LocalS3Builder`, the standalone jar and the Docker image) commits every change before
+  answering, which survives a killed process but not a power loss, since a commit isn't an `fsync`; the Spring Boot
+  starter defaults to `FAST` (`local-s3.persistence-policy`). The concurrent writers of a bucket share a commit, and
+  `buckets.mvstore` is compacted while the service runs, once most of it is room that superseded chunks take, as well
+  as on shutdown. See [persistence policy](docs/deployment.md#persistence-policy).
 + **Limits**, under `netty(netty -> ...)`: `maxRequestBodySize` (5 GiB by default), `requestBodyFileThreshold`,
   `maxRequestHeaderSize` and `idleConnectionTimeoutSeconds`. Large request bodies are buffered in files rather than on the heap.
 + **`local-s3-spring-boot-starter`** for Spring Boot 4 applications.

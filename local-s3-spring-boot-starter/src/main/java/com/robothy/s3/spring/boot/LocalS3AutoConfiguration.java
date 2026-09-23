@@ -125,6 +125,8 @@ public class LocalS3AutoConfiguration {
     if (hasText(properties.getDataPath())) {
       builder.dataPath(properties.getDataPath());
     }
+    applyIfSet(properties.getPersistencePolicy(),
+        policy -> builder.storage(storage -> storage.persistencePolicy(policy)));
     applyIfSet(properties.getBuckets(), buckets -> builder.buckets(buckets.toArray(String[]::new)));
     builder.storage(storage -> storage.initialDataCacheEnabled(properties.isInitialDataCacheEnabled()));
     applyIfSet(properties.getInMemory().getMaxSize(),

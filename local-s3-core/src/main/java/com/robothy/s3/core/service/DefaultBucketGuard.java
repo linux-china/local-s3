@@ -91,24 +91,67 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
       // The outer change holds the write lock, and persists the bucket once it is done.
       return operation.get();
     }
-    // The changes that the operation publishes are delivered once the write lock is released.
-    return changePublisher.withinChange(() -> write(bucketName, () -> {
-      changing.add(bucketName);
-      // Within the scope, the metadata of the bucket records the objects it hands out as changed, so that the store
-      // only writes those. It spans the persistence too, which drains what the operation recorded.
-      boolean ownsScope = BucketChangeScope.begin(bucketName);
-      try {
-        return Objects.isNull(bucketMetaStore) ? operation.get() : invokeAndPersist(bucketName, change, operation);
-      } finally {
-        if (ownsScope) {
-          BucketChangeScope.end(bucketName);
-        }
-        changing.remove(bucketName);
-        if (changing.isEmpty()) {
-          changingBuckets.remove();
-        }
+    // The changes that the operation publishes are delivered once the write lock is released, and the change is
+    // durable.
+    return changePublisher.withinChange(() -> {
+      if (Objects.isNull(bucketMetaStore)) {
+        return write(bucketName, () -> changing(bucketName, changing, operation));
       }
-    }));
+      boolean ownsTransaction = storage != null && storage.begin();
+      T result = write(bucketName,
+          () -> changing(bucketName, changing, () -> invokeAndPersist(bucketName, change, operation, ownsTransaction)));
+      sync(ownsTransaction);
+      return result;
+    });
+  }
+
+  private <T> T changing(String bucketName, Set<String> changing, Supplier<T> operation) {
+    changing.add(bucketName);
+    // Within the scope, the metadata of the bucket records the objects it hands out as changed, so that the store
+    // only writes those. It spans the persistence too, which drains what the operation recorded.
+    boolean ownsScope = BucketChangeScope.begin(bucketName);
+    try {
+      return operation.get();
+    } finally {
+      if (ownsScope) {
+        BucketChangeScope.end(bucketName);
+      }
+      changing.remove(bucketName);
+      if (changing.isEmpty()) {
+        changingBuckets.remove();
+      }
+    }
+  }
+
+  /**
+   * Make the persisted change durable, then delete the data that the change deleted, so that the durable metadata
+   * never references deleted data.
+   *
+   * <p>It runs once the write lock of the bucket is released, so that the concurrent writers of a bucket share a
+   * commit of the metadata store rather than commit one after the other: the lock serializes the changes of a
+   * bucket, which would otherwise append a chunk each. The change is visible to other requests from the moment the
+   * lock is released, and is made durable before its own request is answered.
+   *
+   * @param ownsTransaction whether the change started the transaction of the storage; a change nested in another
+   *     one leaves both to the outer one.
+   */
+  private void sync(boolean ownsTransaction) {
+    if (storage != null && !ownsTransaction) {
+      return;
+    }
+    try {
+      bucketMetaStore.sync();
+    } catch (RuntimeException | Error e) {
+      if (ownsTransaction) {
+        // The metadata may or may not have reached the disk, and is what the service serves either way: keep both the
+        // data it references and the data it no longer does.
+        storage.abandon();
+      }
+      throw e;
+    }
+    if (ownsTransaction) {
+      storage.commit();
+    }
   }
 
   @Override
@@ -145,16 +188,15 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   /**
    * Run an operation that changes a bucket and persist the bucket. Objects that the operation deletes are only deleted
-   * after the metadata is persisted. If the operation or the persistence fails, the objects written by the operation
-   * are deleted.
+   * after the metadata is persisted and made durable, see {@linkplain #sync(boolean)}. If the operation or the
+   * persistence fails, the objects written by the operation are deleted.
    *
    * <p>A {@linkplain LocalS3Exception} or a {@linkplain LocalS3VectorException} thrown by the operation rejects the
    * request, which services do before they change the metadata, so the in-memory metadata is kept. After any other
    * failure, or if the persistence fails, the in-memory metadata of the bucket is reloaded from the store, dropping the
    * changes that were made in memory only.
    */
-  private <T> T invokeAndPersist(String bucketName, Change change, Supplier<T> operation) {
-    boolean ownsTransaction = storage != null && storage.begin();
+  private <T> T invokeAndPersist(String bucketName, Change change, Supplier<T> operation, boolean ownsTransaction) {
     T result;
     try {
       result = operation.get();
@@ -168,10 +210,6 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     } catch (RuntimeException | Error e) {
       rollback(ownsTransaction, bucketName, e, true);
       throw e;
-    }
-
-    if (ownsTransaction) {
-      storage.commit();
     }
     return result;
   }

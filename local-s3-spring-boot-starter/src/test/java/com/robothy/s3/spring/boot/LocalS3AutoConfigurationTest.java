@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
@@ -92,6 +93,7 @@ class LocalS3AutoConfigurationTest {
         "local-s3.bind-host=0.0.0.0",
         "local-s3.mode=persistence",
         "local-s3.data-path=" + dataPath,
+        "local-s3.persistence-policy=durable",
         "local-s3.buckets=bucket-a, bucket-b",
         "local-s3.initial-data-cache-enabled=false",
         "local-s3.in-memory.max-size=256MB",
@@ -116,6 +118,7 @@ class LocalS3AutoConfigurationTest {
       assertEquals(0, config.port());
       assertEquals(LocalS3Mode.PERSISTENCE, config.mode());
       assertEquals(dataPath, config.dataPath());
+      assertEquals(PersistencePolicy.DURABLE, config.persistencePolicy());
       assertEquals(List.of("bucket-a", "bucket-b"), config.buckets());
       assertFalse(config.initialDataCacheEnabled());
       assertEquals(256L * 1024 * 1024, config.maxInMemoryBytes());
@@ -136,6 +139,16 @@ class LocalS3AutoConfigurationTest {
       assertFalse(context.containsBean("s3Client"), "Clients are disabled.");
       assertTrue(context.getBean(LocalS3.class).isRunning(), "The lifecycle starts the service without clients.");
     });
+  }
+
+  /**
+   * The data of an embedded service is set up for the application, and built again if it is lost, so its changes are
+   * committed in the background rather than one by one.
+   */
+  @Test
+  void anEmbeddedServiceCommitsInTheBackgroundByDefault() {
+    runner.withPropertyValues("local-s3.clients.enabled=false").run(context ->
+        assertEquals(PersistencePolicy.FAST, context.getBean(LocalS3.class).getConfig().persistencePolicy()));
   }
 
   @Test

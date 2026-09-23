@@ -74,6 +74,7 @@ local-s3:
   port: 29090            # 0 for a random port
   buckets: [uploads, reports]
   mode: in-memory        # or persistence, with data-path
+  persistence-policy: fast   # persistence mode; durable commits every change
   seed:
     classpath: s3-fixtures   # the objects the service starts with
   # credentials:

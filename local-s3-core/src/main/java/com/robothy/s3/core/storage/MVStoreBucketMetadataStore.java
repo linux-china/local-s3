@@ -50,8 +50,9 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>{@code uploads/&lt;bucket&gt;}: an object key to the multipart uploads in progress for that key.</li>
  * </ul>
  *
- * <p>Whether a change is committed as it is written is the {@linkplain PersistencePolicy} of the store; the change
- * itself is always written into the key-value store, so every request sees it either way.
+ * <p>{@linkplain #store} and {@linkplain #delete} write a change into the key-value store, so every request sees it,
+ * without committing it; whether {@linkplain #sync()} then commits it is the {@linkplain PersistencePolicy} of the
+ * store.
  *
  * <p>The values are JSON, written by the same Jackson mapper that reads them, so the metadata model needs no
  * {@code Serializable} of its own and a store can be read by a later version that added fields.
@@ -144,7 +145,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private final ObjectMetadataCache objectMetadataCache;
 
   /**
-   * Whether a change is committed as it is written; a {@linkplain PersistencePolicy#FAST} store leaves that to the
+   * Whether {@linkplain #sync()} commits the changes; a {@linkplain PersistencePolicy#FAST} store leaves that to the
    * background thread of MVStore and to {@linkplain LocalS3Store#close()}.
    */
   private final boolean commitEveryChange;
@@ -195,11 +196,16 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   }
 
   /**
-   * Make the change durable, if the store commits every change. A {@linkplain PersistencePolicy#FAST} store leaves
-   * the change in the key-value store, where every request sees it, and lets MVStore commit it in the background:
-   * a burst of small writes is then committed together rather than appending a chunk each.
+   * Commit the changes written so far, if the store commits every change. A {@linkplain PersistencePolicy#FAST} store
+   * leaves them in the key-value store, where every request sees them, and lets MVStore commit them in the
+   * background: a burst of small writes is then committed together rather than appending a chunk each.
+   *
+   * <p>A {@linkplain PersistencePolicy#DURABLE} store commits here rather than in {@linkplain #store}, which runs
+   * under the write lock of the bucket, so that concurrent writers of a bucket share a commit: MVStore skips the
+   * commit of a caller whose changes a commit that started meanwhile already holds.
    */
-  private void commit() {
+  @Override
+  public void sync() {
     if (commitEveryChange) {
       store.commit();
     }
@@ -294,7 +300,6 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
 
     // Written last: the attributes carry the greatest ID in use, which the objects and uploads above raised.
     buckets().put(name, writeAttributes(bucketMetadata));
-    commit();
     return name;
   }
 
@@ -307,7 +312,6 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     store.removeMap(objects(name));
     store.removeMap(versions(name));
     store.removeMap(uploads(name));
-    commit();
   }
 
   @Override

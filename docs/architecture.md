@@ -186,10 +186,15 @@ many are in heap (`LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES`) and evicts the l
 change holds is pinned until the change is written.
 
 **Sharing.** MVStore locks the file it opens, so the services of a JVM that use the same data directory share one open
-store, reference-counted, and closed when the last of them shuts down. The file is compacted on that close.
+store, reference-counted, and closed when the last of them shuts down. The file is compacted on that close, and while
+the store is open once most of it is room that superseded chunks take.
 
-**Commits.** `PersistencePolicy.DURABLE` commits every change; `FAST` lets MVStore commit in the background, at most a
-second later, and commits the rest on close. See [deployment.md](deployment.md#persistence-policy).
+**Commits.** `PersistencePolicy.DURABLE` commits every change before its request is answered; `FAST` lets MVStore
+commit in the background, at most a second later, and commits the rest on close. `DURABLE` survives a killed process,
+not a power loss: MVStore doesn't `fsync` a commit. The `BucketGuard` writes a change into the maps under the lock of the
+bucket, and commits it (`MetadataStore.sync()`) once the lock is released, so the concurrent writers of a bucket share a
+commit; the content that the change deleted is deleted after that commit. See
+[deployment.md](deployment.md#persistence-policy).
 
 ### Content: the `Storage` layers
 

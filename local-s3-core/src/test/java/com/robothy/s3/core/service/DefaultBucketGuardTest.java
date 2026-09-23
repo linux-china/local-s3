@@ -91,10 +91,11 @@ class DefaultBucketGuardTest {
         () -> guard.change("bucket", BucketGuard.Change.UPDATE, () -> "done"));
 
     assertEquals("done", result);
-    assertEquals(List.of("store bucket"), store.operations, "A nested change of the same bucket is persisted once.");
+    assertEquals(List.of("store bucket", "sync"), store.operations,
+        "A nested change of the same bucket is persisted once.");
 
     guard.change("bucket", BucketGuard.Change.DELETE, () -> null);
-    assertEquals(List.of("store bucket", "delete bucket"), store.operations);
+    assertEquals(List.of("store bucket", "sync", "delete bucket", "sync"), store.operations);
   }
 
   @Test
@@ -150,7 +151,7 @@ class DefaultBucketGuardTest {
     // The failed change doesn't count as an outer change of the next one, which persists the bucket again.
     store.failing = false;
     guard.change("bucket", BucketGuard.Change.UPDATE, () -> null);
-    assertEquals(List.of("store bucket"), store.operations);
+    assertEquals(List.of("store bucket", "sync"), store.operations);
   }
 
   @Test
@@ -214,7 +215,7 @@ class DefaultBucketGuardTest {
         return null;
       });
 
-      assertEquals(List.of("a.txt after [store bucket], unlocked"), delivered);
+      assertEquals(List.of("a.txt after [store bucket, sync], unlocked"), delivered);
     } finally {
       executor.shutdownNow();
     }
@@ -321,6 +322,68 @@ class DefaultBucketGuardTest {
     }
   }
 
+  /**
+   * The metadata is made durable once the write lock of the bucket is released, so that the concurrent writers of a
+   * bucket share a commit, and before the content that the change deleted is deleted, so that durable metadata never
+   * references deleted content.
+   */
+  @Test
+  void syncsTheMetadataOutsideTheLockOfTheBucketAndBeforeDeletingContent() throws Exception {
+    storage.put(1L, "content".getBytes());
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      List<Boolean> observed = new ArrayList<>();
+      store.onSync = () -> {
+        try {
+          observed.add(executor.submit(() -> guard.write("bucket", () -> true)).get(5, TimeUnit.SECONDS));
+        } catch (Exception e) {
+          throw new AssertionError("The write lock of the bucket is still held.", e);
+        }
+        observed.add(storage.isExist(1L));
+      };
+
+      guard.change("bucket", BucketGuard.Change.UPDATE, () -> storage.delete(1L));
+
+      assertEquals(List.of(true, true), observed, "The lock is released, and the content not deleted yet.");
+      assertEquals(List.of("store bucket", "sync"), store.operations);
+      assertFalse(storage.isExist(1L));
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aChangeNestedInAnotherOneIsSyncedByTheOuterOne() {
+    guard.change("a", BucketGuard.Change.UPDATE,
+        () -> guard.change("b", BucketGuard.Change.UPDATE, () -> null));
+
+    assertEquals(List.of("store b", "store a", "sync"), store.operations);
+  }
+
+  /**
+   * If the metadata can't be made durable, it isn't known whether it reached the disk, and the service serves it
+   * either way: the content it references and the content it doesn't reference anymore are both kept.
+   */
+  @Test
+  void aFailedSyncKeepsTheContent() {
+    storage.put(1L, "old".getBytes());
+    store.onSync = () -> {
+      throw new IllegalStateException("The disk is full.");
+    };
+
+    assertThrows(IllegalStateException.class, () -> guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+      storage.put(2L, "new".getBytes());
+      return storage.delete(1L);
+    }));
+
+    assertTrue(storage.isExist(1L));
+    assertTrue(storage.isExist(2L));
+    // The transaction was ended: the next change of the thread starts one of its own, and deletes what it deletes.
+    store.onSync = () -> { };
+    guard.change("bucket", BucketGuard.Change.UPDATE, () -> storage.delete(1L));
+    assertFalse(storage.isExist(1L));
+  }
+
   private static S3Change objectCreated(String operation, String key) {
     return S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, operation, "bucket", key, null, 0, "etag");
   }
@@ -340,6 +403,8 @@ class DefaultBucketGuardTest {
     private final Map<String, String> stored = new ConcurrentHashMap<>();
 
     private boolean failing;
+
+    private Runnable onSync = () -> { };
 
     @Override
     public String fetch(String bucketName) {
@@ -365,6 +430,12 @@ class DefaultBucketGuardTest {
     public void delete(String bucketName) {
       operations.add("delete " + bucketName);
       stored.remove(bucketName);
+    }
+
+    @Override
+    public void sync() {
+      operations.add("sync");
+      onSync.run();
     }
 
     @Override

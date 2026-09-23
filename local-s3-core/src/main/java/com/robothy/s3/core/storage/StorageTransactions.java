@@ -28,4 +28,11 @@ public interface StorageTransactions {
    */
   void rollback();
 
+  /**
+   * End the transaction of the current thread and delete nothing: neither the data deleted within it, nor the data
+   * written within it. For when it is not known whether the metadata that references them was persisted; what is
+   * left unreferenced is deleted when the data directory is opened next.
+   */
+  void abandon();
+
 }

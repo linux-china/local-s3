@@ -83,7 +83,8 @@ final class CommandLine {
             option("--data-path", LocalS3Environment.LOCAL_S3_DATA_PATH, "<dir>",
                     "Data directory of a PERSISTENCE service; the initial data of an IN_MEMORY one."),
             option("--persistence-policy", LocalS3Environment.LOCAL_S3_PERSISTENCE_POLICY, "<policy>",
-                    "PERSISTENCE mode: DURABLE, the default, commits every change; FAST commits in the background."),
+                    "PERSISTENCE mode: DURABLE, the default, commits every change, so a killed process loses"
+                            + " nothing (no fsync); FAST commits in the background, at most a second later."),
             option("--in-memory-max-bytes", LocalS3Environment.LOCAL_S3_IN_MEMORY_MAX_BYTES, "<size>",
                     "IN_MEMORY mode: the max heap the stored content takes, e.g. 512m. Default half the max heap."),
             option("--buckets", List.of("--bucket"), LocalS3Environment.AWS_BUCKETS, "<names>",

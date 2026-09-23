@@ -55,6 +55,11 @@ public final class TransactionalVectorStorage implements VectorStorage, StorageT
   }
 
   @Override
+  public void abandon() {
+    end();
+  }
+
+  @Override
   public Long putVectorData(float[] vectorData) {
     Long storageId = delegate.putVectorData(vectorData);
     Transaction current = transaction.get();

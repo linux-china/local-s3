@@ -120,6 +120,51 @@ class LocalS3StoreTest {
     }
   }
 
+  /**
+   * A service that runs for long, e.g. in an IDE, doesn't wait for its store to be closed to get back the room that
+   * superseded chunks take.
+   */
+  @Test
+  void compactsAWastefulFileWhileTheStoreIsOpen(@TempDir Path dataPath) throws IOException {
+    Path file = dataPath.resolve(LocalS3Store.FILE_NAME);
+    try (LocalS3Store store = LocalS3Store.persistent(dataPath)) {
+      MVMap<String, String> map = store.store().openMap("objects/b");
+      assertFalse(store.compactIfWasteful(), "A small file is left alone.");
+
+      int retentionTime = store.store().getRetentionTime();
+      for (int i = 0; i < 3_000; i++) {
+        map.put("the-key", "value-" + i);
+        store.store().commit();
+      }
+      long whileWriting = Files.size(file);
+      assertTrue(whileWriting >= LocalS3Store.COMPACTION_MIN_FILE_SIZE, whileWriting + " bytes");
+
+      assertTrue(store.compactIfWasteful());
+      long compacted = Files.size(file);
+      assertTrue(whileWriting > 8 * compacted,
+          "The file was " + whileWriting + " bytes while writing and " + compacted + " once compacted.");
+      assertEquals(retentionTime, store.store().getRetentionTime(), "Compacting keeps the retention time.");
+      assertFalse(store.compactIfWasteful(), "A compacted file is left alone.");
+
+      // The store is still written and read as before.
+      map.put("the-key", "after");
+      store.store().commit();
+    }
+
+    try (LocalS3Store reopened = LocalS3Store.persistent(dataPath)) {
+      assertEquals("after", reopened.store().openMap("objects/b").get("the-key"));
+    }
+  }
+
+  @Test
+  void aStoreThatIsNotWrittenIsNotCompacted(@TempDir Path dataPath) {
+    LocalS3Store.persistent(dataPath).close();
+    try (LocalS3Store inMemory = LocalS3Store.inMemory(); LocalS3Store readOnly = LocalS3Store.readOnly(dataPath)) {
+      assertFalse(inMemory.compactIfWasteful());
+      assertFalse(readOnly.compactIfWasteful());
+    }
+  }
+
   @Test
   void aDataDirectoryWithoutAStoreIsReadAsAnEmptyInMemoryStore(@TempDir Path dataPath) {
     try (LocalS3Store readOnly = LocalS3Store.readOnly(dataPath);

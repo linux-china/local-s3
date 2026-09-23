@@ -7,6 +7,11 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 import org.h2.mvstore.MVStore;
 
 /**
@@ -27,13 +32,17 @@ import org.h2.mvstore.MVStore;
  * reference are deleted in the background, see {@linkplain UnreferencedContentSweeper}.
  *
  * <p>The file is compacted when its last holder closes the store, so that a data directory rests at the size of the
- * metadata it holds rather than of everything that was ever written to it; see {@linkplain PersistencePolicy}.
+ * metadata it holds rather than of everything that was ever written to it; see {@linkplain PersistencePolicy}. A store
+ * open for writing is also compacted while it runs, once its file is mostly room that no metadata uses anymore, so that
+ * a service that runs for long, e.g. in an IDE, doesn't keep the room of every write it took; see
+ * {@linkplain #compactIfWasteful()}.
  *
  * <p>The one store of a file is open either for reading or for writing, and stays that way while a holder still reads
  * it. {@linkplain #readOnly(Path)} therefore shares a store that {@linkplain #persistent(Path)} opened, but not the
  * other way around: opening a data directory for writing while it is open read-only is rejected, see
  * {@linkplain #persistent(Path)}.
  */
+@Slf4j
 public final class LocalS3Store implements AutoCloseable {
 
   /**
@@ -48,6 +57,29 @@ public final class LocalS3Store implements AutoCloseable {
    * it. See {@linkplain PersistencePolicy#DURABLE}.
    */
   private static final int CLOSE_COMPACTION_TIME = -1;
+
+  /**
+   * How often a store open for writing checks whether its file is worth compacting, in seconds.
+   */
+  private static final long COMPACTION_CHECK_INTERVAL = 30;
+
+  /**
+   * The size below which the file of a store isn't compacted while it runs: the room it could reclaim is too small to
+   * matter.
+   */
+  static final long COMPACTION_MIN_FILE_SIZE = 16L * 1024 * 1024;
+
+  /**
+   * The percentage of the file that the live metadata fills, at or above which the file isn't compacted while it runs.
+   */
+  static final int COMPACTION_MAX_FILL_RATE = 50;
+
+  /**
+   * Time allotted to a compaction while the store runs, in milliseconds. It holds the store lock of MVStore, so the
+   * commits of the requests wait for it; what it costs is the live metadata, which it rewrites, not the size of the
+   * file.
+   */
+  private static final int RUNTIME_COMPACTION_TIME = 1000;
 
   /**
    * The stores of the files that are open, by the absolute path of the file. Guarded by itself.
@@ -77,6 +109,18 @@ public final class LocalS3Store implements AutoCloseable {
    * closed; {@code null} if there is none. Set before the store is handed out.
    */
   private UnreferencedContentSweeper sweeper;
+
+  /**
+   * The periodic compaction of the file, which the last holder stops before the store is closed; {@code null} for a
+   * store that is not open for writing. Guarded by {@linkplain #compactionLock}.
+   */
+  private ScheduledFuture<?> compaction;
+
+  /**
+   * Held by a compaction while it runs and by {@linkplain #close()} while it stops them, so that the store isn't
+   * closed under a compaction.
+   */
+  private final Object compactionLock = new Object();
 
   private LocalS3Store(MVStore store, Path file, PersistencePolicy policy) {
     this.store = store;
@@ -198,6 +242,12 @@ public final class LocalS3Store implements AutoCloseable {
         // request is storing content that the metadata doesn't reference yet. A new file references nothing.
         store.sweeper = UnreferencedContentSweeper.start(store.store, file.getParent(), openedAt);
       }
+      if (!readOnly) {
+        synchronized (store.compactionLock) {
+          store.compaction = Compactor.EXECUTOR.scheduleWithFixedDelay(store::compactQuietly,
+              COMPACTION_CHECK_INTERVAL, COMPACTION_CHECK_INTERVAL, TimeUnit.SECONDS);
+        }
+      }
       OPEN_FILES.put(file, store);
       return store;
     }
@@ -210,6 +260,61 @@ public final class LocalS3Store implements AutoCloseable {
    */
   UnreferencedContentSweeper sweeper() {
     return sweeper;
+  }
+
+  /**
+   * Compact the file if it is mostly room that no metadata uses anymore.
+   *
+   * <p>A commit appends a chunk to the file rather than replacing the chunks it supersedes, whose room MVStore reuses
+   * only once they are older than its retention time, and never gives back while the store is open. A service that
+   * takes many small writes, e.g. the files of a table that a big data engine writes, therefore grows the file to many
+   * times the metadata it holds, which only closing the store would reclaim otherwise.
+   *
+   * <p>Compacting rewrites the live metadata next to each other and truncates the file, after syncing what it moves
+   * to the disk. The file is compacted only once it is at least {@value #COMPACTION_MIN_FILE_SIZE} bytes and less than
+   * {@value #COMPACTION_MAX_FILL_RATE}% full, so a store that is written little is left alone.
+   *
+   * @return {@code true} if the file was compacted.
+   */
+  boolean compactIfWasteful() {
+    synchronized (compactionLock) {
+      if (compaction == null || store.isClosed() || store.isReadOnly()) {
+        return false;
+      }
+      if (store.getFileStore().size() < COMPACTION_MIN_FILE_SIZE || liveFillRate() >= COMPACTION_MAX_FILL_RATE) {
+        return false;
+      }
+      // Compacting overwrites the chunks it frees whatever the retention time is, and leaves the retention time at
+      // 0; the chunks that later commits free are kept for the usual time again.
+      int retentionTime = store.getRetentionTime();
+      try {
+        store.compactFile(RUNTIME_COMPACTION_TIME);
+      } finally {
+        store.setRetentionTime(retentionTime);
+      }
+      return true;
+    }
+  }
+
+  /**
+   * The percentage of the file that live metadata fills: of the room that chunks take, what the chunks still use. A
+   * chunk that no metadata uses anymore takes its room until a commit drops it, which a store that isn't written
+   * doesn't do, so the room that chunks take alone overstates what is live.
+   */
+  int liveFillRate() {
+    return store.getFillRate() * store.getFileStore().getChunksFillRate() / 100;
+  }
+
+  private void compactQuietly() {
+    try {
+      long before = store.getFileStore().size();
+      if (compactIfWasteful()) {
+        log.debug("Compacted {} from {} to {} bytes.", file, before, store.getFileStore().size());
+      }
+    } catch (RuntimeException e) {
+      // Not compacting leaves the file larger than it needs to be, and closing the store compacts it anyway.
+      log.warn("Failed to compact {}; it is compacted when the service is shut down.", file, e);
+    }
   }
 
   /**
@@ -291,11 +396,31 @@ public final class LocalS3Store implements AutoCloseable {
       // It reads the store, and would keep touching the data directory after its services are gone.
       sweeper.cancel();
     }
+    synchronized (compactionLock) {
+      // Waits for a compaction that is running, and keeps the next one from starting.
+      if (compaction != null) {
+        compaction.cancel(false);
+        compaction = null;
+      }
+    }
     if (!store.isClosed()) {
       // Writes what is left, and compacts the file: a commit appends a chunk rather than replacing what it
       // supersedes, so without this a data directory keeps the room that every write it ever took needed.
       store.close(CLOSE_COMPACTION_TIME);
     }
+  }
+
+  /**
+   * The thread that compacts the files of the stores open for writing, created when the first one is opened.
+   */
+  private static final class Compactor {
+
+    private static final ScheduledExecutorService EXECUTOR = Executors.newSingleThreadScheduledExecutor(task -> {
+      Thread thread = new Thread(task, "local-s3-store-compactor");
+      thread.setDaemon(true);
+      return thread;
+    });
+
   }
 
 }

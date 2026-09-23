@@ -127,7 +127,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
   private final MVStore store;
 
   /**
-   * Whether a change is committed as it is written; see {@linkplain PersistencePolicy}.
+   * Whether {@linkplain #sync()} commits the changes; see {@linkplain PersistencePolicy}.
    */
   private final boolean commitEveryChange;
 
@@ -154,9 +154,11 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
   }
 
   /**
-   * Make the change durable, if the store commits every change; see {@linkplain PersistencePolicy}.
+   * Commit the changes written so far, if the store commits every change; see {@linkplain PersistencePolicy} and
+   * {@linkplain com.robothy.s3.core.storage.MVStoreBucketMetadataStore#sync()}.
    */
-  private void commit() {
+  @Override
+  public void sync() {
     if (commitEveryChange) {
       store.commit();
     }
@@ -229,7 +231,6 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
     }
     String name = requireVectorBucketName(vectorBucketMetadata.getVectorBucketName());
     writeBucket(name, vectorBucketMetadata);
-    commit();
     return name;
   }
 
@@ -321,7 +322,6 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
         store.removeMap(mapName);
       }
     }
-    commit();
   }
 
   @Override

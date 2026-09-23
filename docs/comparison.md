@@ -80,8 +80,9 @@ Three different things, and tests use all three:
   test that writes large Parquet files gets `507 InsufficientStorage` instead of taking the JVM that embeds the service
   down with an `OutOfMemoryError`.
 + **`PERSISTENCE`**: metadata in an [H2 MVStore](https://h2database.com/html/mvstore.html) file, object content in a
-  storage directory, surviving a restart. `PersistencePolicy.FAST` trades the changes of the last second for about a
-  tenth of the write time on a bulk load, which is the trade a data directory built for a test can usually make.
+  storage directory, surviving a restart. `PersistencePolicy.FAST` trades the changes of the last second for about half
+  the write time and a hundredth of the writes on a bulk load, which is the trade a data directory built for a test
+  can usually make.
 + **A data path without `PERSISTENCE`** is *initial data*: the service starts from what the directory holds and never
   writes back to it, so a fixture directory can be shared by many tests. `localS3.reset()` returns a service to it, far
   quicker than restarting. Directories of hundreds of thousands of objects open without loading all their metadata.

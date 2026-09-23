@@ -70,6 +70,11 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
   }
 
   @Override
+  public void abandon() {
+    end();
+  }
+
+  @Override
   public Long put(Long id, byte[] data) {
     recordWrite(id);
     return delegate.put(id, data);

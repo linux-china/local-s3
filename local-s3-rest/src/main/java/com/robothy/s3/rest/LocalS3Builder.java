@@ -799,15 +799,19 @@ public class LocalS3Builder {
         /**
          * Set when the changes of a {@code PERSISTENCE} service reach the disk.
          *
-         * <p>{@linkplain PersistencePolicy#DURABLE}, the default, commits the metadata of every change, so a process
-         * that is killed loses nothing. Every commit appends a chunk to the file of the data directory, so a bulk load
-         * leaves one per object: loading twenty thousand objects writes about 420 MB for about 5 MB of metadata, and
-         * the room is only reclaimed when the store is closed, which compacts the file.
+         * <p>{@linkplain PersistencePolicy#DURABLE}, the default, commits the metadata of every change before its
+         * request is answered, so a process that is killed loses nothing. A commit writes the file without syncing it
+         * to the disk, so it doesn't protect against a power loss. Every commit appends a chunk to the file of the data
+         * directory; the requests that change a bucket at the same time share one, but a client that writes one object
+         * after the other gets one each: loading twenty thousand objects that way grows the file to about 630 MB for
+         * about 2 MB of metadata. The room is reclaimed while the service runs, once most of the file is unused, and
+         * when the store is closed.
          *
          * <p>{@linkplain PersistencePolicy#FAST} lets the store commit in the background instead, at most a second
-         * after a change, and commits what is left when the service is shut down. The same load then writes about 5 MB
-         * and takes about a tenth of the time. A killed process loses the changes of the last second, which is the
-         * trade a data directory built for a test can usually make.
+         * after a change, and commits what is left when the service is shut down. The same load then writes about 7 MB
+         * and takes about half the time. A killed process loses the changes of the last second, which is the trade a
+         * data directory built for a test, or the data of a service embedded in an application or an IDE, can usually
+         * make; the Spring Boot starter defaults to it.
          *
          * <p>An {@code IN_MEMORY} service writes nothing, so the policy doesn't apply to it.
          *
