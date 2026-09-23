@@ -180,7 +180,9 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   retries, and concurrent appends never lose one another's rows. The tables live in LocalS3 itself, under the warehouse
   `s3://warehouse/` by default, so an `IN_MEMORY` service holds them in memory and a `PERSISTENCE` service keeps them
   in its data directory. `GET /v1/config` and every loaded table vend the endpoint, path-style access and the
-  credentials of the service, so a client configured with the catalog URI alone reaches the storage. LocalS3 builds the
+  credentials of the service, so a client configured with the catalog URI alone reaches the storage — including DuckDB,
+  which attaches the catalog as a database with `ATTACH 'warehouse' AS ice (TYPE ICEBERG, ENDPOINT '.../iceberg',
+  AUTHORIZATION_TYPE 'none')` and creates, writes and queries tables through it without an S3 secret. LocalS3 builds the
   table metadata itself and gains no dependency on Iceberg — and because it does, the catalog is run against **Iceberg's
   own suites for a catalog implementation**, `CatalogTests` and `ViewCatalogTests` of the `iceberg-core` test jar, so
   that a new Iceberg release is checked by bumping the version and running `dataToolsTest` rather than by a user hitting

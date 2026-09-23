@@ -18,6 +18,8 @@ The tests are grouped by JUnit tag:
 ./gradlew :local-s3-integration-test:dataToolsTest
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbParquetIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckLakeIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbIcebergIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbDeltaIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergS3FileIOIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergRestCatalog*'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DeltaLakeIntegrationTest'
@@ -96,6 +98,43 @@ files are on LocalS3, with `DATA_INLINING_ROW_LIMIT 0` so that every change is a
 | `encryptedDataFilesAreNotReadableAsPlainParquet`      | `ENCRYPTED` and a plain DuckLake side by side                                                                                 | an encrypted object has the catalog's size and the `PARE` magic, and `read_parquet` rejects it; a plain one reads as Parquet        |
 
 The `ducklake` extension is loaded or installed like `httpfs`; without it, the tests are skipped.
+
+# DuckDB on the built-in Iceberg REST catalog
+
+`DuckDbIcebergIntegrationTest` attaches the catalog that LocalS3 serves at `/iceberg/v1` as a DuckDB database, with
+the `iceberg` extension and **no S3 secret at all**: the endpoint, the path-style addressing and the credentials reach
+DuckDB through the credential vending of the REST protocol. LocalS3 runs with a key pair, so every S3 request is
+signature-verified and the vended credentials have to be the right ones.
+
+```sql
+ATTACH 'warehouse' AS ice (TYPE ICEBERG, ENDPOINT 'http://127.0.0.1:<port>/iceberg', AUTHORIZATION_TYPE 'none');
+```
+
+| Test                                                          | DuckDB                                                                  | What it proves                                                                          |
+|---------------------------------------------------------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| `a_table_created_by_duckdb_is_a_table_of_the_catalog`         | `CREATE SCHEMA`, `CREATE TABLE`, `INSERT`                               | the Iceberg Java client lists the table, reads its schema and its rows; the metadata, manifest and Parquet files are objects of the warehouse bucket |
+| `the_catalog_vends_the_storage_credentials_to_duckdb`         | a write and a read without a `CREATE SECRET`                            | DuckDB's own S3 secret, with `provider = 'iceberg'`, carries the endpoint, `url_style=path`, `use_ssl=false` and the key of the service, scoped to the table |
+| `rows_written_by_the_iceberg_client_are_read_by_duckdb`       | `SHOW ALL TABLES`, a count and a filtered read                          | Parquet appends of the Iceberg Java client are read by DuckDB, across two snapshots       |
+| `rows_written_by_duckdb_are_read_by_the_iceberg_client`       | `CREATE TABLE ... AS SELECT` of 1000 rows                               | the commit DuckDB made is an `append` snapshot with `added-records`, and the rows read back through `IcebergGenerics` |
+| `duckdb_reads_an_earlier_snapshot_of_a_table`                 | `iceberg_snapshots`, `AT (VERSION => <snapshot id>)`                    | the snapshot ids DuckDB lists are the history the Iceberg client sees, and the earlier state is addressable |
+| `rows_deleted_and_updated_by_duckdb_are_seen_by_the_iceberg_client` | `DELETE`, `UPDATE`                                                 | the delete files and commits DuckDB writes are ones a second implementation reads the same way |
+| `a_column_added_by_duckdb_is_a_schema_update_of_the_table`    | `ALTER TABLE ... ADD COLUMN`, then an `UPDATE` of it                     | the catalog hands out the next field id, and the column is optional, as a column added to a written table has to be |
+| `iceberg_scan_reads_a_table_from_the_bucket_without_the_catalog` | `iceberg_scan` of a metadata file, with an S3 secret of its own       | a table is readable by location, without the catalog                                      |
+
+# DuckDB on Delta Lake
+
+`DuckDbDeltaIntegrationTest` writes a table with delta-kernel-java, as `DeltaLakeIntegrationTest` does, and reads it
+back with the `delta` extension of DuckDB — a client built on delta-kernel-rs that reaches LocalS3 with DuckDB's own
+HTTP client rather than with the AWS SDK. The extension is read-only, which is also the shape of the scenario: an
+application writes the table, the IDE queries it.
+
+| Test                                                          | DuckDB                                                       | What it proves                                                                     |
+|---------------------------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| `delta_scan_reads_a_table_written_by_delta_kernel`            | `delta_scan`, `DESCRIBE`                                      | the schema, the column types and the rows of every version; a later append is picked up by a log replay |
+| `delta_scan_answers_filters_and_aggregates_over_the_files_of_the_table` | a count, a sum and filters over 1000 rows in 4 commits | the log is listed and read, and the data files are fetched from LocalS3               |
+| `a_delta_table_joins_a_parquet_file_of_the_same_bucket`       | a join of `delta_scan` with `read_parquet`                    | a lakehouse table and a plain object of the same bucket in one query                  |
+
+The `iceberg` and `delta` extensions are loaded or installed like `httpfs`; without them, the tests are skipped.
 
 # Concurrent range reads
 

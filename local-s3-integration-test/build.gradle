@@ -62,7 +62,9 @@ def requireDuckDbTests = providers.gradleProperty('requireDuckDbTests')
     .orElse(false)
 def requiredDuckDbTestClasses = [
     'com.robothy.s3.test.DuckDbParquetIntegrationTest',
-    'com.robothy.s3.test.DuckLakeIntegrationTest'
+    'com.robothy.s3.test.DuckLakeIntegrationTest',
+    'com.robothy.s3.test.DuckDbIcebergIntegrationTest',
+    'com.robothy.s3.test.DuckDbDeltaIntegrationTest'
 ] as Set
 
 def dataToolsTest = tasks.register('dataToolsTest', Test) {
@@ -101,7 +103,7 @@ tasks.register('installDuckDbExtensions', JavaExec) {
     dependsOn tasks.named('testClasses')
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.robothy.s3.test.DuckDbExtensionInstaller'
-    args 'httpfs', 'ducklake'
+    args 'httpfs', 'ducklake', 'iceberg', 'delta'
 }
 
 tasks.named('check') {

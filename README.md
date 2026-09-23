@@ -73,12 +73,13 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
 + **A built-in Iceberg REST catalog**, off by default, served under `/iceberg/v1` on the same port: a lakehouse test
   needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
-  catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works. It is
+  catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works —
+  DuckDB attaches it as a database with one `ATTACH ... (TYPE ICEBERG, ENDPOINT ...)` and writes to it. It is
   verified against `CatalogTests` and `ViewCatalogTests`, the suites Apache Iceberg checks a catalog implementation with.
   [Details](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 + **Delta Lake**: the conditional write that the Delta commit protocol rests on, covered end to end with
-  `delta-kernel-java` — create, write, read, concurrent commits and time travel.
-  [Details](docs/data-tools.md#delta-lake).
+  `delta-kernel-java` — create, write, read, concurrent commits and time travel — and the tables read back with the
+  `delta_scan` of DuckDB. [Details](docs/data-tools.md#delta-lake).
 + **Static website hosting** on the same port: a public bucket is served to a browser as a site, with index and error
   documents, directory redirects and routing rules, while the signed requests of an S3 client keep their S3 semantics.
   A file stored without a content type gets the one of its extension, so a directory copied into a bucket just works.

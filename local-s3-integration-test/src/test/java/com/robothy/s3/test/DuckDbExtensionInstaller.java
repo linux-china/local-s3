@@ -14,7 +14,7 @@ import java.util.Set;
  */
 public final class DuckDbExtensionInstaller {
 
-  private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("httpfs", "ducklake");
+  private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("httpfs", "ducklake", "iceberg", "delta");
 
   private DuckDbExtensionInstaller() {
   }

@@ -80,6 +80,9 @@ needs, on as many threads as `SET threads` allows. Concurrent queries on one Loc
 concurrent range requests, which LocalS3 answers from both storage modes; see `ConcurrentRangeReadIntegrationTest`
 and `DuckDbParquetIntegrationTest.answersTheConcurrentRangeRequestsOfConcurrentQueries`.
 
+Beyond plain files, DuckDB reaches the table formats on LocalS3 with an extension each: [DuckLake](#ducklake), the
+[built-in Iceberg REST catalog](#duckdb-on-the-built-in-catalog) and [Delta tables](#reading-a-delta-table-with-duckdb).
+
 ## DuckLake
 
 A DuckLake keeps its catalog in a SQL database, a DuckDB file, SQLite or PostgreSQL, and its data files as Parquet
@@ -176,6 +179,78 @@ PyIceberg reaches it the same way:
 from pyiceberg.catalog.rest import RestCatalog
 catalog = RestCatalog("local", uri="http://localhost:29090/iceberg")
 ```
+
+### DuckDB on the built-in catalog
+
+The `iceberg` extension of DuckDB attaches a REST catalog as a database and writes to it as well as reads from it,
+which is the shortest path from an IDE to a lakehouse table. Against the built-in catalog it takes one statement and
+**no S3 secret**: the endpoint, the path-style addressing and the credentials are vended by the catalog, so DuckDB is
+never told where the storage is — nor that it speaks plain HTTP, which is what the `USE_SSL false` of a hand-written
+secret is for.
+
+```sql
+INSTALL iceberg;
+LOAD iceberg;
+
+ATTACH 'warehouse' AS ice (
+    TYPE ICEBERG,
+    ENDPOINT 'http://localhost:29090/iceberg',
+    AUTHORIZATION_TYPE 'none'
+);
+```
+
+`AUTHORIZATION_TYPE 'none'` is the one thing to remember: without it DuckDB insists on fetching an OAuth2 token before
+its first request and fails with
+
+```text
+Invalid Configuration Error: AUTHORIZATION_TYPE is 'oauth2', yet no 'secret' was provided, and no
+client_id+client_secret were provided.
+```
+
+The first argument of `ATTACH` is the warehouse. The built-in catalog serves a single warehouse and answers whatever
+name a client sends; a [table bucket](#amazon-s3-tables) is attached by naming its ARN there instead, exactly as a
+`RESTCatalog` names it:
+
+```sql
+ATTACH 'arn:aws:s3tables:us-east-1:000000000000:bucket/lakehouse' AS tb (
+    TYPE ICEBERG, ENDPOINT 'http://localhost:29090/iceberg', AUTHORIZATION_TYPE 'none');
+```
+
+The attached catalog is then a database like any other, and the writes are Iceberg commits:
+
+```sql
+CREATE SCHEMA ice.db;
+CREATE TABLE ice.db.events (id BIGINT, name VARCHAR, level VARCHAR);
+INSERT INTO ice.db.events VALUES (1, 'row-1', 'info'), (2, 'row-2', 'warn');
+CREATE TABLE ice.db.numbers AS SELECT range AS id, 'row-' || range AS name FROM range(1000);
+
+SELECT count(*) FROM ice.db.events WHERE level = 'info';
+UPDATE ice.db.events SET level = 'error' WHERE id = 2;
+DELETE FROM ice.db.events WHERE id = 1;
+ALTER TABLE ice.db.events ADD COLUMN score DOUBLE;
+
+SHOW ALL TABLES;                                  -- the namespaces and tables of the catalog
+SELECT * FROM iceberg_snapshots('ice.db.events'); -- one row per commit
+SELECT * FROM ice.db.events AT (VERSION => 3949531829775254263);
+```
+
+Time travel takes a **snapshot id**, not an ordinal version; `iceberg_snapshots` is where the ids come from.
+
+A table can also be read without the catalog, by the metadata file it currently is — and then DuckDB does need an
+[S3 secret](#duckdb) of its own, because nothing vends one for a location:
+
+```sql
+SELECT * FROM iceberg_scan('s3://warehouse/db/events/metadata/00002-....metadata.json');
+
+-- Or by location, which makes DuckDB find the current metadata file by listing; it refuses to do that unless asked,
+-- because a listing can turn up a version that no commit has made current yet.
+SET unsafe_enable_version_guessing = true;
+SELECT * FROM iceberg_scan('s3://warehouse/db/events');
+```
+
+`DuckDbIcebergIntegrationTest` runs all of this against LocalS3 with the signature verification on, so the vended
+credentials have to be right, and checks the crossings in both directions: what DuckDB writes is read back with the
+Iceberg Java client, and what that client writes is read by DuckDB.
 
 ### What it stores, and where
 
@@ -489,3 +564,24 @@ neither Hadoop's `S3A` nor the AWS SDK bundle it pulls in. It covers creating a 
 two writers racing for the same version (both with retries off, where the loser is refused, and with the retries Delta
 does by default, where the loser rebases and keeps its rows), time travel to an earlier version, and a reader that
 shares nothing with the writer but the bucket.
+
+### Reading a Delta table with DuckDB
+
+The `delta` extension reads a Delta table from LocalS3 with the [S3 secret](#duckdb) of the DuckDB section — a Delta
+table is addressed by its location, so nothing vends credentials for it:
+
+```sql
+INSTALL delta;
+LOAD delta;
+-- The secret local_s3 of the DuckDB section, for localhost:29090.
+SELECT * FROM delta_scan('s3://delta/tables/events');
+SELECT count(*) FROM delta_scan('s3://delta/tables/events') WHERE id >= 750;
+```
+
+`delta_scan` replays the `_delta_log` and reads the Parquet files it names with range requests, so a filter or an
+aggregate reads the row groups it needs rather than the table. The extension is **read-only**; writing a Delta table
+takes a writer such as `delta-spark` or delta-kernel.
+
+`DuckDbDeltaIntegrationTest` writes a table with delta-kernel-java and reads it back with `delta_scan` — two clients
+that share nothing but the bucket, one built on delta-kernel-rs and reaching LocalS3 with DuckDB's own HTTP client —
+including a join of the table with a plain Parquet file beside it.
