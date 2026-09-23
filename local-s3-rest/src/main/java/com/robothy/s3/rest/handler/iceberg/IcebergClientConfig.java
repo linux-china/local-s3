@@ -100,8 +100,37 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @return the {@code CatalogConfig}.
    */
   public ObjectNode configResponse(HttpRequest request, String warehouse) {
+    return configResponse(request, warehouse, null);
+  }
+
+  /**
+   * The answer of {@code GET /v1/config} of a client that named a warehouse this catalog serves under a prefix, i.e.
+   * the ARN or the name of a table bucket of the
+   * {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API}.
+   *
+   * <p>{@code prefix} is what makes one endpoint serve many catalogs: the client puts it in the path of every request
+   * it then makes, {@code /v1/{prefix}/namespaces/...}, and the catalog of that table bucket answers. It is the same
+   * mechanism, and the same configuration on the client, that reaching Amazon S3 Tables over its Iceberg REST endpoint
+   * uses:
+   *
+   * <pre>{@code
+   * spark.sql.catalog.s3tables.type      = rest
+   * spark.sql.catalog.s3tables.uri       = http://localhost:29090/iceberg
+   * spark.sql.catalog.s3tables.warehouse = arn:aws:s3tables:us-east-1:000000000000:bucket/sales
+   * }</pre>
+   *
+   * @param request the request, whose {@code Host} the endpoint is taken from.
+   * @param warehouse the warehouse to answer, which is the one the client asked for.
+   * @param prefix the prefix the client's catalog is served under; {@code null} for the catalog of the service, which
+   *     is served under none.
+   * @return the {@code CatalogConfig}.
+   */
+  public ObjectNode configResponse(HttpRequest request, String warehouse, @Nullable String prefix) {
     ObjectNode overrides = IcebergJson.newObject();
     overrides.put("warehouse", warehouse);
+    if (prefix != null) {
+      overrides.put("prefix", prefix);
+    }
     ObjectNode response = IcebergJson.newObject();
     response.set("defaults", IcebergJson.fromStringMap(tableConfig(request)));
     response.set("overrides", overrides);

@@ -166,6 +166,85 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 + UntagResource
 + ListTagsForResource
 
+## Supported Amazon S3 Tables APIs
+
+The [Amazon S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html) API, which an
+`S3TablesClient` of the AWS SDK and the `s3-tables-catalog` library of Iceberg speak. Every table bucket is also served
+as an [Iceberg REST catalog](data-tools.md#amazon-s3-tables) of its own, so an engine reaches the same tables by giving
+a `RESTCatalog` the ARN of the table bucket as its warehouse.
+
+A request of this API shares its paths with Amazon S3 — `PUT /buckets` is `CreateTableBucket` here and `CreateBucket` of
+a bucket named `buckets` there — so it is told apart by the `s3tables` service in the credential scope of its signature.
+A client that signs nothing reaches the API under `/s3tables` instead; see
+[the S3 Tables API](data-tools.md#reaching-the-api).
+
+**Table Bucket Operations:**
++ CreateTableBucket
++ GetTableBucket
++ ListTableBuckets
++ DeleteTableBucket
+
+**Namespace Operations:**
++ CreateNamespace
++ GetNamespace
++ ListNamespaces
++ DeleteNamespace
+
+**Table Operations:**
++ CreateTable
++ GetTable
++ ListTables
++ DeleteTable
++ RenameTable
++ GetTableMetadataLocation
++ UpdateTableMetadataLocation
+
+**Tagging Operations** (of a table bucket or a table, addressed by its ARN; `CreateTableBucket` and `CreateTable` accept `tags` too):
++ TagResource
++ UntagResource
++ ListTagsForResource
+
+**Encryption and Storage Class Operations** (stored and read back; nothing is encrypted or tiered, see [semantics.md](semantics.md#the-s3-tables-api)):
++ PutTableBucketEncryption
++ GetTableBucketEncryption
++ DeleteTableBucketEncryption
++ GetTableEncryption
++ PutTableBucketStorageClass
++ GetTableBucketStorageClass
++ GetTableStorageClass
+
+**Resource Policy Operations** (stored and read back; nothing is enforced):
++ PutTableBucketPolicy
++ GetTableBucketPolicy
++ DeleteTableBucketPolicy
++ PutTablePolicy
++ GetTablePolicy
++ DeleteTablePolicy
+
+**Maintenance and Metrics Operations** (stored and read back; no job ever runs):
++ PutTableBucketMaintenanceConfiguration
++ GetTableBucketMaintenanceConfiguration
++ PutTableMaintenanceConfiguration
++ GetTableMaintenanceConfiguration
++ GetTableMaintenanceJobStatus
++ PutTableBucketMetricsConfiguration
++ GetTableBucketMetricsConfiguration
++ DeleteTableBucketMetricsConfiguration
+
+**Record Expiration Operations** (stored and read back; no record ever expires):
++ PutTableRecordExpirationConfiguration
++ GetTableRecordExpirationConfiguration
++ GetTableRecordExpirationJobStatus
+
+**Replication Operations** (stored and read back; nothing is replicated):
++ PutTableBucketReplication
++ GetTableBucketReplication
++ DeleteTableBucketReplication
++ PutTableReplication
++ GetTableReplication
++ DeleteTableReplication
++ GetTableReplicationStatus
+
 ## Supported AWS STS APIs
 
 A stateless STS endpoint on the same port issues temporary credentials of LocalS3, like the one of MinIO; see

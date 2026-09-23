@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.core.s3tables.S3TablesService;
 import com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager;
+import com.robothy.s3.core.service.manager.s3tables.LocalS3TablesManager;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
@@ -46,7 +48,7 @@ final class LocalS3Services {
    * @return the assembled factory.
    */
   static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager) {
-    return create(config, s3Manager, vectorsManager, null, null);
+    return create(config, s3Manager, vectorsManager, null, null, null);
   }
 
   /**
@@ -59,10 +61,13 @@ final class LocalS3Services {
    * @param admin the administration of the service, which the {@code /_admin} endpoints answer through;
    *     {@code null} for none, which leaves the endpoints out.
    * @param icebergManager the Iceberg REST catalog of the service; {@code null} for none, which leaves its routes out.
+   * @param tablesManager the table buckets of the S3 Tables API of the service; {@code null} for none, which leaves
+   *     the endpoint out.
    * @return the assembled factory.
    */
   static ServiceFactory create(LocalS3Config config, LocalS3Manager s3Manager, LocalS3VectorsManager vectorsManager,
-                               LocalS3Admin admin, LocalS3IcebergManager icebergManager) {
+                               LocalS3Admin admin, LocalS3IcebergManager icebergManager,
+                               LocalS3TablesManager tablesManager) {
     ServiceFactory serviceFactory = new DefaultServiceFactory();
 
     BucketService bucketService = s3Manager.bucketService();
@@ -95,6 +100,12 @@ final class LocalS3Services {
           config.accessKeyId(), config.secretAccessKey(), config.tlsEnabled(),
           config.icebergCatalog().credentialVending());
       serviceFactory.register(IcebergClientConfig.class, () -> clientConfig);
+    }
+
+    // Registered only when the service serves table buckets, which is what the router registers its endpoint by.
+    if (Objects.nonNull(tablesManager)) {
+      S3TablesService s3TablesService = tablesManager.s3TablesService();
+      serviceFactory.register(S3TablesService.class, () -> s3TablesService);
     }
 
     if (Objects.nonNull(admin)) {

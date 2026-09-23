@@ -46,10 +46,10 @@ public final class IcebergCatalogStore {
 
   private final MVMap<String, String> tables;
 
-  private IcebergCatalogStore(LocalS3Store localS3Store) {
+  private IcebergCatalogStore(LocalS3Store localS3Store, String namespacesMap, String tablesMap) {
     this.localS3Store = Objects.requireNonNull(localS3Store);
-    this.namespaces = localS3Store.store().openMap(NAMESPACES_MAP);
-    this.tables = localS3Store.store().openMap(TABLES_MAP);
+    this.namespaces = localS3Store.store().openMap(Objects.requireNonNull(namespacesMap, "namespacesMap"));
+    this.tables = localS3Store.store().openMap(Objects.requireNonNull(tablesMap, "tablesMap"));
   }
 
   /**
@@ -59,7 +59,22 @@ public final class IcebergCatalogStore {
    * @return the catalog store.
    */
   public static IcebergCatalogStore create(LocalS3Store localS3Store) {
-    return new IcebergCatalogStore(localS3Store);
+    return new IcebergCatalogStore(localS3Store, NAMESPACES_MAP, TABLES_MAP);
+  }
+
+  /**
+   * Open a catalog of a store that is kept in maps of its own, which is how each table bucket of the
+   * {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API} gets a catalog that no other table bucket can
+   * see: one LocalS3 service then serves many catalogs, rather than the single one of
+   * {@linkplain #create(LocalS3Store)} that its Iceberg REST endpoint serves by default.
+   *
+   * @param localS3Store the store of the service, which this takes no hold of: the caller owns it.
+   * @param namespacesMap the name of the map to keep the namespaces in.
+   * @param tablesMap the name of the map to keep the tables in.
+   * @return the catalog store.
+   */
+  public static IcebergCatalogStore create(LocalS3Store localS3Store, String namespacesMap, String tablesMap) {
+    return new IcebergCatalogStore(localS3Store, namespacesMap, tablesMap);
   }
 
   /**

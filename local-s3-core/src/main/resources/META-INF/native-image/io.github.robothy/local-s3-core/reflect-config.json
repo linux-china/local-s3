@@ -294,5 +294,23 @@
     "allDeclaredFields":true,
     "allDeclaredMethods":true,
     "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.s3tables.TableBucketRecord",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.s3tables.TableAttributes",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
+  },
+  {
+    "name":"com.robothy.s3.core.s3tables.NamespaceAttributes",
+    "allDeclaredFields":true,
+    "allDeclaredMethods":true,
+    "allDeclaredConstructors":true
   }
 ]

@@ -361,6 +361,32 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   }
 
   /**
+   * The URL that a client of the S3 Tables API reaches the running container at, which an {@code S3TablesClient} takes
+   * as its {@code endpointOverride}.
+   *
+   * <p>It is {@linkplain #getEndpoint()} for a container with credentials and {@code <endpoint>/s3tables} for one
+   * without, because that is what the service tells a request of the S3 Tables API from an Amazon S3 one by: the two
+   * share their paths, a client with credentials signs for the {@code s3tables} service, and a client without them
+   * signs nothing and so reaches the API by path instead.
+   *
+   * @return the endpoint URL of the S3 Tables API, without a trailing {@code /}.
+   * @throws IllegalStateException if Docker allocates the port and the container hasn't started yet.
+   */
+  public String getS3TablesEndpoint() {
+    return accessKey == null ? getEndpoint() + "/s3tables" : getEndpoint();
+  }
+
+  /**
+   * {@linkplain #getS3TablesEndpoint()} as a {@linkplain URI}.
+   *
+   * @return the endpoint URI of the S3 Tables API.
+   * @throws IllegalStateException if Docker allocates the port and the container hasn't started yet.
+   */
+  public URI getS3TablesEndpointUri() {
+    return URI.create(getS3TablesEndpoint());
+  }
+
+  /**
    * The access key ID of {@linkplain #withCredentials(String, String)}.
    *
    * @return the access key ID; {@code null} if the service accepts unsigned requests.

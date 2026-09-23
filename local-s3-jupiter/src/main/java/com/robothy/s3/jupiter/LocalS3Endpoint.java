@@ -53,6 +53,21 @@ public class LocalS3Endpoint {
         return endpoint + "/iceberg";
     }
 
+    /**
+     * The endpoint that a client of the S3 Tables API of the service is given.
+     *
+     * <p>A signed client — one built with the credentials of a service that verifies them — is pointed at
+     * {@linkplain #endpoint()} itself: it signs for the {@code s3tables} service, which is what the service tells a
+     * request of that API from an Amazon S3 one by. An unsigned client carries no such scope, so it is pointed at the
+     * path that the API also answers under, {@code /s3tables}.
+     *
+     * @param signed whether the client signs its requests.
+     * @return the endpoint of the S3 Tables API.
+     */
+    public String s3TablesEndpoint(boolean signed) {
+        return signed ? endpoint : endpoint + "/s3tables";
+    }
+
     @Nullable
     public String accessKey() {
         return accessKey;

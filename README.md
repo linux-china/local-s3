@@ -7,14 +7,16 @@
 [![codecov](https://codecov.io/gh/Robothy/local-s3/branch/main/graph/badge.svg?token=9YLOKDU03D)](https://codecov.io/gh/Robothy/local-s3)
 
 LocalS3 is an Amazon S3 mock service for testing and local development. It is based on Netty and has no heavy
-dependencies, so it starts quickly and handles requests efficiently. It also implements the Amazon S3 Vectors API.
+dependencies, so it starts quickly and handles requests efficiently. It also implements the Amazon S3 Vectors and
+Amazon S3 Tables APIs.
 
 Use it to:
 
 + test code that uses S3 with JUnit 5, Testcontainers or Spring Boot, without an AWS account;
 + embed an S3 server in a Java application or an IDE, e.g. as the default S3 for DuckDB;
 + give a big data platform such as Iceberg or Delta Lake a fast, local S3 to test against — with an
-  [Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog) built in, so no separate catalog is needed.
+  [Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog) and
+  [S3 Tables](docs/data-tools.md#amazon-s3-tables) built in, so no separate catalog is needed.
 
 Weighing it against Adobe S3Mock, s3proxy, MinIO or LocalStack? See
 [Choosing an S3 mock](docs/comparison.md).
@@ -81,6 +83,11 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   documents, directory redirects and routing rules, while the signed requests of an S3 client keep their S3 semantics.
   A file stored without a content type gets the one of its extension, so a directory copied into a bucket just works.
   [Details](docs/semantics.md#static-website-hosting).
++ **Amazon S3 Tables**, always on: table buckets, their namespaces and tables, and the commits that move a table from
+  one metadata file to the next — the API that AWS's managed Iceberg is reached through, and that the
+  `s3-tables-catalog` library of Iceberg speaks. Every table bucket is also served as an Iceberg REST catalog of its
+  own, so Spark, Trino or PyIceberg reaches the same tables by naming the table bucket's ARN as its warehouse, exactly
+  as it would against AWS. [Details](docs/data-tools.md#amazon-s3-tables).
 + **S3 Vectors**: vector buckets, indexes, and similarity search.
 + **Faithful semantics**: conditional reads, writes and deletes that are atomic per key, Amazon S3 entity tags for
   multipart uploads, and the validation of Amazon S3 for bucket names and part sizes. [Semantics](docs/semantics.md).
@@ -107,10 +114,10 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | Document | Contents |
 |---|---|
 | [Choosing an S3 mock](docs/comparison.md) | Where LocalS3 fits next to Adobe S3Mock, s3proxy, MinIO and LocalStack, and when one of them is the better choice. |
-| [Supported APIs](docs/apis.md) | The S3 and S3 Vectors operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
+| [Supported APIs](docs/apis.md) | The S3, S3 Vectors and S3 Tables operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
-| [Data tools](docs/data-tools.md) | DuckDB, DuckLake, Apache Iceberg and Delta Lake on LocalS3, and the built-in Iceberg REST catalog. |
+| [Data tools](docs/data-tools.md) | DuckDB, DuckLake, Apache Iceberg and Delta Lake on LocalS3, the built-in Iceberg REST catalog, and Amazon S3 Tables. |
 | [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |

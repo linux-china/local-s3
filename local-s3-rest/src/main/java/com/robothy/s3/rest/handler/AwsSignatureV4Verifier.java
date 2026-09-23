@@ -2,6 +2,9 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.s3tables.S3TablesArn;
+import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
+import com.robothy.s3.rest.handler.s3tables.S3TablesController;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
 import io.netty.buffer.ByteBuf;
@@ -42,8 +45,13 @@ import javax.crypto.spec.SecretKeySpec;
  * that is derived from the token.
  *
  * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service, a KMS
- * request, see {@linkplain KmsController#isKmsRequest}, for the {@code kms} service, and any other request for
- * {@code s3} or {@code s3vectors}.
+ * request, see {@linkplain KmsController#isKmsRequest}, for the {@code kms} service, a request of the S3 Tables API,
+ * see {@linkplain S3TablesController#isS3TablesRequest}, for {@code s3tables}, and any other request for {@code s3}
+ * or {@code s3vectors}.
+ *
+ * <p>The service of the scope is <em>checked</em> rather than trusted: a request that the router sent to the S3 Tables
+ * endpoint because its scope said {@code s3tables} is verified for that service, so claiming a scope buys a client
+ * nothing it couldn't have signed for.
  */
 final class AwsSignatureV4Verifier {
 
@@ -350,6 +358,17 @@ final class AwsSignatureV4Verifier {
     }
     if (KmsController.isKmsRequest(request)) {
       return Set.of("kms");
+    }
+    if (IcebergCatalogController.isIcebergRequest(request)) {
+      // An Iceberg client signs the catalog for whichever service it was configured with: 's3' by default, and
+      // 's3tables' when it is configured the way Amazon S3 Tables documents its REST endpoint, i.e. with
+      // rest.signing-name=s3tables.
+      return Set.of("s3", "s3tables");
+    }
+    if (S3TablesController.isS3TablesRequest(request)) {
+      // 's3' as well: a client that reached the API under its path rather than by its credential scope may have signed
+      // for either, and the credentials it signed with are the same ones.
+      return Set.of(S3TablesArn.SERVICE, "s3");
     }
     return Set.of("s3", "s3vectors");
   }

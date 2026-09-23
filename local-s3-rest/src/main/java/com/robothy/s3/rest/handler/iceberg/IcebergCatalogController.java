@@ -7,17 +7,19 @@ import com.robothy.s3.core.iceberg.IcebergCatalogException;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
+import com.robothy.s3.core.s3tables.S3TablesArn;
+import com.robothy.s3.core.s3tables.S3TablesService;
+import com.robothy.s3.rest.utils.RequestPaths;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -44,10 +46,19 @@ import tools.jackson.databind.node.ObjectNode;
  * path, before the bucket of the request is parsed: the paths of the catalog are nested far deeper than the
  * {@code /bucket/key} that the S3 router reads, so they are routed here instead.
  *
+ * <p><b>It serves more than one catalog.</b> Beside the catalog of the service, every
+ * {@link com.robothy.s3.core.s3tables.S3TablesService table bucket} of the service is served here as a catalog of its
+ * own, under a {@code prefix} that {@code GET /v1/config} answers to a client that named the table bucket as its
+ * warehouse. That is how Amazon S3 Tables documents its own Iceberg REST endpoint, so an engine reaches a table bucket
+ * of LocalS3 with the configuration it would use against AWS; see {@linkplain #config}.
+ *
  * <p><b>Requests are not signed.</b> The Iceberg REST protocol carries its own credentials — an OAuth2 bearer token —
  * rather than an AWS signature, so a catalog request is answered whatever it carries, and a {@code Bearer} token is
- * accepted without being checked. A LocalS3 with credentials still verifies the S3 requests that the engine then makes
- * with the credentials this catalog vends, which is where a test that asserts about signing has something to assert.
+ * accepted without being checked. A client that <em>does</em> sign, which the Iceberg client does when it is configured
+ * with {@code rest.sigv4-enabled} — as reaching Amazon S3 Tables over this protocol requires — is verified like any
+ * other request, for {@code s3} or for {@code s3tables}, whichever it signed for. A LocalS3 with credentials verifies
+ * the S3 requests that the engine then makes with the credentials this catalog vends either way, which is where a test
+ * that asserts about signing has something to assert.
  */
 public final class IcebergCatalogController implements HttpRequestHandler {
 
@@ -79,6 +90,13 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   private final IcebergClientConfig clientConfig;
 
   /**
+   * Resolves the catalog of a table bucket of the S3 Tables API; {@code null} if the service serves no table buckets,
+   * which leaves every request to the catalog of {@linkplain #catalog}.
+   */
+  @Nullable
+  private final S3TablesService s3Tables;
+
+  /**
    * Create the controller.
    *
    * @param catalog the catalog of the service.
@@ -86,8 +104,22 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    *     {@code FileIO} from the catalog rather than by hand.
    */
   public IcebergCatalogController(IcebergCatalogService catalog, IcebergClientConfig clientConfig) {
+    this(catalog, clientConfig, null);
+  }
+
+  /**
+   * Create the controller of a service that also serves table buckets, whose catalogs this then reaches as well.
+   *
+   * @param catalog the catalog that the service serves by default, i.e. the one a client that names no warehouse
+   *     reaches.
+   * @param clientConfig the settings that the catalog hands its clients.
+   * @param s3Tables the table buckets of the service, each of which is a catalog of its own; {@code null} for none.
+   */
+  public IcebergCatalogController(IcebergCatalogService catalog, IcebergClientConfig clientConfig,
+                                  @Nullable S3TablesService s3Tables) {
     this.catalog = Objects.requireNonNull(catalog, "catalog");
     this.clientConfig = Objects.requireNonNull(clientConfig, "clientConfig");
+    this.s3Tables = s3Tables;
   }
 
   /**
@@ -130,9 +162,13 @@ public final class IcebergCatalogController implements HttpRequestHandler {
 
   private void dispatch(HttpRequest request, HttpResponse response) {
     HttpMethod method = request.getMethod();
-    List<String> path = segments(request);
+    Parsed parsed = parse(request);
+    List<String> path = parsed.segments();
+    // Shadows the field on purpose: every operation below answers through the catalog the prefix of the request names,
+    // which is the one of a table bucket for a client that named one, and the catalog of the service for any other.
+    IcebergCatalogService catalog = catalogOf(parsed.prefix());
     switch (operationOf(method, path)) {
-      case "IcebergGetConfig" -> writeJson(response, 200, clientConfig.configResponse(request, catalog.warehouse()));
+      case "IcebergGetConfig" -> writeJson(response, 200, config(request));
       case "IcebergGetToken" -> writeJson(response, 200, token());
       case "IcebergListNamespaces" -> writeJson(response, 200,
           catalog.listNamespaces(IcebergIdentifier.parseNamespace(request.parameter("parent").orElse(null))));
@@ -282,89 +318,90 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   }
 
   /**
-   * The path segments under {@value #API_PREFIX}, each one URL-decoded.
+   * The path of a request, split into the prefix of the catalog it addresses and the segments under it.
    *
    * <p>The path is split before it is decoded, and that order is the whole point: a namespace level, or a table name,
    * may hold a {@code /}, which the Iceberg client escapes as {@code %2F} so that it stays inside one segment. Reading
    * the decoded path of the request instead would split {@code tab%2Fle} into two segments and lose the table, so the
-   * raw URI is taken here and the segments are decoded one at a time. Only {@code %XX} is decoded — a {@code +} in a
-   * path is a plus, not a space.
+   * raw URI is taken here and the segments are decoded one at a time, see {@linkplain RequestPaths}.
    *
    * <p>The REST catalog allows a {@code prefix} segment between the version and the resource, which a catalog that
-   * serves several warehouses uses. LocalS3 serves one, and answers no {@code prefix} in its configuration, so a
-   * request that carries one anyway is read as if it didn't: the segment before a known resource is skipped.
+   * serves several warehouses uses, and LocalS3 does: a service that serves table buckets answers the name of one as
+   * the prefix of the catalog of that table bucket, see {@linkplain #catalogOf}. A prefix that names no table bucket
+   * is read as if it weren't there, which is what a client configured against an older LocalS3 sends.
    */
-  private static List<String> segments(HttpRequest request) {
-    String path = rawPath(request);
+  private static Parsed parse(HttpRequest request) {
+    String path = RequestPaths.rawPath(request);
     if (!path.startsWith(PATH_PREFIX)) {
-      return List.of();
+      return new Parsed(null, List.of());
     }
     String rest = path.length() > API_PREFIX.length() && path.startsWith(API_PREFIX)
         ? path.substring(API_PREFIX.length()) : "";
-    List<String> segments = new ArrayList<>();
-    for (String segment : rest.split("/")) {
-      if (!segment.isEmpty()) {
-        segments.add(decode(segment));
-      }
-    }
-    // Skip a prefix segment, e.g. /v1/my-warehouse/namespaces, which isn't a resource of the API.
-    if (!segments.isEmpty() && !isResource(segments.get(0))) {
-      segments.remove(0);
-    }
-    return segments;
-  }
-
-  /**
-   * The path of a request as it arrived, without its query string and without the escapes decoded.
-   */
-  private static String rawPath(HttpRequest request) {
-    String uri = request.getUri();
-    if (uri == null) {
-      return Objects.toString(request.getPath(), "");
-    }
-    int end = uri.length();
-    for (int i = 0; i < uri.length(); i++) {
-      char c = uri.charAt(i);
-      if (c == '?' || c == '#') {
-        end = i;
-        break;
-      }
-    }
-    return uri.substring(0, end);
-  }
-
-  /**
-   * Decode the {@code %XX} escapes of one path segment, as UTF-8.
-   *
-   * @throws IcebergCatalogException if an escape is malformed, which a client shouldn't send.
-   */
-  private static String decode(String segment) {
-    if (segment.indexOf('%') < 0) {
-      return segment;
-    }
-    ByteBuf decoded = Unpooled.buffer(segment.length());
+    List<String> segments;
     try {
-      for (int i = 0; i < segment.length(); i++) {
-        char c = segment.charAt(i);
-        if (c != '%') {
-          decoded.writeCharSequence(String.valueOf(c), StandardCharsets.UTF_8);
-          continue;
-        }
-        if (i + 2 >= segment.length()) {
-          throw IcebergCatalogException.badRequest("Malformed escape in the path: " + segment);
-        }
-        int high = Character.digit(segment.charAt(i + 1), 16);
-        int low = Character.digit(segment.charAt(i + 2), 16);
-        if (high < 0 || low < 0) {
-          throw IcebergCatalogException.badRequest("Malformed escape in the path: " + segment);
-        }
-        decoded.writeByte((high << 4) + low);
-        i += 2;
-      }
-      return decoded.toString(StandardCharsets.UTF_8);
-    } finally {
-      decoded.release();
+      segments = RequestPaths.decodedSegments(rest);
+    } catch (IllegalArgumentException e) {
+      throw IcebergCatalogException.badRequest(e.getMessage());
     }
+    if (!segments.isEmpty() && !isResource(segments.get(0))) {
+      return new Parsed(segments.get(0), segments.subList(1, segments.size()));
+    }
+    return new Parsed(null, segments);
+  }
+
+  private static List<String> segments(HttpRequest request) {
+    return parse(request).segments();
+  }
+
+  /**
+   * The catalog that a prefix addresses: the one of the table bucket it names, or the catalog that the service serves
+   * by default.
+   */
+  private IcebergCatalogService catalogOf(@Nullable String prefix) {
+    if (prefix == null || s3Tables == null) {
+      return catalog;
+    }
+    IcebergCatalogService tableBucket = s3Tables.catalogOfWarehouse(prefix);
+    return tableBucket != null ? tableBucket : catalog;
+  }
+
+  /**
+   * The {@code CatalogConfig} that a client reads before anything else.
+   *
+   * <p>A client that names the ARN of a table bucket as its warehouse — which is how Amazon S3 Tables documents its
+   * Iceberg REST endpoint — is answered the prefix that its table bucket's catalog is served under, and every request
+   * it then makes carries that prefix. So one endpoint serves the catalog of the service and the catalog of every
+   * table bucket, told apart by the warehouse the client asked for, exactly as the real endpoint does.
+   *
+   * @throws IcebergCatalogException if the warehouse is the ARN of a table bucket that this service doesn't have,
+   *     which is a mistake worth reporting rather than quietly answering another catalog.
+   */
+  private ObjectNode config(HttpRequest request) {
+    String warehouse = request.parameter("warehouse").filter(value -> !value.isBlank()).orElse(null);
+    if (warehouse != null && S3TablesArn.isArn(warehouse)) {
+      String tableBucket = s3Tables == null ? null : s3Tables.tableBucketNameOf(warehouse);
+      if (tableBucket == null) {
+        throw new IcebergCatalogException(404, "NoSuchTableBucketException",
+            "No table bucket of the ARN " + warehouse + " in this LocalS3 service.");
+      }
+      return clientConfig.configResponse(request, warehouse, tableBucket);
+    }
+    if (warehouse != null && s3Tables != null) {
+      String tableBucket = s3Tables.tableBucketNameOf(warehouse);
+      if (tableBucket != null) {
+        return clientConfig.configResponse(request, s3Tables.bucketArn(tableBucket), tableBucket);
+      }
+    }
+    return clientConfig.configResponse(request, catalog.warehouse());
+  }
+
+  /**
+   * The path of a request: the prefix that names the catalog it addresses, and the segments under it.
+   *
+   * @param prefix the prefix; {@code null} if the path carries none.
+   * @param segments the segments under the prefix, each one decoded.
+   */
+  private record Parsed(@Nullable String prefix, List<String> segments) {
   }
 
   private static boolean isResource(String segment) {

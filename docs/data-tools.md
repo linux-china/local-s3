@@ -237,8 +237,10 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
 + Requests to the catalog are **not signature-verified**. The REST protocol authenticates with an OAuth2 bearer token
   rather than an AWS signature; a token is accepted without being checked, and `POST /v1/oauth/tokens` hands one out so
   that a client configured with `credential` starts. The S3 requests the engine then makes are verified as usual.
-+ The catalog serves **one warehouse**, so it answers no `prefix`; a request that carries one anyway is read as if it
-  didn't.
++ The catalog of the service serves **one warehouse**, and answers no `prefix`. The catalogs of the
+  [table buckets](#amazon-s3-tables) of the same service are served under a `prefix` each, which `GET /v1/config`
+  answers to a client that names a table bucket as its warehouse; a prefix that names no table bucket is read as if it
+  weren't there.
 + A table, a view and their metadata files live **in LocalS3**. A create request whose `location`, or whose
   `write.metadata.path`, names anything but an `s3://` URI of a bucket of this service is refused: the catalog has no
   way to write a `file:` or `gs:` location.
@@ -257,6 +259,132 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   because the default location of a table is derived from its name. `icebergCatalog(iceberg ->
   iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the
   `unique-table-location` of the Iceberg catalogs.
+
+## Amazon S3 Tables
+
+[Amazon S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html) is AWS's managed Iceberg: a
+*table bucket* holds namespaces and tables, and an engine reaches them either through the `s3tables` control plane or
+through the Iceberg REST endpoint of the table bucket. LocalS3 answers both, on the S3 port, and they are **two views of
+one catalog** — a table an engine creates over REST is the table `GetTable` answers, and a commit made through either is
+what the other then reads. Nothing has to be turned on.
+
+```java
+S3TablesClient tables = S3TablesClient.builder()
+    .endpointOverride(URI.create("http://localhost:29090"))
+    .region(Region.US_EAST_1)
+    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(key, secret)))
+    .build();
+
+String arn = tables.createTableBucket(r -> r.name("lakehouse")).arn();
+tables.createNamespace(r -> r.tableBucketARN(arn).namespace("db"));
+tables.createTable(r -> r.tableBucketARN(arn).namespace("db").name("orders")
+    .format(OpenTableFormat.ICEBERG)
+    .metadata(m -> m.iceberg(i -> i.schema(sc -> sc.fields(
+        f -> f.name("id").type("long").required(true),
+        f -> f.name("total").type("double"))))));
+```
+
+In a JUnit 5 test an `S3TablesClient` is injected, configured for the service:
+
+```java
+@LocalS3
+class MyTest {
+
+  @Test
+  void test(S3TablesClient tables, S3Client s3) {
+    String arn = tables.createTableBucket(r -> r.name("lakehouse")).arn();
+    // The tables live in the bucket 'lakehouse--table-s3' of the same service, so s3 can look at them.
+  }
+}
+```
+
+### The same table bucket as an Iceberg REST catalog
+
+Point a `RESTCatalog` at the endpoint with the **ARN of the table bucket as its warehouse**, which is how Amazon
+documents its own Iceberg REST endpoint. LocalS3 answers the `prefix` of that table bucket's catalog, and the client
+carries it in every request it then makes:
+
+```java
+RESTCatalog catalog = new RESTCatalog();
+catalog.initialize("s3tables", Map.of(
+    "uri", "http://localhost:29090/iceberg",
+    "warehouse", "arn:aws:s3tables:us-east-1:000000000000:bucket/lakehouse"));
+catalog.loadTable(TableIdentifier.of("db", "orders"));
+```
+
+Spark, Trino and PyIceberg take the same configuration they take against the real endpoint, with the URI pointed at
+LocalS3. `rest.sigv4-enabled` and `rest.signing-name=s3tables` are accepted and verified; they can also be left out,
+because LocalS3 answers the catalog either way:
+
+```properties
+spark.sql.catalog.s3tables            = org.apache.iceberg.spark.SparkCatalog
+spark.sql.catalog.s3tables.type       = rest
+spark.sql.catalog.s3tables.uri        = http://localhost:29090/iceberg
+spark.sql.catalog.s3tables.warehouse  = arn:aws:s3tables:us-east-1:000000000000:bucket/lakehouse
+```
+
+### Reaching the API
+
+The paths of the S3 Tables API are paths of Amazon S3 too: `PUT /buckets` is `CreateTableBucket` of the one and
+`CreateBucket` of a bucket named `buckets` of the other, and `GET /tables/...` is a listing of a bucket named `tables`.
+What tells them apart is the signature — every AWS SDK signs a request of this API for the **`s3tables`** service, and
+that service is in the credential scope of the `Authorization` header. LocalS3 reads the scope before it parses a
+bucket, and then verifies the signature for that same service, so claiming the scope buys a client nothing it couldn't
+have signed for. A bucket named `buckets` or `tables` keeps working for an S3 client.
+
+A client that signs **nothing** — an `AnonymousCredentialsProvider`, which is what a test points at a LocalS3 without
+credentials — carries no scope to be told apart by, so it reaches the API under `/s3tables` instead:
+
+```java
+S3TablesClient.builder().endpointOverride(URI.create("http://localhost:29090/s3tables"))
+```
+
+`@LocalS3` and `LocalS3Container` pick the right one for you: `LocalS3Endpoint.s3TablesEndpoint(boolean signed)` and
+`LocalS3Container.getS3TablesEndpoint()`. The path shadows a bucket named `s3tables`, the way `/iceberg` shadows one
+named `iceberg`.
+
+### What it stores, and where
+
+A table bucket of Amazon S3 keeps its files out of reach of the S3 API. LocalS3 keeps them in an **ordinary bucket of the
+same service**, named `<table-bucket>--table-s3` and created with the table bucket, which is what a table's
+`warehouseLocation` points into. So the engine that loaded a table writes its data files there with its own `S3FileIO`,
+against the same endpoint and with the same credentials, and a test can look at what was written with an `S3Client` —
+which against the real service it could not. Deleting the table bucket deletes that bucket too.
+
+The namespaces and the table pointers of each table bucket live in the store of the service, in maps of their own, so a
+`PERSISTENCE` service finds its table buckets where it left them and an `IN_MEMORY` one drops them on `reset()`, like the
+rest of its data. Two table buckets are two catalogs: the same namespace name in each is a different namespace.
+
+### Commits and the version token
+
+A commit of this API is the client writing the next `metadata.json` itself and then calling
+`UpdateTableMetadataLocation` with the **version token** it read the table at. The token is opaque and drawn again on
+every change, so a commit built on a stale read is answered `409 ConflictException` and the client refreshes and
+retries — which is what the `s3-tables-catalog` library does.
+
+The token follows commits made over the Iceberg REST endpoint of the same table bucket as well: when a table's pointer
+moved without going through this API, the next read draws a new token, so a client still holding the one from before that
+commit loses rather than silently overwriting a commit it never saw.
+
+### Limits
+
++ **An unsigned client reaches the API only under `/s3tables`**, for the reason above: an unsigned request carries
+  nothing that says which of the two APIs it means.
++ Every table bucket is answered with the region and the account of LocalS3 — `us-east-1` and `000000000000` — and the
+  account of an ARN a client sends is **ignored** rather than refused: a test double is not an authorization boundary.
++ A namespace is **one level**, as it is in Amazon S3 Tables, whatever the shape of the `namespace` field suggests.
++ `ICEBERG` is the only `format`, as it is in Amazon S3 Tables.
++ Encryption, storage class, resource policies, maintenance, metrics, replication and record expiration are **stored and
+  read back, and nothing happens**: nothing is encrypted or tiered, no policy is enforced, no compaction or expiration
+  job ever runs, and `GetTableMaintenanceJobStatus` answers `Not_Yet_Run` for every job. That is what lets the code path
+  under test — which usually sets a configuration on the way to doing something else — run through.
++ A table created over the Iceberg REST endpoint of a table bucket has no ID, version token or timestamps until this API
+  is **first asked about it**, which is when it is given them. Its `createdAt` is therefore when this API first saw it,
+  not when the engine created it.
++ **Views** are not part of the S3 Tables API. One created over the Iceberg REST endpoint of a table bucket stays
+  reachable there and is not listed by `ListTables`.
++ Deleting a table **deletes its files**, as Amazon does. Every table gets a location of its own, so a table created
+  under the name of a deleted one never shares files with it.
 
 ## Iceberg REST catalogs that vend credentials
 

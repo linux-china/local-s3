@@ -5,10 +5,12 @@ plugins {
 }
 
 dependencies {
-    // Types of the public API: LocalS3Mode in @LocalS3, and the injected S3Client and S3VectorsClient.
+    // Types of the public API: LocalS3Mode in @LocalS3, and the injected S3Client, S3VectorsClient and
+    // S3TablesClient.
     api project(":local-s3-rest")
     api(libs.awssdkS3)
     api(libs.awssdkS3vectors)
+    api(libs.awssdkS3tables)
 
     // The Netty modules of the netty-nio-client of the AWS SDK at LocalS3's version, nearer to a Maven consumer than
     // the ones of the AWS SDK; see the nettyOfAwsSdk bundle in gradle/libs.versions.toml.

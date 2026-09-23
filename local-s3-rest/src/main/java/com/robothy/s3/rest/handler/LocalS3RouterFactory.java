@@ -32,6 +32,8 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
+import com.robothy.s3.core.s3tables.S3TablesService;
+import com.robothy.s3.rest.handler.s3tables.S3TablesController;
 import com.robothy.s3.rest.handler.s3vectors.CreateIndexController;
 import com.robothy.s3.rest.handler.s3vectors.CreateVectorBucketController;
 import com.robothy.s3.rest.handler.s3vectors.DeleteIndexController;
@@ -155,6 +157,9 @@ public class LocalS3RouterFactory {
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
         // routes: without one, /iceberg/... stays an ordinary bucket path.
         .iceberg(icebergController(serviceFactory))
+        // Told apart from an S3 request by the service in its credential scope rather than by its path, which it
+        // shares with the S3 routes; see S3TablesController.
+        .s3Tables(s3TablesController(serviceFactory))
         .website(websiteController(serviceFactory));
 
     Routes routes = new Routes(router);
@@ -192,7 +197,21 @@ public class LocalS3RouterFactory {
     IcebergClientConfig clientConfig = serviceFactory.containsInstance(IcebergClientConfig.class)
         ? serviceFactory.getInstance(IcebergClientConfig.class)
         : new IcebergClientConfig(IcebergClientConfig.DEFAULT_REGION, null, null, false, false);
-    return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig);
+    S3TablesService s3Tables = serviceFactory.containsInstance(S3TablesService.class)
+        ? serviceFactory.getInstance(S3TablesService.class) : null;
+    return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig,
+        s3Tables);
+  }
+
+  /**
+   * The controller of the S3 Tables API of a service that holds table buckets.
+   *
+   * @param serviceFactory the services of the service.
+   * @return the controller; {@code null} if the service serves no table buckets, e.g. a router of handlers alone.
+   */
+  private static S3TablesController s3TablesController(ServiceFactory serviceFactory) {
+    return serviceFactory.containsInstance(S3TablesService.class)
+        ? new S3TablesController(serviceFactory.getInstance(S3TablesService.class)) : null;
   }
 
   /**

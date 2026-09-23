@@ -335,6 +335,66 @@ public final class IcebergCatalogService {
   }
 
   /**
+   * The metadata file that a table currently is, which is the pointer the catalog keeps.
+   *
+   * <p>This is what {@code GetTableMetadataLocation} of the
+   * {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API} answers, and the other half of
+   * {@linkplain #setMetadataLocation}: a client of that API refreshes a table by reading this location and parsing the
+   * file itself, rather than by loading the table over the REST protocol.
+   *
+   * @param identifier the identifier.
+   * @return the {@code s3://} location of the current metadata file.
+   * @throws IcebergCatalogException if the table doesn't exist.
+   */
+  public String metadataLocationOf(IcebergIdentifier identifier) {
+    return requireTable(identifier, false).metadataLocation();
+  }
+
+  /**
+   * The location that a table keeps its files under, i.e. the {@code location} of its metadata.
+   *
+   * @param identifier the identifier.
+   * @return the location, without a trailing {@code /}; {@code null} if the metadata names none.
+   * @throws IcebergCatalogException if the table doesn't exist, or its metadata can't be read.
+   */
+  @Nullable
+  public String locationOf(IcebergIdentifier identifier) {
+    IcebergTableRecord record = requireTable(identifier, false);
+    String location = IcebergJson.read(files.read(record.metadataLocation())).path("location").asString(null);
+    return location == null || location.isBlank() ? null : IcebergJson.stripTrailingSlash(location);
+  }
+
+  /**
+   * Move the pointer of a table to a metadata file that the client wrote itself.
+   *
+   * <p>This is the commit of the {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API}, whose client
+   * builds the new metadata file and then asks the catalog to point at it, rather than sending the updates of the
+   * commit and having the catalog build the file. The swap is the same compare-and-set that a REST commit ends in, so
+   * the two protocols commit against one another safely: a client of either that lost the race is told so and refreshes.
+   *
+   * @param identifier the identifier.
+   * @param metadataLocation the {@code s3://} location of the new metadata file, which must exist.
+   * @throws IcebergCatalogException if the table doesn't exist, the file can't be read, or the table changed while the
+   *     caller was preparing the commit.
+   */
+  public void setMetadataLocation(IcebergIdentifier identifier, String metadataLocation) {
+    if (metadataLocation == null || metadataLocation.isBlank()) {
+      throw IcebergCatalogException.badRequest("A metadata location is required.");
+    }
+    IcebergTableRecord record = requireTable(identifier, false);
+    if (metadataLocation.equals(record.metadataLocation())) {
+      return;
+    }
+    // Reading it is what tells a client that wrote its metadata file somewhere LocalS3 doesn't serve, or didn't write
+    // it at all, before the pointer of the table is moved to a file that no reader could then open.
+    files.read(metadataLocation);
+    if (!store.replaceTable(record, record.committed(metadataLocation))) {
+      throw IcebergCatalogException.commitFailed("Cannot commit to " + identifier
+          + ": it changed while this commit was being prepared. Refresh the table and try again.");
+    }
+  }
+
+  /**
    * Commit to a table, or create one that a staged create prepared.
    *
    * <p>The requirements are checked, the updates applied, the new metadata file written, and only then is the pointer

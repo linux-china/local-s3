@@ -458,6 +458,31 @@ one where a real one belongs.
 + Because nothing is stored, a blob **survives a restart** and is read by any LocalS3, in memory and persistence mode
   alike, whatever its credentials.
 
+## The S3 Tables API
+
+LocalS3 answers the [Amazon S3 Tables](data-tools.md#amazon-s3-tables) API on its own port: table buckets, the
+namespaces and the tables in them, and the metadata locations that make a commit. Every table bucket is also an
+[Iceberg REST catalog](data-tools.md#the-same-table-bucket-as-an-iceberg-rest-catalog), and the two are views of one
+catalog rather than two copies of it.
+
++ A request of this API is told from an Amazon S3 one by the **`s3tables` service in its credential scope**, because the
+  two share their paths, and the signature is then verified for that service. A client that signs nothing reaches the API
+  under `/s3tables`. See [reaching the API](data-tools.md#reaching-the-api).
++ The tables of a table bucket live in an **ordinary bucket of the same service**, `<table-bucket>--table-s3`, so an
+  engine's `S3FileIO` writes its data files there and a test can read them with an `S3Client`.
++ A commit is guarded by the **version token**: `UpdateTableMetadataLocation` with a token that is no longer current is
+  answered `409 ConflictException`, and a commit made over the Iceberg REST endpoint of the same table bucket draws a new
+  token, so the two protocols commit against one another safely.
++ **Encryption, storage class, resource policies, maintenance, metrics, replication and record expiration are stored and
+  read back, and nothing happens.** Nothing is encrypted or tiered, no policy is enforced, and no compaction, replication
+  or expiration job ever runs — `GetTableMaintenanceJobStatus` answers `Not_Yet_Run` for every job and
+  `GetTableReplicationStatus` answers no destination. What that buys is the code path under test, which usually sets a
+  configuration on the way to doing something else, running through instead of failing on an unimplemented operation.
++ Every ARN is answered with the region and the account of LocalS3, `us-east-1` and `000000000000`, and the account of an
+  ARN a client sends is ignored rather than refused.
++ A namespace is one level and `ICEBERG` is the only table format, as they are in Amazon S3 Tables. The full list of what
+  differs is in [data-tools.md](data-tools.md#limits-1).
+
 ## Change events
 
 A service can be given `S3ChangeListener`s, which receive an `S3Change` whenever a bucket or an object changes, e.g.

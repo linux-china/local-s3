@@ -6,9 +6,12 @@ import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.iceberg.IcebergMetadataFiles;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
+import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager;
+import com.robothy.s3.core.service.manager.s3tables.LocalS3TablesManager;
 import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.rest.admin.LocalS3Admin;
+import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
 import com.robothy.s3.rest.admin.RequestStatistics;
 import com.robothy.s3.rest.admin.ServiceStatistics;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
@@ -72,6 +75,13 @@ public class LocalS3 implements AutoCloseable {
      * The Iceberg REST catalog of the service; {@code null} if it serves none.
      */
     private volatile LocalS3IcebergManager localS3IcebergManager;
+
+    /**
+     * The table buckets of the S3 Tables API of the service. Always present: the API is served like the S3 Vectors
+     * one is, so an {@code S3TablesClient} pointed at a LocalS3 works without the service having been configured for
+     * it.
+     */
+    private volatile LocalS3TablesManager localS3TablesManager;
 
     /**
      * Whether the service is started and not shut down yet. Written under the lock of start() and shutdown(), and
@@ -388,8 +398,12 @@ public class LocalS3 implements AutoCloseable {
         if (localS3IcebergManager == null && config.icebergCatalogEnabled()) {
             localS3IcebergManager = createLocalS3IcebergManager();
         }
+        if (localS3TablesManager == null) {
+            localS3TablesManager = createLocalS3TablesManager();
+        }
 
-        return LocalS3Services.create(config, s3Manager, localS3VectorsManager, new Admin(), localS3IcebergManager);
+        return LocalS3Services.create(config, s3Manager, localS3VectorsManager, new Admin(), localS3IcebergManager,
+                localS3TablesManager);
     }
 
     /**
@@ -416,6 +430,9 @@ public class LocalS3 implements AutoCloseable {
         localS3VectorsManager.reset();
         if (localS3IcebergManager != null) {
             localS3IcebergManager.reset();
+        }
+        if (localS3TablesManager != null) {
+            localS3TablesManager.reset();
         }
         if (!config.buckets().isEmpty()) {
             createBuckets();
@@ -532,6 +549,29 @@ public class LocalS3 implements AutoCloseable {
     }
 
     /**
+     * Create the manager of the table buckets of the S3 Tables API, which keeps them where the service keeps the rest
+     * of its metadata: in memory, or in the store of the data directory. The tables themselves are objects of the
+     * bucket behind each table bucket, so they are kept by the S3 half of the service either way.
+     *
+     * @return the manager.
+     */
+    LocalS3TablesManager createLocalS3TablesManager() {
+        LocalS3Manager manager = getS3Manager();
+        String region = IcebergClientConfig.DEFAULT_REGION;
+        if (config.mode() == LocalS3Mode.IN_MEMORY) {
+            log.info("Created in-memory LocalS3 Tables manager.");
+            // Starts from the table buckets of the data path, if any, which it never changes.
+            return LocalS3TablesManager.createInMemory(config.dataPath(), manager.bucketService(),
+                    manager.objectService(), region, S3TablesArn.DEFAULT_ACCOUNT_ID);
+        }
+        log.info("Created file system LocalS3 Tables manager.");
+        // The same data path as the S3 buckets: the table buckets are written to the store of the path too, which is
+        // shared, so the policy has to be the same one.
+        return LocalS3TablesManager.createFileSystem(config.dataPath(), config.persistencePolicy(),
+                manager.bucketService(), manager.objectService(), region, S3TablesArn.DEFAULT_ACCOUNT_ID);
+    }
+
+    /**
      * Create the manager of the Iceberg REST catalog, which keeps its namespaces and its table pointers where the
      * service keeps the rest of its metadata: in memory, or in the store of the data directory. The tables themselves
      * are objects of the warehouse bucket, so they are kept by the S3 half of the service either way.
@@ -606,6 +646,8 @@ public class LocalS3 implements AutoCloseable {
         if (config.mode() != LocalS3Mode.PERSISTENCE) {
             return;
         }
+        LocalS3TablesManager tablesManager = this.localS3TablesManager;
+        this.localS3TablesManager = null;
         LocalS3IcebergManager icebergManager = this.localS3IcebergManager;
         this.localS3IcebergManager = null;
         LocalS3VectorsManager vectorsManager = this.localS3VectorsManager;
@@ -613,20 +655,38 @@ public class LocalS3 implements AutoCloseable {
         LocalS3Manager manager = this.s3Manager;
         this.s3Manager = null;
         // They hold the one store of the data directory, which is closed once they have all released it.
-        try {
-            if (icebergManager != null) {
-                icebergManager.close();
+        releaseAll(
+                tablesManager == null ? null : tablesManager::close,
+                icebergManager == null ? null : icebergManager::close,
+                vectorsManager == null ? null : vectorsManager::close,
+                manager == null ? null : manager::close);
+    }
+
+    /**
+     * Release the holds on the store of the data directory, in order and every one of them: a hold that was left behind
+     * because an earlier release failed would keep the directory locked, and no other service could open it. The first
+     * failure is raised, with the later ones suppressed on it.
+     *
+     * @param releases the releases to run; a {@code null} entry is a manager the service doesn't have.
+     */
+    private static void releaseAll(Runnable... releases) {
+        RuntimeException failure = null;
+        for (Runnable release : releases) {
+            if (release == null) {
+                continue;
             }
-        } finally {
             try {
-                if (vectorsManager != null) {
-                    vectorsManager.close();
-                }
-            } finally {
-                if (manager != null) {
-                    manager.close();
+                release.run();
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
                 }
             }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 

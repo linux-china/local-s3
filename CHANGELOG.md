@@ -112,6 +112,20 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ **The Amazon S3 Tables API**, on the S3 port and always on: table buckets, their namespaces and tables, and the
+  `UpdateTableMetadataLocation` commits that move a table from one metadata file to the next. All 49 operations are
+  answered, so an `S3TablesClient` of the AWS SDK and the `s3-tables-catalog` library of Iceberg both run against
+  LocalS3. Every table bucket is **also served as an Iceberg REST catalog of its own**, reached by naming the ARN of the
+  table bucket as the warehouse of a `RESTCatalog` — the way Amazon documents its own Iceberg REST endpoint — so Spark,
+  Trino and PyIceberg reach the same tables the control plane creates, and a commit made through either is what the
+  other then reads. The tables live in an ordinary bucket of the same service, `<table-bucket>--table-s3`, so an
+  engine's `S3FileIO` writes its data files there and a test can read them with an `S3Client`. A request of this API is
+  told from an Amazon S3 one by the `s3tables` service in its credential scope, because the two share their paths; a
+  client that signs nothing reaches it under `/s3tables`. `@LocalS3` injects a configured `S3TablesClient`, and
+  `LocalS3Container.getS3TablesEndpoint()` points one at a container. Encryption, storage class, policies, maintenance,
+  metrics, replication and record expiration are stored and read back, and nothing happens. See
+  [Amazon S3 Tables](docs/data-tools.md#amazon-s3-tables).
+
 + **`localS3.endpoint()` and `localS3.presign(...)`.** `endpoint()` is the URL that clients reach the running service
   at, e.g. `http://127.0.0.1:29090`, instead of every embedding application assembling it from the scheme, the bind
   host and the port; a service bound to every interface is named by its loopback address, and one serving TLS by an

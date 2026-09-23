@@ -31,6 +31,8 @@ assertj="3.27.7"
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 awssdkS3 = { group = "software.amazon.awssdk", name = "s3", version.ref = "awssdkS3" }
 awssdkS3vectors = { group = "software.amazon.awssdk", name = "s3vectors", version.ref = "awssdkS3" }
+# The client of the Amazon S3 Tables API, which LocalS3 answers beside its S3 and S3 Vectors APIs.
+awssdkS3tables = { group = "software.amazon.awssdk", name = "s3tables", version.ref = "awssdkS3" }
 # iceberg-aws leaves the AWS SDK to the application; its S3FileIO loads the model classes of KMS and STS as well.
 awssdkKms = { group = "software.amazon.awssdk", name = "kms", version.ref = "awssdkS3" }
 awssdkSts = { group = "software.amazon.awssdk", name = "sts", version.ref = "awssdkS3" }

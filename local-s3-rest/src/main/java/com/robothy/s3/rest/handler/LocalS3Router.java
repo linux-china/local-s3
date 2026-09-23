@@ -8,6 +8,7 @@ import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
+import com.robothy.s3.rest.handler.s3tables.S3TablesController;
 import com.robothy.s3.rest.handler.s3vectors.VectorResourceRequests;
 import com.robothy.s3.rest.model.request.BucketRegion;
 import com.robothy.s3.rest.netty.OperationHandler;
@@ -131,6 +132,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   private IcebergCatalogController icebergController;
 
   /**
+   * Answers the S3 Tables requests; {@code null} if the service serves no table buckets.
+   */
+  private S3TablesController s3TablesController;
+
+  /**
    * Serves the buckets as static websites; {@code null} if the service serves none.
    */
   private StaticWebsiteController websiteController;
@@ -203,6 +209,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
+   * Answer the S3 Tables requests, see {@linkplain S3TablesController#isS3TablesRequest}, with a controller.
+   *
+   * @param controller the controller; {@code null} to serve no table buckets, which leaves a request signed for
+   *     {@code s3tables} to the S3 routes.
+   * @return this router.
+   */
+  LocalS3Router s3Tables(S3TablesController controller) {
+    this.s3TablesController = controller;
+    return this;
+  }
+
+  /**
    * Serve the buckets as static websites, see {@linkplain StaticWebsiteController}: the unsigned {@code GET} and
    * {@code HEAD} requests of the buckets that allow them are answered with the semantics of a website rather than
    * those of the S3 API, and without a signature.
@@ -254,6 +272,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     }
     if (icebergController != null && IcebergCatalogController.isIcebergRequest(request)) {
       return matchIceberg(request);
+    }
+    // After the catalog, whose own paths a client may sign for s3tables too, and before the S3 routes, whose paths
+    // this API shares: only the credential scope of the request tells the two apart.
+    if (s3TablesController != null && S3TablesController.isS3TablesRequest(request)) {
+      return matchS3Tables(request);
     }
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
@@ -331,6 +354,22 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
+   * The handler of an S3 Tables request, which isn't addressed at a bucket whatever its path: its credential scope
+   * says so, and the signature is then verified for that same service. A rejected signature is answered in the
+   * {@code rest-json} error format of the API rather than in the XML of Amazon S3.
+   */
+  private OperationHandler matchS3Tables(HttpRequest request) {
+    if (requiresAuthentication(request)) {
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
+      if (!result.authenticated()) {
+        return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, (req, resp) ->
+            S3TablesController.writeError(resp, 403, "AccessDeniedException", result.message()));
+      }
+    }
+    return new OperationHandler(S3TablesController.operation(request), s3TablesController);
+  }
+
+  /**
    * Whether a request carries an AWS Signature Version 4, rather than another kind of credential such as the bearer
    * token of the Iceberg REST protocol.
    */
@@ -355,6 +394,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         || stsController != null && StsController.isStsRequest(head)
         || kmsController != null && KmsController.isKmsRequest(head)
         || icebergController != null && IcebergCatalogController.isIcebergRequest(head)
+        || s3TablesController != null && S3TablesController.isS3TablesRequest(head)
         // An unsigned read that the static website answers, which match() dispatches without a signature.
         || websiteTarget(head) != null) {
       return null;

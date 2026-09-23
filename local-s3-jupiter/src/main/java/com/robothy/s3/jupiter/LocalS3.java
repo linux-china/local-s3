@@ -2,6 +2,7 @@ package com.robothy.s3.jupiter;
 
 import com.robothy.s3.jupiter.extensions.LocalS3EndpointResolver;
 import com.robothy.s3.jupiter.extensions.LocalS3Extension;
+import com.robothy.s3.jupiter.extensions.LocalS3TablesClientResolver;
 import com.robothy.s3.jupiter.extensions.LocalS3VectorsClientResolver;
 import com.robothy.s3.jupiter.extensions.S3ClientResolver;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
@@ -51,6 +52,7 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
 @ExtendWith(LocalS3Extension.class)
 @ExtendWith(S3ClientResolver.class)
 @ExtendWith(LocalS3VectorsClientResolver.class)
+@ExtendWith(LocalS3TablesClientResolver.class)
 @ExtendWith(LocalS3EndpointResolver.class)
 public @interface LocalS3 {
 
