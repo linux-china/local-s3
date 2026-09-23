@@ -175,6 +175,104 @@ class DuckDbParquetIntegrationTest {
   }
 
   /**
+   * DuckDB reads a Parquet file by reading its footer first and then the column chunks that the query needs, and
+   * with {@code enable_http_metadata_cache} it keeps the {@code Content-Length} and the {@code ETag} of the first
+   * request and reuses them for the later ranges. A {@code HEAD} and a {@code GET} of the same object must therefore
+   * answer the same entity tag and the same length on every path: an object that a single {@code PutObject} stored
+   * and one that a multipart upload composed, read whole, read as a range, and read as a part.
+   */
+  @Test
+  void answersTheSameEtagAndLengthFromHeadAndGet() throws Exception {
+    execute(duckdb, "COPY (SELECT i AS id FROM range(0, 1000) t(i)) "
+        + "TO 's3://lake/cached/single.parquet' (FORMAT parquet)");
+    // A file larger than the part size, i.e. 50GB / 10000 parts, which DuckDB uploads in parts.
+    execute(duckdb, "SET s3_uploader_max_filesize = '50GB'");
+    execute(duckdb, "COPY (SELECT i AS id, md5(i::VARCHAR) || md5((i * 7)::VARCHAR) AS payload FROM range(0, 120000) t(i)) "
+        + "TO 's3://lake/cached/multipart.parquet' (FORMAT parquet, COMPRESSION uncompressed, ROW_GROUP_SIZE 20000)");
+
+    String single = "cached/single.parquet";
+    String multipart = "cached/multipart.parquet";
+    assertTrue(Pattern.matches("\"[0-9a-f]{32}\"", s3.headObject(request -> request.bucket(BUCKET).key(single)).eTag()),
+        "The small file must be stored by a single PutObject, which gives it the entity tag of its content.");
+    String compositeEtag = s3.headObject(request -> request.bucket(BUCKET).key(multipart)).eTag();
+    assertTrue(Pattern.matches("\"[0-9a-f]{32}-[0-9]+\"", compositeEtag),
+        "The large file must be composed by a multipart upload, but has the entity tag " + compositeEtag);
+
+    for (String key : List.of(single, multipart)) {
+      Metadata head = metadata("HEAD", key, "", null);
+      Metadata get = metadata("GET", key, "", null);
+      assertEquals(200, head.status(), key);
+      assertEquals(200, get.status(), key);
+      assertTrue(head.etag().startsWith("\"") && head.etag().endsWith("\""),
+          "An entity tag is quoted, but " + key + " answered " + head.etag());
+      assertEquals(head.etag(), get.etag(), "HEAD and GET must answer the same entity tag for " + key);
+      assertEquals(head.contentLength(), get.contentLength(), "HEAD and GET must answer the same length for " + key);
+      assertEquals(get.contentLength(), get.bodyLength(), "The body of " + key + " must have the announced length.");
+
+      // The suffix range of the footer, which is how DuckDB starts reading a Parquet file.
+      long size = head.contentLength();
+      Metadata footerHead = metadata("HEAD", key, "", "bytes=-64");
+      Metadata footerGet = metadata("GET", key, "", "bytes=-64");
+      assertEquals(206, footerHead.status(), key);
+      assertEquals(206, footerGet.status(), key);
+      assertEquals(head.etag(), footerGet.etag(), "A range of " + key + " must carry the entity tag of the object.");
+      assertEquals(footerHead.etag(), footerGet.etag(), key);
+      assertEquals(64, footerGet.contentLength(), key);
+      assertEquals(footerHead.contentLength(), footerGet.contentLength(), key);
+      assertEquals(64, footerGet.bodyLength(), key);
+      assertEquals("bytes " + (size - 64) + "-" + (size - 1) + "/" + size, footerGet.contentRange(), key);
+      assertEquals(footerHead.contentRange(), footerGet.contentRange(), key);
+
+      // A range of the front, which the column chunks of a query are read with.
+      Metadata chunkHead = metadata("HEAD", key, "", "bytes=0-1023");
+      Metadata chunkGet = metadata("GET", key, "", "bytes=0-1023");
+      assertEquals(head.etag(), chunkGet.etag(), key);
+      assertEquals(chunkHead.etag(), chunkGet.etag(), key);
+      assertEquals(1024, chunkGet.contentLength(), key);
+      assertEquals(chunkHead.contentLength(), chunkGet.contentLength(), key);
+      assertEquals(1024, chunkGet.bodyLength(), key);
+      assertEquals("bytes 0-1023/" + size, chunkGet.contentRange(), key);
+      assertEquals(chunkHead.contentRange(), chunkGet.contentRange(), key);
+
+      // A read of a part, which answers the entity tag of the whole object and the length of that part.
+      Metadata partHead = metadata("HEAD", key, "?partNumber=1", null);
+      Metadata partGet = metadata("GET", key, "?partNumber=1", null);
+      assertEquals(206, partHead.status(), key);
+      assertEquals(206, partGet.status(), key);
+      assertEquals(head.etag(), partGet.etag(), key);
+      assertEquals(partHead.etag(), partGet.etag(), key);
+      assertEquals(partHead.contentLength(), partGet.contentLength(), key);
+      assertEquals(partGet.contentLength(), partGet.bodyLength(), key);
+      assertEquals(partHead.contentRange(), partGet.contentRange(), key);
+      assertEquals(partHead.partsCount(), partGet.partsCount(), key);
+    }
+
+    // The metadata cache of DuckDB on: the length and the entity tag that the first request of a file answered are
+    // what its later ranges are read and validated against.
+    execute(duckdb, "SET enable_external_file_cache = false");
+    execute(duckdb, "SET enable_http_metadata_cache = true");
+    long metadataReadsBefore = count(operations(), "HeadObject");
+    assertEquals(499500L, single(duckdb, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/cached/single.parquet')"));
+    assertEquals(List.of(List.of(120000L, 7199940000L)), rows(duckdb,
+        "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/cached/multipart.parquet')"));
+    // Read again, which the cached metadata of both files is reused for.
+    assertEquals(15150L, single(duckdb, "SELECT sum(id)::BIGINT "
+        + "FROM read_parquet('s3://lake/cached/multipart.parquet') WHERE id BETWEEN 100 AND 200"));
+    assertEquals(120000L, single(duckdb, "SELECT count(DISTINCT payload) "
+        + "FROM read_parquet('s3://lake/cached/multipart.parquet')"));
+
+    assertTrue(count(operations(), "HeadObject") > metadataReadsBefore,
+        "DuckDB must have asked for the metadata of the files it read.");
+    for (String operation : List.of("GetObject", "HeadObject")) {
+      RequestStatistics.OperationStatistics statistics = operations().get(operation);
+      if (statistics != null) {
+        assertEquals(0, statistics.clientErrors(), operation + ": " + statistics);
+        assertEquals(0, statistics.serverErrors(), operation + ": " + statistics);
+      }
+    }
+  }
+
+  /**
    * Queries that run at once on a file of many row groups, each of which DuckDB reads on threads of its own: LocalS3
    * answers many small range requests at once, and every query gets the rows of its filter.
    */
@@ -540,6 +638,41 @@ class DuckDbParquetIntegrationTest {
   private static long count(Map<String, RequestStatistics.OperationStatistics> operations, String operation) {
     RequestStatistics.OperationStatistics statistics = operations.get(operation);
     return statistics == null ? 0 : statistics.count();
+  }
+
+  /**
+   * The headers of a response that describe its content: the ones that a client which caches metadata, e.g. DuckDB
+   * with {@code enable_http_metadata_cache}, keeps and validates its later reads against.
+   *
+   * @param bodyLength the number of bytes that the response carried, which a {@code HEAD} answers none of.
+   */
+  private record Metadata(int status, String etag, long contentLength, String contentRange, String partsCount,
+                          int bodyLength) {
+  }
+
+  /**
+   * Read an object without an S3 client, so that the headers of the response are seen as LocalS3 sent them.
+   *
+   * @param method {@code HEAD} or {@code GET}.
+   * @param key the key of the object.
+   * @param query the query of the request, e.g. {@code "?partNumber=1"}; empty for none.
+   * @param range the value of the {@code Range} header; {@code null} for none.
+   */
+  private Metadata metadata(String method, String key, String query, String range) throws Exception {
+    HttpRequest.Builder builder = HttpRequest
+        .newBuilder(URI.create("http://127.0.0.1:" + localS3.getPort() + "/" + BUCKET + "/" + key + query))
+        .method(method, HttpRequest.BodyPublishers.noBody());
+    if (range != null) {
+      builder.header("Range", range);
+    }
+    HttpResponse<byte[]> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+    assertTrue(response.statusCode() < 400, method + " " + key + query + " answered " + response.statusCode());
+    return new Metadata(response.statusCode(),
+        response.headers().firstValue("ETag").orElse(null),
+        response.headers().firstValueAsLong("Content-Length").orElse(-1),
+        response.headers().firstValue("Content-Range").orElse(null),
+        response.headers().firstValue("x-amz-mp-parts-count").orElse(null),
+        response.body().length);
   }
 
   /**

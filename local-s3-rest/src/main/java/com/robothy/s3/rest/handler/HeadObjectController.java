@@ -68,8 +68,9 @@ class HeadObjectController implements HttpRequestHandler {
         response.status(HttpResponseStatus.OK);
       }
 
+      // The same headers, from the same answer, that GetObjectController writes: a client that caches the metadata of
+      // an object, e.g. DuckDB with `enable_http_metadata_cache`, validates the ranges it then reads against them.
       response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), object.getSize())
-          .putHeader(HttpHeaderNames.ETAG.toString(), object.getEtag())
           .putHeader("Accept-Ranges", "bytes");
       ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_MP_PARTS_COUNT, object.getPartsCount());
       SystemMetadataHeaders.addResponseHeaders(request, response, object.getContentType(), object.getSystemMetadata());
