@@ -40,7 +40,7 @@ class HeadObjectController implements HttpRequestHandler {
 
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
-        .range(request.header(HttpHeaderNames.RANGE.toString()).map(Range::parse).orElse(null))
+        .range(request.header(HttpHeaderNames.RANGE.toString()).flatMap(Range::tryParse).orElse(null))
         .partNumber(RequestAssertions.assertPartNumberIsValidIfPresent(request))
         .preconditions(RequestUtils.extractPreconditions(request))
         .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))

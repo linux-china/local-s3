@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
@@ -115,6 +117,16 @@ public final class CopyOnAccessStorage implements Storage {
   @Override
   public long size(Long id) {
     return this.real.isExist(id) ? this.real.size(id) : this.base.size(id);
+  }
+
+  /**
+   * Retain the content in the storage of the objects and copies of this one, which is the only one that objects are
+   * deleted from. The content of the base storage stays readable anyway: a copy that is dropped while it is read is
+   * read from the base storage again.
+   */
+  @Override
+  public Optional<ContentRetention> retain(Collection<Long> ids) {
+    return this.real.retain(ids);
   }
 
   @Override

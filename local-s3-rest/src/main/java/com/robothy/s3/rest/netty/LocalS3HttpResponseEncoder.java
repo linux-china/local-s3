@@ -28,8 +28,8 @@ import java.util.List;
  * with a body stream becomes the response headers followed by streaming content. File-backed content
  * is sent as a zero-copy {@linkplain DefaultFileRegion} on plaintext connections, or a
  * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}. The content of an object
- * stored in parts, i.e. a {@linkplain CompositeInputStream}, is sent part by part on plaintext connections: a
- * file-backed part as a {@linkplain DefaultFileRegion}, and any other part as a {@linkplain ChunkedStream}.
+ * stored in parts, i.e. a {@linkplain CompositeInputStream}, is sent part by part on plaintext connections by a
+ * {@linkplain CompositeContentChunkedInput}, which opens one part at a time.
  *
  * <p>The content is written on the event loop of the connection. So that a large response doesn't block the other
  * connections of the loop, file-backed content is never read through the Java heap there: the kernel transfers it.
@@ -58,16 +58,8 @@ public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResp
     }
     out.add(response);
     if (bodyStream instanceof CompositeInputStream composite && ctx.pipeline().get(SslHandler.class) == null) {
-      // Each region or chunked stream owns the stream of its part from now on, and closes it once it is written or
-      // released.
-      for (InputStream part : composite.getStreams()) {
-        if (part instanceof FileRegionInputStream file) {
-          out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
-        } else {
-          out.add(new ChunkedStream(part, STREAM_CHUNK_SIZE));
-        }
-      }
-      out.add(LastHttpContent.EMPTY_LAST_CONTENT);
+      // Sends one part at a time, and ends the message with a last chunk of its own.
+      out.add(CompositeContentChunkedInput.of(composite, ctx, STREAM_CHUNK_SIZE));
     } else if (bodyStream instanceof FileRegionInputStream file) {
       if (ctx.pipeline().get(SslHandler.class) == null) {
         out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));

@@ -10,7 +10,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -44,6 +46,13 @@ class LocalFileSystemStorage implements Storage {
   private final boolean readOnly;
 
   /**
+   * The content that readers hold, and the deletions that wait for them; {@code null} for a read-only storage, which
+   * deletes nothing. A whole object of a multipart upload is read part by part, so its parts are kept rather than
+   * held open, see {@linkplain Storage#retain(Collection)}.
+   */
+  private final DeferredDeletions deletions;
+
+  /**
    * Construct a writable {@linkplain LocalFileSystemStorage} instance. The directory is created if it doesn't exist,
    * and the object files of the flat layout of a LocalS3 before 2.5 are moved into their subdirectories.
    *
@@ -67,6 +76,7 @@ class LocalFileSystemStorage implements Storage {
   LocalFileSystemStorage(Path dataPath, boolean readOnly) {
     this.directory = Objects.requireNonNull(dataPath);
     this.readOnly = readOnly;
+    this.deletions = readOnly ? null : new DeferredDeletions(this::deleteNow);
     if (!readOnly) {
       PathUtils.createDirectoryIfNotExist(directory);
       moveFlatObjectFilesIntoSubdirectories();
@@ -148,6 +158,7 @@ class LocalFileSystemStorage implements Storage {
    * Open the content of an object. The caller reads it after the bucket lock that the read was made under
    * is released, so the object it holds open can be overwritten or deleted meanwhile; on Windows, which
    * refuses to replace or delete an open file, those operations are repeated while this stream is open.
+   * Content that is opened later than it is resolved is {@linkplain #retain(Collection) retained} instead.
    */
   @Override
   public InputStream getInputStream(Long id) {
@@ -169,10 +180,24 @@ class LocalFileSystemStorage implements Storage {
     }
   }
 
+  /**
+   * Retain the files of the given objects. A read-only storage deletes nothing, so its files stay readable without
+   * being retained.
+   */
+  @Override
+  public Optional<ContentRetention> retain(Collection<Long> ids) {
+    return Optional.of(readOnly ? ContentRetention.NONE : deletions.retain(ids));
+  }
+
   @Override
   public Long delete(Long id) {
     existingObjectPath(id);
     ensureWritable();
+    // The file of content that a reader still has to open is deleted once it released it.
+    return deletions.defer(id) ? id : deleteNow(id);
+  }
+
+  private Long deleteNow(Long id) {
     try {
       // An emptied subdirectory is kept: another object may be stored in it at the same time.
       if (Files.exists(objectPath(id))) {

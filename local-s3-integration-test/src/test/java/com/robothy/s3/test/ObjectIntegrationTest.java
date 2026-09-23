@@ -344,6 +344,33 @@ public class ObjectIntegrationTest {
 
   @LocalS3
   @Test
+  void testGetObjectIgnoresARangeItCannotParse(S3Client s3) {
+    String bucket = "unparsable-range-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+    String key = "data.txt";
+    s3.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(),
+        RequestBody.fromString("Hello, World!"));
+
+    // Amazon S3 ignores a Range header that it cannot parse, and a multipart range that it does not serve,
+    // and answers the whole object with 200 instead of failing with 416.
+    for (String range : new String[] {"bytes=abc", "bytes=6-2", "bytes=-", "0-4", "chunks=0-4", "bytes=0-4,7-11"}) {
+      ResponseBytes<GetObjectResponse> answer = s3.getObject(
+          GetObjectRequest.builder().bucket(bucket).key(key).range(range).build(),
+          ResponseTransformer.toBytes());
+      assertEquals("Hello, World!", answer.asUtf8String(), range);
+      assertEquals(13L, answer.response().contentLength(), range);
+      assertNull(answer.response().contentRange(), range);
+    }
+
+    // HeadObject reads the same header the same way.
+    HeadObjectResponse head = s3.headObject(HeadObjectRequest.builder()
+        .bucket(bucket).key(key).range("bytes=abc").build());
+    assertEquals(13L, head.contentLength());
+    assertNull(head.contentRange());
+  }
+
+  @LocalS3
+  @Test
   void testDeleteObjects(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());

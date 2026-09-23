@@ -8,6 +8,8 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.Optional;
 
 /**
  * Key-Value based storage abstraction.
@@ -203,7 +205,34 @@ public interface Storage {
   }
 
   /**
+   * Retain the content of the given objects, so that a reader which opens it later still finds it.
+   *
+   * <p>The content of an object of a multipart upload is the content of its parts, which are opened one at a time
+   * while the object is read, rather than all at once: a read of a large object would otherwise hold a file open per
+   * part, and a handful of concurrent reads would run the process out of file descriptors. A reader retains the
+   * content it is going to open while it holds the lock that the object was resolved under, and releases the
+   * retention when it is done. While the content is retained, deleting it only records the deletion; the storage
+   * performs it once the last retention is released, so an overwrite or a deletion doesn't cut a read short.
+   *
+   * <p>A storage that doesn't defer deletions answers {@linkplain Optional#empty()}, and the reader opens the whole
+   * content right away instead, as it did before deferred deletions.
+   *
+   * <p>A deferred deletion deletes whatever the ID holds when it is performed, so an ID that was deleted while it was
+   * retained must not be stored again; the IDs of LocalS3 are generated, and never stored twice.
+   *
+   * @param ids the IDs of the objects whose content is read; IDs that this storage doesn't hold are allowed.
+   * @return the retention, which the reader {@linkplain ContentRetention#close() closes} when it is done; empty if
+   *     this storage doesn't retain content.
+   */
+  default Optional<ContentRetention> retain(Collection<Long> ids) {
+    return Optional.empty();
+  }
+
+  /**
    * Delete an object by ID.
+   *
+   * <p>Content that is {@linkplain #retain(Collection) retained} is deleted once the last retention of it is
+   * released; this method then only records the deletion, and answers as if the content was deleted.
    *
    * @param id the object ID.
    * @return deleted Object ID.

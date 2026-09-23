@@ -4,8 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.storage.CompositeInputStream;
+import com.robothy.s3.core.storage.ContentRetention;
 import com.robothy.s3.core.storage.Storage;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.DefaultFileRegion;
@@ -13,9 +15,8 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.LastHttpContent;
-import io.netty.handler.stream.ChunkedStream;
+import io.netty.handler.stream.ChunkedInput;
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -26,38 +27,47 @@ import org.junit.jupiter.api.io.TempDir;
 class LocalS3HttpResponseEncoderTest {
 
   /**
-   * The file-backed parts of an object stored in parts are transferred as file regions, and the other parts are
-   * copied chunk by chunk, so that no file is read through the heap on the event loop.
+   * The content of an object stored in parts is sent part by part, and one part at a time: a file-backed part as a
+   * file region, and any other part chunk by chunk, so that no file is read through the heap on the event loop and
+   * no more than one part is open.
    */
   @Test
   void sendsEveryPartOfAnObjectStoredInPartsTheWayItSupports(@TempDir Path directory) throws Exception {
     Storage files = Storage.createPersistent(directory);
     Long first = files.put("Hello".getBytes());
     Long third = files.put("S3!".getBytes());
-    InputStream memory = new ByteArrayInputStream("Local".getBytes());
     StreamingHttpResponse response = new StreamingHttpResponse();
     response.status(HttpResponseStatus.OK).putHeader("Content-Length", 13);
-    response.stream(new CompositeInputStream(List.of(files.getInputStream(first), memory,
-        files.getInputStream(third))));
+    response.stream(new CompositeInputStream(List.<CompositeInputStream.Part>of(
+        () -> files.getInputStream(first),
+        () -> new ByteArrayInputStream("Local".getBytes()),
+        () -> files.getInputStream(third)), ContentRetention.NONE));
 
     EmbeddedChannel channel = new EmbeddedChannel(new LocalS3HttpResponseEncoder());
     try {
       assertTrue(channel.writeOutbound(response));
       assertInstanceOf(HttpResponse.class, channel.readOutbound());
-      DefaultFileRegion region1 = assertInstanceOf(DefaultFileRegion.class, channel.readOutbound());
+      ChunkedInput<Object> content = assertInstanceOf(ChunkedInput.class, channel.readOutbound());
+
+      DefaultFileRegion region1 = assertInstanceOf(DefaultFileRegion.class, content.readChunk(channel.alloc()));
       assertEquals(5, region1.count());
-      ChunkedStream chunks = assertInstanceOf(ChunkedStream.class, channel.readOutbound());
-      ByteBuf chunk = chunks.readChunk(channel.alloc());
+      assertNull(content.readChunk(channel.alloc()), "The next part waits for the region to be written.");
+      region1.release();
+
+      ByteBuf chunk = assertInstanceOf(ByteBuf.class, content.readChunk(channel.alloc()));
       byte[] bytes = new byte[chunk.readableBytes()];
       chunk.readBytes(bytes);
       chunk.release();
       assertArrayEquals("Local".getBytes(), bytes);
-      DefaultFileRegion region3 = assertInstanceOf(DefaultFileRegion.class, channel.readOutbound());
+
+      DefaultFileRegion region3 = assertInstanceOf(DefaultFileRegion.class, content.readChunk(channel.alloc()));
       assertEquals(3, region3.count());
-      assertEquals(LastHttpContent.EMPTY_LAST_CONTENT, channel.readOutbound());
-      chunks.close();
-      region1.release();
+      assertFalse(content.isEndOfInput());
       region3.release();
+
+      assertEquals(LastHttpContent.EMPTY_LAST_CONTENT, content.readChunk(channel.alloc()));
+      assertTrue(content.isEndOfInput());
+      content.close();
     } finally {
       channel.finishAndReleaseAll();
     }

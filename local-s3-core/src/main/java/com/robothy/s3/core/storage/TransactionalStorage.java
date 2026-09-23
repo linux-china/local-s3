@@ -2,8 +2,10 @@ package com.robothy.s3.core.storage;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
@@ -103,6 +105,15 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
   @Override
   public InputStream getInputStream(Long id, long position, long length) {
     return delegate.getInputStream(id, position, length);
+  }
+
+  /**
+   * Retain the content in the underlying storage, which performs the deletions of a transaction when it is
+   * committed: a deletion of retained content then waits for the last reader of it, like any other one.
+   */
+  @Override
+  public Optional<ContentRetention> retain(Collection<Long> ids) {
+    return delegate.retain(ids);
   }
 
   @Override

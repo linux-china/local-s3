@@ -6,9 +6,11 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,6 +38,12 @@ class InMemoryStorage implements Storage {
   private static final int INITIAL_BUFFER_SIZE = 8192;
 
   private final Map<Long, Content> store = new ConcurrentHashMap<>();
+
+  /**
+   * The content that readers hold, and the deletions that wait for them. A stream of this storage keeps reading the
+   * chunks it was opened on, but content that a reader hasn't opened yet has to stay in the store.
+   */
+  private final DeferredDeletions deletions = new DeferredDeletions(this::deleteNow);
 
   /**
    * The bytes of the stored content, and of the content being stored, which is reserved before it is stored.
@@ -193,7 +201,20 @@ class InMemoryStorage implements Storage {
   }
 
   @Override
+  public Optional<ContentRetention> retain(Collection<Long> ids) {
+    return Optional.of(deletions.retain(ids));
+  }
+
+  @Override
   public Long delete(Long id) {
+    if (!store.containsKey(id)) {
+      throw notExist(id);
+    }
+    // Content that a reader still has to open is deleted once it released it.
+    return deletions.defer(id) ? id : deleteNow(id);
+  }
+
+  private Long deleteNow(Long id) {
     Content removed = store.remove(id);
     if (removed == null) {
       throw notExist(id);

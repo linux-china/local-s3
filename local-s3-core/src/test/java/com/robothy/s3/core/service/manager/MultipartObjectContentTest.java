@@ -20,6 +20,7 @@ import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.storage.CompositeInputStream;
+import com.robothy.s3.core.storage.ContentRetention;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import java.io.ByteArrayInputStream;
@@ -28,7 +29,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -205,7 +208,7 @@ class MultipartObjectContentTest {
   }
 
   @Test
-  void opensThePartsOfARangeAtOnce() throws IOException {
+  void readsTheContentOfARangePartByPart() throws IOException {
     for (LocalS3Manager manager : managers()) {
       ObjectService objectService = manager.objectService();
       manager.bucketService().createBucket(BUCKET);
@@ -213,7 +216,7 @@ class MultipartObjectContentTest {
           completeParts(1, 2, 3));
 
       try (InputStream all = objectService.getObject(BUCKET, KEY, GetObjectOptions.builder().build()).getContent()) {
-        assertEquals(3, assertInstanceOf(CompositeInputStream.class, all).getStreams().size());
+        assertEquals(3, assertInstanceOf(CompositeInputStream.class, all).partCount());
       }
       try (InputStream within = objectService.getObject(BUCKET, KEY, GetObjectOptions.builder()
           .range(Range.of(6, 8)).build()).getContent()) {
@@ -221,6 +224,52 @@ class MultipartObjectContentTest {
       }
     }
   }
+
+  /**
+   * A whole object is read one part at a time, so that reading an object of many parts doesn't hold a file per part;
+   * the parts that aren't opened yet are kept by the storage instead.
+   */
+  @Test
+  void opensThePartsOfAnObjectOneAfterAnother() throws IOException {
+    CountingStorage storage = new CountingStorage();
+    InMemoryLocalS3Manager manager = new InMemoryLocalS3Manager(new LocalS3Metadata(), storage);
+    ObjectService objectService = manager.objectService();
+    manager.bucketService().createBucket(BUCKET);
+    objectService.completeMultipartUpload(BUCKET, KEY, upload(objectService, "Hello", "Local", "S3!"),
+        completeParts(1, 2, 3));
+
+    try (InputStream in = objectService.getObject(BUCKET, KEY, GetObjectOptions.builder().build()).getContent()) {
+      assertEquals(3, assertInstanceOf(CompositeInputStream.class, in).partCount());
+      assertEquals(0, storage.reads.get(), "No part is opened before the content is read.");
+      assertEquals('H', in.read());
+      assertEquals(1, storage.reads.get(), "Only the part that is read is opened.");
+      assertEquals("elloLocalS3!", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+      assertEquals(3, storage.reads.get());
+    }
+  }
+
+  /**
+   * The parts of an object that is read are deleted once the read is done, so that an overwrite doesn't cut a read
+   * that opens the remaining parts later short.
+   */
+  @Test
+  void keepsThePartsOfAnObjectThatIsOverwrittenUntilTheReadIsDone(@TempDir Path dataPath) throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    ObjectService objectService = manager.objectService();
+    manager.bucketService().createBucket(BUCKET);
+    objectService.completeMultipartUpload(BUCKET, KEY, upload(objectService, "Hello", "Local", "S3!"),
+        completeParts(1, 2, 3));
+    Path storageDirectory = dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY);
+
+    try (InputStream in = objectService.getObject(BUCKET, KEY, GetObjectOptions.builder().build()).getContent()) {
+      objectService.putObject(BUCKET, KEY, content("Replaced"));
+      assertEquals(4, countFiles(storageDirectory), "The parts are kept while they are read.");
+      assertEquals("HelloLocalS3!", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+    }
+    assertEquals(1, countFiles(storageDirectory), "The parts are deleted once the read is done.");
+    assertEquals("Replaced", read(objectService, null));
+  }
+
 
   /**
    * The parts of an object are opened while the object is read locked, so that a read that is still in progress
@@ -346,6 +395,11 @@ class MultipartObjectContentTest {
     @Override
     public long size(Long id) {
       return delegate.size(id);
+    }
+
+    @Override
+    public Optional<ContentRetention> retain(Collection<Long> ids) {
+      return delegate.retain(ids);
     }
 
     @Override

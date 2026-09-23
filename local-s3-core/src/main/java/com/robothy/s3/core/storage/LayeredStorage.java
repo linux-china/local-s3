@@ -2,7 +2,9 @@ package com.robothy.s3.core.storage;
 
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A {@linkplain LayeredStorage} has a backend and frontend {@linkplain Storage}.
@@ -66,6 +68,14 @@ class LayeredStorage implements Storage {
     return front.isExist(id)
         ? front.getInputStream(id, position, length)
         : back.getInputStream(id, position, length);
+  }
+
+  /**
+   * Retain the content in the frontend storage, which is the only one that objects are deleted from.
+   */
+  @Override
+  public Optional<ContentRetention> retain(Collection<Long> ids) {
+    return front.retain(ids);
   }
 
   /**

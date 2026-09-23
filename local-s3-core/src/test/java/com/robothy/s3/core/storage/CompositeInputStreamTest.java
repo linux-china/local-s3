@@ -40,17 +40,72 @@ class CompositeInputStreamTest {
     AtomicInteger closed = new AtomicInteger();
     List<InputStream> streams = List.of(closing("a", closed), closing("b", closed));
     CompositeInputStream in = new CompositeInputStream(streams);
-    assertEquals(streams, in.getStreams());
+    assertEquals(2, in.partCount());
     in.close();
     assertEquals(2, closed.get());
     assertEquals(-1, in.read());
     assertTrue(in.available() == 0);
   }
 
+  /**
+   * A part is opened when it is read, and closed once it is exhausted, so that the whole content is read with one
+   * part open at a time.
+   */
+  @Test
+  void opensOnePartAtATime() throws IOException {
+    AtomicInteger open = new AtomicInteger();
+    AtomicInteger maxOpen = new AtomicInteger();
+    try (CompositeInputStream in = new CompositeInputStream(List.<CompositeInputStream.Part>of(
+        counting("Hello", open, maxOpen), counting("Local", open, maxOpen), counting("S3!", open, maxOpen)),
+        ContentRetention.NONE)) {
+      assertEquals(0, open.get(), "No part is opened before the content is read.");
+      assertArrayEquals("HelloLocalS3!".getBytes(), in.readAllBytes());
+      assertEquals(1, maxOpen.get(), "One part is open at a time.");
+      assertEquals(0, open.get(), "Every part that was read is closed.");
+    }
+  }
+
+  @Test
+  void releasesTheRetentionOfTheContentWhenItIsClosed() throws IOException {
+    AtomicInteger released = new AtomicInteger();
+    CompositeInputStream in = new CompositeInputStream(
+        List.<CompositeInputStream.Part>of(() -> new ByteArrayInputStream("a".getBytes()),
+            () -> new ByteArrayInputStream("b".getBytes())),
+        released::incrementAndGet);
+    in.close();
+    in.close();
+    assertEquals(1, released.get(), "The retention is released once.");
+  }
+
+  /**
+   * A part that a transport takes over is closed by it, not by the stream.
+   */
+  @Test
+  void handsOutThePartsOfTheContent() throws IOException {
+    AtomicInteger closed = new AtomicInteger();
+    CompositeInputStream in = new CompositeInputStream(List.of(closing("a", closed), closing("b", closed)));
+    assertArrayEquals("a".getBytes(), in.openPart(0).readAllBytes());
+    assertArrayEquals("b".getBytes(), in.openPart(1).readAllBytes());
+    in.close();
+    assertEquals(0, closed.get());
+  }
+
   private static CompositeInputStream parts(String... parts) {
     return new CompositeInputStream(java.util.Arrays.stream(parts)
         .map(part -> (InputStream) new ByteArrayInputStream(part.getBytes()))
         .toList());
+  }
+
+  private static CompositeInputStream.Part counting(String content, AtomicInteger open, AtomicInteger maxOpen) {
+    return () -> {
+      maxOpen.accumulateAndGet(open.incrementAndGet(), Math::max);
+      return new ByteArrayInputStream(content.getBytes()) {
+        @Override
+        public void close() {
+          open.decrementAndGet();
+        }
+      };
+    };
   }
 
   private static InputStream closing(String content, AtomicInteger closed) {
