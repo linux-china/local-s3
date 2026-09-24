@@ -217,7 +217,8 @@ public class LocalS3 implements AutoCloseable {
     /**
      * Warn that the service answers unsigned requests from other machines, which a service does that has no
      * credentials and doesn't bind a loopback address: everyone who reaches the port reads, writes and deletes every
-     * bucket. The Docker image binds {@code 0.0.0.0}, since a container serves its host, so publishing its port
+     * bucket, whatever the signature of a request, and calls the admin endpoints, e.g. {@code /_admin/reset}, and the
+     * Iceberg REST catalog anonymously. The Docker image binds {@code 0.0.0.0}, since a container serves its host, so publishing its port
      * without credentials opens the data to the network the machine is on.
      *
      * <p>It warns rather than refuses to start: an open service is what some setups want, e.g. a test environment
@@ -234,6 +235,8 @@ public class LocalS3 implements AutoCloseable {
         log.warn("""
                 !! LocalS3 is listening on {}:{} without authentication: everyone who reaches this port can read, \
                 write and delete every bucket.
+                !! Any signature is accepted, and the admin endpoints (/_admin/ui, /_admin/reset, ...) and the Iceberg \
+                REST catalog answer anonymous requests.
                 !! Set LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require \
                 signed requests; bind 127.0.0.1 to serve this machine alone.""", config.bindHost(), port);
     }

@@ -35,6 +35,7 @@ your own user instead, and keep the ownership of the directory, start the contai
 >
 > ```
 > !! LocalS3 is listening on 0.0.0.0:29090 without authentication: everyone who reaches this port can read, write and delete every bucket.
+> !! Any signature is accepted, and the admin endpoints (/_admin/ui, /_admin/reset, ...) and the Iceberg REST catalog answer anonymous requests.
 > !! Set LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require signed requests; bind 127.0.0.1 to serve this machine alone.
 > ```
 >
