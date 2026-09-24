@@ -1,0 +1,14 @@
+# What the tests of s3tests/functional/test_s3.py and test_headers.py import, pinned; the requirements.txt of
+# s3-tests also lists gevent and tox, which those tests don't use.
+boto3==1.43.101
+botocore==1.43.101
+isodate==0.7.2
+lxml==6.1.3
+munch==4.0.0
+python-dateutil==2.9.0.post0
+pytz==2026.3.post1
+pyyaml==6.0.3
+requests==2.34.2
+pytest==9.1.1
+pytest-timeout==2.4.0
+pytest-xdist==3.8.0

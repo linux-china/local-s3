@@ -8,6 +8,7 @@ import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
+import com.robothy.s3.datatypes.response.VersionItem;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -165,6 +166,53 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
       versionIdMarker = ans.getNextVersionIdMarker().orElse(null);
     }
     assertEquals(List.of("a.txt", "dir1/", "dir2/", "dir3--k1", "dir3--k2", "z.txt"), listed);
+  }
+
+  /**
+   * A client that empties a bucket deletes the versions of each page before it asks for the next one, with the
+   * markers of a version that is gone, e.g. the clean-up of ceph/s3-tests. The listing goes on after the markers,
+   * whether versioning is enabled or never was, where the version ID marker is {@code null}.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void listsAfterMarkersOfDeletedVersions(BucketService bucketService, ObjectService objectService) {
+    for (boolean versioned : List.of(true, false)) {
+      String bucket = versioned ? "versioned-bucket" : "unversioned-bucket";
+      bucketService.createBucket(bucket);
+      if (versioned) {
+        bucketService.setVersioningEnabled(bucket, true);
+      }
+      for (int i = 0; i < 10; i++) {
+        for (int version = 0; version < (versioned ? 2 : 1); version++) {
+          objectService.putObject(bucket, "key" + i, PutObjectOptions.builder()
+              .content(new ByteArrayInputStream("Robothy".getBytes()))
+              .size(7)
+              .build());
+        }
+      }
+
+      int deleted = 0;
+      String keyMarker = null;
+      String versionIdMarker = null;
+      for (int page = 0; page < 20; page++) {
+        ListObjectVersionsAns ans = objectService.listObjectVersions(bucket, null, keyMarker, 3, null, versionIdMarker);
+        for (VersionItem item : ans.getVersions()) {
+          ObjectVersion version = (ObjectVersion) item;
+          objectService.deleteObject(bucket, version.getKey(), version.getVersionId());
+          deleted++;
+        }
+        if (ans.getNextKeyMarker().isEmpty()) {
+          break;
+        }
+        keyMarker = ans.getNextKeyMarker().get();
+        versionIdMarker = ans.getNextVersionIdMarker().orElse(null);
+      }
+
+      assertEquals(versioned ? 20 : 10, deleted);
+      assertTrue(objectService.listObjectVersions(bucket, null, null, 100, null, null).getVersions().isEmpty());
+      // A key marker of a key that never was lists the keys after it.
+      assertTrue(objectService.listObjectVersions(bucket, null, "no-such-key", 100, null, "null").getVersions().isEmpty());
+    }
   }
 
   private static List<String> keys(ListObjectVersionsAns ans) {

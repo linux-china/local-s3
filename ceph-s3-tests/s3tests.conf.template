@@ -1,0 +1,59 @@
+# The configuration of s3-tests for LocalS3, which run.sh fills in: @PORT@, @ACCESS_KEY@ and @SECRET_KEY@.
+[DEFAULT]
+host = 127.0.0.1
+port = @PORT@
+is_secure = False
+ssl_verify = False
+
+[fixtures]
+bucket prefix = s3t-{random}-
+iam name prefix = s3-tests-
+iam path prefix = /s3-tests/
+
+# The single user of LocalS3. The owner of its buckets and objects is Owner.DEFAULT_OWNER.
+[s3 main]
+display_name = LocalS3
+user_id = 001
+email = local-s3@example.com
+api_name = us-east-1
+access_key = @ACCESS_KEY@
+secret_key = @SECRET_KEY@
+# LocalS3 accepts any KMS key and keeps it with the object, which is what the SSE-KMS tests need.
+kms_keyid = 01234567-89ab-cdef-0123-456789abcdef
+kms_keyid2 = 11234567-89ab-cdef-0123-456789abcdef
+
+# s3-tests reads the sections below whatever tests run. LocalS3 doesn't know these users, and local_s3_plugin.py
+# deselects the tests that use them.
+[s3 alt]
+display_name = alt
+email = alt@example.com
+user_id = alt
+access_key = ALTACCESSKEY
+secret_key = ALTSECRETKEY
+
+[s3 tenant]
+display_name = tenant
+user_id = tenant$tenant
+access_key = TENANTACCESSKEY
+secret_key = TENANTSECRETKEY
+email = tenant@example.com
+tenant = tenant
+
+[iam]
+email = iam@example.com
+user_id = iam
+access_key = IAMACCESSKEY
+secret_key = IAMSECRETKEY
+display_name = iam
+
+[iam root]
+access_key = IAMROOTACCESSKEY
+secret_key = IAMROOTSECRETKEY
+user_id = iamroot
+email = iamroot@example.com
+
+[iam alt root]
+access_key = IAMALTROOTACCESSKEY
+secret_key = IAMALTROOTSECRETKEY
+user_id = iamaltroot
+email = iamaltroot@example.com

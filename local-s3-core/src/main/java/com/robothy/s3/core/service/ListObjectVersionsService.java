@@ -2,8 +2,6 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.assertions.BucketAssertions;
-import com.robothy.s3.core.assertions.ObjectAssertions;
-import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
@@ -16,6 +14,7 @@ import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.datatypes.response.VersionItem;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -47,31 +46,22 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
       String nextKeyMarker;
       int delimiterIndex;
       if (Objects.nonNull(keyMarker)) {
-        ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, keyMarker);
-
         // If the keyMarker doesn't have a common prefix.
         if (Objects.isNull(delimiter) || -1 == (delimiterIndex = keyMarker.indexOf(delimiter, prefixLen))) {
-          NavigableMap<String, VersionedObjectMetadata> versions;
-          if (Objects.nonNull(versionIdMarker)) {
-            String realVersionId;
-            if (ObjectMetadata.NULL_VERSION.equals(versionIdMarker)) {
-              VersionedObjectAssertions.assertVirtualVersionExist(objectMetadata);
-              realVersionId = objectMetadata.getVirtualVersion().get();
-            } else {
-              VersionedObjectAssertions.assertVersionedObjectExist(objectMetadata, versionIdMarker);
-              realVersionId = versionIdMarker;
-            }
-            versions = objectMetadata.getVersionedObjectMap().tailMap(realVersionId, false);
-          } else {
-            versions = objectMetadata.getVersionedObjectMap();
-          }
+          // Like Amazon S3, the markers needn't name a key or a version that exists. A client that deletes the
+          // versions of each page before it asks for the next one, e.g. to empty a bucket, sends the markers of a
+          // version that is gone, and the listing goes on after it.
+          Optional<ObjectMetadata> objectMetadata = bucketMetadata.getObjectMetadata(keyMarker);
+          NavigableMap<String, VersionedObjectMetadata> versions = objectMetadata
+              .map(metadata -> versionsAfter(metadata, versionIdMarker))
+              .orElse(Collections.emptyNavigableMap());
 
           // If the keyMarker match the prefix condition, then fetch related versions.
           if (Objects.isNull(prefix) || keyMarker.startsWith(prefix)) {
             nextVersionIdMarker = fetchVersions(versionItems, commonPrefixes, keyMarker, versions, false, maxKeys,
-                objectMetadata.getVirtualVersion().orElse(null));
+                objectMetadata.flatMap(ObjectMetadata::getVirtualVersion).orElse(null));
           } else {
-            nextVersionIdMarker = versions.lastKey();
+            nextVersionIdMarker = versions.isEmpty() ? null : versions.lastKey();
           }
         } else { // The keyMarker has a common prefix, which the previous page listed.
           commonPrefixOfKeyMarker = keyMarker.substring(0, delimiterIndex + delimiter.length());
@@ -133,6 +123,30 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
           .commonPrefixes(commonPrefixes)
           .build();
     });
+  }
+
+  /**
+   * The versions of an object that come after the version ID marker, or all of them without a marker. A version ID
+   * orders the versions by when they were created, so the marker of a version that is gone still has its place among
+   * them. The null version, the version of a bucket whose versioning was never enabled, has no such place once it is
+   * gone, and none of the versions of the object are listed after it.
+   *
+   * @param objectMetadata the object that the key marker names.
+   * @param versionIdMarker the version ID marker; {@code null} if there is none.
+   * @return the versions of the object that come after the marker.
+   */
+  private static NavigableMap<String, VersionedObjectMetadata> versionsAfter(ObjectMetadata objectMetadata,
+                                                                             String versionIdMarker) {
+    if (Objects.isNull(versionIdMarker)) {
+      return objectMetadata.getVersionedObjectMap();
+    }
+    if (ObjectMetadata.NULL_VERSION.equals(versionIdMarker)) {
+      return objectMetadata.getVirtualVersion()
+          .filter(virtualVersion -> objectMetadata.getVersionedObjectMap().containsKey(virtualVersion))
+          .map(virtualVersion -> objectMetadata.getVersionedObjectMap().tailMap(virtualVersion, false))
+          .orElse(Collections.emptyNavigableMap());
+    }
+    return objectMetadata.getVersionedObjectMap().tailMap(versionIdMarker, false);
   }
 
   /**

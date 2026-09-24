@@ -74,3 +74,29 @@ jobs:
 
       - name: DuckDB and Apache Iceberg tests
         run: ./gradlew :local-s3-integration-test:dataToolsTest -PrequireDuckDbTests=true
+
+  s3-tests:
+    # The core S3 tests of ceph/s3-tests with boto3, against the executable jar; see ceph-s3-tests/README.md.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Java 21 for Gradle
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build the executable jar
+        run: ./gradlew :local-s3-standalone:jar
+
+      - name: ceph/s3-tests
+        run: ceph-s3-tests/run.sh
