@@ -88,6 +88,10 @@ deltaKernelDefaults = { group = "io.delta", name = "delta-kernel-defaults", vers
 # The Parquet writers and readers of Iceberg take a Hadoop Configuration: the shaded Hadoop client, without Hadoop's own dependencies.
 hadoopClientApi = { group = "org.apache.hadoop", name = "hadoop-client-api", version.ref = "hadoop" }
 hadoopClientRuntime = { group = "org.apache.hadoop", name = "hadoop-client-runtime", version.ref = "hadoop" }
+# Hadoop's S3A connector, the S3 client of Spark, Delta Lake, Hudi and Paimon. It declares the whole AWS SDK as
+# software.amazon.awssdk:bundle, which the build excludes for the modules S3A uses, at the version of the SDK here.
+hadoopAws = { group = "org.apache.hadoop", name = "hadoop-aws", version.ref = "hadoop" }
+awssdkS3TransferManager = { group = "software.amazon.awssdk", name = "s3-transfer-manager", version.ref = "awssdkS3" }
 springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
 springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
 springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }

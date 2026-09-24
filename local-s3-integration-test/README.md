@@ -8,7 +8,7 @@ The tests are grouped by JUnit tag:
 | Task            | Tag          | Tests                                                                                    |
 |-----------------|--------------|------------------------------------------------------------------------------------------|
 | `test`          | untagged     | LocalS3 with the AWS SDK; CI runs them on Linux for every pull request                   |
-| `dataToolsTest` | `data-tools` | DuckDB, Apache Iceberg and Delta Lake, the slow ones; CI runs them in a job of their own, in parallel |
+| `dataToolsTest` | `data-tools` | DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A, the slow ones; CI runs them in a job of their own, in parallel |
 | `realS3Test`    | `real-s3`    | the tests of `@RealS3`, which need AWS credentials; CI doesn't run them                   |
 
 `check` runs `test` and `dataToolsTest`.
@@ -19,6 +19,7 @@ The tests are grouped by JUnit tag:
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbParquetIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckLakeIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbIcebergIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*HadoopS3AIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DuckDbDeltaIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergS3FileIOIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergRestCatalog*'

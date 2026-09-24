@@ -184,6 +184,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   of Delta rests on `If-None-Match: *` creating `_delta_log/<version>.json` only when no other writer did, and on the
   `412` that LocalS3 answers the loser with. See [Delta Lake](docs/data-tools.md#delta-lake).
 
++ **Hadoop S3A is covered end to end.** `HadoopS3AIntegrationTest` runs `S3AFileSystem` of `hadoop-aws`, the path
+  that Spark, Delta Lake, Hudi and Paimon take to S3: `mkdirs`, `listStatus`, `rename` and `delete` of directories,
+  a multipart upload and a multipart copy of a large file, the magic committer committing one task and aborting
+  another, and conditional creates with `If-None-Match: *` and `If-Match`. It runs under `dataToolsTest`. See
+  [Hadoop S3A](docs/data-tools.md#hadoop-s3a).
+
 + **A built-in Iceberg REST catalog**, off by default: `icebergCatalog(true)`, `@LocalS3(icebergCatalog = true)`,
   `local-s3.iceberg-catalog.enabled` or `LOCAL_S3_ICEBERG_CATALOG=true` serves an
   [Iceberg REST catalog](https://iceberg.apache.org/spec/#rest-catalog) under `/iceberg/v1` on the same port, so a

@@ -43,12 +43,18 @@ dependencies {
     // so javac needs the class to resolve the FileIO overload that the Delta tests use.
     testImplementation(libs.hadoopClientApi)
     testRuntimeOnly(libs.hadoopClientRuntime)
+    // Hadoop's S3A connector, for HadoopS3AIntegrationTest, on the shaded Hadoop client above, like Spark runs it. Its
+    // AWS SDK bundle is replaced with the modules S3A loads, at the version of the SDK that the other tests use.
+    testImplementation(libs.hadoopAws) {
+        exclude group: 'software.amazon.awssdk', module: 'bundle'
+    }
+    testImplementation(libs.awssdkS3TransferManager)
     testRuntimeOnly(libs.logbackClassic)
 }
 
 // The tests fall into three groups, by JUnit tag:
 // - untagged: LocalS3 with the AWS SDK, which `test` runs, and the pull request builds with it;
-// - `data-tools`: DuckDB, Apache Iceberg and Delta Lake, whose dependencies and native code make them the slow ones, which
+// - `data-tools`: DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A, whose dependencies and native code make them the slow ones, which
 //   `dataToolsTest` runs, in a job of their own in CI;
 // - `real-s3`: the tests of `@RealS3`, which need AWS credentials, which only `realS3Test` runs.
 tasks.named('test', Test) {
@@ -68,10 +74,14 @@ def requiredDuckDbTestClasses = [
 ] as Set
 
 def dataToolsTest = tasks.register('dataToolsTest', Test) {
-    description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg and Delta Lake.'
+    description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
+    // hadoop-aws first: the test jar of iceberg-core carries a stub of S3ABlockOutputStream of its own, which would
+    // otherwise shadow the real class and break every file that S3A writes.
+    def runtimeClasspath = sourceSets.test.runtimeClasspath
+    def isHadoopAws = { File file -> file.name.startsWith('hadoop-aws-') }
+    classpath = runtimeClasspath.filter(isHadoopAws) + runtimeClasspath.filter { !isHadoopAws(it) }
     useJUnitPlatform {
         includeTags 'data-tools'
     }

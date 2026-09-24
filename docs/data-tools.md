@@ -1,6 +1,6 @@
 # Data tools
 
-How to point DuckDB, DuckLake and Apache Iceberg at LocalS3, e.g. a LocalS3 started with
+How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake and Hadoop S3A at LocalS3, e.g. a LocalS3 started with
 `docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as end-to-end tests in
 [`local-s3-integration-test`](../local-s3-integration-test/README.md).
 
@@ -577,7 +577,8 @@ With Spark and `delta-spark`, the same as `spark.hadoop.fs.s3a.*`, and the table
 
 `DeltaLakeIntegrationTest` drives [delta-kernel-java](https://delta.io/blog/delta-kernel/) — the Delta client without
 Spark — over `LocalS3DeltaFileIO`, a small `FileIO` backed by the AWS SDK rather than by `S3A`, so the test needs
-neither Hadoop's `S3A` nor the AWS SDK bundle it pulls in. It covers creating a table, writing and reading rows back,
+neither Hadoop's `S3A` nor the AWS SDK bundle it pulls in; S3A itself is covered by
+[`HadoopS3AIntegrationTest`](#hadoop-s3a). It covers creating a table, writing and reading rows back,
 two writers racing for the same version (both with retries off, where the loser is refused, and with the retries Delta
 does by default, where the loser rebases and keeps its rows), time travel to an earlier version, and a reader that
 shares nothing with the writer but the bucket.
@@ -602,3 +603,38 @@ takes a writer such as `delta-spark` or delta-kernel.
 `DuckDbDeltaIntegrationTest` writes a table with delta-kernel-java and reads it back with `delta_scan` — two clients
 that share nothing but the bucket, one built on delta-kernel-rs and reaching LocalS3 with DuckDB's own HTTP client —
 including a join of the table with a plain Parquet file beside it.
+
+## Hadoop S3A
+
+Spark, Delta Lake, Hudi and Paimon read and write `s3a://` paths through Hadoop's S3A connector, `hadoop-aws`, which
+emulates a file system on the keys of a bucket. It needs nothing but path-style addressing and the endpoint:
+
+```properties
+fs.s3a.endpoint=http://localhost:29090
+fs.s3a.endpoint.region=us-east-1
+fs.s3a.path.style.access=true
+fs.s3a.connection.ssl.enabled=false
+fs.s3a.access.key=admin
+fs.s3a.secret.key=admin
+```
+
+With Spark, the same as `spark.hadoop.fs.s3a.*`. The magic committer takes
+`spark.hadoop.fs.s3a.committer.name=magic`, and nothing of LocalS3.
+
+`HadoopS3AIntegrationTest` runs `S3AFileSystem` of `hadoop-aws` on the shaded Hadoop client, like Spark does:
+
++ **Directories**: `mkdirs` puts a marker object `dir/`, `listStatus`, `listFiles` and `getContentSummary` list with a
+  delimiter, `rename` of a file and of a directory copies every object and deletes the sources, and `delete` refuses a
+  directory that isn't empty unless it is recursive. S3A 3.4 and later keep the markers of directories that hold files.
++ **Large files**: a file larger than `fs.s3a.multipart.size` is a multipart upload, read back with ranged reads and a
+  seek, and renamed with a multipart copy.
++ **The magic committer**: the files of a task are written as multipart uploads that no reader sees, an aborted task
+  aborts its uploads, and the job commit completes the uploads of the
+  committed tasks, writes `_SUCCESS` and removes its `__magic_job-*` directory.
++ **Conditional create**: `createFile(path).must("fs.option.create.conditional.overwrite", true)` is a `PUT` with
+  `If-None-Match: *`, which the second writer loses, and `fs.option.create.conditional.overwrite.etag` an overwrite with
+  `If-Match` that fails once another writer replaced the version that was read.
+
+`hadoop-aws` declares the whole AWS SDK as `software.amazon.awssdk:bundle`, over 500 MB; the test excludes it for the
+modules S3A uses, `s3` and `s3-transfer-manager` (and `sts` for its assumed-role credentials), which an
+application may do as well.
