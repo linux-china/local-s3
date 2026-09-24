@@ -6,7 +6,7 @@
 #   ceph-s3-tests/run.sh -k multipart -n 0        the arguments other than the above go to pytest
 #
 # LOCAL_S3_JAR overrides the jar, local-s3-standalone/build/libs/s3.jar, which `./gradlew :local-s3-standalone:jar`
-# builds. Python 3.10+ is needed, and uv is used if it is installed.
+# builds. uv (https://docs.astral.sh/uv/) manages the Python environment, from pyproject.toml and uv.lock.
 set -euo pipefail
 
 S3_TESTS_REPOSITORY=https://github.com/ceph/s3-tests.git
@@ -42,19 +42,13 @@ if [[ "$(git -C "$work/s3-tests" rev-parse HEAD 2>/dev/null || true)" != "$S3_TE
   git -C "$work/s3-tests" checkout -q FETCH_HEAD
 fi
 
-# A virtual environment, installed again when requirements.txt changes.
-venv="$work/venv"
-if ! cmp -s "$here/requirements.txt" "$venv/requirements.txt"; then
-  rm -rf "$venv"
-  if command -v uv >/dev/null; then
-    uv venv -q -p 3.12 "$venv"
-    uv pip install -q -p "$venv" -r "$here/requirements.txt"
-  else
-    python3 -m venv "$venv"
-    "$venv/bin/pip" install -q -r "$here/requirements.txt"
-  fi
-  cp "$here/requirements.txt" "$venv/requirements.txt"
+if ! command -v uv >/dev/null; then
+  echo "uv is needed to run the tests, see https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
 fi
+# The environment of uv.lock, in ceph-s3-tests/.venv; --locked fails if uv.lock no longer matches pyproject.toml.
+uv sync --quiet --locked --project "$here"
+uv_run=(uv run --quiet --locked --no-sync --project "$here")
 
 # The shell of a developer often exports the AWS_* variables of a real account, and LOCAL_S3_* ones of another
 # service: neither LocalS3 nor boto3 is to see them.
@@ -63,7 +57,7 @@ while IFS='=' read -r name _; do
   [[ "$name" == AWS_* || "$name" == LOCAL_S3_* ]] && clean_env+=(-u "$name")
 done < <(env)
 
-port="$("$venv/bin/python" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+port="$("${uv_run[@]}" python -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 "${clean_env[@]}" java -jar "$jar" --port "$port" --access-key "$ACCESS_KEY" --secret-key "$SECRET_KEY" \
   > "$work/local-s3.log" 2>&1 &
 local_s3_pid=$!
@@ -85,7 +79,7 @@ sed -e "s/@PORT@/$port/" -e "s/@ACCESS_KEY@/$ACCESS_KEY/" -e "s#@SECRET_KEY@#$SE
 cd "$work/s3-tests"
 set +e
 "${clean_env[@]}" S3TEST_CONF="$work/s3tests.conf" PYTHONPATH="$here" \
-  "$venv/bin/python" -m pytest -p local_s3_plugin -p no:cacheprovider \
+  "${uv_run[@]}" python -m pytest -p local_s3_plugin -p no:cacheprovider \
   s3tests/functional/test_s3.py s3tests/functional/test_headers.py \
   -n 8 --timeout 120 -q -rfE --junitxml "$work/report.xml" "${pytest_args[@]+"${pytest_args[@]}"}"
 status=$?

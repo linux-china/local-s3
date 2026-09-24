@@ -12,11 +12,22 @@ ceph-s3-tests/run.sh -k multipart -n 0          # the other arguments go to pyte
 ceph-s3-tests/run.sh --update-known-failures    # writes the failed tests to known-failures.txt
 ```
 
-`run.sh` checks s3-tests out at a pinned commit, installs the Python packages of `requirements.txt` into a
-virtual environment (with uv if it is installed, Python 3.10+ otherwise), starts the jar on a free port with an access
-key of its own, and runs `s3tests/functional/test_s3.py` and `test_headers.py` in 8 processes. Everything goes to
-`ceph-s3-tests/build`: the checkout, the environment, the log of LocalS3 and a JUnit report. It leaves out the
+`run.sh` checks s3-tests out at a pinned commit, syncs the Python environment with uv, starts the jar on a free port
+with an access key of its own, and runs `s3tests/functional/test_s3.py` and `test_headers.py` in 8 processes. The
+checkout, the log of LocalS3 and a JUnit report go to `ceph-s3-tests/build`. It leaves out the
 `AWS_*` and `LOCAL_S3_*` variables of the shell, which would otherwise configure LocalS3 or send boto3 elsewhere.
+
+## Python environment
+
+[uv](https://docs.astral.sh/uv/) manages it: `pyproject.toml` lists the packages that the tests import, `uv.lock` pins
+their versions, `.python-version` the Python version, and `run.sh` installs them into `ceph-s3-tests/.venv` with
+`uv sync --locked`. A package is added or upgraded with uv, which updates both files:
+
+```shell
+cd ceph-s3-tests
+uv add 'boto3>=1.44'                  # or: uv lock --upgrade-package boto3
+uv lock --upgrade                     # every package to its latest version
+```
 
 ## Which tests run
 
