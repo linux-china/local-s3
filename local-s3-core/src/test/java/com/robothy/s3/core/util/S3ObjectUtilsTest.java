@@ -28,11 +28,23 @@ class S3ObjectUtilsTest {
       "a/#b,a/%23b",
       "/a@,/a%40",
       "a@/b,a%40/b",
-      "/a/,/a/"
+      "/a/,/a/",
+      // RFC 3986, like Amazon S3: a space is %20 rather than +, and only the unreserved characters stay.
+      "quux ab/thud,quux%20ab/thud",
+      "foo+1/,foo%2B1/",
+      "a~b*c,a~b%2Ac",
+      "é,%C3%A9"
   })
   @ParameterizedTest
   void urlEncodeEscapeSlash(String input, String expected) {
     assertEquals(expected, S3ObjectUtils.urlEncodeEscapeSlash(input));
+  }
+
+  @Test
+  void urlEncodeEncodesTheSlashUnlessItIsKept() {
+    assertEquals("a%2Fb%20c", S3ObjectUtils.urlEncode("a/b c", false));
+    assertEquals("a/b%20c", S3ObjectUtils.urlEncode("a/b c", true));
+    assertNull(S3ObjectUtils.urlEncode(null, false));
   }
 
   /**

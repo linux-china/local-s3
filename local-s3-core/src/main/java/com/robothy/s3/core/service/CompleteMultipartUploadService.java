@@ -5,6 +5,7 @@ import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
+import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.assertions.BucketAssertions;
@@ -14,6 +15,7 @@ import com.robothy.s3.core.exception.InvalidPartOrderException;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
@@ -39,6 +41,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 
 /**
@@ -157,7 +160,13 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
                                                              ChecksumType expectedChecksumType) {
     // prepareCompleteMultipartUpload read locks the bucket while the upload is validated. The parts of the returned
     // upload are a snapshot of the ones that complete it, so a part uploaded again from here on isn't mixed in.
-    UploadMetadata uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
+    UploadMetadata uploadMetadata;
+    try {
+      uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
+    } catch (UploadNotExistException e) {
+      // A client retries a CompleteMultipartUpload whose response it didn't receive.
+      return completedMultipartUpload(bucket, key, uploadId).orElseThrow(() -> e);
+    }
     UploadAssertions.assertPartsAreLargeEnough(uploadMetadata, completeParts, minimumPartSize);
     NavigableMap<Integer, UploadPartMetadata> partsToComplete = uploadMetadata.getParts();
 
@@ -195,12 +204,59 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     versionedObjectMetadata.setObjectLock(uploadMetadata.getObjectLock());
     versionedObjectMetadata.setCustomerEncryption(uploadMetadata.getCustomerEncryption());
     versionedObjectMetadata.setServerSideEncryption(uploadMetadata.getServerSideEncryption());
+    versionedObjectMetadata.setUploadId(uploadId);
     if (Objects.nonNull(uploadMetadata.getUserMetadata())) {
       versionedObjectMetadata.setUserMetadata(uploadMetadata.getUserMetadata());
     }
 
-    return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete,
-        preconditions);
+    try {
+      return commitCompleteMultipartUpload(bucket, key, uploadId, versionedObjectMetadata, partsToComplete,
+          preconditions);
+    } catch (UploadNotExistException e) {
+      // A concurrent request with the same upload completed it first, e.g. the retry of a client that timed out.
+      return completedMultipartUpload(bucket, key, uploadId).orElseThrow(() -> e);
+    }
+  }
+
+  /**
+   * The answer of an upload that was completed already, which Amazon S3 gives again to a client that retries the
+   * {@code CompleteMultipartUpload} of the upload, e.g. after its first request timed out. The answer is read off the
+   * version that the upload stored, for as long as the key keeps it: once the version is overwritten in a bucket
+   * without versioning, or deleted, a retry fails with {@code NoSuchUpload}, like it does on Amazon S3. Nothing
+   * changes, and no change is published.
+   *
+   * @param bucket the bucket name.
+   * @param key the object key.
+   * @param uploadId the ID of the completed upload.
+   * @return the answer of the completed upload; empty if the key holds no version that the upload stored.
+   */
+  default Optional<CompleteMultipartUploadAns> completedMultipartUpload(String bucket, String key, String uploadId) {
+    return withBucketReadLock(bucket, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
+      return bucketMetadata.getObjectMetadata(key).flatMap(object -> object.getVersionedObjectMap().entrySet()
+          .stream()
+          .filter(version -> !version.getValue().isDeleted() && uploadId.equals(version.getValue().getUploadId()))
+          .findFirst()
+          .map(version -> CompleteMultipartUploadAns.builder()
+              .location("/" + bucket + "/" + key)
+              .versionId(answeredVersionId(bucketMetadata, object, version.getKey()))
+              .etag(version.getValue().getEtag())
+              .size(version.getValue().getSize())
+              .checksum(version.getValue().getChecksum())
+              .serverSideEncryption(version.getValue().getServerSideEncryption())
+              .build()));
+    });
+  }
+
+  /**
+   * The version ID that the completion of an upload answered, which {@linkplain PutObjectService#addVersion} decides:
+   * the version itself in a bucket with versioning, and the null version otherwise.
+   */
+  private static String answeredVersionId(BucketMetadata bucketMetadata, ObjectMetadata object, String versionId) {
+    if (!versionId.equals(object.getVirtualVersion().orElse(null))) {
+      return versionId;
+    }
+    return Objects.isNull(bucketMetadata.getVersioningEnabled()) ? null : ObjectMetadata.NULL_VERSION;
   }
 
   /**

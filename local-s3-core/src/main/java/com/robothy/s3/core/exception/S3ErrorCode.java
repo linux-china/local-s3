@@ -14,7 +14,7 @@ public enum S3ErrorCode {
   BadDigest("BadDigest", 400, "The Content-MD5 you specified did not match what we received."),
   BadRequest("BadRequest", 400, "The request is invalid."),
   BucketAlreadyExists("BucketAlreadyExists", 409, "The requested bucket name is not available. The bucket namespace is shared by all users of the system. Please select a different name and try again."),
-  //BucketAlreadyOwnedByYou("BucketAlreadyOwnedByYou", 409,"The bucket you tried to create already exists, and you own it. Amazon S3 returns this error in all AWS Regions except in the North Virginia Region. For legacy compatibility, if you re-create an existing bucket that you already own in the North Virginia Region, Amazon S3 returns 200 OK and resets the bucket access control lists (ACLs)."),
+  BucketAlreadyOwnedByYou("BucketAlreadyOwnedByYou", 409,"The bucket you tried to create already exists, and you own it. Amazon S3 returns this error in all AWS Regions except in the North Virginia Region. For legacy compatibility, if you re-create an existing bucket that you already own in the North Virginia Region, Amazon S3 returns 200 OK and resets the bucket access control lists (ACLs)."),
   BucketNotEmpty("BucketNotEmpty", 409, "The bucket you tried to delete is not empty."),
   //CredentialsNotSupported("CredentialsNotSupported", 400, "This request does not support credentials."),
   //CrossLocationLoggingProhibited("CrossLocationLoggingProhibited", 403, "Cross-location logging not allowed. Buckets in one geographic location cannot log information to a bucket in another location."),

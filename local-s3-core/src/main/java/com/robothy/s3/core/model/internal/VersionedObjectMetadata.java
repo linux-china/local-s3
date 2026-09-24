@@ -75,6 +75,12 @@ public class VersionedObjectMetadata {
   private ServerSideEncryption serverSideEncryption;
 
   /**
+   * The ID of the multipart upload that stored this version; {@code null} if it wasn't stored by one. A retry of the
+   * {@code CompleteMultipartUpload} that stored it is answered from this version, like Amazon S3 answers it.
+   */
+  private String uploadId;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {

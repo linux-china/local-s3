@@ -252,7 +252,7 @@ class ConsoleTest {
       HttpResponse<String> taken = send(localS3, "PUT", "/_admin/ui/bucket?bucket=my-bucket", null, null,
           CONSOLE_HEADER);
       assertEquals(409, taken.statusCode(), taken.body());
-      assertEquals("BucketAlreadyExists", json(taken).get("code").asText());
+      assertEquals("BucketAlreadyOwnedByYou", json(taken).get("code").asText());
       HttpResponse<String> invalid = send(localS3, "PUT", "/_admin/ui/bucket?bucket=My_Bucket", null, null,
           CONSOLE_HEADER);
       assertEquals(400, invalid.statusCode(), invalid.body());

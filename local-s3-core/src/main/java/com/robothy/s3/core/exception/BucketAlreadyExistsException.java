@@ -6,4 +6,8 @@ public class BucketAlreadyExistsException extends LocalS3Exception {
     super(S3ErrorCode.BucketAlreadyExists, "The bucket '" + bucketName + "' already exist.");
   }
 
+  BucketAlreadyExistsException(S3ErrorCode s3ErrorCode, String message) {
+    super(s3ErrorCode, message);
+  }
+
 }

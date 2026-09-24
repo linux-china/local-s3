@@ -3,6 +3,8 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.constants.ServiceConstants;
+import com.robothy.s3.core.exception.BucketAlreadyOwnedByYouException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
@@ -49,7 +51,16 @@ class CreateBucketController extends BucketHttpRequestHandler {
     boolean objectLockEnabled = request.header(AmzHeaderNames.X_AMZ_BUCKET_OBJECT_LOCK_ENABLED)
         .map(value -> "true".equalsIgnoreCase(value.trim()))
         .orElse(false);
-    bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled);
+    try {
+      bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled);
+    } catch (BucketAlreadyOwnedByYouException e) {
+      // Amazon S3 answers the re-creation of a bucket that the requester owns in us-east-1 with 200 OK, for legacy
+      // compatibility, and leaves the bucket and its objects as they are; in every other region it answers 409.
+      if (!ServiceConstants.DEFAULT_REGION.equals(ServiceConstants.effectiveRegion(locationConstraint))
+          || !ServiceConstants.DEFAULT_REGION.equals(bucketService.getBucket(bucketName).regionOrDefault())) {
+        throw e;
+      }
+    }
     String bucketArn = "arn:aws:s3:::" + bucketName;
     CreateBucketResult createBucketResult = CreateBucketResult.builder()
         .bucketArn(bucketArn)

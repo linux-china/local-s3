@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
@@ -37,7 +38,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -693,7 +693,7 @@ class ConsoleController implements HttpRequestHandler {
       ascii.append(c < ' ' || c > '~' || c == '"' || c == '\\' ? '_' : c);
     }
     return (download ? "attachment" : "inline") + "; filename=\"" + ascii + "\"; filename*=UTF-8''"
-        + URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+        + S3ObjectUtils.urlEncode(name, false);
   }
 
   /*

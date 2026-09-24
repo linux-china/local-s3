@@ -6,6 +6,7 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.service.ListObjectVersionsService;
 import com.robothy.s3.core.service.ObjectService;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -16,8 +17,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
@@ -48,32 +48,33 @@ class ListObjectVersionsController implements HttpRequestHandler {
     ListObjectVersionsAns ans =
         listObjectVersionsService.listObjectVersions(bucketName, delimiter, keyMarker, maxKeys, prefix, versionIdMarker);
 
+    // With encoding-type=url, Amazon S3 encodes the keys, the prefixes, the delimiter and the key markers, which is
+    // what a client decodes; the version IDs are never encoded.
+    UnaryOperator<String> encode = "url".equalsIgnoreCase(encodingType)
+        ? S3ObjectUtils::urlEncodeEscapeSlash : UnaryOperator.identity();
+    ans.getVersions().forEach(versionItem -> {
+      if (versionItem instanceof ObjectVersion objectVersion) {
+        objectVersion.setKey(encode.apply(objectVersion.getKey()));
+      } else if (versionItem instanceof DeleteMarkerEntry deleteMarker) {
+        deleteMarker.setKey(encode.apply(deleteMarker.getKey()));
+      }
+    });
+
     ListVersionsResult result = ListVersionsResult.builder()
         .isTruncated(ans.getNextKeyMarker().isPresent())
-        .keyMarker(keyMarker)
+        .keyMarker(encode.apply(keyMarker))
         .versionIdMarker(versionIdMarker)
-        .nextKeyMarker(ans.getNextKeyMarker().orElse(null))
+        .nextKeyMarker(encode.apply(ans.getNextKeyMarker().orElse(null)))
         .nextVersionIdMarker(ans.getNextVersionIdMarker().orElse(null))
         .versions(ans.getVersions())
         .name(bucketName)
-        .prefix(prefix)
-        .delimiter(delimiter)
+        .prefix(encode.apply(prefix))
+        .delimiter(encode.apply(delimiter))
         .maxKeys(maxKeys)
-        .commonPrefixes(ans.getCommonPrefixes().stream().map(CommonPrefix::new).collect(Collectors.toList()))
+        .commonPrefixes(ans.getCommonPrefixes().stream().map(encode).map(CommonPrefix::new)
+            .collect(Collectors.toList()))
         .encodingType(encodingType)
         .build();
-
-    if ("url".equalsIgnoreCase(encodingType)) {
-      result.getVersions().forEach(versionItem -> {
-        if (versionItem instanceof ObjectVersion) {
-          ObjectVersion objectVersion = (ObjectVersion) versionItem;
-          objectVersion.setKey(URLEncoder.encode(objectVersion.getKey(), StandardCharsets.UTF_8));
-        } else if (versionItem instanceof DeleteMarkerEntry) {
-          DeleteMarkerEntry deleteMarker = (DeleteMarkerEntry) versionItem;
-          deleteMarker.setKey(URLEncoder.encode(deleteMarker.getKey(), StandardCharsets.UTF_8));
-        }
-      });
-    }
 
     response.status(HttpResponseStatus.OK)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)

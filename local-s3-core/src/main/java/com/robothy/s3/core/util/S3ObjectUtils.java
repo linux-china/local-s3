@@ -3,15 +3,12 @@ package com.robothy.s3.core.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class S3ObjectUtils {
 
@@ -171,17 +168,40 @@ public class S3ObjectUtils {
   }
 
   /**
-   * Encode the given string to url format except slash.
+   * Encode the given string to url format except slash, like {@linkplain #urlEncode(String, boolean)}.
    */
   public static String urlEncodeEscapeSlash(String str) {
+    return urlEncode(str, true);
+  }
+
+  /**
+   * Percent-encode a string like RFC 3986 does, which is how Amazon S3 answers {@code encoding-type=url}, and what a
+   * URL path or query takes: every byte of its UTF-8 form but the unreserved characters ({@code A-Z a-z 0-9 - . _ ~})
+   * is encoded. A space is {@code %20}, not the {@code +} of {@linkplain java.net.URLEncoder}, which a client that
+   * decodes by RFC 3986 reads back as a plus, so that it asks for a key that doesn't exist.
+   *
+   * @param str the string to encode; {@code null} for none.
+   * @param keepSlash whether a {@code /} is kept as it is, e.g. in an object key or a path.
+   * @return the encoded string; {@code null} if {@code str} is {@code null}.
+   */
+  public static String urlEncode(String str, boolean keepSlash) {
     if (str == null) {
       return null;
     }
-    String[] ss = str.split("/");
-    String encoded = Stream.of(ss)
-        .map(s -> URLEncoder.encode(s, StandardCharsets.UTF_8))
-        .collect(Collectors.joining("/"));
-    return str.endsWith("/") ? encoded + "/" : encoded;
+    byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+    StringBuilder encoded = new StringBuilder(bytes.length + 16);
+    for (byte b : bytes) {
+      char c = (char) (b & 0xFF);
+      if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+          || c == '-' || c == '.' || c == '_' || c == '~' || (keepSlash && c == '/')) {
+        encoded.append(c);
+      } else {
+        encoded.append('%').append(HEX_DIGITS[c >> 4]).append(HEX_DIGITS[c & 0xF]);
+      }
+    }
+    return encoded.toString();
   }
+
+  private static final char[] HEX_DIGITS = "0123456789ABCDEF".toCharArray();
 
 }

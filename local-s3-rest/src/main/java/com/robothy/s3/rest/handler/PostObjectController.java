@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
@@ -27,8 +28,6 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -203,7 +202,7 @@ class PostObjectController implements HttpRequestHandler {
     String path = request.getPath() == null ? "/" : request.getPath();
     boolean bucketInPath = !path.replace("/", "").isEmpty();
     String scheme = ConnectionSchemes.of(request).orElse(defaultScheme);
-    return scheme + "://" + host + "/" + (bucketInPath ? encodePathSegment(bucketName) + "/" : "") + encodeKey(key);
+    return scheme + "://" + host + "/" + (bucketInPath ? S3ObjectUtils.urlEncode(bucketName, false) + "/" : "") + encodeKey(key);
   }
 
   /**
@@ -230,19 +229,11 @@ class PostObjectController implements HttpRequestHandler {
   }
 
   private static String encodeKey(String key) {
-    List<String> segments = new ArrayList<>();
-    for (String segment : key.split("/", -1)) {
-      segments.add(encodePathSegment(segment));
-    }
-    return String.join("/", segments);
-  }
-
-  private static String encodePathSegment(String value) {
-    return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    return S3ObjectUtils.urlEncode(key, true);
   }
 
   private static String encodeQuery(String value) {
-    return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    return S3ObjectUtils.urlEncode(value, false);
   }
 
 }

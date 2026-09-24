@@ -1,6 +1,6 @@
 package com.robothy.s3.core.assertions;
 
-import com.robothy.s3.core.exception.BucketAlreadyExistsException;
+import com.robothy.s3.core.exception.BucketAlreadyOwnedByYouException;
 import com.robothy.s3.core.exception.BucketNotEmptyException;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.BucketPolicyNotExistException;
@@ -155,10 +155,11 @@ public class BucketAssertions {
    *
    * @param s3Metadata LocalS3 metadata.
    * @param bucketName bucket to validate.
+   * @throws BucketAlreadyOwnedByYouException if it exists: every bucket of LocalS3 is owned by the requester.
    */
   public static void assertBucketNotExists(LocalS3Metadata s3Metadata, String bucketName) {
     if (s3Metadata.getBucketMetadataMap().containsKey(bucketName)) {
-      throw new BucketAlreadyExistsException(bucketName);
+      throw new BucketAlreadyOwnedByYouException(bucketName);
     }
   }
 

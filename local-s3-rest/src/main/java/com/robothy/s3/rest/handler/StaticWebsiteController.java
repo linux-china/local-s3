@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
@@ -19,7 +20,6 @@ import com.robothy.s3.rest.utils.XmlUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -370,14 +370,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * or a {@code ?} in it is redirected to correctly.
    */
   private static String encodePath(String key) {
-    StringBuilder encoded = new StringBuilder(key.length());
-    for (String segment : key.split("/", -1)) {
-      if (encoded.length() > 0) {
-        encoded.append('/');
-      }
-      encoded.append(URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20"));
-    }
-    return encoded.toString();
+    return S3ObjectUtils.urlEncode(key, true);
   }
 
   /*

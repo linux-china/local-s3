@@ -14,12 +14,20 @@ import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import io.awspring.cloud.autoconfigure.core.AwsAutoConfiguration;
+import io.awspring.cloud.autoconfigure.core.CredentialsProviderAutoConfiguration;
+import io.awspring.cloud.autoconfigure.core.RegionProviderAutoConfiguration;
+import io.awspring.cloud.autoconfigure.s3.S3AutoConfiguration;
+import io.awspring.cloud.autoconfigure.s3.S3CrtAsyncClientAutoConfiguration;
+import io.awspring.cloud.s3.S3Template;
+import java.io.ByteArrayInputStream;
 import java.net.ConnectException;
 import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -27,6 +35,7 @@ import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.test.context.FilteredClassLoader;
@@ -245,6 +254,35 @@ class LocalS3AutoConfigurationTest {
       assertSame(ApplicationClients.CLIENT, context.getBean(S3Client.class));
       assertEquals(1, context.getBeansOfType(S3AsyncClient.class).size(), "The other clients are still defined.");
     });
+  }
+
+  @Test
+  void isOrderedBeforeTheS3AutoConfigurationsOfSpringCloudAws() {
+    // The names are checked because nothing else would notice a renamed class: the alphabetical order, which Spring
+    // Boot starts from, happens to put com.robothy before io.awspring too.
+    String[] before = LocalS3AutoConfiguration.class.getAnnotation(AutoConfiguration.class).beforeName();
+    assertEquals(List.of(S3AutoConfiguration.class.getName(), S3CrtAsyncClientAutoConfiguration.class.getName()),
+        List.of(before));
+  }
+
+  @Test
+  void springCloudAwsUsesTheClientsOfTheStarter() {
+    // The order of AutoConfigurations.of() is the one of the application, not the one of the arguments.
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(S3AutoConfiguration.class, S3CrtAsyncClientAutoConfiguration.class,
+            AwsAutoConfiguration.class, CredentialsProviderAutoConfiguration.class, RegionProviderAutoConfiguration.class,
+            LocalS3AutoConfiguration.class))
+        .withPropertyValues("local-s3.port=-1", "local-s3.buckets=uploads", "spring.cloud.aws.region.static=us-east-1")
+        .run(context -> {
+          assertEquals(1, context.getBeansOfType(S3Client.class).size());
+          assertEquals(1, context.getBeansOfType(S3Presigner.class).size());
+          S3Template template = context.getBean(S3Template.class);
+          template.upload("uploads", "a.txt", new ByteArrayInputStream("Hello".getBytes(StandardCharsets.UTF_8)));
+          assertEquals("Hello", context.getBean(S3Client.class)
+              .getObjectAsBytes(request -> request.bucket("uploads").key("a.txt")).asUtf8String());
+          assertTrue(template.createSignedGetURL("uploads", "a.txt", Duration.ofMinutes(1)).toString()
+              .startsWith(context.getBean(LocalS3Lifecycle.class).endpoint().toString()));
+        });
   }
 
   @Test

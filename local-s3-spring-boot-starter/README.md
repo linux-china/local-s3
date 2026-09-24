@@ -138,7 +138,9 @@ The starter defines:
   service, with path-style requests and the
   credentials of the service. Creating one starts the service, so a bean can use it while it is initialized, even with a
   random port. The starter backs off from a client that the application defines itself, and from all of them with
-  `local-s3.clients.enabled=false`;
+  `local-s3.clients.enabled=false`. It is ordered before the S3 auto-configurations of
+  [Spring Cloud AWS](https://github.com/awspring/spring-cloud-aws) (`spring-cloud-aws-starter-s3`), so these back off
+  from the clients of the starter, and `S3Template` uses them;
 + the `S3Change`s that the service commits as application events. They are published on the thread that
   made the change, so a change that the application makes through `localS3.getS3Manager()` in a transaction reaches a
   `@TransactionalEventListener` once the transaction commits. Changes made while the context is refreshed,

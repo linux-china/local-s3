@@ -12,10 +12,14 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.BucketVersioningStatus;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest;
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchUploadException;
 import software.amazon.awssdk.services.s3.model.ObjectVersion;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.Tag;
@@ -215,6 +219,74 @@ public class MultipartUploadIntegrationTest {
     ResponseInputStream<GetObjectResponse> objectV2 =
         s3Client.getObject(builder -> builder.bucket("my-bucket").key("a.txt").versionId(multipartUploadResponseV2.versionId()));
     assertEquals(Parts.large("v2") + "v2", new String(objectV2.readAllBytes()));
+  }
+
+  /**
+   * A client that didn't receive the answer of a CompleteMultipartUpload, e.g. because it timed out, sends it again;
+   * Amazon S3 answers the retry with the result of the completed upload, for as long as the object it stored exists.
+   */
+  @Test
+  @LocalS3
+  void completingAnUploadAgainAnswersTheSameResult(S3Client s3) throws IOException {
+    s3.createBucket(b -> b.bucket("retry"));
+    CompleteMultipartUploadRequest complete = uploadInTwoParts(s3, "retry", "a.txt");
+    CompleteMultipartUploadResponse first = s3.completeMultipartUpload(complete);
+    CompleteMultipartUploadResponse retried = s3.completeMultipartUpload(complete);
+
+    assertEquals(first.eTag(), retried.eTag());
+    assertEquals(first.location(), retried.location());
+    assertEquals(first.versionId(), retried.versionId());
+    assertEquals(first.checksumCRC32(), retried.checksumCRC32());
+    assertEquals(Parts.large("Hello") + "World",
+        new String(s3.getObject(b -> b.bucket("retry").key("a.txt")).readAllBytes()));
+    assertEquals(1, s3.listObjectVersions(b -> b.bucket("retry")).versions().size(),
+        "A retry stores nothing.");
+
+    // Once another object replaced the one the upload stored, the upload is gone for good.
+    s3.putObject(b -> b.bucket("retry").key("a.txt"), RequestBody.fromString("replaced"));
+    assertThrows(NoSuchUploadException.class, () -> s3.completeMultipartUpload(complete));
+  }
+
+  @Test
+  @LocalS3
+  void completingAnUploadAgainInAVersionedBucketAnswersTheVersionItStored(S3Client s3) {
+    s3.createBucket(b -> b.bucket("versioned-retry"));
+    s3.putBucketVersioning(b -> b.bucket("versioned-retry")
+        .versioningConfiguration(v -> v.status(BucketVersioningStatus.ENABLED)));
+    CompleteMultipartUploadRequest complete = uploadInTwoParts(s3, "versioned-retry", "a.txt");
+    CompleteMultipartUploadResponse first = s3.completeMultipartUpload(complete);
+    s3.putObject(b -> b.bucket("versioned-retry").key("a.txt"), RequestBody.fromString("newer"));
+
+    CompleteMultipartUploadResponse retried = s3.completeMultipartUpload(complete);
+    assertEquals(first.versionId(), retried.versionId());
+    assertEquals(first.eTag(), retried.eTag());
+
+    s3.deleteObject(b -> b.bucket("versioned-retry").key("a.txt").versionId(first.versionId()));
+    assertThrows(NoSuchUploadException.class, () -> s3.completeMultipartUpload(complete));
+  }
+
+  @Test
+  @LocalS3
+  void anUploadThatWasNeverCreatedIsNotFound(S3Client s3) {
+    s3.createBucket(b -> b.bucket("unknown-upload"));
+    s3.putObject(b -> b.bucket("unknown-upload").key("a.txt"), RequestBody.fromString("a"));
+    assertThrows(NoSuchUploadException.class, () -> s3.completeMultipartUpload(b -> b.bucket("unknown-upload")
+        .key("a.txt").uploadId("123").multipartUpload(mu -> mu.parts(
+            CompletedPart.builder().partNumber(1).eTag("\"0cc175b9c0f1b6a831c399e269772661\"").build()))));
+  }
+
+  private static CompleteMultipartUploadRequest uploadInTwoParts(S3Client s3, String bucket, String key) {
+    String uploadId = s3.createMultipartUpload(b -> b.bucket(bucket).key(key)
+        .checksumAlgorithm(ChecksumAlgorithm.CRC32)).uploadId();
+    UploadPartResponse part1 = s3.uploadPart(b -> b.bucket(bucket).key(key).uploadId(uploadId).partNumber(1)
+        .checksumAlgorithm(ChecksumAlgorithm.CRC32), RequestBody.fromString(Parts.large("Hello")));
+    UploadPartResponse part2 = s3.uploadPart(b -> b.bucket(bucket).key(key).uploadId(uploadId).partNumber(2)
+        .checksumAlgorithm(ChecksumAlgorithm.CRC32), RequestBody.fromString("World"));
+    return CompleteMultipartUploadRequest.builder().bucket(bucket).key(key).uploadId(uploadId)
+        .multipartUpload(mu -> mu.parts(
+            CompletedPart.builder().partNumber(1).eTag(part1.eTag()).checksumCRC32(part1.checksumCRC32()).build(),
+            CompletedPart.builder().partNumber(2).eTag(part2.eTag()).checksumCRC32(part2.checksumCRC32()).build()))
+        .build();
   }
 
 }

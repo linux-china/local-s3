@@ -43,8 +43,15 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  * </ul>
  *
  * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3.
+ *
+ * <p>Ordered before the S3 auto-configurations of Spring Cloud AWS, whose clients are {@code @ConditionalOnMissingBean}
+ * too: the clients of the starter are defined first, so Spring Cloud AWS backs off from them, and its
+ * {@code S3Template} uses them. The classes are named, rather than referenced, since Spring Cloud AWS is optional.
  */
-@AutoConfiguration
+@AutoConfiguration(beforeName = {
+    "io.awspring.cloud.autoconfigure.s3.S3AutoConfiguration",
+    "io.awspring.cloud.autoconfigure.s3.S3CrtAsyncClientAutoConfiguration"
+})
 @ConditionalOnClass(LocalS3.class)
 @ConditionalOnProperty(name = "local-s3.enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(LocalS3Properties.class)

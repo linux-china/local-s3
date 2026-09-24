@@ -357,6 +357,20 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ `CreateBucket` of a bucket that already exists answers like Amazon S3 answers the owner of the bucket, which every
+  client of LocalS3 is: `200 OK` in us-east-1, leaving the bucket and its objects as they are, and
+  `409 BucketAlreadyOwnedByYou` in any other region. It answered `409 BucketAlreadyExists`, which code that creates a
+  bucket and ignores a `BucketAlreadyOwnedByYouException` took for a real error. The console, and the services called
+  directly, still refuse a bucket that exists, with `BucketAlreadyOwnedByYou`; `BucketAlreadyOwnedByYouException` is a
+  `BucketAlreadyExistsException`, so code that catches that one keeps working.
++ A retried `CompleteMultipartUpload` of an upload that was completed already, e.g. by an SDK whose first request
+  timed out, answers the result of the completed upload, like Amazon S3 does, rather than `404 NoSuchUpload`. The
+  answer is read off the version that the upload stored, so a retry fails with `NoSuchUpload` again once that version
+  is overwritten or deleted. Uploads completed before this version aren't recognized.
++ The listings with `encoding-type=url` encode like RFC 3986, which is what Amazon S3 does: a space is `%20`, not `+`,
+  which a client that decodes by RFC 3986, e.g. of Python or Rust, read as a plus, so that it asked for a key that
+  doesn't exist, e.g. a Hive partition `city=New York`. The AWS SDK for Java decodes both. `ListObjectVersions`
+  encodes its prefix, delimiter, key markers and common prefixes too, and no longer encodes the `/` of a key.
 + `docker run luofuxiang/local-s3` with no arguments works. The image runs `PERSISTENCE` over `/data`, and the
   anonymous volume that `docker run` creates for it is initialized from the `/data` of the image, its ownership
   included; that directory belonged to `root`, so the service, which runs as `locals3` since 2.5, started and then

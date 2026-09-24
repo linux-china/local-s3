@@ -18,6 +18,7 @@ springBoot = "4.1.1"
 # The starter is compiled against Spring Boot 4 and runs on Spring Boot 3 too: springBoot3 is the baseline that the
 # Actuator health adapter is compiled against, and that the compatibility tests of the starter run on.
 springBoot3 = "3.5.16"
+springCloudAws = "4.1.1"
 micrometer = "1.17.1"
 duckdb="1.5.5.1"
 h2MvStore="2.5.250"
@@ -100,6 +101,7 @@ springBootTest = { group = "org.springframework.boot", name = "spring-boot-test"
 # Spring Boot 3: spring-boot-actuator holds the Health API that Boot 4 moved to spring-boot-health, and
 # spring-boot-test-autoconfigure the @PropertyMapping that Boot 4 moved to spring-boot-test. The starter compiles
 # against both layouts and picks one at runtime, so that one artifact serves Boot 3 and Boot 4.
+springCloudAwsStarterS3 = { group = "io.awspring.cloud", name = "spring-cloud-aws-starter-s3", version.ref = "springCloudAws" }
 springBoot3Bom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot3" }
 springBoot3Actuator = { group = "org.springframework.boot", name = "spring-boot-actuator", version.ref = "springBoot3" }
 springBoot3ActuatorAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-actuator-autoconfigure", version.ref = "springBoot3" }

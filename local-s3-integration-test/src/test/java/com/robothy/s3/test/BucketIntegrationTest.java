@@ -1,6 +1,7 @@
 package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.*;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
 import software.amazon.awssdk.services.s3.model.*;
@@ -363,5 +364,32 @@ public class BucketIntegrationTest {
     ListBucketsResponse buckets2 = s3.listBuckets();
     assertEquals(1, buckets2.buckets().size());
     assertEquals("test-bucket2", buckets2.buckets().get(0).name());
+  }
+
+  /**
+   * Amazon S3 answers the re-creation of a bucket that the requester owns with 200 OK in us-east-1, and leaves the
+   * bucket as it is; in any other region with BucketAlreadyOwnedByYou, which application code catches to ignore.
+   */
+  @Test
+  @LocalS3
+  void reCreatingAnOwnedBucketSucceedsInUsEast1AndFailsWithBucketAlreadyOwnedByYouElsewhere(S3Client s3) {
+    s3.createBucket(b -> b.bucket("owned"));
+    s3.putObject(b -> b.bucket("owned").key("a.txt"), RequestBody.fromString("a"));
+
+    assertDoesNotThrow(() -> s3.createBucket(b -> b.bucket("owned")));
+    assertDoesNotThrow(() -> s3.createBucket(b -> b.bucket("owned")
+        .createBucketConfiguration(c -> c.locationConstraint("us-east-1"))));
+    assertEquals(List.of("a.txt"), s3.listObjectsV2(b -> b.bucket("owned")).contents().stream()
+        .map(S3Object::key).toList(), "The objects of the bucket are kept.");
+
+    BucketAlreadyOwnedByYouException elsewhere = assertThrows(BucketAlreadyOwnedByYouException.class,
+        () -> s3.createBucket(b -> b.bucket("owned")
+            .createBucketConfiguration(c -> c.locationConstraint(BucketLocationConstraint.EU_WEST_1))));
+    assertEquals(409, elsewhere.statusCode());
+    assertEquals("BucketAlreadyOwnedByYou", elsewhere.awsErrorDetails().errorCode());
+
+    s3.createBucket(b -> b.bucket("owned-in-eu-west-1")
+        .createBucketConfiguration(c -> c.locationConstraint(BucketLocationConstraint.EU_WEST_1)));
+    assertThrows(BucketAlreadyOwnedByYouException.class, () -> s3.createBucket(b -> b.bucket("owned-in-eu-west-1")));
   }
 }
