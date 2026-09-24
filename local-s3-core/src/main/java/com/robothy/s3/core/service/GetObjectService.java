@@ -162,7 +162,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
 
       // The version ID is not specified and the latest version is a delete-marker.
       if (!versionIdOpt.isPresent()) {
-        throw new ObjectNotExistException(key);
+        throw ObjectNotExistException.deleteMarker(key, returnedVersionId);
       }
 
       return GetObjectAns.builder()

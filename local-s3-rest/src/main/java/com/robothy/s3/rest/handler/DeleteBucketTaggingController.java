@@ -7,6 +7,7 @@ import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html">DeleteBucketTagging</a>
@@ -23,6 +24,7 @@ class DeleteBucketTaggingController implements HttpRequestHandler {
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     bucketService.deleteTagging(bucketName);
+    response.status(HttpResponseStatus.NO_CONTENT);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
   }

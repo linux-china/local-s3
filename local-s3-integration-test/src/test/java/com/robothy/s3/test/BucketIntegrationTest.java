@@ -68,7 +68,8 @@ public class BucketIntegrationTest {
 
     Map<String, String> tags = Map.of("Name", "Bob", "Profession", "Doctor");
 
-    s3.putBucketTagging(PutBucketTaggingRequest.builder()
+    // Answered 204 No Content, like Amazon S3 answers it and DeleteBucketTagging.
+    PutBucketTaggingResponse put = s3.putBucketTagging(PutBucketTaggingRequest.builder()
         .bucket("my-bucket")
         .tagging(Tagging.builder()
             .tagSet(tags.entrySet().stream()
@@ -85,6 +86,9 @@ public class BucketIntegrationTest {
     assertTrue(keys.contains("Profession"));
     assertEquals("Bob", tagging.tagSet().stream().filter(t -> t.key().equals("Name")).findFirst().get().value());
     assertEquals("Doctor", tagging.tagSet().stream().filter(t -> t.key().equals("Profession")).findFirst().get().value());
+    assertEquals(204, put.sdkHttpResponse().statusCode());
+
+    assertEquals(204, s3.deleteBucketTagging(b -> b.bucket("my-bucket")).sdkHttpResponse().statusCode());
   }
 
   @Test

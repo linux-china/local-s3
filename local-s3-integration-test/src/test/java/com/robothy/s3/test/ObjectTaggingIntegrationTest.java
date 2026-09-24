@@ -148,4 +148,39 @@ public class ObjectTaggingIntegrationTest {
     assertNull(object1.response().tagCount());
   }
 
+  /**
+   * Tags beyond the limits of Amazon S3, 10 tags with keys of at most 128 characters and values of at most 256, are
+   * refused with {@code InvalidTag}, and the object keeps the tags it has.
+   */
+  @LocalS3
+  @Test
+  void refusesTagsBeyondTheLimits(S3Client s3) {
+    String bucketName = "tag-limits-bucket";
+    String key = "a.txt";
+    s3.createBucket(b -> b.bucket(bucketName));
+    s3.putObject(b -> b.bucket(bucketName).key(key), RequestBody.fromString("Hello"));
+
+    List<Tag> tooMany = new java.util.ArrayList<>();
+    for (int i = 0; i < 11; i++) {
+      tooMany.add(Tag.builder().key("k" + i).value("v").build());
+    }
+    List<List<Tag>> invalid = List.of(tooMany,
+        List.of(Tag.builder().key("k".repeat(129)).value("v").build()),
+        List.of(Tag.builder().key("k").value("v".repeat(257)).build()),
+        List.of(Tag.builder().key("k").value("1").build(), Tag.builder().key("k").value("2").build()));
+    for (List<Tag> tags : invalid) {
+      S3Exception e = assertThrows(S3Exception.class, () -> s3.putObjectTagging(b -> b.bucket(bucketName).key(key)
+          .tagging(t -> t.tagSet(tags))));
+      assertEquals(400, e.statusCode());
+      assertEquals("InvalidTag", e.awsErrorDetails().errorCode());
+    }
+    assertEquals(0, s3.getObjectTagging(b -> b.bucket(bucketName).key(key)).tagSet().size());
+
+    List<Tag> atTheLimits = new java.util.ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      atTheLimits.add(Tag.builder().key(i + "k".repeat(127)).value("v".repeat(256)).build());
+    }
+    s3.putObjectTagging(b -> b.bucket(bucketName).key(key).tagging(t -> t.tagSet(atTheLimits)));
+    assertEquals(10, s3.getObjectTagging(b -> b.bucket(bucketName).key(key)).tagSet().size());
+  }
 }

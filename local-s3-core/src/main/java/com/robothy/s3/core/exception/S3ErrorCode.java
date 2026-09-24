@@ -51,6 +51,7 @@ public enum S3ErrorCode {
   //InvalidSOAPRequest("InvalidSOAPRequest", 400, "The SOAP request body is invalid."),
   InvalidWriteOffset("InvalidWriteOffset", 400, "The write offset value that you specified does not match the current object size."),
   InvalidStorageClass("InvalidStorageClass", 400, "The storage class you specified is not valid."),
+  InvalidTag("InvalidTag", 400, "The tag provided was not a valid tag."),
   //InvalidTargetBucketForLogging("InvalidTargetBucketForLogging", 400, "The target bucket for logging does not exist, is not owned by you, or does not have the appropriate grants for the log-delivery group."),
   InvalidToken("InvalidToken", 400, "The provided token is malformed or otherwise invalid."),
   //InvalidURI("InvalidURI", 400, "Couldn't parse the specified URI."),

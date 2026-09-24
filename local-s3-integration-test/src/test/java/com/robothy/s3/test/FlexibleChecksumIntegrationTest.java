@@ -118,7 +118,7 @@ public class FlexibleChecksumIntegrationTest {
     S3Exception invalid = assertThrows(S3Exception.class, () -> s3.putObject(b -> b.bucket(BUCKET).key("a.txt")
         .checksumSHA256(Checksums.crc32("Hello")), RequestBody.fromString("Hello")));
     assertEquals(400, invalid.statusCode());
-    assertEquals("InvalidRequest", invalid.awsErrorDetails().errorCode());
+    assertEquals("BadDigest", invalid.awsErrorDetails().errorCode());
   }
 
   /**

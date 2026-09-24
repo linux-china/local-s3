@@ -111,16 +111,17 @@ public class RequestUtils {
 
     String[][] tagSet = new String[tags.length][2];
     for (int i = 0; i < tags.length; i++) {
+      // A tag without '=', e.g. the 'bar' of 'foo=bar&bar', has an empty value, like a parameter of a query string.
       int separator = tags[i].indexOf('=');
-      if (separator <= 0) {
+      if (separator == 0 || tags[i].isEmpty()) {
         throw invalidTagging(tagging, "Invalid tagging format.");
       }
 
       String key;
       String value;
       try {
-        key = QueryStringDecoder.decodeComponent(tags[i].substring(0, separator));
-        value = QueryStringDecoder.decodeComponent(tags[i].substring(separator + 1));
+        key = QueryStringDecoder.decodeComponent(separator < 0 ? tags[i] : tags[i].substring(0, separator));
+        value = separator < 0 ? "" : QueryStringDecoder.decodeComponent(tags[i].substring(separator + 1));
       } catch (IllegalArgumentException exception) {
         throw invalidTagging(tagging, "Invalid URL encoding in tagging header.");
       }

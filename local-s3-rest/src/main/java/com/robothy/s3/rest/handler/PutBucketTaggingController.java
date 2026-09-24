@@ -9,6 +9,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 import tools.jackson.dataformat.xml.XmlMapper;
 
@@ -34,6 +35,8 @@ class PutBucketTaggingController implements HttpRequestHandler {
       Tagging tagging = xmlMapper.readValue(inputStream, Tagging.class);
       bucketService.putTagging(bucketName, tagging.toCollection());
     }
+    // Amazon S3 answers 204 No Content, like DeleteBucketTagging.
+    response.status(HttpResponseStatus.NO_CONTENT);
     ResponseUtils.addCommonHeaders(response);
   }
 

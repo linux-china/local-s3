@@ -326,8 +326,10 @@ final class AwsSignatureV4Verifier {
     } catch (NumberFormatException e) {
       return malformed("X-Amz-Expires must be an integer.");
     }
+    // A URL that is valid for no time, or for longer than a week, is refused like an expired one.
     if (expires < 1 || expires > MAX_PRESIGNED_EXPIRY_SECONDS) {
-      return malformed("X-Amz-Expires must be between 1 and 604800 seconds.");
+      return VerificationResult.failure(S3ErrorCode.AccessDenied,
+          "X-Amz-Expires must be between 1 and 604800 seconds.");
     }
 
     VerificationResult timeResult = validateRequestTime(amzDate, scope.date(), Duration.ofSeconds(expires));

@@ -54,7 +54,8 @@ class SystemMetadataHeadersTest {
   @Test
   void storesTheContentEncodingWithoutAwsChunked() {
     assertEquals("gzip", SystemMetadataHeaders.storedContentEncoding("aws-chunked,gzip"));
-    assertEquals("gzip,br", SystemMetadataHeaders.storedContentEncoding("gzip, AWS-CHUNKED, br"));
+    assertEquals("gzip, br", SystemMetadataHeaders.storedContentEncoding("gzip, AWS-CHUNKED, br"));
+    assertEquals("deflate, gzip", SystemMetadataHeaders.storedContentEncoding("deflate, gzip"));
     assertNull(SystemMetadataHeaders.storedContentEncoding("aws-chunked"));
     assertNull(SystemMetadataHeaders.storedContentEncoding(null));
   }

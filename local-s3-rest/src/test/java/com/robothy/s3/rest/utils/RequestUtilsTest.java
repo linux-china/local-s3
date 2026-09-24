@@ -36,9 +36,14 @@ class RequestUtilsTest {
   }
 
   @Test
+  void testExtractTaggingReadsATagWithoutEqualsAsAnEmptyValue() {
+    String[][] tagArray = RequestUtils.extractTagging(requestWithTagging("foo=bar&bar")).orElseThrow();
+
+    assertArrayEquals(new String[][] {{"foo", "bar"}, {"bar", ""}}, tagArray);
+  }
+
+  @Test
   void testExtractTaggingRejectsInvalidFormatAndEncoding() {
-    assertThrows(LocalS3InvalidArgumentException.class,
-        () -> RequestUtils.extractTagging(requestWithTagging("invalid")));
     assertThrows(LocalS3InvalidArgumentException.class,
         () -> RequestUtils.extractTagging(requestWithTagging("=value")));
     assertThrows(LocalS3InvalidArgumentException.class,

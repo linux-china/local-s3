@@ -9,6 +9,7 @@ import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -119,16 +120,23 @@ public final class SystemMetadataHeaders {
 
   /**
    * The content encoding that an object is stored with: the one of the request without {@code aws-chunked}, which
-   * only encodes the transfer of a request signed chunk by chunk and isn't stored, like Amazon S3 does.
+   * only encodes the transfer of a request signed chunk by chunk and isn't stored, like Amazon S3 does. A content
+   * encoding without {@code aws-chunked} is stored as it is, e.g. {@code deflate, gzip}.
    */
   static String storedContentEncoding(String contentEncoding) {
     if (contentEncoding == null) {
       return null;
     }
-    String stored = Arrays.stream(contentEncoding.split(","))
+    List<String> codings = Arrays.stream(contentEncoding.split(","))
         .map(String::trim)
-        .filter(coding -> !coding.isEmpty() && !AWS_CHUNKED.equalsIgnoreCase(coding))
-        .collect(Collectors.joining(","));
+        .filter(coding -> !coding.isEmpty())
+        .toList();
+    if (codings.stream().noneMatch(AWS_CHUNKED::equalsIgnoreCase)) {
+      return codings.isEmpty() ? null : contentEncoding;
+    }
+    String stored = codings.stream()
+        .filter(coding -> !AWS_CHUNKED.equalsIgnoreCase(coding))
+        .collect(Collectors.joining(", "));
     return stored.isEmpty() ? null : stored;
   }
 

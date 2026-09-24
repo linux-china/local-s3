@@ -72,6 +72,19 @@ class AwsSignatureV4PresignerTest {
   }
 
   /**
+   * A URL that is valid for no time, for a negative one or for longer than a week is refused like an expired one,
+   * with {@code 403 AccessDenied}.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"0", "-7", "604801"})
+  void refusesAnExpiryOutOfRange(String expires) {
+    String url = presigner.presign(ENDPOINT, "GET", "my-bucket", "a.txt", Duration.ofMinutes(15))
+        .replace("X-Amz-Expires=900", "X-Amz-Expires=" + expires);
+
+    assertEquals(S3ErrorCode.AccessDenied, verify(url, HttpMethod.GET, NOW).errorCode());
+  }
+
+  /**
    * A client leaves the default port of the scheme out of the {@code host} header, so a URL that names it is signed
    * without it.
    */

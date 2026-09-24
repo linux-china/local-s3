@@ -115,4 +115,28 @@ class DeleteMarkerReportingIntegrationTest {
         HttpResponse.BodyHandlers.ofString()).body();
   }
 
+  /**
+   * A key whose current version is a delete marker is answered {@code 404 NoSuchKey} with the headers that name the
+   * marker, like Amazon S3 answers it, so that a client tells it apart from a key that never existed.
+   */
+  @Test
+  @LocalS3
+  void aDeletedKeyIsAnsweredWithItsDeleteMarker(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
+    String bucket = "delete-markers-current";
+    s3.createBucket(request -> request.bucket(bucket));
+    s3.putBucketVersioning(request -> request.bucket(bucket)
+        .versioningConfiguration(configuration -> configuration.status(BucketVersioningStatus.ENABLED)));
+    s3.putObject(request -> request.bucket(bucket).key("a.txt"), RequestBody.fromString("Hello"));
+    String markerVersionId = s3.deleteObject(request -> request.bucket(bucket).key("a.txt")).versionId();
+
+    HttpResponse<Void> deleted = head(endpoint, "/" + bucket + "/a.txt");
+    assertEquals(404, deleted.statusCode());
+    assertEquals("true", deleted.headers().firstValue("x-amz-delete-marker").orElse(null));
+    assertEquals(markerVersionId, deleted.headers().firstValue("x-amz-version-id").orElse(null));
+
+    // A key that never existed has no delete marker.
+    HttpResponse<Void> absent = head(endpoint, "/" + bucket + "/absent.txt");
+    assertEquals(404, absent.statusCode());
+    assertNull(absent.headers().firstValue("x-amz-delete-marker").orElse(null));
+  }
 }

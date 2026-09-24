@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
 import java.io.IOException;
@@ -23,6 +24,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectVersionsResponse;
 import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.Tag;
 import software.amazon.awssdk.services.s3.model.Tagging;
 import software.amazon.awssdk.services.s3.model.TaggingDirective;
@@ -244,5 +246,26 @@ public class CopyObjectIntegrationTest {
     
     assertTrue(destHeadClear.metadata().isEmpty() || 
         (destHeadClear.metadata().keySet().stream().noneMatch(key -> key.startsWith("key"))));
+  }
+
+  /**
+   * Amazon S3 refuses to copy an object onto itself unless the copy changes something of it, e.g. its metadata.
+   */
+  @LocalS3
+  @Test
+  void refusesToCopyAnObjectOntoItselfWithoutChangingIt(S3Client s3) {
+    String bucketName = "copy-to-itself-bucket";
+    String key = "a.txt";
+    s3.createBucket(b -> b.bucket(bucketName));
+    s3.putObject(b -> b.bucket(bucketName).key(key), RequestBody.fromString("Hello"));
+
+    S3Exception e = assertThrows(S3Exception.class, () -> s3.copyObject(b -> b.sourceBucket(bucketName).sourceKey(key)
+        .destinationBucket(bucketName).destinationKey(key)));
+    assertEquals(400, e.statusCode());
+    assertEquals("InvalidRequest", e.awsErrorDetails().errorCode());
+
+    s3.copyObject(b -> b.sourceBucket(bucketName).sourceKey(key).destinationBucket(bucketName).destinationKey(key)
+        .metadataDirective(MetadataDirective.REPLACE).metadata(Map.of("k", "v")));
+    assertEquals("v", s3.headObject(b -> b.bucket(bucketName).key(key)).metadata().get("k"));
   }
 }

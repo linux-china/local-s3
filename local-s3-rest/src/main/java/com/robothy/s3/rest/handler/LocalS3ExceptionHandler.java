@@ -5,9 +5,11 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.datatypes.response.S3Error;
+import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -55,6 +57,11 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
           .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
           .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
       ResponseUtils.addAmzIds(response, requestId, hostId);
+      if (e instanceof ObjectNotExistException notExist && notExist.isDeleteMarker()) {
+        // A key whose current version is a delete marker, which a client tells apart from one that never existed.
+        response.putHeader(AmzHeaderNames.X_AMZ_DELETE_MARKER, true)
+            .putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, notExist.getDeleteMarkerVersionId());
+      }
 
       if (!HttpMethod.HEAD.equals(request.getMethod())) {
         response.write(xmlMapper.writeValueAsString(error));

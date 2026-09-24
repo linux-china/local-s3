@@ -371,6 +371,23 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   which a client that decodes by RFC 3986, e.g. of Python or Rust, read as a plus, so that it asked for a key that
   doesn't exist, e.g. a Hive partition `city=New York`. The AWS SDK for Java decodes both. `ListObjectVersions`
   encodes its prefix, delimiter, key markers and common prefixes too, and no longer encodes the `/` of a key.
++ Error codes and details that differed from the ones of Amazon S3, which tests that assert the type of an exception
+  tell apart; ceph/s3-tests pass 29 more tests:
+  + `HeadObject` and `GetObject` of a key whose current version is a delete marker answer `404 NoSuchKey` with
+    `x-amz-delete-marker: true` and the `x-amz-version-id` of the marker.
+  + `GetObjectAttributes` answers the `ETag` without its quotes.
+  + `PutBucketTagging` and `DeleteBucketTagging` answer `204 No Content`, not `200`.
+  + A `Content-MD5` that isn't the base64 of an MD5 digest, e.g. an empty one, is `InvalidDigest`; one that doesn't
+    match the content is still `BadDigest`. A malformed `x-amz-checksum-*` value is `BadDigest`, not `InvalidRequest`.
+  + A presigned URL whose `X-Amz-Expires` isn't within 1 to 604800 seconds, e.g. a negative one, is
+    `403 AccessDenied`, like an expired one, not `400 AuthorizationHeaderMalformed`.
+  + `CopyObject` of an object onto itself that changes nothing of it, i.e. neither its metadata, its tags, its storage
+    class, its encryption nor its checksum algorithm, is `400 InvalidRequest`.
+  + `PutObjectTagging` refuses more than 10 tags, a key longer than 128 characters, a value longer than 256 and a key
+    given twice with `400 InvalidTag`, and the object keeps its tags. A tag of `x-amz-tagging` without `=`, e.g. the
+    `bar` of `foo=bar&bar`, has an empty value rather than being refused.
+  + A `Content-Encoding` without `aws-chunked` is stored as it is, e.g. `deflate, gzip`, not rewritten to
+    `deflate,gzip`.
 + `docker run luofuxiang/local-s3` with no arguments works. The image runs `PERSISTENCE` over `/data`, and the
   anonymous volume that `docker run` creates for it is initialized from the `/data` of the image, its ownership
   included; that directory belonged to `root`, so the service, which runs as `locals3` since 2.5, started and then

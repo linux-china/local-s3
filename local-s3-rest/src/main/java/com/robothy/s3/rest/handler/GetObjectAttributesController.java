@@ -86,7 +86,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
    * attribute that the {@code x-amz-object-attributes} header didn't name out of the answer entirely, so
    * that a client can tell what it asked for apart from what it didn't.
    *
-   * <p>{@code Checksum} is left out for an object that was stored without a checksum, like Amazon S3 does.
+   * <p>{@code ETag} is unquoted, and {@code Checksum} is left out for an object that was stored without a checksum, like Amazon S3 does.
    *
    * @param request the request, which carries the paging of {@code ObjectParts}.
    * @param attributes the attributes that the request asked for.
@@ -97,7 +97,8 @@ class GetObjectAttributesController implements HttpRequestHandler {
                                            GetObjectAns object) {
     GetObjectAttributesResult.GetObjectAttributesResultBuilder result = GetObjectAttributesResult.builder();
     if (attributes.contains(ObjectAttribute.ETAG)) {
-      result.etag(ResponseUtils.quoteEtag(object.getEtag()));
+      // Unlike every other answer of Amazon S3, this one carries the entity tag without its quotes.
+      result.etag(object.getEtag());
     }
     if (attributes.contains(ObjectAttribute.OBJECT_SIZE)) {
       result.objectSize(object.getSize());

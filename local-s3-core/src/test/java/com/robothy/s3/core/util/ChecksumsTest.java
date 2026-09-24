@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
-import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import java.io.ByteArrayInputStream;
@@ -99,9 +98,9 @@ class ChecksumsTest {
     assertThrows(LocalS3BadDigestException.class,
         () -> Checksums.verify(RequestChecksum.of(CheckSumAlgorithm.CRC32, "AAAAAA=="), computed));
     // Not base64, and a checksum of the wrong length.
-    assertThrows(LocalS3RequestException.class,
+    assertThrows(LocalS3BadDigestException.class,
         () -> Checksums.verify(RequestChecksum.of(CheckSumAlgorithm.CRC32, "not base64!"), computed));
-    assertThrows(LocalS3RequestException.class,
+    assertThrows(LocalS3BadDigestException.class,
         () -> Checksums.verify(RequestChecksum.of(CheckSumAlgorithm.CRC32, "AAAAAAAAAAA="), computed));
   }
 

@@ -44,6 +44,11 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
           "The source of a copy request may not specifically refer to a delete marker by version id.");
     }
+    if (isCopyToItselfWithoutChanges(bucket, key, options)) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "This copy request is illegal because it is "
+          + "trying to copy an object to itself without changing the object's metadata, storage class, website "
+          + "redirect location or encryption attributes.");
+    }
 
     // The metadata of the source object is copied, unless the directive replaces all of it, the content type and
     // the system-defined metadata included, with the one of the request.
@@ -85,6 +90,22 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .checksum(putObjectAns.getChecksum())
         .serverSideEncryption(putObjectAns.getServerSideEncryption())
         .build();
+  }
+
+  /**
+   * Whether the request copies the current version of an object onto itself and changes nothing of it, which Amazon
+   * S3 refuses. A copy that replaces the metadata or the tags, or sets the storage class, the encryption or the
+   * checksum algorithm, changes the object; one of an older version restores that version.
+   */
+  private static boolean isCopyToItselfWithoutChanges(String bucket, String key, CopyObjectOptions options) {
+    return bucket.equals(options.getSourceBucket()) && key.equals(options.getSourceKey())
+        && options.getSourceVersion().isEmpty()
+        && options.getMetadataDirective() != CopyObjectOptions.MetadataDirective.REPLACE
+        && options.getTaggingDirective() != CopyObjectOptions.TaggingDirective.REPLACE
+        && Objects.isNull(options.getStorageClass())
+        && Objects.isNull(options.getChecksumAlgorithm())
+        && Objects.isNull(options.getServerSideEncryption())
+        && Objects.isNull(options.getCustomerEncryption());
   }
 
   /**

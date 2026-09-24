@@ -1,6 +1,8 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.HttpRequest;
@@ -21,6 +23,7 @@ import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.Base64;
 import java.util.Objects;
 
 /**
@@ -47,7 +50,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .size(decodedBody.getDecodedContentLength())
         .content(decodedBody.getDecodedBody())
         .contentFile(decodedBody.getBodyFile())
-        .contentMd5(request.header("Content-MD5").orElse(null))
+        .contentMd5(contentMd5(request))
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
@@ -77,6 +80,28 @@ class PutObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
+  }
+
+  /**
+   * The {@code Content-MD5} of the request, which is checked against the content once it is stored.
+   *
+   * @return the header; {@code null} if the request has none.
+   * @throws LocalS3RequestException {@code InvalidDigest} if the header isn't the base64 of an MD5 digest, e.g. is
+   *     empty, like Amazon S3 rejects it before it reads the content; a digest that doesn't match is {@code BadDigest}.
+   */
+  private static String contentMd5(HttpRequest request) {
+    String value = request.header(HttpHeaderNames.CONTENT_MD5).orElse(null);
+    if (Objects.isNull(value)) {
+      return null;
+    }
+    try {
+      if (Base64.getDecoder().decode(value).length == 16) {
+        return value;
+      }
+    } catch (IllegalArgumentException e) {
+      // Rejected below.
+    }
+    throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
   }
 
   /**

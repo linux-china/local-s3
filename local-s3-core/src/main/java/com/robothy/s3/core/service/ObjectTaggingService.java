@@ -24,8 +24,11 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
    * @param versionId version ID.
    * @param tagging new tagging of the versioned object.
    * @return version ID where the new tagging applies to.
+   * @throws com.robothy.s3.core.exception.LocalS3RequestException {@code InvalidTag} if the tags exceed the limits
+   *     of Amazon S3, in which case the object keeps the tags it has.
    */
   default String putObjectTagging(String bucketName, String key, String versionId, String[][] tagging) {
+    ObjectAssertions.assertObjectTaggingIsValid(tagging);
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);

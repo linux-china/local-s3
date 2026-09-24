@@ -64,7 +64,9 @@ public class MultipartUploadEtagIntegrationTest {
 
     assertEquals(etag, s3.headObject(b -> b.bucket(bucket).key(key)).eTag());
     assertEquals(etag, s3.getObject(b -> b.bucket(bucket).key(key)).response().eTag());
-    assertEquals(etag, s3.getObjectAttributes(b -> b.bucket(bucket).key(key).objectAttributes(ObjectAttributes.E_TAG)).eTag());
+    // GetObjectAttributes answers the entity tag without its quotes, like Amazon S3 does.
+    assertEquals(Etags.unquoted(etag),
+        s3.getObjectAttributes(b -> b.bucket(bucket).key(key).objectAttributes(ObjectAttributes.E_TAG)).eTag());
     assertEquals(etag, s3.listObjectsV2(b -> b.bucket(bucket)).contents().get(0).eTag());
     assertEquals(etag, s3.listObjects(b -> b.bucket(bucket)).contents().get(0).eTag());
     assertTrue(Etags.unquoted(etag).endsWith("-2"), etag);

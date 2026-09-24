@@ -150,7 +150,7 @@ public class ObjectIntegrationTest {
         .objectAttributes(ObjectAttributes.E_TAG, ObjectAttributes.OBJECT_SIZE, ObjectAttributes.STORAGE_CLASS)
         .build());
 
-    assertEquals(Etags.md5(content), attributes.eTag());
+    assertEquals(Etags.unquoted(Etags.md5(content)), attributes.eTag());
     assertEquals(content.length(), attributes.objectSize());
     assertEquals(StorageClass.STANDARD, attributes.storageClass());
     // The bucket was never versioned, so the object has no version.
@@ -162,7 +162,8 @@ public class ObjectIntegrationTest {
         .key(key)
         .objectAttributes(ObjectAttributes.E_TAG)
         .build());
-    assertEquals(Etags.md5(content), etagOnly.eTag());
+    // Without its quotes, like Amazon S3 answers it.
+    assertEquals(Etags.unquoted(Etags.md5(content)), etagOnly.eTag());
   }
 
   @Test

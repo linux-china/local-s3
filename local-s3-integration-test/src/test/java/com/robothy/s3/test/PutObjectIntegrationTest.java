@@ -122,6 +122,24 @@ public class PutObjectIntegrationTest {
     assertEquals("BadDigest", ex.awsErrorDetails().errorCode());
   }
 
+  /**
+   * A Content-MD5 that isn't the base64 of an MD5 digest at all is {@code InvalidDigest}, not {@code BadDigest}.
+   */
+  @Test
+  @LocalS3
+  void testPutObjectWithContentMD5_malformedShouldFail(S3Client s3) {
+    String bucketName = "md5-bucket-malformed";
+    s3.createBucket(b -> b.bucket(bucketName));
+
+    // The base64 of 11 bytes, and not base64.
+    for (String malformedMd5 : new String[] {"YWJyYWNhZGFicmE=", "not base64!"}) {
+      S3Exception ex = assertThrows(S3Exception.class, () -> s3.putObject(b -> b.bucket(bucketName)
+          .key("hello-md5-malformed.txt").contentMD5(malformedMd5), RequestBody.fromString("Hello MD5")));
+      assertEquals(400, ex.statusCode());
+      assertEquals("InvalidDigest", ex.awsErrorDetails().errorCode());
+    }
+  }
+
   @Test
   @LocalS3
   void testPutObjectWithSpecialCharactersInObjectKey(S3Client s3Client) {

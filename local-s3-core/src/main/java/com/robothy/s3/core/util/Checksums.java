@@ -1,8 +1,6 @@
 package com.robothy.s3.core.util;
 
 import com.robothy.s3.core.exception.LocalS3BadDigestException;
-import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import com.robothy.s3.datatypes.enums.ChecksumType;
@@ -178,8 +176,8 @@ public final class Checksums {
    * @param algorithm the algorithm of the checksum.
    * @param value the base64 encoded checksum.
    * @return the bytes of the checksum.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the value isn't a base64 encoded checksum of the
-   *     algorithm, like Amazon S3 rejects it.
+   * @throws LocalS3BadDigestException if the value isn't a base64 encoded checksum of the algorithm, which is what
+   *     ceph/s3-tests expect of it, e.g. {@code test_object_checksum_sha256}.
    */
   public static byte[] decode(CheckSumAlgorithm algorithm, String value) {
     try {
@@ -190,8 +188,7 @@ public final class Checksums {
     } catch (IllegalArgumentException e) {
       // Rejected below.
     }
-    throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
-        "Value for " + headerName(algorithm) + " header is invalid.");
+    throw new LocalS3BadDigestException("Value for " + headerName(algorithm) + " header is invalid.");
   }
 
   /**
@@ -199,8 +196,7 @@ public final class Checksums {
    *
    * @param checksum the checksum of the request.
    * @param computed the checksum computed from the content.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the client sent something that isn't a checksum.
-   * @throws LocalS3BadDigestException if the checksums differ.
+   * @throws LocalS3BadDigestException if the client sent something that isn't a checksum, or the checksums differ.
    */
   public static void verify(RequestChecksum checksum, byte[] computed) {
     String expected = checksum.expected().get();

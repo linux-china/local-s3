@@ -52,7 +52,11 @@ test checks is something else. The IAM, STS, SNS, S3 Select and S3 Control tests
 `known-failures.txt` lists the tests that fail on LocalS3 today, which the plugin marks as expected to fail
 (`xfail(strict=True)`). A run fails on a test that fails and isn't listed, which is a regression, and on a listed test
 that passes, which is to be taken off the list. `--update-known-failures` runs every test without the list and writes
-the failed ones to it.
+the failed ones to it, keeping the reason after the `#` of a test that still fails.
+
+A test without a reason is one to fix. One whose reason starts with `consistent with AWS` expects the behavior of
+another implementation, mostly RGW, where LocalS3 behaves like Amazon S3, e.g. `411 MissingContentLength` for a
+`PutObject` with `Transfer-Encoding: chunked` and no length; it stays on the list on purpose.
 
 A new version of s3-tests is taken by changing `S3_TESTS_COMMIT` in `run.sh`, running it with
 `--update-known-failures` and reviewing the change of `known-failures.txt`.

@@ -16,7 +16,8 @@ of the main user alone.
 
 The tests in ``known-failures.txt`` are expected to fail: they are marked ``xfail(strict=True)``, so the run fails
 on a test that fails and isn't listed there, and on a listed test that passes, which is then to be taken off the
-list. ``S3_TESTS_UPDATE_KNOWN_FAILURES=1`` runs every test without the list and writes the failed ones to it.
+list. ``S3_TESTS_UPDATE_KNOWN_FAILURES=1`` runs every test without the list and writes the failed ones to it,
+keeping the reason that follows the ``#`` of a test that still fails, e.g. ``test_x  # consistent with AWS: ...``.
 """
 
 import ast
@@ -155,10 +156,15 @@ def _test_id(item):
 
 
 def _read_known_failures():
+    """The known failures, each mapped to the reason that follows its ``#``, or to ``""`` if it has none."""
     if not KNOWN_FAILURES.exists():
-        return set()
-    lines = (line.strip() for line in KNOWN_FAILURES.read_text().splitlines())
-    return {line for line in lines if line and not line.startswith("#")}
+        return {}
+    known_failures = {}
+    for line in KNOWN_FAILURES.read_text().splitlines():
+        test_id, _, reason = line.partition("#")
+        if test_id.strip():
+            known_failures[test_id.strip()] = reason.strip()
+    return known_failures
 
 
 _config = None
@@ -183,7 +189,7 @@ def pytest_sessionstart(session):
 
 
 def pytest_collection_modifyitems(config, items):
-    known_failures = set() if UPDATE_KNOWN_FAILURES else _read_known_failures()
+    known_failures = {} if UPDATE_KNOWN_FAILURES else _read_known_failures()
     selected, deselected = [], []
     for item in items:
         reason = _exclusion(item)
@@ -212,8 +218,13 @@ def pytest_sessionfinish(session):
     header = [
         "# The tests of ceph/s3-tests that fail on LocalS3, which local_s3_plugin.py expects to fail.",
         "# Written by `ceph-s3-tests/run.sh --update-known-failures`; take a test off once it passes.",
+        "# A test without a reason is to be fixed; one marked `consistent with AWS` expects the behavior of",
+        "# another S3 implementation, e.g. RGW, where LocalS3 behaves like Amazon S3, and is kept on purpose.",
     ]
-    KNOWN_FAILURES.write_text("\n".join(header + sorted(config._local_s3_failed)) + "\n")
+    reasons = _read_known_failures()
+    lines = [f"{test_id}  # {reasons[test_id]}" if reasons.get(test_id) else test_id
+             for test_id in sorted(config._local_s3_failed)]
+    KNOWN_FAILURES.write_text("\n".join(header + lines) + "\n")
 
 
 def pytest_terminal_summary(terminalreporter, config):
