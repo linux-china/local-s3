@@ -130,7 +130,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + **A built-in console**, served at `GET /_admin/ui`. One self-contained HTML page — no build step, no frontend
   framework and no new dependency — that lists the buckets and creates one, walks the objects of a bucket by their
   prefixes, previews or downloads an object, and uploads or deletes one. Text, JSON, CSV, Markdown, images, audio,
-  video, PDF and HTML render in the page and anything else is a download; `Copy URL` yields the S3 URL of the object;
+  video, PDF and HTML render in the page and anything else is a download; `Share` copies a presigned URL of the object,
+  valid for 15 minutes to 7 days, to hand an artifact to someone without credentials (`GET /_admin/ui/presign`);
   **files and folders dropped on the page** are uploaded into the prefix that is open, a dropped folder becoming a
   prefix, with a panel showing the progress of the batch; `Delete` removes an object after a confirmation; and
   `+ NEW` creates a bucket, under the naming rules of Amazon S3. It answers what an S3 mock otherwise leaves to

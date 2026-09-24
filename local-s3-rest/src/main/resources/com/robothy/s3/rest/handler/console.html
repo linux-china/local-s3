@@ -143,6 +143,15 @@
   .crumbs button:hover { background: var(--accent-soft); }
   .crumbs span { color: var(--muted); }
   .toolbar .filter { margin-left: auto; width: 220px; }
+  .toolbar select {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 6px;
+  }
   .content { overflow: auto; padding: 0 0 40px; min-height: 0; }
   table { width: 100%; border-collapse: collapse; }
   thead th {
@@ -405,6 +414,12 @@
       <nav class="crumbs" id="crumbs"></nav>
       <input type="search" class="filter" id="key-filter" placeholder="Filter by prefix" autocomplete="off"
              spellcheck="false">
+      <select id="share-expiry" title="How long a link that Share copies is valid">
+        <option value="900">Share for 15 min</option>
+        <option value="3600" selected>Share for 1 hour</option>
+        <option value="86400">Share for 1 day</option>
+        <option value="604800">Share for 7 days</option>
+      </select>
       <button id="upload" title="Upload files into this prefix">Upload</button>
       <input type="file" id="files" multiple hidden>
     </div>
@@ -425,6 +440,7 @@
       <span class="spacer" style="flex:1"></span>
       <span class="meta" id="preview-meta"></span>
       <button id="preview-query" title="Query this object with DuckDB">DuckDB SQL</button>
+      <button id="preview-share" title="Copy a presigned URL of this object">Share</button>
       <a class="btn" id="preview-download" download>Download</a>
       <button id="preview-close">Close</button>
     </div>
@@ -668,10 +684,43 @@
     return API + "/object?" + query({bucket: bucket, key: key, download: download ? "1" : null});
   }
 
-  /* The S3 URL of an object, which is what a client or a browser reads it at. */
-  function shareUrl(bucket, key) {
-    return location.origin + "/" + encodeURIComponent(bucket) + "/"
-      + key.split("/").map(encodeURIComponent).join("/");
+  /* How long a shared link is valid, in seconds: the choice of the toolbar, which is remembered in this browser. */
+  var SHARE_EXPIRY_KEY = "locals3.console.shareExpiry";
+
+  function shareExpiry() {
+    return $("share-expiry").value;
+  }
+
+  function expiryText(seconds) {
+    if (seconds % 86400 === 0) { return seconds / 86400 + (seconds === 86400 ? " day" : " days"); }
+    if (seconds % 3600 === 0) { return seconds / 3600 + (seconds === 3600 ? " hour" : " hours"); }
+    return Math.round(seconds / 60) + " min";
+  }
+
+  /*
+   * Copy a presigned URL of an object, which a browser or a client without credentials reads it with. The URL is
+   * fetched after the click, so the copy is handed to the clipboard as a promise where the browser supports it:
+   * Safari refuses a writeText that no longer runs in the click.
+   */
+  function share(bucket, key) {
+    var signed = api("/presign", {bucket: bucket, key: key, expires: shareExpiry()});
+    var done = function (body) {
+      toast(body.signed ? "Copied a link valid for " + expiryText(body.expiresIn)
+        : "Copied the URL, which never expires: the service has no credentials");
+    };
+    var failed = function (error) { toast(error.message); };
+    if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+      var text = signed.then(function (body) { return new Blob([body.url], {type: "text/plain"}); });
+      navigator.clipboard.write([new ClipboardItem({"text/plain": text})]).then(function () {
+        return signed.then(done);
+      }, function () {
+        // The clipboard refused the promise; copy the URL the older way, and leave a failure to the catch below.
+        signed.then(function (body) { copy(body.url, "the link"); }, function () {});
+      });
+      signed.catch(failed);
+      return;
+    }
+    signed.then(function (body) { copy(body.url, "the link"); }, failed);
   }
 
   function size(bytes) {
@@ -884,9 +933,9 @@
       el("td", {class: "actions"}, [
         el("a", {class: "btn", href: objectUrl(state.bucket, object.key, true), download: "", text: "Download"}),
         el("button", {
-          text: "Copy URL",
-          title: "Copy the S3 URL of this object",
-          onclick: function () { copy(shareUrl(state.bucket, object.key)); }
+          text: "Share",
+          title: "Copy a presigned URL of this object, which works without credentials until it expires",
+          onclick: function () { share(state.bucket, object.key); }
         }),
         el("button", {
           class: "danger",
@@ -1190,6 +1239,16 @@
     if (state.bucket) { open(state.bucket, state.prefix); }
   });
   $("preview-close").addEventListener("click", function () { $("preview").close(); });
+  $("preview-share").addEventListener("click", function () { share(state.bucket, $("preview-title").textContent); });
+  try {
+    var remembered = localStorage.getItem(SHARE_EXPIRY_KEY);
+    if (remembered && $("share-expiry").querySelector("option[value='" + remembered + "']")) {
+      $("share-expiry").value = remembered;
+    }
+  } catch (e) { /* No storage, e.g. a private window: the default applies. */ }
+  $("share-expiry").addEventListener("change", function () {
+    try { localStorage.setItem(SHARE_EXPIRY_KEY, shareExpiry()); } catch (e) { /* Remembered for this page alone. */ }
+  });
   $("preview-query").addEventListener("click", function () {
     connect.selected = "duckdb";
     openConnect(state.bucket, $("preview-title").textContent);

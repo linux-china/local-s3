@@ -447,7 +447,7 @@ charts, reports and datasets the agent produced instead of listing keys.
 |---|---|
 | Buckets | Name, region and creation date, with a filter. `+ NEW` creates one, in the default region and under the naming rules of Amazon S3, and opens it. |
 | Objects | The objects and the directories under a prefix, with size and last-modified time, a prefix filter, and a page of 200 at a time. |
-| An object | A preview of text, JSON, CSV, Markdown, images, audio, video, PDF and HTML, the rest as a download; `Download` saves it, and `Copy URL` copies the S3 URL of the object. |
+| An object | A preview of text, JSON, CSV, Markdown, images, audio, video, PDF and HTML, the rest as a download; `Download` saves it, and `Share`, on the row or in the preview, copies a presigned URL of the object that reads it without credentials, valid for the time chosen next to `Upload` (15 minutes to 7 days, an hour by default); a service without credentials copies the plain URL instead, which never expires. |
 | Upload | **Drop files or folders** anywhere on the listing, or use `Upload`: each file is stored under the prefix that is open, a dropped folder becomes a prefix, and a panel shows the progress of the batch, three files at a time. A file that the browser knows no type for is stored with the content type of its extension. |
 | Delete | `Delete` on a row, after a confirmation. In a versioned bucket it puts a delete marker, like `DeleteObject` does. |
 | Connect | `Connect` shows what DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach the service, written by the service itself, with a `Copy` button: the [connection snippets](#admin-endpoints) of the bucket or the folder that is open. `DuckDB SQL` in the preview of an object shows the DuckDB script that ends with a query of that object, e.g. `SELECT * FROM 's3://lake/events.parquet' LIMIT 10;`, which `Copy query` copies alone. |
@@ -456,6 +456,7 @@ Behind the page are endpoints of its own, which call the same services the S3 op
 `GET /_admin/ui/buckets`, `GET /_admin/ui/objects?bucket=&prefix=&continuation-token=`,
 `GET /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/object?bucket=&key=`,
 `DELETE /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/bucket?bucket=`, `GET /_admin/ui/snippets?bucket=&key=`,
+`GET /_admin/ui/presign?bucket=&key=&expires=<seconds>&method=GET|PUT`,
 and the multipart upload of a large file: `POST /_admin/ui/multipart?bucket=&key=` starts it and answers its
 `uploadId`, `PUT /_admin/ui/multipart?bucket=&key=&uploadId=&partNumber=` stores a part,
 `POST /_admin/ui/multipart/complete?bucket=&key=&uploadId=` completes it with `{"parts": [{"partNumber": 1, "etag":

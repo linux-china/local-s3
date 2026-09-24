@@ -429,6 +429,82 @@ class ConsoleTest {
   }
 
   /**
+   * The Share button of the page: a presigned URL of an object, which a client without credentials reads it with
+   * until it expires.
+   */
+  @Test
+  void presignsAUrlToShareAnObject() throws Exception {
+    String accessKeyId = "console-access-key";
+    String secretAccessKey = "console-secret-key";
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).buckets("bucket")
+        .credentials(accessKeyId, secretAccessKey).build();
+    localS3.start();
+    try {
+      String credentials = basic(accessKeyId, secretAccessKey);
+      assertEquals(200, send(localS3, "PUT", "/_admin/ui/object?bucket=bucket&key=reports%2Fa%20b.txt", credentials,
+          "Hello", CONSOLE_HEADER).statusCode());
+
+      String path = "/_admin/ui/presign?bucket=bucket&key=reports%2Fa%20b.txt&expires=900";
+      assertEquals(401, send(localS3, "GET", path, null, null).statusCode());
+      JsonNode presigned = json(send(localS3, "GET", path, credentials, null));
+      assertTrue(presigned.get("signed").asBoolean());
+      assertEquals("GET", presigned.get("method").asText());
+      assertEquals(900, presigned.get("expiresIn").asLong());
+      String url = presigned.get("url").asText();
+      assertTrue(url.startsWith("http://127.0.0.1:" + localS3.getPort() + "/bucket/reports/a%20b.txt?"), url);
+      assertTrue(url.contains("X-Amz-Expires=900"), url);
+
+      // The URL alone reads the object, while the same request without its signature is refused.
+      HttpResponse<String> read = client.send(HttpRequest.newBuilder(URI.create(url)).build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, read.statusCode(), read.body());
+      assertEquals("Hello", read.body());
+      assertEquals(403, send(localS3, "GET", "/bucket/reports/a%20b.txt", null, null).statusCode());
+
+      // A PUT URL uploads an object that doesn't exist yet.
+      JsonNode upload = json(send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=new.txt&method=put",
+          credentials, null));
+      assertEquals(3600, upload.get("expiresIn").asLong(), "An hour unless the page asks for another expiration.");
+      HttpResponse<String> put = client.send(HttpRequest.newBuilder(URI.create(upload.get("url").asText()))
+          .PUT(HttpRequest.BodyPublishers.ofString("New")).build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, put.statusCode(), put.body());
+
+      HttpResponse<String> unknownKey =
+          send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=nope.txt", credentials, null);
+      assertEquals(404, unknownKey.statusCode());
+      assertEquals("NoSuchKey", json(unknownKey).get("code").asText());
+      assertEquals(404, send(localS3, "GET", "/_admin/ui/presign?bucket=nope&key=new.txt&method=PUT", credentials,
+          null).statusCode());
+      assertEquals(400, send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=new.txt&expires=604801",
+          credentials, null).statusCode(), "Seven days at most, like Amazon S3.");
+      assertEquals(400, send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=new.txt&expires=soon",
+          credentials, null).statusCode());
+      assertEquals(400, send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=new.txt&method=DELETE",
+          credentials, null).statusCode());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * A service without credentials answers unsigned requests, so the page shares the plain URL of the object.
+   */
+  @Test
+  void sharesThePlainUrlOfAnObjectOfAServiceWithoutCredentials() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).buckets("bucket").build();
+    localS3.start();
+    try {
+      assertEquals(200, send(localS3, "PUT", "/bucket/a.txt", null, "Hello").statusCode());
+      JsonNode presigned = json(send(localS3, "GET", "/_admin/ui/presign?bucket=bucket&key=a.txt", null, null));
+      assertFalse(presigned.get("signed").asBoolean());
+      assertFalse(presigned.has("expiresAt"), "The plain URL never expires: " + presigned);
+      assertEquals("http://127.0.0.1:" + localS3.getPort() + "/bucket/a.txt", presigned.get("url").asText());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
    * Send a raw HTTP request on a connection of its own, e.g. one that names a {@code Host} that the HTTP client of
    * the JDK refuses to set, and read the whole response.
    */

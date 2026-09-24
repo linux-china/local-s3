@@ -21,6 +21,7 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
+import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
 import com.robothy.s3.rest.service.BucketNameValidator;
@@ -39,13 +40,16 @@ import java.io.UncheckedIOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -71,7 +75,10 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>{@code PUT /_admin/ui/bucket?bucket=name}: create a bucket, in the default region;</li>
  *   <li>{@code GET /_admin/ui/snippets?bucket=name&key=k}: the configuration of DuckDB and the other clients that
  *   reach this service, with a query of the bucket or the object the page shows, see
- *   {@linkplain ConnectionSnippets}.</li>
+ *   {@linkplain ConnectionSnippets};</li>
+ *   <li>{@code GET /_admin/ui/presign?bucket=name&key=k&expires=seconds&method=GET}: a presigned URL of an object,
+ *   which the page copies to share it, e.g. an artifact of an AI agent, with a client that has no credentials; see
+ *   {@linkplain AwsSignatureV4Presigner}.</li>
  * </ul>
  *
  * <p>The endpoints call the same services the S3 operations do, so the console shows and changes what a client sees,
@@ -116,6 +123,8 @@ class ConsoleController implements HttpRequestHandler {
 
   static final String SNIPPETS_OPERATION = "ConsoleConnectionSnippets";
 
+  static final String PRESIGN_OPERATION = "ConsolePresign";
+
   static final String CREATE_MULTIPART_UPLOAD_OPERATION = "ConsoleCreateMultipartUpload";
 
   static final String UPLOAD_PART_OPERATION = "ConsoleUploadPart";
@@ -126,7 +135,7 @@ class ConsoleController implements HttpRequestHandler {
 
   static final Set<String> OPERATIONS = Set.of(PAGE_OPERATION, BUCKETS_OPERATION, OBJECTS_OPERATION, OBJECT_OPERATION,
       PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION, SNIPPETS_OPERATION,
-      CREATE_MULTIPART_UPLOAD_OPERATION, UPLOAD_PART_OPERATION, COMPLETE_MULTIPART_UPLOAD_OPERATION,
+      PRESIGN_OPERATION, CREATE_MULTIPART_UPLOAD_OPERATION, UPLOAD_PART_OPERATION, COMPLETE_MULTIPART_UPLOAD_OPERATION,
       ABORT_MULTIPART_UPLOAD_OPERATION);
 
   /**
@@ -153,6 +162,8 @@ class ConsoleController implements HttpRequestHandler {
 
   private static final String SNIPPETS_PATH = PATH + "/snippets";
 
+  private static final String PRESIGN_PATH = PATH + "/presign";
+
   private static final String MULTIPART_PATH = PATH + "/multipart";
 
   private static final String COMPLETE_PATH = MULTIPART_PATH + "/complete";
@@ -167,6 +178,21 @@ class ConsoleController implements HttpRequestHandler {
    * is truncated, so a bucket of many objects is walked rather than rendered at once.
    */
   private static final int PAGE_SIZE = 200;
+
+  /**
+   * How long a presigned URL of the console is valid when the page asks for no expiration.
+   */
+  private static final Duration DEFAULT_PRESIGN_EXPIRATION = Duration.ofHours(1);
+
+  /**
+   * The methods that the console presigns a URL for: reading an object, or uploading one in its place.
+   */
+  private static final Set<String> PRESIGN_METHODS = Set.of("GET", "PUT");
+
+  /**
+   * A {@code Host} header that is a name or an address and a port, which a presigned URL is built on.
+   */
+  private static final Pattern HOST = Pattern.compile("[A-Za-z0-9._\\-]+(:\\d{1,5})?|\\[[0-9A-Fa-f:.]+](:\\d{1,5})?");
 
   /**
    * What an unauthorized response asks for, which is what makes a browser show its credentials prompt.
@@ -202,6 +228,11 @@ class ConsoleController implements HttpRequestHandler {
   private final ConnectionSnippets snippets;
 
   /**
+   * The configuration of the service; {@code null} for a router of handlers alone.
+   */
+  private final @Nullable LocalS3Config config;
+
+  /**
    * What completing an upload of the console applies, like {@code CompleteMultipartUpload} of the API does.
    */
   private final MultipartUploadPolicy multipartUploadPolicy;
@@ -217,8 +248,9 @@ class ConsoleController implements HttpRequestHandler {
         : new BucketNameValidator();
     this.accessKeyId = accessKeyId;
     this.secretAccessKey = secretAccessKey;
-    this.snippets = new ConnectionSnippets(serviceFactory.containsInstance(LocalS3Config.class)
-        ? serviceFactory.getInstance(LocalS3Config.class) : null);
+    this.config = serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class) : null;
+    this.snippets = new ConnectionSnippets(config);
     this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
         ? serviceFactory.getInstance(MultipartUploadPolicy.class)
         : MultipartUploadPolicy.of(true);
@@ -261,6 +293,7 @@ class ConsoleController implements HttpRequestHandler {
       case OBJECTS_PATH -> OBJECTS_OPERATION;
       case OBJECT_PATH -> OBJECT_OPERATION;
       case SNIPPETS_PATH -> SNIPPETS_OPERATION;
+      case PRESIGN_PATH -> PRESIGN_OPERATION;
       default -> PAGE_OPERATION;
     };
   }
@@ -286,6 +319,7 @@ class ConsoleController implements HttpRequestHandler {
         case OBJECT_PATH -> object(request, response);
         case SNIPPETS_PATH -> json(response, HttpResponseStatus.OK, snippets.all(request,
             request.parameter("bucket").orElse(null), request.parameter("key").orElse(null)));
+        case PRESIGN_PATH -> presign(request, response);
         default -> error(response, HttpResponseStatus.NOT_FOUND, "NotFound",
             "The console has no endpoint " + path + ".");
       }
@@ -360,6 +394,66 @@ class ConsoleController implements HttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     writeContent(response, object.getContent());
+  }
+
+  /**
+   * Sign a URL of an object with the credentials of the service, so that it is shared with a client that has none,
+   * e.g. a browser or a teammate that an AI agent hands an artifact to. The URL is built on the host that the page
+   * addressed, which is the one that reaches this service from the browser, and the scheme it arrived by. A service
+   * without credentials answers unsigned requests, so it answers the plain URL of the object, which doesn't expire.
+   *
+   * <p>Like Amazon S3, signing doesn't touch the data, but the page shares the objects it lists, so a URL of an object
+   * that doesn't exist is refused rather than handed out.
+   */
+  private void presign(HttpRequest request, HttpResponse response) {
+    String bucket = required(request, "bucket");
+    String key = required(request, "key");
+    String method = request.parameter("method").orElse("GET").trim().toUpperCase(Locale.ROOT);
+    if (!PRESIGN_METHODS.contains(method)) {
+      throw new IllegalArgumentException("The console presigns GET and PUT alone, not " + method + ".");
+    }
+    Duration expiration = DEFAULT_PRESIGN_EXPIRATION;
+    String expires = request.parameter("expires").orElse(null);
+    if (expires != null) {
+      try {
+        expiration = Duration.ofSeconds(Long.parseLong(expires));
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("The expires parameter must be a number of seconds, not " + expires + ".");
+      }
+    }
+    // Throws NoSuchBucket or NoSuchKey, which is answered like any other error of the console; a PUT URL uploads an
+    // object that may not exist yet, so only its bucket is checked.
+    if ("GET".equals(method)
+        && objectService.headObject(bucket, key, GetObjectOptions.builder().build()).isDeleteMarker()) {
+      error(response, HttpResponseStatus.NOT_FOUND, "NoSuchKey", "The object was deleted.");
+      return;
+    }
+    if ("PUT".equals(method)) {
+      bucketService.getBucket(bucket);
+    }
+
+    boolean signed = accessKeyId != null;
+    AwsSignatureV4Presigner presigner = signed
+        ? new AwsSignatureV4Presigner(accessKeyId, secretAccessKey)
+        : AwsSignatureV4Presigner.unsigned();
+    Instant now = Instant.now();
+    String url = presigner.presign(endpoint(request), method, bucket, key, expiration);
+    json(response, HttpResponseStatus.OK, new ConsolePresignedUrl(url, method, signed,
+        signed ? expiration.getSeconds() : null, signed ? now.plus(expiration).toString() : null));
+  }
+
+  /**
+   * The endpoint that the page reached this service at: the host it addressed and the scheme it arrived by, since a
+   * presigned URL signs its host, and the browser that the page runs in is the one that reaches it.
+   */
+  private String endpoint(HttpRequest request) {
+    String host = request.header(HttpHeaderNames.HOST.toString())
+        .map(String::trim)
+        .filter(value -> HOST.matcher(value).matches())
+        .orElseThrow(() -> new IllegalArgumentException("The request names no host to sign a URL for."));
+    String scheme = ConnectionSchemes.of(request)
+        .orElse(config != null && config.tlsEnabled() ? ConnectionSchemes.HTTPS : ConnectionSchemes.HTTP);
+    return scheme + "://" + host;
   }
 
   /**
@@ -682,6 +776,19 @@ class ConsoleController implements HttpRequestHandler {
    * @param etag its entity tag.
    */
   private record ConsoleObject(String key, long size, @Nullable String lastModified, @Nullable String etag) {
+  }
+
+  /**
+   * A presigned URL of an object.
+   *
+   * @param url the URL.
+   * @param method the HTTP method that it is signed for.
+   * @param signed whether it is signed; a service without credentials hands out the plain URL of the object.
+   * @param expiresIn how many seconds it is valid for; {@code null} if it isn't signed, which doesn't expire.
+   * @param expiresAt when it expires, as an ISO 8601 instant; {@code null} if it isn't signed.
+   */
+  private record ConsolePresignedUrl(String url, String method, boolean signed, @Nullable Long expiresIn,
+                                     @Nullable String expiresAt) {
   }
 
   /**
