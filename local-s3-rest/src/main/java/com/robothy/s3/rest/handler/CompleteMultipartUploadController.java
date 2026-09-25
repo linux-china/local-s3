@@ -5,6 +5,8 @@ import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import com.robothy.s3.datatypes.enums.ChecksumType;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.model.request.CompletedPart;
 import java.util.EnumMap;
 import java.util.Map;
@@ -59,6 +61,11 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     CompleteMultipartUploadAns completeMultipartUploadAns;
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       CompleteMultipartUpload completeMultipartUpload = xmlMapper.readValue(in, CompleteMultipartUpload.class);
+      // S3 rejects a request that lists no part as malformed XML.
+      if (completeMultipartUpload == null || completeMultipartUpload.getParts() == null
+          || completeMultipartUpload.getParts().isEmpty()) {
+        throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
+      }
       List<CompleteMultipartUploadPartOption> parts = completeMultipartUpload.getParts().stream().map(part -> CompleteMultipartUploadPartOption.builder()
                   .etag(part.getEtag())
                   .partNumber(part.getPartNumber())

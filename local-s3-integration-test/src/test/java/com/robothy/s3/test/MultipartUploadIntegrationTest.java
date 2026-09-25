@@ -58,6 +58,17 @@ public class MultipartUploadIntegrationTest {
 
   @Test
   @LocalS3
+  void completeMultipartUploadWithoutParts(S3Client s3) {
+    s3.createBucket(b -> b.bucket("empty-multipart"));
+    String uploadId = s3.createMultipartUpload(b -> b.bucket("empty-multipart").key("a.txt")).uploadId();
+    S3Exception e = assertThrows(S3Exception.class, () -> s3.completeMultipartUpload(b ->
+        b.bucket("empty-multipart").key("a.txt").uploadId(uploadId)));
+    assertEquals(400, e.statusCode());
+    assertEquals("MalformedXML", e.awsErrorDetails().errorCode());
+  }
+
+  @Test
+  @LocalS3
   void testAbortMultipartUpload(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(b -> b.bucket(bucketName));
