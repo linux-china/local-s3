@@ -8,6 +8,7 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 - S3 API 兼容性：兼容核心 API，对一些未必要真的实现，如加密等，要做到让客户端的逻辑能跑通，不影响正常的功能
 - Iceberg REST Catalog: 方便 Iceberg 对接
 - S3 Tables API: AWS 托管 Iceberg 的入口，每个 table bucket 同时以 Iceberg REST catalog 形式提供（`s3tables` 签名作用域路由，未签名客户端走 `/s3tables` 前缀）
+- 内置 Spring Boot Starter 支持：local-s3-spring-boot-starter，请忽略 Spring Boot 3 和 Netty 4.2的兼容问题，Spring Boot 能够保证兼容。
 
 主要使用场景：
 
