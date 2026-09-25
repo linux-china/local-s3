@@ -446,8 +446,8 @@ class AppTest {
 ```
 
 The attributes of `@LocalS3` configure the service like the builder does: `port`, `mode`, `dataPath` or
-`dataPathSupplier`, `buckets`, `initialDataCacheEnabled`, `compositeMultipartEtags`, `virtualHostDomains`, and
-`accessKey` with `secretKey`.
+`dataPathSupplier`, `buckets`, `initialDataCacheEnabled`, `maxInMemoryBytes` (e.g. `"512m"`),
+`compositeMultipartEtags`, `virtualHostDomains`, and `accessKey` with `secretKey`.
 
 ### Signed requests
 

@@ -106,6 +106,16 @@ public @interface LocalS3 {
   boolean initialDataCacheEnabled() default true;
 
   /**
+   * Set the max heap that the objects and parts stored in an {@code IN_MEMORY} service take, as a number of bytes with
+   * an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}. An upload or a copy beyond it is answered
+   * with {@code 507 InsufficientStorage} instead of running the JVM out of heap. The initial data of
+   * {@linkplain #dataPath()} doesn't count. The default, the empty string, is half the max heap.
+   *
+   * @return the max number of bytes; empty for the default.
+   */
+  String maxInMemoryBytes() default "";
+
+  /**
    * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an object
    * uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by {@code -} and
    * the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The {@code -<parts>} suffix is what

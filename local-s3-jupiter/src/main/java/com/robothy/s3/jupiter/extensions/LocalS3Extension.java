@@ -2,6 +2,7 @@ package com.robothy.s3.jupiter.extensions;
 
 import com.robothy.s3.jupiter.LocalS3;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
+import com.robothy.s3.rest.LocalS3Environment;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Optional;
@@ -125,6 +126,10 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     // The data path supplier may return null.
     if (dataPath != null && !dataPath.isBlank()) {
       builder.dataPath(dataPath);
+    }
+    if (!s3Config.maxInMemoryBytes().isBlank()) {
+      long maxInMemoryBytes = LocalS3Environment.parseMaxInMemoryBytes(s3Config.maxInMemoryBytes());
+      builder.storage(storage -> storage.maxInMemoryBytes(maxInMemoryBytes));
     }
     if (verifiesSignatures(s3Config)) {
       builder.credentials(s3Config.accessKey(), s3Config.secretKey());

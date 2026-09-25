@@ -211,8 +211,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 
 + **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,
-  `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`) and `local-s3.in-memory.max-size` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
-  heap by default. An upload beyond it is answered with `507 InsufficientStorage`, whose message suggests the
+  `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`), `local-s3.in-memory.max-size` and `@LocalS3(maxInMemoryBytes)` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
+  heap by default. An upload or a copy beyond it is answered with `507 InsufficientStorage`, whose message suggests the
   `PERSISTENCE` mode, instead of an `OutOfMemoryError` that takes the embedding application or IDE down.
 + **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `LOCAL_S3_ACCESS_KEY_ID` /
   `LOCAL_S3_SECRET_ACCESS_KEY` and `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of

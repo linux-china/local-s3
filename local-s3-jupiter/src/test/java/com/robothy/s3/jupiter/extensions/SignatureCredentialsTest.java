@@ -119,6 +119,11 @@ class SignatureCredentialsTest {
       }
 
       @Override
+      public String maxInMemoryBytes() {
+        return defaults.maxInMemoryBytes();
+      }
+
+      @Override
       public boolean compositeMultipartEtags() {
         return defaults.compositeMultipartEtags();
       }

@@ -323,9 +323,14 @@ public final class LocalS3Environment {
   }
 
   /**
-   * Parse a positive number of bytes with an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}.
+   * Parse a positive number of bytes with an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}, as
+   * {@linkplain #LOCAL_S3_IN_MEMORY_MAX_BYTES} takes it.
+   *
+   * @param bytes the number of bytes, e.g. {@code 536870912} or {@code 512m}.
+   * @return the number of bytes, positive.
+   * @throws IllegalArgumentException if the value isn't a positive number of bytes.
    */
-  static long parseMaxInMemoryBytes(String bytes) {
+  public static long parseMaxInMemoryBytes(String bytes) {
     String value = bytes.trim().toLowerCase(Locale.ROOT);
     long multiplier = switch (value.isEmpty() ? ' ' : value.charAt(value.length() - 1)) {
       case 'k' -> 1024L;
