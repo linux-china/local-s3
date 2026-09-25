@@ -49,6 +49,8 @@ dependencies {
         exclude group: 'software.amazon.awssdk', module: 'bundle'
     }
     testImplementation(libs.awssdkS3TransferManager)
+    // The CRT-based S3 client, for CrtClientIntegrationTest.
+    testImplementation(libs.awsCrt)
     testRuntimeOnly(libs.logbackClassic)
 }
 

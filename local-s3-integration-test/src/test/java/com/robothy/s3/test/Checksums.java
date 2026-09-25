@@ -18,7 +18,11 @@ final class Checksums {
   }
 
   static String crc32(String content) {
-    return crc(new CRC32(), bytes(content), 4);
+    return crc32(bytes(content));
+  }
+
+  static String crc32(byte[] content) {
+    return crc(new CRC32(), content, 4);
   }
 
   static String crc32c(String content) {
@@ -26,7 +30,11 @@ final class Checksums {
   }
 
   static String crc64Nvme(String content) {
-    return crc(new Crc64Nvme(), bytes(content), 8);
+    return crc64Nvme(bytes(content));
+  }
+
+  static String crc64Nvme(byte[] content) {
+    return crc(new Crc64Nvme(), content, 8);
   }
 
   static String sha1(String content) {

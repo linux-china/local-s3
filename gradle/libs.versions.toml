@@ -28,6 +28,8 @@ hadoop="3.5.0"
 delta="4.4.0"
 assertj="3.27.7"
 s3EncryptionClient="4.0.2"
+# The version of aws-crt that the AWS SDK above is built against, see awscrt.version in its aws-sdk-java-pom.
+awsCrt="0.48.4"
 
 [libraries]
 logbackClassic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
@@ -93,6 +95,8 @@ hadoopClientRuntime = { group = "org.apache.hadoop", name = "hadoop-client-runti
 # software.amazon.awssdk:bundle, which the build excludes for the modules S3A uses, at the version of the SDK here.
 hadoopAws = { group = "org.apache.hadoop", name = "hadoop-aws", version.ref = "hadoop" }
 awssdkS3TransferManager = { group = "software.amazon.awssdk", name = "s3-transfer-manager", version.ref = "awssdkS3" }
+# The AWS Common Runtime, which S3AsyncClient.crtBuilder() builds its client on.
+awsCrt = { group = "software.amazon.awssdk.crt", name = "aws-crt", version.ref = "awsCrt" }
 springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
 springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
 springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }
