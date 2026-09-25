@@ -1,9 +1,17 @@
 package com.robothy.s3.core.event;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A change of a bucket or of an object that a service committed.
+ *
+ * <p>Two changes are equal when they change the same thing in the same way: {@code eventTime} and {@code sequencer}
+ * tell apart when the change was made, and are not compared, so that a test may compare a received change to an
+ * expected one.
  *
  * @param type what changed.
  * @param operation the S3 operation that made the change, e.g. {@code PutObject}. An operation that is made of others
@@ -22,14 +30,38 @@ import java.util.Objects;
  *     {@code null} for the other changes.
  * @param deleteMarker whether the deletion created a delete marker instead of removing a version.
  * @param uploadId the ID of the aborted multipart upload; {@code null} for the other changes.
+ * @param eventTime when the change was made.
+ * @param sequencer the order of the change among the changes of the service, as the {@code sequencer} of an Amazon S3
+ *     event notification: a hexadecimal string of 16 digits, so that the later of two changes of a key has the greater
+ *     sequencer, compared as strings.
+ *
+ * @see #toS3EventJson()
  */
 public record S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
-                       String versionId, Long size, String etag, boolean deleteMarker, String uploadId) {
+                       String versionId, Long size, String etag, boolean deleteMarker, String uploadId,
+                       Instant eventTime, String sequencer) {
+
+  /**
+   * The next sequencer, starting from the time the class was loaded, so that the sequencers of a service that is
+   * restarted on the same data directory go on increasing.
+   */
+  private static final AtomicLong NEXT_SEQUENCER = new AtomicLong(System.currentTimeMillis() << 16);
 
   public S3Change {
     Objects.requireNonNull(type, "type");
     Objects.requireNonNull(operation, "operation");
     Objects.requireNonNull(bucketName, "bucketName");
+    Objects.requireNonNull(eventTime, "eventTime");
+    Objects.requireNonNull(sequencer, "sequencer");
+  }
+
+  /**
+   * A change made now, with the next sequencer.
+   */
+  public S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
+                  String versionId, Long size, String etag, boolean deleteMarker, String uploadId) {
+    this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId, Instant.now(),
+        String.format("%016X", NEXT_SEQUENCER.getAndIncrement()));
   }
 
   public static S3Change bucketCreated(String operation, String bucketName, String bucketRegion) {
@@ -71,7 +103,28 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
    * @return a change that names {@code operation}.
    */
   public S3Change withOperation(String operation) {
-    return new S3Change(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId);
+    return new S3Change(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId,
+        eventTime, sequencer);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    return o instanceof S3Change other
+        && type == other.type
+        && deleteMarker == other.deleteMarker
+        && operation.equals(other.operation)
+        && bucketName.equals(other.bucketName)
+        && Objects.equals(bucketRegion, other.bucketRegion)
+        && Objects.equals(key, other.key)
+        && Objects.equals(versionId, other.versionId)
+        && Objects.equals(size, other.size)
+        && Objects.equals(etag, other.etag)
+        && Objects.equals(uploadId, other.uploadId);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId);
   }
 
   /**
@@ -85,6 +138,31 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
     return s3EventName(type, operation, deleteMarker);
   }
 
+  /**
+   * The record of this change in an Amazon S3 event notification, see {@linkplain S3EventNotification#toRecord}.
+   *
+   * @return the record.
+   * @throws IllegalStateException if Amazon S3 doesn't notify of such a change, see {@linkplain #s3EventName()}.
+   */
+  public ObjectNode toS3EventRecord() {
+    return S3EventNotification.toRecord(this, null);
+  }
+
+  /**
+   * The <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html">Amazon S3
+   * event notification</a> of this change, {@code {"Records":[...]}}, as the JSON that Amazon S3 would post, e.g. to
+   * compare in a test, or to send from a webhook.
+   *
+   * @return the JSON of the notification.
+   * @throws IllegalStateException if Amazon S3 doesn't notify of such a change, see {@linkplain #s3EventName()}.
+   * @see S3EventNotification
+   */
+  public String toS3EventJson() {
+    if (!S3EventNotification.isNotifiable(this)) {
+      throw new IllegalStateException("Amazon S3 doesn't notify of " + type + ".");
+    }
+    return S3EventNotification.toJson(List.of(this), null);
+  }
 
   public String getObjectS3Url() {
     return "s3://" + bucketName + "/" + key;

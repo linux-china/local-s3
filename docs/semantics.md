@@ -579,6 +579,36 @@ doesn't notify of.
 Only a change of a bucket leaves `key()` `null`, which tells the two apart. `versionId()` is `null` if the bucket has
 never been versioned.
 
+Every change also carries `eventTime()` and `sequencer()`, a hexadecimal string of 16 digits that increases with every
+change, so the later of two changes of a key has the greater sequencer, compared as strings. Two changes are `equals`
+when they change the same thing in the same way: `eventTime()` and `sequencer()` are not compared, so a test can compare
+a received change to `S3Change.objectVersion(...)` and the like.
+
+### Amazon S3 event notification JSON
+
+`toS3EventJson()` maps a change to the
+[event notification](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html) that
+Amazon S3 would send, `{"Records":[{...}]}` with `eventVersion` `2.1`, so a test can assert on the structure that a
+consumer of Amazon S3, e.g. a Lambda handler, reads, and a future destination such as a webhook only has to send it:
+
+```json
+{"Records":[{"eventVersion":"2.1","eventSource":"aws:s3","awsRegion":"us-east-1",
+  "eventTime":"2026-09-25T08:30:00.123Z","eventName":"ObjectCreated:Put",
+  "userIdentity":{"principalId":"LocalS3"},"requestParameters":{"sourceIPAddress":"127.0.0.1"},
+  "responseElements":{"x-amz-request-id":"0199...","x-amz-id-2":"0199..."},
+  "s3":{"s3SchemaVersion":"1.0",
+    "bucket":{"name":"photos","ownerIdentity":{"principalId":"LocalS3"},"arn":"arn:aws:s3:::photos"},
+    "object":{"key":"2026/cat+1.jpg","size":5,"eTag":"...","versionId":"...","sequencer":"0199..."}}}]}
+```
+
+As in Amazon S3, `eventName` has no `s3:` prefix, the key is URL-encoded with spaces as `+`, and `size`, `eTag` and
+`versionId` are left out when the change has none. The values LocalS3 doesn't know are fixed: the principals are
+`LocalS3`, the source IP is `127.0.0.1`, the request IDs are the sequencer, and `awsRegion` of an object change is
+`us-east-1`. `toS3EventJson()` throws `IllegalStateException` for a change whose `s3EventName()` is `null`.
+`S3EventNotification` has the building blocks: `toRecord(change, configurationId)` for one record as an `ObjectNode`,
+and `toJson(changes, configurationId)` for a notification of several changes, which skips those Amazon S3 doesn't
+notify of.
+
 By default, the listeners run **synchronously on the thread that made the change**, so the change of a request is
 delivered before the S3 response is sent. With an executor, `events(events -> events.executor(...))`, changes are
 delivered asynchronously, so that slow listeners don't hold up request handling; a single-threaded executor keeps the
