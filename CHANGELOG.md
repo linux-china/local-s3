@@ -330,6 +330,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + **Docker image**: a `HEALTHCHECK`, `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`, and a non-root user.
 + **JUnit 5**: `@LocalS3` attributes `buckets`, `compositeMultipartEtags`, `virtualHostDomains`, `accessKey` and
   `secretKey`; `@Nested` classes get the service of their enclosing class, and services work with parallel tests.
+  Besides `S3Client`, `S3VectorsClient`, `S3TablesClient` and `LocalS3Endpoint`, `@LocalS3` injects the clients that
+  the Spring Boot starter defines, `S3AsyncClient`, `S3Presigner` and, with `s3-transfer-manager`, `S3TransferManager`,
+  and the `LocalS3` service itself, for `reset()`, `applyLifecycle(...)` and change listeners in tests.
++ **[Deployment](docs/deployment.md#opening-a-large-data-path)** gives the heap that the keys of a `PERSISTENCE` data
+  path take: about 200–300 MB per million keys.
 + `LocalS3` is `AutoCloseable`.
 + `QueryVectors` returns the `distanceMetric` of the index.
 + **[Choosing an S3 mock](docs/comparison.md)**, a selection page: where LocalS3 sits next to Adobe S3Mock, s3proxy,

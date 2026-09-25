@@ -11,6 +11,8 @@ dependencies {
     api(libs.awssdkS3)
     api(libs.awssdkS3vectors)
     api(libs.awssdkS3tables)
+    // Optional: the injected S3TransferManager, which the test brings when it uses one.
+    compileOnly(libs.awssdkS3TransferManager)
 
     // The Netty modules of the netty-nio-client of the AWS SDK at LocalS3's version, nearer to a Maven consumer than
     // the ones of the AWS SDK; see the nettyOfAwsSdk bundle in gradle/libs.versions.toml.
@@ -24,4 +26,5 @@ dependencies {
     testImplementation(libs.junitPlatformLauncher)
     // A logging backend for the tests of this module only; users choose their own.
     testRuntimeOnly(libs.logbackClassic)
+    testImplementation(libs.awssdkS3TransferManager)
 }

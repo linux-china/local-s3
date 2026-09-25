@@ -2,9 +2,13 @@ package com.robothy.s3.jupiter;
 
 import com.robothy.s3.jupiter.extensions.LocalS3EndpointResolver;
 import com.robothy.s3.jupiter.extensions.LocalS3Extension;
+import com.robothy.s3.jupiter.extensions.LocalS3ServiceResolver;
 import com.robothy.s3.jupiter.extensions.LocalS3TablesClientResolver;
 import com.robothy.s3.jupiter.extensions.LocalS3VectorsClientResolver;
+import com.robothy.s3.jupiter.extensions.S3AsyncClientResolver;
 import com.robothy.s3.jupiter.extensions.S3ClientResolver;
+import com.robothy.s3.jupiter.extensions.S3PresignerResolver;
+import com.robothy.s3.jupiter.extensions.S3TransferManagerResolver;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.lang.annotation.ElementType;
@@ -12,7 +16,10 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.junit.jupiter.api.extension.ExtendWith;
+import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3tables.S3TablesClient;
 import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
 
 /**
@@ -21,10 +28,17 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
  * the following parameter types in test methods.
  *
  * <ul>
- *   <li>{@linkplain S3Client}</li>
- *   <li>{@linkplain S3VectorsClient}</li>
+ *   <li>{@linkplain S3Client}, {@linkplain S3AsyncClient} and {@linkplain S3Presigner}</li>
+ *   <li>{@code S3TransferManager}, when the test brings {@code software.amazon.awssdk:s3-transfer-manager}</li>
+ *   <li>{@linkplain S3VectorsClient} and {@linkplain S3TablesClient}</li>
  *   <li>{@linkplain LocalS3Endpoint}</li>
+ *   <li>{@linkplain com.robothy.s3.rest.LocalS3}, the service itself, e.g. to {@code reset()} it between tests,
+ *   {@code applyLifecycle(Instant)}, or register an {@code S3ChangeListener} with
+ *   {@code getS3Manager().addChangeListener(...)}. The extension shuts it down; a test must not.</li>
  * </ul>
+ *
+ * <p>The clients with threads of their own, i.e. the {@code S3AsyncClient}, the {@code S3Presigner} and the
+ * {@code S3TransferManager}, are closed when the context they were injected into ends.
  *
  * <p>Signature verification is off unless {@linkplain #accessKey()} and {@linkplain #secretKey()} are set,
  * which makes the service reject a request that isn't signed with them and gives the injected clients those
@@ -51,9 +65,13 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
 @Retention(RetentionPolicy.RUNTIME)
 @ExtendWith(LocalS3Extension.class)
 @ExtendWith(S3ClientResolver.class)
+@ExtendWith(S3AsyncClientResolver.class)
+@ExtendWith(S3PresignerResolver.class)
+@ExtendWith(S3TransferManagerResolver.class)
 @ExtendWith(LocalS3VectorsClientResolver.class)
 @ExtendWith(LocalS3TablesClientResolver.class)
 @ExtendWith(LocalS3EndpointResolver.class)
+@ExtendWith(LocalS3ServiceResolver.class)
 public @interface LocalS3 {
 
   /**

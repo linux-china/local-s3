@@ -14,6 +14,9 @@ import java.util.Objects;
 
 public abstract class AbstractLocalS3ParameterResolver implements ParameterResolver {
 
+  private static final ExtensionContext.Namespace NAMESPACE =
+      ExtensionContext.Namespace.create(AbstractLocalS3ParameterResolver.class);
+
   @Override
   public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext)
       throws ParameterResolutionException {
@@ -29,6 +32,18 @@ public abstract class AbstractLocalS3ParameterResolver implements ParameterResol
     LocalS3Extension.Service service = LocalS3Extension.service(context).orElseThrow(() -> new IllegalStateException(
         "You need to add the @LocalS3 annotation on your test class or test method to inject a "
             + parameterContext.getParameter().getType().getSimpleName() + " instance."));
+    return resolve(service, context);
+  }
+
+  /**
+   * Resolve the parameter against a running service. The resolvers that need more than the port and the annotation,
+   * e.g. the service itself or a client that has to be closed, override it.
+   *
+   * @param service the service that serves the context.
+   * @param context the context of the parameter, whose store closes what {@linkplain #closeWith} is given.
+   * @return the resolved parameter.
+   */
+  Object resolve(LocalS3Extension.Service service, ExtensionContext context) {
     return resolve(service.port(), service.config());
   }
 
@@ -43,6 +58,20 @@ public abstract class AbstractLocalS3ParameterResolver implements ParameterResol
    * @return the resolved parameter.
    */
   protected abstract Object resolve(int port, LocalS3 s3Config);
+
+  /**
+   * Close a resource, e.g. a client with threads of its own, when the context of the parameter it was injected into
+   * ends, which JUnit 5.13 and later do with the values of the store that are {@linkplain AutoCloseable}.
+   *
+   * @param context the context of the parameter.
+   * @param resource the resource to close.
+   * @param <T> the type of the resource.
+   * @return the resource.
+   */
+  static <T extends AutoCloseable> T closeWith(ExtensionContext context, T resource) {
+    context.getStore(NAMESPACE).put(new Object(), resource);
+    return resource;
+  }
 
   /**
    * The credentials that a client of the service is given: the ones the service verifies signatures

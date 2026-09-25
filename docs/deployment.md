@@ -373,6 +373,20 @@ heap. Opening a data path therefore costs the keys it holds rather than every ve
 which is what lets a directory of a few hundred thousand data files, e.g. an Iceberg table, be served without loading
 it all first.
 
+The keys themselves stay in heap, one sorted map per bucket, whatever the size of the data path. Measured with a
+bucket of one million objects written by a `PERSISTENCE` service, as the heap of the service it was opened by again, after
+a full GC and before any object was read:
+
+| Keys | Key length | Heap for 1,000,000 keys | Per key |
+|---|---:|---:|---:|
+| `key-00000001` | 12 chars | ~170 MB | ~180 B |
+| `warehouse/db/events/data/event_date=2026-09-01/00000-5-3f2a9c1e-….parquet` (Iceberg-like) | ~100 chars | ~250 MB | ~260 B |
+
+That is roughly **170 bytes per key plus one byte per character of an ASCII key** (two per character for a key with
+characters beyond Latin-1), or **200–300 MB of heap per million keys** for typical keys. The metadata of the objects
+that are read comes on top, bounded as described next; give a JVM that opens a data path of several million keys a
+`-Xmx` that leaves room for both.
+
 `GET /_admin/stats` reports the boundary, so it can be seen rather than guessed:
 
 ```json

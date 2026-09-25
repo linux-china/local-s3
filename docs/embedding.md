@@ -396,9 +396,15 @@ starts a local service and its `S3Client` points at it.
 When you annotate test classes or test methods with it, the LocalS3 extension injects instances of the following
 parameter types into test methods and lifecycle methods:
 
-+ `S3Client`
-+ `S3VectorsClient`
++ `S3Client`, `S3AsyncClient` and `S3Presigner`
++ `S3TransferManager`, when the test brings `software.amazon.awssdk:s3-transfer-manager`
++ `S3VectorsClient` and `S3TablesClient`
 + `LocalS3Endpoint`
++ `com.robothy.s3.rest.LocalS3`, the service itself
+
+The `S3AsyncClient`, the `S3Presigner` and the `S3TransferManager` are closed when the context they were injected into
+ends. These are the clients that `local-s3-spring-boot-starter` defines as beans, so a test moves between the two
+without changing what it asks for.
 
 Example 1: inject an `S3Client` into a test method.
 
@@ -443,6 +449,32 @@ class AppTest {
   @AfterAll
   static void afterAll(S3Client client) {
     client.deleteBucket(b -> b.bucket("my-bucket"));
+  }
+}
+```
+
+Example 4: inject the service itself, to use what it offers besides the S3 API: `reset()` between the tests of a shared
+service, `applyLifecycle(Instant)` to expire objects at a later time, or an `S3ChangeListener` to observe the changes
+that the code under test makes. The service shares its simple name with the annotation, so one of the two is written
+with its package; the extension shuts the service down, so a test must not.
+
+```java
+@LocalS3(buckets = "my-bucket")
+class AppTest {
+
+  @AfterEach
+  void afterEach(com.robothy.s3.rest.LocalS3 localS3) {
+    localS3.reset();
+  }
+
+  @Test
+  void test(com.robothy.s3.rest.LocalS3 localS3, S3Client s3) {
+    List<S3Change> changes = new CopyOnWriteArrayList<>();
+    localS3.getS3Manager().addChangeListener(changes::add);
+    s3.putObject(b -> b.bucket("my-bucket").key("a.txt"), RequestBody.fromString("a"));
+    // changes holds the PutObject of a.txt
+
+    localS3.applyLifecycle(Instant.now().plus(Duration.ofDays(31)));
   }
 }
 ```
