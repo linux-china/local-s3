@@ -67,7 +67,7 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
         .indexName(indexMetadata.getIndexName())
         .indexArn(VectorIndex.generateArn(bucketName, indexMetadata.getIndexName()))
         .vectorBucketName(bucketName)
-        .creationTime(indexMetadata.getCreationDate())
+        .creationTime(indexMetadata.getCreationDate() / 1000)
         .build();
   }
 

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.jupiter.LocalS3;
 import io.github.robothy.s3.RealS3;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -80,6 +82,8 @@ public class ListVectorBucketsIntegrationTest {
         assertNotNull(bucket.vectorBucketName());
         assertNotNull(bucket.vectorBucketArn());
         assertNotNull(bucket.creationTime());
+        // A timestamp is sent in seconds; one sent in milliseconds is read as a date tens of thousands of years ahead.
+        assertTrue(Duration.between(bucket.creationTime(), Instant.now()).abs().toHours() < 24, "creationTime: " + bucket.creationTime());
         assertTrue(bucket.vectorBucketName().length() >= 3);
         assertTrue(bucket.vectorBucketName().length() <= 63);
         assertTrue(bucket.vectorBucketArn().startsWith("arn:aws:s3vectors"));

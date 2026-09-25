@@ -1,5 +1,6 @@
 package com.robothy.s3.datatypes.s3vectors;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.s3vectors.request.CreateIndexRequest;
 import java.time.Instant;
@@ -124,6 +125,7 @@ public class VectorIndex {
    * 
    * @param instant the creation time as Instant
    */
+  @JsonIgnore
   public void setCreationTimeFromInstant(Instant instant) {
     this.creationTime = instant != null ? instant.getEpochSecond() : null;
   }
@@ -133,6 +135,7 @@ public class VectorIndex {
    * 
    * @return the creation time as Instant, or null if not set
    */
+  @JsonIgnore
   public Instant getCreationTimeAsInstant() {
     return creationTime != null ? Instant.ofEpochSecond(creationTime) : null;
   }

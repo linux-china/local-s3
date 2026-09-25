@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.datatypes.s3vectors.request.CreateIndexRequest;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 class VectorIndexTest {
 
@@ -184,6 +185,18 @@ class VectorIndexTest {
     Instant result = index.getCreationTimeAsInstant();
     
     assertNull(result);
+  }
+
+  @Test
+  void json_leavesOutCreationTimeHelpers() {
+    VectorIndex index = new VectorIndex();
+    index.setCreationTime(1693776000L);
+
+    String json = JsonMapper.builder().build().writeValueAsString(index);
+
+    assertTrue(json.contains("\"creationTime\":1693776000"), json);
+    assertFalse(json.contains("creationTimeAsInstant"), json);
+    assertFalse(json.contains("creationTimeFromInstant"), json);
   }
 
   @Test

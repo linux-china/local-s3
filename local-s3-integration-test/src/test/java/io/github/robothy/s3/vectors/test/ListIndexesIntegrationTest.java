@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.jupiter.LocalS3;
 import io.github.robothy.s3.RealS3;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -110,6 +112,8 @@ public class ListIndexesIntegrationTest {
         assertNotNull(index.indexArn());
         assertNotNull(index.vectorBucketName());
         assertNotNull(index.creationTime());
+        // A timestamp is sent in seconds; one sent in milliseconds is read as a date tens of thousands of years ahead.
+        assertTrue(Duration.between(index.creationTime(), Instant.now()).abs().toHours() < 24, "creationTime: " + index.creationTime());
         assertEquals(bucketName, index.vectorBucketName());
         assertTrue(index.indexName().length() >= 3);
         assertTrue(index.indexName().length() <= 63);

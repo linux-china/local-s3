@@ -56,7 +56,7 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
     return VectorBucketSummary.builder()
         .vectorBucketName(bucketMetadata.getVectorBucketName())
         .vectorBucketArn(VectorBucket.generateArn(bucketMetadata.getVectorBucketName()))
-        .creationTime(bucketMetadata.getCreationDate())
+        .creationTime(bucketMetadata.getCreationDate() / 1000)
         .build();
   }
 
