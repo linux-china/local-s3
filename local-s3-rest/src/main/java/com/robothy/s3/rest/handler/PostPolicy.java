@@ -43,7 +43,8 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code file} and the fields whose names start with {@code x-ignore-}.
  *
  * <p>The errors are those of Amazon S3, including their messages, so that a form that fails here fails the same way
- * there: {@code InvalidPolicyDocument} for a document that isn't a policy, {@code AccessDenied} for an expired
+ * there: {@code InvalidPolicyDocument} for a document that isn't a policy, e.g. one with a condition object that
+ * doesn't name exactly one field, {@code AccessDenied} for an expired
  * policy, a failed condition or a field that no condition names, and {@code EntityTooSmall} or
  * {@code EntityTooLarge} for a file outside of the {@code content-length-range}.
  */
@@ -217,6 +218,10 @@ final class PostPolicy {
 
   private static void validateCondition(JsonNode condition) {
     if (condition.isObject()) {
+      if (condition.size() != 1) {
+        throw invalidPolicy("Invalid Policy: Invalid Simple-Condition: Simple-Conditions must have exactly one "
+            + "property specified.");
+      }
       for (Map.Entry<String, JsonNode> entry : condition.properties()) {
         if (!entry.getValue().isValueNode()) {
           throw invalidCondition(condition);

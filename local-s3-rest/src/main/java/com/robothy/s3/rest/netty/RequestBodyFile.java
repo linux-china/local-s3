@@ -12,6 +12,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -33,6 +34,11 @@ import org.slf4j.LoggerFactory;
  * <p>The bytes that are queued but not written yet are bounded by the receiver: {@linkplain #write(ByteBuf)} reports
  * when they exceed {@value #HIGH_WATER_MARK} bytes, and the receiver then stops reading the connection until
  * {@linkplain Listener#drained()} reports that they dropped to {@value #LOW_WATER_MARK} bytes.
+ *
+ * <p>An {@code aws-chunked} body can be decoded while it is written, see {@linkplain AwsChunkedBodyDecoder}, so that the
+ * file holds the decoded content, which a storage can take over like the body of any other upload. A body that fails to
+ * decode, e.g. whose chunk signatures don't match, fails the file like a write does, with a
+ * {@linkplain RequestBodyRejection}.
  *
  * <p>The listener is called on the event loop, and not at all once the file is {@linkplain #discard() discarded}.
  */
@@ -97,6 +103,11 @@ final class RequestBodyFile {
    */
   private final long maxMappedBytes;
 
+  /**
+   * Decodes the {@code aws-chunked} body as it is written; {@code null} to write the body as it is received.
+   */
+  private final AwsChunkedBodyDecoder decoder;
+
   // Guarded by this.
 
   private final ArrayDeque<ByteBuf> queue = new ArrayDeque<>();
@@ -138,7 +149,22 @@ final class RequestBodyFile {
    * @param listener receives the events of the file.
    */
   RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener) {
-    this(executor, eventLoop, directory, listener, MAX_MAPPED_BYTES);
+    this(executor, eventLoop, directory, listener, null);
+  }
+
+  /**
+   * Create a body file, which is created on the disk once it is first written.
+   *
+   * @param executor runs the file operations.
+   * @param eventLoop the event loop of the connection, which the listener is called on.
+   * @param directory the directory of the file; {@code null} for the default temporary directory.
+   * @param listener receives the events of the file.
+   * @param decoder decodes the {@code aws-chunked} body as it is written, so that the file holds the decoded content;
+   *     {@code null} to write the body as it is received.
+   */
+  RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
+                  AwsChunkedBodyDecoder decoder) {
+    this(executor, eventLoop, directory, listener, MAX_MAPPED_BYTES, decoder);
   }
 
   /**
@@ -153,6 +179,11 @@ final class RequestBodyFile {
    */
   RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
                   long maxMappedBytes) {
+    this(executor, eventLoop, directory, listener, maxMappedBytes, null);
+  }
+
+  private RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
+                          long maxMappedBytes, AwsChunkedBodyDecoder decoder) {
     if (maxMappedBytes < 0 || maxMappedBytes > MAX_MAPPED_BYTES) {
       throw new IllegalArgumentException("maxMappedBytes must be between 0 and " + MAX_MAPPED_BYTES + ".");
     }
@@ -161,6 +192,7 @@ final class RequestBodyFile {
     this.eventLoop = Objects.requireNonNull(eventLoop);
     this.directory = directory;
     this.listener = Objects.requireNonNull(listener);
+    this.decoder = decoder;
   }
 
   /**
@@ -337,6 +369,28 @@ final class RequestBodyFile {
 
   private void writeBatch(ByteBuf[] batch, long batchBytes) throws IOException {
     open();
+    if (decoder == null) {
+      write(batch, batchBytes);
+      return;
+    }
+    List<ByteBuf> decoded = new ArrayList<>();
+    try {
+      long decodedBytes = 0;
+      for (ByteBuf data : batch) {
+        decoder.decode(data, decoded);
+      }
+      for (ByteBuf data : decoded) {
+        decodedBytes += data.readableBytes();
+      }
+      write(decoded.toArray(new ByteBuf[0]), decodedBytes);
+    } finally {
+      for (ByteBuf data : decoded) {
+        data.release();
+      }
+    }
+  }
+
+  private void write(ByteBuf[] batch, long batchBytes) throws IOException {
     List<ByteBuffer> buffers = new ArrayList<>(batch.length);
     for (ByteBuf data : batch) {
       Collections.addAll(buffers, data.nioBuffers());
@@ -356,10 +410,17 @@ final class RequestBodyFile {
   private void finish() {
     ByteBuf body;
     try {
+      Map<String, String> trailer = decoder == null ? null : decoder.finish();
       open();
-      body = writtenBytes > maxMappedBytes
-          ? new FileBodyByteBuf(file, writtenBytes)
-          : MappedFileByteBuf.map(channel, file, writtenBytes);
+      if (writtenBytes > maxMappedBytes) {
+        FileBodyByteBuf fileBody = new FileBodyByteBuf(file, writtenBytes);
+        fileBody.awsChunkedTrailer(trailer);
+        body = fileBody;
+      } else {
+        MappedFileByteBuf mapped = MappedFileByteBuf.map(channel, file, writtenBytes);
+        mapped.awsChunkedTrailer(trailer);
+        body = mapped;
+      }
       // The mapping outlives the channel.
       channel.close();
       channel = null;

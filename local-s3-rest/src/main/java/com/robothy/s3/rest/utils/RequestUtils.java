@@ -40,6 +40,15 @@ public class RequestUtils {
     DecodedAmzRequestBody result = new DecodedAmzRequestBody();
 
     String amzContentSha256 = request.header(AmzHeaderNames.X_AMZ_CONTENT_SHA256).orElse("").trim();
+    Optional<Map<String, String>> decodedTrailer = RequestBodies.awsChunkedTrailer(request.getBody());
+    if (decodedTrailer.isPresent()) {
+      // An aws-chunked body that was decoded while it was received: its file holds the decoded content.
+      RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
+      result.setDecodedBody(new DecodedAwsChunkedInputStream(RequestBodies.inputStream(request.getBody()),
+          decodedTrailer.get()));
+      result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
+      return result;
+    }
     switch (amzContentSha256) {
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD:
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER:

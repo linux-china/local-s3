@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
+import com.robothy.s3.rest.constants.AmzHeaderValues;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import io.netty.buffer.ByteBuf;
@@ -67,6 +68,13 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * The files are created in the configured directory, e.g. one on the file system of the storage, which then renames a
  * file into place, or in the default temporary directory.
  *
+ * <p>An {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded while it is written to
+ * its file, and the signatures of its chunks are verified along the way, see {@linkplain AwsChunkedBodyDecoder}; the
+ * file then holds the decoded content, which a storage takes over like the body of any other upload rather than
+ * decoding it into a second file. A body that fails to decode is answered with the S3 error of the failure, e.g.
+ * {@code SignatureDoesNotMatch}, and the connection is closed. A body that is buffered on the heap is decoded when it
+ * is read instead.
+ *
  * <p>The event loop never waits for the disk: a {@linkplain RequestBodyFile} writes the body on the body file executor,
  * and the event loop only queues its chunks. While more than {@value RequestBodyFile#HIGH_WATER_MARK} bytes wait to be
  * written, the connection isn't read, so that a client that sends faster than the disk writes neither fills the memory
@@ -104,6 +112,17 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    * The head of the current request, if the verifier accepted it; handed to the verifier with the complete request.
    */
   private HttpRequest verifiedHead;
+
+  /**
+   * Verifies the chunk signatures of the {@code aws-chunked} body of the current request while it is written to a file;
+   * {@code null} if the body is written as it is received.
+   */
+  private ChunkSignatures chunkSignatures;
+
+  /**
+   * The {@code x-amz-decoded-content-length} of the {@code aws-chunked} body of the current request.
+   */
+  private long decodedContentLength;
 
   /**
    * Buffers the body on the heap until it is written to {@link #bodyFile}.
@@ -337,6 +356,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   }
 
   private void bodyFileFailed(ChannelHandlerContext ctx, Throwable cause) {
+    if (cause instanceof RequestBodyRejection rejection) {
+      log.debug("Rejecting the body of a request on connection {}: {}", ctx.channel().id(), rejection.getMessage());
+      reject(ctx, rejection.errorCode(), rejection.getMessage());
+      return;
+    }
     log.warn("Failed to write the body of a request on connection {} to a temporary file.", ctx.channel().id(),
         cause);
     reject(ctx, S3ErrorCode.InternalError, S3ErrorCode.InternalError.description());
@@ -399,6 +423,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         return false;
       }
       verifiedHead = head;
+      decodedContentLength = awsChunkedDecodedLength(headers);
+      chunkSignatures = decodedContentLength < 0 ? null : headVerifier.chunkSignatures(head);
     }
 
     // No component limit: consolidating the components of a large body would copy it over and over.
@@ -414,6 +440,30 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     return true;
   }
 
+  /**
+   * The decoded length of a body that is {@code aws-chunked} encoded, in one of the formats that
+   * {@linkplain AwsChunkedBodyDecoder} decodes.
+   *
+   * @return the {@code x-amz-decoded-content-length}; {@code -1} if the body isn't encoded so, or the length is missing
+   *     or invalid, which the handler of the request then rejects.
+   */
+  private static long awsChunkedDecodedLength(Map<CharSequence, String> headers) {
+    String payload = headers.get(AmzHeaderNames.X_AMZ_CONTENT_SHA256);
+    boolean awsChunked = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payload)
+        || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payload)
+        || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD.equals(payload)
+        || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payload);
+    String length = headers.get(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH);
+    if (!awsChunked || length == null) {
+      return -1;
+    }
+    try {
+      return Math.max(Long.parseLong(length), -1);
+    } catch (NumberFormatException e) {
+      return -1;
+    }
+  }
+
   private static boolean hasBody(io.netty.handler.codec.http.HttpRequest request, long contentLength) {
     return contentLength > 0 || HttpUtil.isTransferEncodingChunked(request);
   }
@@ -422,6 +472,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    * Move the body buffered so far to a temporary file, to which the rest of the body is written.
    */
   private void writeBodyToFile(ChannelHandlerContext ctx) {
+    AwsChunkedBodyDecoder decoder = chunkSignatures == null ? null
+        : new AwsChunkedBodyDecoder(chunkSignatures, decodedContentLength);
     RequestBodyFile file = new RequestBodyFile(bodyFileExecutor, ctx.executor(), bodyFileDirectory,
         new RequestBodyFile.Listener() {
           @Override
@@ -438,7 +490,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
           public void failed(Throwable cause) {
             bodyFileFailed(ctx, cause);
           }
-        });
+        }, decoder);
     bodyFile = file;
     CompositeByteBuf buffered = body;
     body = null;
@@ -531,6 +583,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private void releaseBody(ChannelHandlerContext ctx) {
     builder = null;
     verifiedHead = null;
+    chunkSignatures = null;
     if (body != null) {
       body.release();
       body = null;

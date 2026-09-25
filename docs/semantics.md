@@ -165,9 +165,10 @@ can be debugged without setting up credentials.
 | The body is malformed, or has no `file` | `400 MalformedPOSTRequest`, `400 IncorrectNumberOfFilesInPostRequest` |
 | The fields before `file` exceed 20 KB | `400 MaxPostPreDataLengthExceededError` |
 | No `key` | `400 InvalidArgument` |
-| No policy or signature, on a service with credentials | `403 AccessDenied` |
+| No policy, on a service with credentials | `403 AccessDenied` |
+| A policy without a signature, on a service with credentials | `400 InvalidArgument`: `Bucket POST must contain a field named 'Signature'.` |
 | A wrong signature, or an unknown access key | `403 SignatureDoesNotMatch`, `403 InvalidAccessKeyId` |
-| The policy isn't base64, isn't JSON, lacks `expiration` or `conditions`, or has an unknown condition | `400 InvalidPolicyDocument` |
+| The policy isn't base64, isn't JSON, lacks `expiration` or `conditions`, has an unknown condition, or a condition object that doesn't name exactly one field, e.g. `{}` | `400 InvalidPolicyDocument` |
 | The policy expired | `403 AccessDenied`: `Invalid according to Policy: Policy expired.` |
 | A condition fails | `403 AccessDenied`: `Invalid according to Policy: Policy Condition failed: ["starts-with","$key","user/42/"]` |
 | A field that no condition names | `403 AccessDenied`: `Invalid according to Policy: Extra input fields: x-amz-meta-note` |
@@ -376,9 +377,9 @@ being deleted, for testing compliance code, e.g. that a retention is set on what
 + `PutObjectRetention`/`GetObjectRetention` and `PutObjectLegalHold`/`GetObjectLegalHold` address the current version,
   or the one of `versionId`. A version whose retention or legal hold was never set answers
   `404 NoSuchObjectLockConfiguration`.
-+ A retention that hasn't expired can be extended, and a `GOVERNANCE` one turned into a `COMPLIANCE` one; shortening,
-  removing or relaxing it answers `403 AccessDenied`, unless it is in `GOVERNANCE` mode and the request sends
-  `x-amz-bypass-governance-retention: true`.
++ A retention that hasn't expired can be extended in the same mode; shortening, removing it or changing its mode answers
+  `403 AccessDenied`, unless it is in `GOVERNANCE` mode and the request sends `x-amz-bypass-governance-retention: true`.
+  Like in Amazon S3, that includes turning a `GOVERNANCE` retention into a `COMPLIANCE` one.
 + Deleting a version for good, with `DeleteObject` or `DeleteObjects` and a `versionId`, answers `403 AccessDenied` while
   its legal hold is on, or its retention hasn't expired, unless the retention is in `GOVERNANCE` mode and the request
   bypasses it. A delete without a version ID still adds a delete marker, like in Amazon S3.

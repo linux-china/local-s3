@@ -254,6 +254,34 @@ class ListObjectsV2ServiceTest extends LocalS3ServiceTestBase {
         throw new AssertionError("The listing never ended: " + listed);
     }
 
+    /**
+     * The start-after of a request is echoed like Amazon S3 does: next to a continuation token, which the listing
+     * continues from instead, when it is whitespace alone, and URL encoded like the keys of a URL encoded listing.
+     */
+    @MethodSource("localS3Services")
+    @ParameterizedTest
+    void echoesTheStartAfter(BucketService bucketService, ObjectService objectService) {
+        String bucket = prepareKeys(bucketService, objectService, "bar", "baz", "foo", "quxx");
+
+        ListObjectsV2Ans first = objectService.listObjectsV2(bucket, null, null, null, false, 1, null, "bar");
+        assertEquals(List.of("baz"), first.getObjects().stream().map(S3Object::getKey).toList());
+        assertEquals("bar", first.getStartAfter());
+
+        String token = first.getNextContinuationToken().orElseThrow();
+        ListObjectsV2Ans second = objectService.listObjectsV2(bucket, token, null, null, false, 100, null, "bar");
+        assertEquals(List.of("foo", "quxx"), second.getObjects().stream().map(S3Object::getKey).toList());
+        assertEquals("bar", second.getStartAfter());
+
+        ListObjectsV2Ans newline = objectService.listObjectsV2(bucket, null, null, null, false, 100, null, "\n");
+        assertEquals("\n", newline.getStartAfter());
+        assertEquals(4, newline.getObjects().size());
+
+        assertEquals("%0A", objectService.listObjectsV2(bucket, null, null, "url", false, 100, null, "\n")
+            .getStartAfter());
+        assertNull(objectService.listObjectsV2(bucket, null, null, null, false, 100, null, "").getStartAfter());
+        assertNull(objectService.listObjectsV2(bucket, null, null, null, false, 100, null, null).getStartAfter());
+    }
+
     String prepareKeys(BucketService bucketService, ObjectService objectService, String... keys) {
         String bucket = "test-list-objects-v2" + UUID.randomUUID();
         bucketService.createBucket(bucket);

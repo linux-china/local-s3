@@ -5,6 +5,7 @@ import com.robothy.s3.core.model.answers.ListObjectsAns;
 import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.util.ContinuationTokenUtils;
+import com.robothy.s3.core.util.S3ObjectUtils;
 import java.util.Objects;
 import com.robothy.s3.core.util.Strings;
 
@@ -50,7 +51,10 @@ public interface ListObjectsV2Service extends ListObjectsService {
               .keyCount(listObjectsAns.getObjects().size() + listObjectsAns.getCommonPrefixes().size())
               .maxKeys(listObjectsAns.getMaxKeys())
               .prefix(listObjectsAns.getPrefix())
-              .startAfter(Strings.isBlank(startAfter) || Strings.isNotBlank(continuationToken) ? null : startAfter)
+              // Echoed like Amazon S3 does, also next to a continuation token, which the listing continues from
+              // instead, and also when it is whitespace alone, e.g. "\n"; encoded like the keys.
+              .startAfter(Objects.isNull(startAfter) || startAfter.isEmpty() ? null
+                  : Objects.isNull(encodingType) ? startAfter : S3ObjectUtils.urlEncodeEscapeSlash(startAfter))
               .objects(listObjectsAns.getObjects())
               .commonPrefixes(listObjectsAns.getCommonPrefixes())
               .nextContinuationToken(nextContinuationToken)

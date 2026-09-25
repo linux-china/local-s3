@@ -24,8 +24,8 @@ public class DecodedAmzRequestBody {
 
   /**
    * The temporary file that holds exactly the decoded body, which a storage may take over instead of copying the body;
-   * {@code null} if the body is buffered on the heap, or is {@code aws-chunked} encoded, so that the file holds the
-   * encoded body.
+   * {@code null} if the body is buffered on the heap, or is {@code aws-chunked} encoded and wasn't decoded while it was
+   * received, so that the file holds the encoded body.
    */
   private Path bodyFile;
 
@@ -33,7 +33,8 @@ public class DecodedAmzRequestBody {
    * A trailing header of an {@code aws-chunked} body, which is only known once the body is read to its end.
    *
    * @param name the name of the header, in lower case.
-   * @return the value of the header; empty if the body has no such trailing header, or isn't read to its end yet.
+   * @return the value of the header; empty if the body has no such trailing header, or isn't read to its end yet,
+   *     unless it was decoded while it was received, whose trailing headers are known before it is read.
    */
   public Optional<String> trailingHeader(String name) {
     return decodedBody instanceof TrailingHeaders trailing

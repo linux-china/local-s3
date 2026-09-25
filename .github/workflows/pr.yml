@@ -100,3 +100,8 @@ jobs:
 
       - name: ceph/s3-tests
         run: ceph-s3-tests/run.sh
+
+      - name: Known failures of ceph/s3-tests
+        # The known failures by category, and the ones to fix or to verify against Amazon S3.
+        if: always()
+        run: python3 ceph-s3-tests/known_failures.py >> "$GITHUB_STEP_SUMMARY"

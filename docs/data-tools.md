@@ -176,7 +176,20 @@ Small inserts are kept in the catalog instead of a Parquet file; set `DATA_INLIN
 to see every change as an object on LocalS3. Merging skips files that have deletes, so run
 `ducklake_rewrite_data_files` before `ducklake_merge_adjacent_files` to compact a table after an `UPDATE` or a `DELETE`.
 
-`DuckLakeIntegrationTest` covers time travel, the deletion of the files of expired snapshots and encryption.
+With a PostgreSQL catalog, which several DuckDB processes can share, only the `ATTACH` changes:
+
+```sql
+INSTALL postgres;
+ATTACH 'ducklake:postgres:host=localhost dbname=lake user=postgres' AS lake
+    (DATA_PATH 's3://lake/data/', DATA_INLINING_ROW_LIMIT 100);
+-- Inlined inserts, updates and deletes are rows in PostgreSQL; this writes them to LocalS3 as Parquet files.
+CALL ducklake_flush_inlined_data('lake');
+```
+
+Until the flush, inlined changes, including deletes of rows that are already in files, don't reach LocalS3 at all.
+
+`DuckLakeIntegrationTest` covers time travel, the deletion of the files of expired snapshots and encryption;
+`DuckLakePostgresIntegrationTest` covers data inlining, flushing and compaction with a PostgreSQL catalog.
 
 ## The built-in Iceberg REST catalog
 

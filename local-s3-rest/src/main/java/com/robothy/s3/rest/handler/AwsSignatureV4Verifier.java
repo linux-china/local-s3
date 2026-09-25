@@ -7,6 +7,7 @@ import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.s3tables.S3TablesController;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
+import com.robothy.s3.rest.netty.ChunkSignatures;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.io.ByteArrayOutputStream;
@@ -270,6 +271,82 @@ final class AwsSignatureV4Verifier {
       boolean verified = verifyChunkSignatures(bytes, head.signingKey(), head.amzDate(), head.scope(),
           head.seedSignature(), chunkedWithTrailer, chunkedWithTrailer ? head.trailerHeaderNames() : null);
       return verified ? VerificationResult.success() : signatureMismatch();
+    }
+  }
+
+  /**
+   * Verify the chunk signatures of the {@code aws-chunked} body of a request whose head is verified while the body is
+   * received, rather than once it is, see {@linkplain ChunkSignatures}. The trailer is verified like
+   * {@linkplain #verifyPayload} does.
+   *
+   * @param head the verified head of the request.
+   * @return verifies the chunk signatures of the body, or nothing if the body isn't signed;
+   *     {@code null} if the signature of the head couldn't be verified before the body is received, so that the
+   *     whole request is verified once it is.
+   */
+  static ChunkSignatures chunkSignatures(VerifiedHead head) {
+    if (head.complete()) {
+      return ChunkSignatures.UNVERIFIED;
+    }
+    if (!head.signatureVerified()) {
+      return null;
+    }
+    boolean chunked = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(head.payloadHash());
+    boolean chunkedWithTrailer = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(head.payloadHash());
+    if (!chunked && !chunkedWithTrailer) {
+      return ChunkSignatures.UNVERIFIED;
+    }
+    return new ChainedChunkSignatures(head, chunkedWithTrailer);
+  }
+
+  /**
+   * Verifies the chunk signatures of a body one chunk at a time, each chained to the signature before it, starting
+   * from the seed signature of the head.
+   */
+  private static final class ChainedChunkSignatures implements ChunkSignatures {
+
+    private final VerifiedHead head;
+
+    private final boolean hasTrailer;
+
+    private String previousSignature;
+
+    ChainedChunkSignatures(VerifiedHead head, boolean hasTrailer) {
+      this.head = head;
+      this.hasTrailer = hasTrailer;
+      this.previousSignature = head.seedSignature();
+    }
+
+    @Override
+    public boolean verifyChunk(String signature, byte[] sha256) {
+      if (signature == null || !HEX_SHA256.matcher(signature).matches()) {
+        return false;
+      }
+      String chunkStringToSign = CHUNK_ALGORITHM + '\n' + head.amzDate() + '\n' + head.scope() + '\n'
+          + previousSignature + '\n' + EMPTY_SHA256 + '\n' + HexFormat.of().formatHex(sha256);
+      if (!secureEquals(signature(head.signingKey(), chunkStringToSign), signature)) {
+        return false;
+      }
+      previousSignature = signature;
+      return true;
+    }
+
+    @Override
+    public boolean verifyTrailer(List<String> lines) {
+      if (!hasTrailer) {
+        return lines.isEmpty();
+      }
+      Map<String, String> trailerHeaders = new HashMap<>();
+      for (String line : lines) {
+        int separator = line.indexOf(':');
+        if (separator <= 0) {
+          return false;
+        }
+        trailerHeaders.put(line.substring(0, separator).toLowerCase(Locale.ROOT),
+            normalizeHeaderValue(line.substring(separator + 1)));
+      }
+      return verifyTrailerSignature(trailerHeaders, head.signingKey(), head.amzDate(), head.scope(),
+          previousSignature, head.trailerHeaderNames());
     }
   }
 
@@ -752,10 +829,23 @@ final class AwsSignatureV4Verifier {
           normalizeHeaderValue(line.substring(separator + 1)));
       offset = lineEnd + 2;
     }
-    if (offset != end || trailerHeaderNames == null) {
+    if (offset != end) {
       return false;
     }
+    return verifyTrailerSignature(trailerHeaders, signingKey, amzDate, scope, previousSignature, trailerHeaderNames);
+  }
 
+  /**
+   * Verify the {@code x-amz-trailer-signature} of the trailing headers of a body, which covers the headers that
+   * {@code x-amz-trailer} names.
+   *
+   * @param trailerHeaders the trailing headers by their lower case names, with normalized values.
+   */
+  private static boolean verifyTrailerSignature(Map<String, String> trailerHeaders, byte[] signingKey,
+      String amzDate, String scope, String previousSignature, String trailerHeaderNames) {
+    if (trailerHeaderNames == null) {
+      return false;
+    }
     String trailerSignature = trailerHeaders.remove("x-amz-trailer-signature");
     if (trailerSignature == null || !HEX_SHA256.matcher(trailerSignature).matches()) {
       return false;
@@ -890,7 +980,11 @@ final class AwsSignatureV4Verifier {
     if (signatureV2.isPresent()) {
       return verifyPostPolicyV2(policy, signatureV2.get(), field);
     }
-    return VerificationResult.failure(S3ErrorCode.AccessDenied, S3ErrorCode.AccessDenied.description());
+    // A form with a policy but no signature is malformed, which Amazon S3 answers with 400, naming the field of the
+    // version of the signature that the other fields of the form are of.
+    boolean version4 = field.apply("x-amz-algorithm").isPresent() || field.apply("x-amz-credential").isPresent();
+    return postFieldInvalid("Bucket POST must contain a field named '" + (version4 ? "X-Amz-Signature" : "Signature")
+        + "'. If it is specified, please check the order of the fields.");
   }
 
   private VerificationResult verifyPostPolicyV4(String policy, String suppliedSignature,

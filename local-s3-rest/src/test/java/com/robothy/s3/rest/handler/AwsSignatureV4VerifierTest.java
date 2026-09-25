@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.handler.AwsSignatureV4Verifier.VerificationResult;
+import com.robothy.s3.rest.netty.ChunkSignatures;
 import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
@@ -24,6 +25,7 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -346,6 +348,55 @@ class AwsSignatureV4VerifierTest {
     tampered[88 + 65_538 + 86 + 10] = 'b';
     assertEquals(S3ErrorCode.SignatureDoesNotMatch,
         verifier.verifyBody(chunkedRequest(headers, path, tampered), head.verifiedHead()).errorCode());
+  }
+
+  /**
+   * The chunk signatures of the documented example, verified one chunk at a time while the body is received, each
+   * chained to the one before it.
+   */
+  @Test
+  void verifiesTheChunkSignaturesWhileTheBodyIsReceived() {
+    Map<CharSequence, String> headers = chunkedHeaders();
+    String path = "/examplebucket/chunkObject.txt";
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
+        .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
+        .headers(new HashMap<>(headers)).params(new HashMap<>()).build());
+    assertTrue(head.result().authenticated());
+
+    byte[] first = new byte[65_536];
+    Arrays.fill(first, (byte) 'a');
+    byte[] second = new byte[1_024];
+    Arrays.fill(second, (byte) 'a');
+    ChunkSignatures signatures = AwsSignatureV4Verifier.chunkSignatures(head.verifiedHead());
+    assertTrue(signatures.verifies());
+    assertTrue(signatures.verifyChunk("ad80c730a21e5b8d04586a2213dd63b9a0e99e0e2307b0ade35a65485a288648",
+        sha256(first)));
+    assertTrue(signatures.verifyChunk("0055627c9e194cb4542bae2aa5492e3c1575bbb81b612b7d234b86a503ef5497",
+        sha256(second)));
+    assertTrue(signatures.verifyChunk("b6c6ea8a5354eaf15b3cb7646744f4275b71ea724fed81ceb9323e279d449df9",
+        sha256(new byte[0])));
+    assertTrue(signatures.verifyTrailer(List.of()));
+    assertFalse(signatures.verifyTrailer(List.of("x-amz-checksum-crc32:AAAAAA==")),
+        "A body without a trailer has no trailing headers.");
+
+    ChunkSignatures tampered = AwsSignatureV4Verifier.chunkSignatures(head.verifiedHead());
+    assertTrue(tampered.verifyChunk("ad80c730a21e5b8d04586a2213dd63b9a0e99e0e2307b0ade35a65485a288648",
+        sha256(first)));
+    second[10] = 'b';
+    assertFalse(tampered.verifyChunk("0055627c9e194cb4542bae2aa5492e3c1575bbb81b612b7d234b86a503ef5497",
+        sha256(second)));
+    assertFalse(AwsSignatureV4Verifier.chunkSignatures(head.verifiedHead()).verifyChunk(null, sha256(first)));
+    // Out of order: the second signature is chained to the first one, not to the seed signature.
+    assertFalse(AwsSignatureV4Verifier.chunkSignatures(head.verifiedHead())
+        .verifyChunk("0055627c9e194cb4542bae2aa5492e3c1575bbb81b612b7d234b86a503ef5497", sha256(second)));
+  }
+
+  private static byte[] sha256(byte[] value) {
+    try {
+      return MessageDigest.getInstance("SHA-256").digest(value);
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   /**

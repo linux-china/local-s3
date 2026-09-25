@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -39,6 +40,23 @@ public final class RequestBodies {
     return body instanceof MappedFileByteBuf mapped
         && mapped.readerIndex() == 0 && mapped.readableBytes() == mapped.capacity()
         ? Optional.of(mapped.file())
+        : Optional.empty();
+  }
+
+  /**
+   * The trailing headers of an {@code aws-chunked} body that was decoded while it was received, into the file it is
+   * buffered in. Such a body, and its {@linkplain #file file}, hold the decoded content rather than the chunks that
+   * were received, and the signatures of its chunks were verified already.
+   *
+   * @param body the body of a request.
+   * @return the trailing headers by their lower case names, e.g. {@code x-amz-checksum-crc32}; empty if the body holds
+   *     the bytes as they were received.
+   */
+  public static Optional<Map<String, String>> awsChunkedTrailer(ByteBuf body) {
+    if (body instanceof FileBodyByteBuf fileBody) {
+      return Optional.ofNullable(fileBody.awsChunkedTrailer());
+    }
+    return body instanceof MappedFileByteBuf mapped ? Optional.ofNullable(mapped.awsChunkedTrailer())
         : Optional.empty();
   }
 

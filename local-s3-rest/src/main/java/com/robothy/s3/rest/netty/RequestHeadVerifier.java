@@ -35,6 +35,20 @@ public interface RequestHeadVerifier {
   }
 
   /**
+   * How the chunk signatures of the {@code aws-chunked} body of a request whose head was accepted are verified while
+   * the body is received, if the body is large enough to be buffered in a file. The file then holds the decoded body,
+   * see {@linkplain RequestBodies#awsChunkedTrailer}, whose chunk signatures the verifier needn't verify again. The
+   * default verifies none of them.
+   *
+   * @param head the head that {@linkplain #verifyHead} accepted.
+   * @return verifies the chunk signatures of the body; {@code null} to buffer the body as it is received, e.g. for a
+   *     verifier that verifies it once it is received.
+   */
+  default ChunkSignatures chunkSignatures(HttpRequest head) {
+    return ChunkSignatures.UNVERIFIED;
+  }
+
+  /**
    * Why a request is rejected.
    *
    * @param errorCode the S3 error to respond with.

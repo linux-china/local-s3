@@ -57,6 +57,39 @@ class LargeUploadTest {
   }
 
   /**
+   * An aws-chunked upload, which the AWS SDKs send by default over plain HTTP, is decoded while its body file is
+   * written, so that the file is renamed into place like the one of any other upload, and its trailing checksum is
+   * still verified.
+   */
+  @Test
+  void storesTheDecodedBodyFileOfAnAwsChunkedUpload(@TempDir Path dataPath) throws Exception {
+    LocalS3 localS3 = start(LocalS3Mode.PERSISTENCE, dataPath);
+    try {
+      byte[] content = randomBytes(200 * 1024);
+      HttpResponse<String> put = sendAwsChunked(localS3, "/bucket/chunked", content, crc32(content), content.length);
+      assertEquals(200, put.statusCode(), put.body());
+      assertEquals(crc32(content), put.headers().firstValue("x-amz-checksum-crc32").orElse(null));
+
+      assertArrayEquals(content, get(localS3, "/bucket/chunked", null).body());
+      Path storageDirectory = dataPath.resolve(LocalS3Manager.STORAGE_DIRECTORY);
+      assertEquals(1, countFiles(storageDirectory), "The object is stored once.");
+      assertEquals(0, countFiles(storageDirectory.resolve(LocalS3.REQUEST_BODY_DIRECTORY)),
+          "The body file was renamed into place.");
+
+      HttpResponse<String> badDigest = sendAwsChunked(localS3, "/bucket/bad-digest", content, crc32(new byte[1]),
+          content.length);
+      assertEquals(400, badDigest.statusCode(), badDigest.body());
+      HttpResponse<String> incomplete = sendAwsChunked(localS3, "/bucket/incomplete", content, crc32(content),
+          content.length + 1);
+      assertEquals(400, incomplete.statusCode(), incomplete.body());
+      assertTrue(incomplete.body().contains("IncompleteBody"), incomplete.body());
+      assertEquals(1, countFiles(storageDirectory), "Neither rejected upload leaves a file behind.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
    * The body file of an upload is written off the event loop; a request pipelined after the upload on the same
    * connection is still answered after it, and sees the uploaded object.
    */
@@ -156,6 +189,35 @@ class LargeUploadTest {
     return client.send(HttpRequest.newBuilder(uri(localS3, path))
         .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
         .build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  /**
+   * Upload content as an unsigned aws-chunked body, in chunks of 64 KiB, with a CRC32 checksum in its trailer.
+   */
+  private HttpResponse<String> sendAwsChunked(LocalS3 localS3, String path, byte[] content, String crc32,
+                                              long decodedLength) throws Exception {
+    java.io.ByteArrayOutputStream encoded = new java.io.ByteArrayOutputStream();
+    for (int from = 0; from < content.length; from += 64 * 1024) {
+      int size = Math.min(64 * 1024, content.length - from);
+      encoded.writeBytes((Integer.toHexString(size) + "\r\n").getBytes(StandardCharsets.US_ASCII));
+      encoded.write(content, from, size);
+      encoded.writeBytes("\r\n".getBytes(StandardCharsets.US_ASCII));
+    }
+    encoded.writeBytes(("0\r\nx-amz-checksum-crc32:" + crc32 + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+    return client.send(HttpRequest.newBuilder(uri(localS3, path))
+        .PUT(HttpRequest.BodyPublishers.ofByteArray(encoded.toByteArray()))
+        .header("Content-Encoding", "aws-chunked")
+        .header("x-amz-content-sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+        .header("x-amz-decoded-content-length", String.valueOf(decodedLength))
+        .header("x-amz-trailer", "x-amz-checksum-crc32")
+        .build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static String crc32(byte[] content) {
+    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+    crc.update(content);
+    return java.util.Base64.getEncoder().encodeToString(
+        java.nio.ByteBuffer.allocate(4).putInt((int) crc.getValue()).array());
   }
 
   private HttpResponse<byte[]> get(LocalS3 localS3, String path, String range) throws Exception {

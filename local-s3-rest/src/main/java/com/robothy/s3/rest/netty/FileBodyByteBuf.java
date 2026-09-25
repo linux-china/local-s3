@@ -5,6 +5,7 @@ import io.netty.buffer.UnpooledHeapByteBuf;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +57,20 @@ final class FileBodyByteBuf extends UnpooledHeapByteBuf {
    */
   long length() {
     return length;
+  }
+
+  /**
+   * The trailing headers of the {@code aws-chunked} body that was decoded into the file, which then holds the decoded
+   * content; {@code null} if the file holds the body as it was received.
+   */
+  private volatile Map<String, String> awsChunkedTrailer;
+
+  Map<String, String> awsChunkedTrailer() {
+    return awsChunkedTrailer;
+  }
+
+  void awsChunkedTrailer(Map<String, String> trailer) {
+    this.awsChunkedTrailer = trailer;
   }
 
   @Override

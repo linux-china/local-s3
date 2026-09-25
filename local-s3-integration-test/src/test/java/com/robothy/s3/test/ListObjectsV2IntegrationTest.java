@@ -429,7 +429,8 @@ public class ListObjectsV2IntegrationTest {
     assertNull(objectsV2Result1.delimiter());
     assertNull(objectsV2Result1.encodingType());
     assertEquals(objectsV2Result.nextContinuationToken(), objectsV2Result1.continuationToken());
-    assertNull(objectsV2Result1.startAfter());
+    // Echoed like Amazon S3 does, although the listing continues from the token.
+    assertEquals("dir1/key2", objectsV2Result1.startAfter());
     assertEquals("dir1/key2", objectsV2Result1.contents().get(0).key());
 
     // now, the continuation token is after "dir1@key2"
@@ -449,7 +450,7 @@ public class ListObjectsV2IntegrationTest {
     assertNull(objectsV2Result2.delimiter());
     assertNull(objectsV2Result2.encodingType());
     assertEquals(objectsV2Result1.nextContinuationToken(), objectsV2Result2.continuationToken());
-    assertNull(objectsV2Result1.startAfter());
+    assertEquals("dir1/key1", objectsV2Result2.startAfter());
     assertEquals("dir2@key1", objectsV2Result2.contents().get(0).key());
   }
 
@@ -531,7 +532,8 @@ public class ListObjectsV2IntegrationTest {
     assertNull(objectsV2Result1.delimiter());
     assertNull(objectsV2Result1.encodingType());
     assertEquals(objectsV2Result.nextContinuationToken(), objectsV2Result1.continuationToken());
-    assertNull(objectsV2Result1.startAfter());
+    // Echoed like Amazon S3 does, although the listing continues from the token.
+    assertEquals("dir1/key2", objectsV2Result1.startAfter());
     assertEquals("dir1/key2", objectsV2Result1.contents().get(0).key());
 
     // now, the continuation token is after "dir1@key2"
@@ -551,7 +553,7 @@ public class ListObjectsV2IntegrationTest {
     assertNull(objectsV2Result2.delimiter());
     assertNull(objectsV2Result2.encodingType());
     assertEquals(objectsV2Result1.nextContinuationToken(), objectsV2Result2.continuationToken());
-    assertNull(objectsV2Result1.startAfter());
+    assertEquals("dir1/key1", objectsV2Result2.startAfter());
     assertEquals("dir2@key1", objectsV2Result2.contents().get(0).key());
 
     System.out.println("objectsV2Result = %s%n");

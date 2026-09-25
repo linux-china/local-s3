@@ -192,6 +192,51 @@ class RequestBodyFileTest {
     assertEquals(0, countFiles());
   }
 
+  /**
+   * An aws-chunked body is decoded while it is written: the file holds the decoded content, and the body carries its
+   * trailing headers.
+   */
+  @Test
+  void decodesAnAwsChunkedBodyIntoTheFile() throws IOException {
+    byte[] content = randomBytes(1000);
+    byte[] encoded = ("3e8\r\n" + new String(content, java.nio.charset.StandardCharsets.ISO_8859_1)
+        + "\r\n0\r\nx-amz-checksum-crc32:AAAAAA==\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    RequestBodyFile file = new RequestBodyFile(executor, ImmediateEventExecutor.INSTANCE, directory, listener,
+        new AwsChunkedBodyDecoder(ChunkSignatures.UNVERIFIED, content.length));
+    file.write(Unpooled.copiedBuffer(encoded, 0, 500));
+    file.write(Unpooled.copiedBuffer(encoded, 500, encoded.length - 500));
+    file.complete();
+    executor.runAll();
+
+    ByteBuf body = listener.body;
+    try {
+      assertArrayEquals(content, bytes(body));
+      assertEquals(content.length, Files.size(RequestBodies.file(body).orElseThrow()));
+      assertEquals(java.util.Map.of("x-amz-checksum-crc32", "AAAAAA=="),
+          RequestBodies.awsChunkedTrailer(body).orElseThrow());
+    } finally {
+      body.release();
+    }
+    assertEquals(0, countFiles());
+  }
+
+  /**
+   * A body that fails to decode fails the file with the rejection of the decoder, and deletes it.
+   */
+  @Test
+  void failsAnAwsChunkedBodyThatIsIncomplete() throws IOException {
+    RequestBodyFile file = new RequestBodyFile(executor, ImmediateEventExecutor.INSTANCE, directory, listener,
+        new AwsChunkedBodyDecoder(ChunkSignatures.UNVERIFIED, -1));
+    file.write(Unpooled.copiedBuffer("a\r\n12345".getBytes(java.nio.charset.StandardCharsets.US_ASCII)));
+    file.complete();
+    executor.runAll();
+
+    assertNull(listener.body);
+    RequestBodyRejection rejection = assertInstanceOf(RequestBodyRejection.class, listener.failure);
+    assertEquals(com.robothy.s3.core.exception.S3ErrorCode.IncompleteBody, rejection.errorCode());
+    assertEquals(0, countFiles());
+  }
+
   private long countFiles() throws IOException {
     try (Stream<Path> files = Files.list(directory)) {
       return files.count();

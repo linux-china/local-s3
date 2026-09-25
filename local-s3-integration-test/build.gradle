@@ -21,6 +21,9 @@ dependencies {
     testImplementation(libs.awss3ApacheClient)
     testImplementation(libs.mockitoCore)
     testImplementation(libs.duckdb)
+    // PostgreSQL in a container, the catalog of DuckLakePostgresIntegrationTest.
+    testImplementation(libs.testContainers)
+    testImplementation(libs.testContainersJunit)
     testImplementation(libs.icebergCore)
     testImplementation(libs.icebergAws)
     testImplementation(libs.icebergData)
@@ -85,6 +88,7 @@ def requireDuckDbTests = providers.gradleProperty('requireDuckDbTests')
 def requiredDuckDbTestClasses = [
     'com.robothy.s3.test.DuckDbParquetIntegrationTest',
     'com.robothy.s3.test.DuckLakeIntegrationTest',
+    'com.robothy.s3.test.DuckLakePostgresIntegrationTest',
     'com.robothy.s3.test.DuckDbIcebergIntegrationTest',
     'com.robothy.s3.test.DuckDbDeltaIntegrationTest'
 ] as Set
@@ -134,7 +138,7 @@ tasks.register('installDuckDbExtensions', JavaExec) {
     dependsOn tasks.named('testClasses')
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.robothy.s3.test.DuckDbExtensionInstaller'
-    args 'httpfs', 'ducklake', 'iceberg', 'delta'
+    args 'httpfs', 'ducklake', 'postgres', 'iceberg', 'delta'
 }
 
 tasks.named('check') {

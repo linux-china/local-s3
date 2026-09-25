@@ -21,9 +21,10 @@ import java.util.function.Function;
  * The Object Lock retention and legal hold of object versions, in a bucket that has Object Lock enabled.
  *
  * <p>A retention that protects a version can be extended, but not shortened or removed, unless it is in
- * {@code GOVERNANCE} mode and the request sends {@code x-amz-bypass-governance-retention: true}; a {@code GOVERNANCE}
- * retention can be turned into a {@code COMPLIANCE} one, never the other way around. A retention that has expired can
- * be replaced by any retention.
+ * {@code GOVERNANCE} mode and the request sends {@code x-amz-bypass-governance-retention: true}. Its mode can't be
+ * changed either: a {@code GOVERNANCE} retention is turned into a {@code COMPLIANCE} one only with the bypass, like
+ * Amazon S3 answers, and a {@code COMPLIANCE} one never changes its mode. A retention that has expired can be replaced
+ * by any retention.
  *
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectRetention.html">PutObjectRetention</a>
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html">GetObjectRetention</a>
@@ -107,9 +108,8 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * Whether a change of a retention that protects a version is allowed: one that makes it stricter, i.e. that keeps
-   * the version at least as long in the same mode or in {@code COMPLIANCE} mode, or any change of a {@code GOVERNANCE}
-   * retention that is bypassed.
+   * Whether a change of a retention that protects a version is allowed: one that keeps the version at least as long in
+   * the same mode, or any change of a {@code GOVERNANCE} retention that is bypassed, e.g. into {@code COMPLIANCE} mode.
    */
   private static boolean isAllowedRetentionChange(ObjectLock current, ObjectLockMode mode, Long retainUntilDate,
                                                   boolean bypassGovernanceRetention) {
@@ -119,7 +119,7 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
     if (mode == null || retainUntilDate < current.retainUntilDate()) {
       return false;
     }
-    return mode == current.mode() || mode == ObjectLockMode.COMPLIANCE;
+    return mode == current.mode();
   }
 
   private ObjectLock readVersion(String bucketName, String key, String versionId) {

@@ -1,12 +1,11 @@
 # The tests of ceph/s3-tests that fail on LocalS3, which local_s3_plugin.py expects to fail.
 # Written by `ceph-s3-tests/run.sh --update-known-failures`; take a test off once it passes.
-# A test without a reason is to be fixed; one marked `consistent with AWS` expects the behavior of
-# another S3 implementation, e.g. RGW, where LocalS3 behaves like Amazon S3, and is kept on purpose.
-test_s3.py::test_block_public_object_canned_acls  # LocalS3 stores the public access block without enforcing it, like ACLs, so a public-read PutObject is not denied (403)
+# The reason after the `#` starts with a category, see known_failures.py: `consistent with AWS`,
+# `out of scope` and `test environment` are kept on purpose, `unverified` is to be checked against
+# Amazon S3, and `divergence`, or a test without a category, is to be fixed.
+test_s3.py::test_block_public_object_canned_acls  # out of scope: LocalS3 stores the public access block without enforcing it, like ACLs, so a public-read PutObject is not denied (403)
 test_s3.py::test_bucket_get_location  # consistent with AWS: GetBucketLocation of a us-east-1 bucket is an empty LocationConstraint on Amazon S3; the test, with api_name us-east-1, expects "us-east-1"
-test_s3.py::test_bucket_list_prefix_unreadable  # ListObjects (v1) with encoding-type=url URL-encodes the top-level Prefix ("%0A"); botocore decodes only Delimiter, Marker and NextMarker of v1, as Amazon S3 leaves Prefix unencoded there
-test_s3.py::test_bucket_listv2_both_continuationtoken_startafter  # ListObjectsV2 leaves StartAfter out of the response when a ContinuationToken is given; Amazon S3 echoes both
-test_s3.py::test_bucket_listv2_startafter_unreadable  # ListObjectsV2 leaves a StartAfter of whitespace alone ("\n") out of the response, as if none was given
+test_s3.py::test_bucket_list_prefix_unreadable  # divergence: ListObjects (v1) with encoding-type=url URL-encodes the top-level Prefix ("%0A"); botocore decodes only Delimiter, Marker and NextMarker of v1, as Amazon S3 leaves Prefix unencoded there
 test_s3.py::test_bucket_recreate_new_acl  # consistent with AWS: recreating an owned bucket in us-east-1 is 200 on Amazon S3; the test expects the 409 BucketAlreadyExists of RGW
 test_s3.py::test_bucket_recreate_overwrite_acl  # consistent with AWS: recreating an owned bucket in us-east-1 is 200 on Amazon S3; the test expects the 409 BucketAlreadyExists of RGW
 test_s3.py::test_copy_part_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]  # consistent with AWS: UploadPart to an SSE-C upload with another key than the upload's is 403 AccessDenied, see docs/semantics.md; the test expects the 400 of RGW
@@ -16,26 +15,23 @@ test_s3.py::test_delete_marker_nonversioned  # consistent with AWS: Amazon S3 an
 test_s3.py::test_encryption_sse_c_multipart_bad_download  # consistent with AWS: GetObject with another SSE-C key is 403 AccessDenied on Amazon S3; the test expects the 400 of RGW
 test_s3.py::test_encryption_sse_c_other_key  # consistent with AWS: GetObject with another SSE-C key is 403 AccessDenied on Amazon S3; the test expects the 400 of RGW
 test_s3.py::test_get_obj_head_tagging  # consistent with AWS: HeadObject of Amazon S3 answers no x-amz-tagging-count, only GetObject does
-test_s3.py::test_get_object_torrent  # GetObjectTorrent is not implemented (501 NotImplemented); the test accepts a torrent or 404 NoSuchKey
-test_s3.py::test_list_buckets_paginated  # passes alone (run.sh -n 0 -k test_list_buckets_paginated); it expects an account without buckets, which the other workers of -n 8 create buckets in
+test_s3.py::test_get_object_torrent  # out of scope: GetObjectTorrent is not implemented (501 NotImplemented); the test accepts a torrent or 404 NoSuchKey
+test_s3.py::test_list_buckets_paginated  # test environment: passes alone (run.sh -n 0 -k test_list_buckets_paginated); it expects an account without buckets, which the other workers of -n 8 create buckets in
 test_s3.py::test_multipart_get_part  # consistent with AWS: a partNumber out of range is 416 InvalidPartNumber on Amazon S3; the test expects the 400 InvalidPart of RGW
-test_s3.py::test_multipart_resend_first_finishes_last  # LocalS3 keeps the upload of part 1 that finishes last, as the test wants, but the test completes with both ETags of part 1 (the stale one first) and LocalS3 answers 400 InvalidPart for the stale one, where RGW takes the part as stored
+test_s3.py::test_multipart_resend_first_finishes_last  # unverified: LocalS3 keeps the upload of part 1 that finishes last, as the test wants, but the test completes with both ETags of part 1 (the stale one first) and LocalS3 answers 400 InvalidPart for the stale one, where RGW takes the part as stored
 test_s3.py::test_multipart_single_get_part  # consistent with AWS: a partNumber out of range is 416 InvalidPartNumber on Amazon S3; the test expects the 400 InvalidPart of RGW
 test_s3.py::test_multipart_sse_c_get_part  # consistent with AWS: the out-of-range partNumber is asked for without the SSE-C key, which is 400 InvalidRequest first, and 416 InvalidPartNumber with it on Amazon S3; the test expects the 400 InvalidPart of RGW
 test_s3.py::test_non_multipart_get_part  # consistent with AWS: a partNumber out of range is 416 InvalidPartNumber on Amazon S3; the test expects the 400 InvalidPart of RGW
 test_s3.py::test_non_multipart_sse_c_get_part  # consistent with AWS: a partNumber out of range is 416 InvalidPartNumber on Amazon S3; the test expects the 400 InvalidPart of RGW
-test_s3.py::test_object_lock_changing_mode_from_governance_without_bypass  # PutObjectRetention changes GOVERNANCE to COMPLIANCE without x-amz-bypass-governance-retention; Amazon S3 answers 403 AccessDenied
-test_s3.py::test_object_lock_put_legal_hold_invalid_status  # a legal hold Status other than ON/OFF is 400 InvalidArgument; the test expects 400 MalformedXML
-test_s3.py::test_object_lock_put_obj_lock_invalid_days  # a default retention of 0 Days is 400 InvalidArgument; the test expects 400 InvalidRetentionPeriod
-test_s3.py::test_object_lock_put_obj_lock_invalid_mode  # a default retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
-test_s3.py::test_object_lock_put_obj_lock_invalid_years  # a default retention of negative Years is 400 InvalidArgument; the test expects 400 InvalidRetentionPeriod
-test_s3.py::test_object_lock_put_obj_retention_invalid_mode  # a retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
+test_s3.py::test_object_lock_put_legal_hold_invalid_status  # unverified: a legal hold Status other than ON/OFF is 400 InvalidArgument; the test expects 400 MalformedXML
+test_s3.py::test_object_lock_put_obj_lock_invalid_days  # unverified: a default retention of 0 Days is 400 InvalidArgument; the test expects 400 InvalidRetentionPeriod
+test_s3.py::test_object_lock_put_obj_lock_invalid_mode  # unverified: a default retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
+test_s3.py::test_object_lock_put_obj_lock_invalid_years  # unverified: a default retention of negative Years is 400 InvalidArgument; the test expects 400 InvalidRetentionPeriod
+test_s3.py::test_object_lock_put_obj_retention_invalid_mode  # unverified: a retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
 test_s3.py::test_object_write_with_chunked_transfer_encoding  # consistent with AWS: a PutObject of Transfer-Encoding: chunked without a length is 411 MissingContentLength on Amazon S3 as well
-test_s3.py::test_post_object_empty_conditions  # POST Object with an empty condition ({}) in the policy is 403 AccessDenied; Amazon S3 answers 400 for an invalid policy document
-test_s3.py::test_post_object_missing_signature  # POST Object with a policy but no signature field is 403 AccessDenied; Amazon S3 answers 400 InvalidArgument
 test_s3.py::test_post_object_success_redirect_action  # consistent with AWS: LocalS3 answers the 303 to success_action_redirect with bucket, key and etag; requests then follows it to the redirect URL, the bucket itself, with an unsigned GET, which is 403 like any anonymous request
 test_s3.py::test_post_object_upload_checksum  # consistent with AWS: POST Object denies (403) the form field x-amz-checksum-sha256, which the policy has no condition for; Amazon S3 requires a condition for every field but a few, e.g. file, policy, x-amz-signature
-test_s3.py::test_put_obj_with_tags  # expects GetObjectTagging to sort the tags by key, as RGW does; Amazon S3 documents no order
+test_s3.py::test_put_obj_with_tags  # unverified: expects GetObjectTagging to sort the tags by key, as RGW does; Amazon S3 documents no order
 test_s3.py::test_sse_kms_no_key  # consistent with AWS: PutObject with aws:kms and no key ID uses the AWS managed key aws/s3 on Amazon S3; the test expects 400 as RGW has no default key
-test_s3.py::test_versioning_bucket_atomic_upload_return_version_id  # PutObject to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
-test_s3.py::test_versioning_bucket_multipart_upload_return_version_id  # CompleteMultipartUpload to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
+test_s3.py::test_versioning_bucket_atomic_upload_return_version_id  # unverified: PutObject to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
+test_s3.py::test_versioning_bucket_multipart_upload_return_version_id  # unverified: CompleteMultipartUpload to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket

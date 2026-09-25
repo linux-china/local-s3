@@ -982,8 +982,12 @@ public class LocalS3Builder {
          * Java heap. The file is memory-mapped while the request is handled, or only read from the file if the body is
          * larger than 2 GiB, which no buffer holds, so large uploads take neither
          * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
-         * directory, and the body of an upload that isn't {@code aws-chunked} encoded is stored by renaming the
-         * file, so that its content isn't written a second time. The file is written on the request executor, not on
+         * directory, and the body of an upload is stored by renaming the file, so that its content isn't written a
+         * second time; an {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded,
+         * and its chunk signatures verified, while it is written, so the file holds the decoded content. In
+         * {@code IN_MEMORY} mode the file is created in the default temporary directory, and the body is copied into
+         * the memory of the storage from it, so a large upload does touch the disk; raise the threshold to keep
+         * bodies on the heap instead. The file is written on the request executor, not on
          * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
          * read, so neither memory nor the other connections of the event loop are affected. Default value is
          * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all

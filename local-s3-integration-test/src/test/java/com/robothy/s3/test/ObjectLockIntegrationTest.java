@@ -118,6 +118,12 @@ class ObjectLockIntegrationTest {
         .key("governed.txt").versionId(governed.versionId())
         .retention(r -> r.mode(ObjectLockRetentionMode.GOVERNANCE).retainUntilDate(retainUntil.minusSeconds(60)))))
         .awsErrorDetails().errorCode());
+    // Nor turned into a compliance retention without the bypass, like Amazon S3 answers.
+    S3Exception modeChanged = assertThrows(S3Exception.class, () -> s3.putObjectRetention(b -> b.bucket(LOCKED)
+        .key("governed.txt").versionId(governed.versionId())
+        .retention(r -> r.mode(ObjectLockRetentionMode.COMPLIANCE).retainUntilDate(retainUntil))));
+    assertEquals(403, modeChanged.statusCode());
+    assertEquals("AccessDenied", modeChanged.awsErrorDetails().errorCode());
     s3.deleteObject(b -> b.bucket(LOCKED).key("governed.txt").versionId(governed.versionId())
         .bypassGovernanceRetention(true));
     assertEquals(List.of(), s3.listObjectVersions(b -> b.bucket(LOCKED).prefix("governed.txt")).versions());

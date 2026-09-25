@@ -14,7 +14,7 @@ import java.util.Set;
  */
 public final class DuckDbExtensionInstaller {
 
-  private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("httpfs", "ducklake", "iceberg", "delta");
+  private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("httpfs", "ducklake", "postgres", "iceberg", "delta");
 
   private DuckDbExtensionInstaller() {
   }
@@ -54,8 +54,11 @@ public final class DuckDbExtensionInstaller {
     }
 
     try (PreparedStatement statement = connection.prepareStatement(
-        "SELECT extension_version, installed_from, loaded FROM duckdb_extensions() WHERE extension_name = ?")) {
+        "SELECT extension_version, installed_from, loaded FROM duckdb_extensions() "
+            + "WHERE extension_name = ? OR list_contains(aliases, ?)")) {
+      // postgres is an alias of postgres_scanner.
       statement.setString(1, extension);
+      statement.setString(2, extension);
       try (ResultSet result = statement.executeQuery()) {
         if (!result.next()) {
           throw new SQLException("DuckDB did not report the installed " + extension + " extension");

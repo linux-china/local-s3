@@ -18,6 +18,7 @@ The tests in ``known-failures.txt`` are expected to fail: they are marked ``xfai
 on a test that fails and isn't listed there, and on a listed test that passes, which is then to be taken off the
 list. ``S3_TESTS_UPDATE_KNOWN_FAILURES=1`` runs every test without the list and writes the failed ones to it,
 keeping the reason that follows the ``#`` of a test that still fails, e.g. ``test_x  # consistent with AWS: ...``.
+The summary of a run counts the known failures by category, see ``known_failures.py``.
 """
 
 import ast
@@ -27,7 +28,9 @@ from pathlib import Path
 
 import pytest
 
-KNOWN_FAILURES = Path(__file__).with_name("known-failures.txt")
+import known_failures
+from known_failures import KNOWN_FAILURES
+
 UPDATE_KNOWN_FAILURES = os.environ.get("S3_TESTS_UPDATE_KNOWN_FAILURES") == "1"
 
 EXCLUDED_MARKERS = {
@@ -155,18 +158,6 @@ def _test_id(item):
     return f"{item.path.name}::{item.name}"
 
 
-def _read_known_failures():
-    """The known failures, each mapped to the reason that follows its ``#``, or to ``""`` if it has none."""
-    if not KNOWN_FAILURES.exists():
-        return {}
-    known_failures = {}
-    for line in KNOWN_FAILURES.read_text().splitlines():
-        test_id, _, reason = line.partition("#")
-        if test_id.strip():
-            known_failures[test_id.strip()] = reason.strip()
-    return known_failures
-
-
 _config = None
 
 
@@ -189,7 +180,7 @@ def pytest_sessionstart(session):
 
 
 def pytest_collection_modifyitems(config, items):
-    known_failures = {} if UPDATE_KNOWN_FAILURES else _read_known_failures()
+    expected_failures = {} if UPDATE_KNOWN_FAILURES else known_failures.read()
     selected, deselected = [], []
     for item in items:
         reason = _exclusion(item)
@@ -197,7 +188,7 @@ def pytest_collection_modifyitems(config, items):
             config._local_s3_deselected[reason] += 1
             deselected.append(item)
             continue
-        if _test_id(item) in known_failures:
+        if _test_id(item) in expected_failures:
             item.add_marker(pytest.mark.xfail(reason="listed in known-failures.txt", strict=True))
         selected.append(item)
     if deselected:
@@ -215,16 +206,10 @@ def pytest_sessionfinish(session):
     config = session.config
     if hasattr(config, "workerinput") or not UPDATE_KNOWN_FAILURES:
         return
-    header = [
-        "# The tests of ceph/s3-tests that fail on LocalS3, which local_s3_plugin.py expects to fail.",
-        "# Written by `ceph-s3-tests/run.sh --update-known-failures`; take a test off once it passes.",
-        "# A test without a reason is to be fixed; one marked `consistent with AWS` expects the behavior of",
-        "# another S3 implementation, e.g. RGW, where LocalS3 behaves like Amazon S3, and is kept on purpose.",
-    ]
-    reasons = _read_known_failures()
+    reasons = known_failures.read()
     lines = [f"{test_id}  # {reasons[test_id]}" if reasons.get(test_id) else test_id
              for test_id in sorted(config._local_s3_failed)]
-    KNOWN_FAILURES.write_text("\n".join(header + lines) + "\n")
+    KNOWN_FAILURES.write_text("\n".join(known_failures.HEADER + lines) + "\n")
 
 
 def pytest_terminal_summary(terminalreporter, config):
@@ -236,3 +221,6 @@ def pytest_terminal_summary(terminalreporter, config):
         terminalreporter.write_line(f"LocalS3 deselected {config._local_s3_deselected.total()} tests ({counts})")
     if UPDATE_KNOWN_FAILURES:
         terminalreporter.write_line(f"LocalS3 wrote {len(config._local_s3_failed)} failed tests to {KNOWN_FAILURES}")
+    else:
+        terminalreporter.write_sep("-", "known failures")
+        terminalreporter.write_line(known_failures.summary(known_failures.read()))

@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
+import com.robothy.s3.rest.utils.RequestUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -29,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.Random;
 import java.util.stream.Stream;
@@ -316,6 +319,92 @@ class LocalS3HttpRequestDecoderTest {
     failing.runPendingTasks();
 
     assertRejected(failing, S3ErrorCode.InternalError);
+  }
+
+  /**
+   * An aws-chunked body is decoded while it is written to its file, which then holds the decoded content, so that a
+   * storage can take the file over like the one of any other upload.
+   */
+  @Test
+  void decodesAnAwsChunkedBodyWhileItIsWrittenToAFile() throws IOException {
+    byte[] content = randomBytes(100);
+    byte[] encoded = awsChunked(content);
+    DefaultHttpRequest head = awsChunkedRequest(encoded.length, content.length);
+    channel.writeInbound(head, content(encoded, 0, 30), last(encoded, 30, encoded.length));
+
+    HttpRequest request = channel.readInbound();
+    ByteBuf body = request.getBody();
+    try {
+      assertArrayEquals(content, bytes(body));
+      assertArrayEquals(content, Files.readAllBytes(RequestBodies.file(body).orElseThrow()));
+      assertEquals(Map.of("x-amz-checksum-crc32", "AAAAAA=="), RequestBodies.awsChunkedTrailer(body).orElseThrow());
+
+      DecodedAmzRequestBody decoded = RequestUtils.getBody(request);
+      assertEquals(RequestBodies.file(body).orElseThrow(), decoded.getBodyFile(), "The storage can take it over.");
+      assertEquals(content.length, decoded.getDecodedContentLength());
+      assertEquals("AAAAAA==", decoded.trailingHeader("x-amz-checksum-crc32").orElseThrow(),
+          "The trailer is known before the body is read.");
+      assertArrayEquals(content, decoded.getDecodedBody().readAllBytes());
+    } finally {
+      body.release();
+    }
+  }
+
+  /**
+   * A body whose chunk signatures don't match is answered with {@code SignatureDoesNotMatch}, and its file deleted.
+   */
+  @Test
+  void rejectsAnAwsChunkedBodyWhoseChunkSignaturesDontMatch(@TempDir Path directory) throws IOException {
+    RequestHeadVerifier verifier = new RequestHeadVerifier() {
+      @Override
+      public Rejection verifyHead(HttpRequest head) {
+        return null;
+      }
+
+      @Override
+      public ChunkSignatures chunkSignatures(HttpRequest head) {
+        return new ChunkSignatures() {
+          @Override
+          public boolean verifyChunk(String signature, byte[] sha256) {
+            return false;
+          }
+
+          @Override
+          public boolean verifyTrailer(List<String> lines) {
+            return true;
+          }
+        };
+      }
+    };
+    EmbeddedChannel verifying = new EmbeddedChannel(new LocalS3HttpRequestDecoder(1024, FILE_THRESHOLD,
+        new XmlMapper(), verifier, directory, Runnable::run));
+    byte[] content = randomBytes(100);
+    byte[] encoded = awsChunked(content);
+    verifying.writeInbound(awsChunkedRequest(encoded.length, content.length), last(encoded, 0, encoded.length));
+    verifying.runPendingTasks();
+
+    assertRejected(verifying, S3ErrorCode.SignatureDoesNotMatch);
+    try (Stream<Path> files = Files.list(directory)) {
+      assertEquals(0, files.count(), "The body file is deleted.");
+    }
+  }
+
+  private static DefaultHttpRequest awsChunkedRequest(int contentLength, int decodedLength) {
+    DefaultHttpRequest request = request(contentLength);
+    request.headers()
+        .set("content-encoding", "aws-chunked")
+        .set("x-amz-content-sha256", "STREAMING-UNSIGNED-PAYLOAD-TRAILER")
+        .set("x-amz-decoded-content-length", decodedLength)
+        .set("x-amz-trailer", "x-amz-checksum-crc32");
+    return request;
+  }
+
+  private static byte[] awsChunked(byte[] content) {
+    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+    out.writeBytes((Integer.toHexString(content.length) + "\r\n").getBytes(StandardCharsets.US_ASCII));
+    out.writeBytes(content);
+    out.writeBytes("\r\n0\r\nx-amz-checksum-crc32:AAAAAA==\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+    return out.toByteArray();
   }
 
   /**

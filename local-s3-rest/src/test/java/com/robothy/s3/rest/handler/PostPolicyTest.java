@@ -81,6 +81,11 @@ class PostPolicyTest {
         () -> policy("{\"expiration\": \"2031-01-01T00:00:00Z\", \"conditions\": [[\"eq\", \"key\", \"a\"]]}"));
     assertError(S3ErrorCode.InvalidPolicyDocument, "Invalid Condition",
         () -> policy("{\"expiration\": \"2031-01-01T00:00:00Z\", \"conditions\": [[\"content-length-range\", -1, 2]]}"));
+    // A condition object names exactly one field.
+    assertError(S3ErrorCode.InvalidPolicyDocument, "Simple-Conditions must have exactly one property specified",
+        () -> policy("{\"expiration\": \"2031-01-01T00:00:00Z\", \"conditions\": [{}]}"));
+    assertError(S3ErrorCode.InvalidPolicyDocument, "Simple-Conditions must have exactly one property specified",
+        () -> policy("{\"expiration\": \"2031-01-01T00:00:00Z\", \"conditions\": [{\"acl\": \"private\", \"key\": \"a\"}]}"));
   }
 
   private static PostPolicy policy(String json) {

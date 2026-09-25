@@ -270,8 +270,8 @@ class PostObjectIntegrationTest {
   void aServiceWithCredentialsRejectsUnsignedForms(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
     assertError(403, "AccessDenied", "must contain a field named 'policy'",
         post(endpoint, BUCKET, Map.of("key", "anonymous.txt"), "a.txt", bytes("hi")));
-    // A policy without a signature is as anonymous as no policy at all.
-    assertError(403, "AccessDenied", null, post(endpoint, BUCKET,
+    // A policy without a signature is a malformed form, which Amazon S3 answers with 400.
+    assertError(400, "InvalidArgument", "must contain a field named 'Signature'", post(endpoint, BUCKET,
         form(policy(future(), "[{\"bucket\":\"uploads\"},{\"key\":\"anonymous.txt\"}]"), "anonymous.txt"),
         "a.txt", bytes("hi")));
     assertThrows(NoSuchKeyException.class, () -> s3.headObject(b -> b.bucket(BUCKET).key("anonymous.txt")));

@@ -11,7 +11,9 @@ import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.s3tables.S3TablesController;
 import com.robothy.s3.rest.handler.s3vectors.VectorResourceRequests;
 import com.robothy.s3.rest.model.request.BucketRegion;
+import com.robothy.s3.rest.netty.ChunkSignatures;
 import com.robothy.s3.rest.netty.OperationHandler;
+import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -436,8 +438,24 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   public void requestReceived(HttpRequest head, HttpRequest request) {
     AwsSignatureV4Verifier.VerifiedHead verifiedHead = headsBeingReceived.remove(head);
     if (verifiedHead != null) {
-      receivedRequests.put(request, verifiedHead);
+      // An aws-chunked body that was decoded while it was received had its chunk signatures verified already.
+      receivedRequests.put(request, RequestBodies.awsChunkedTrailer(request.getBody()).isPresent()
+          ? AwsSignatureV4Verifier.VerifiedHead.COMPLETE : verifiedHead);
     }
+  }
+
+  /**
+   * Verify the chunk signatures of an {@code aws-chunked} body while it is received, with what {@linkplain #verifyHead}
+   * verified. A request that isn't verified before its body is received, e.g. an STS request, is buffered as it is
+   * received, and verified whole once it is.
+   */
+  @Override
+  public ChunkSignatures chunkSignatures(HttpRequest head) {
+    if (!requiresAuthentication(head)) {
+      return ChunkSignatures.UNVERIFIED;
+    }
+    AwsSignatureV4Verifier.VerifiedHead verifiedHead = headsBeingReceived.get(head);
+    return verifiedHead == null ? null : AwsSignatureV4Verifier.chunkSignatures(verifiedHead);
   }
 
   private boolean requiresAuthentication(HttpRequest request) {

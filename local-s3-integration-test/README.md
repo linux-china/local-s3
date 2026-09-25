@@ -103,6 +103,17 @@ files are on LocalS3, with `DATA_INLINING_ROW_LIMIT 0` so that every change is a
 
 The `ducklake` extension is loaded or installed like `httpfs`; without it, the tests are skipped.
 
+`DuckLakePostgresIntegrationTest` keeps the catalog in PostgreSQL, a `postgres:17-alpine` container with a database
+per test, and data inlining on (`DATA_INLINING_ROW_LIMIT 100`). Each test attaches the lake from two in-memory DuckDB
+databases, which share nothing but PostgreSQL and LocalS3:
+
+| Test                                          | DuckLake                                                                                                                          | S3 features checked on the LocalS3 side                                                                                  |
+|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `inlinedChangesReachLocalS3OnlyWhenFlushed`   | inlined `INSERT`s, `UPDATE` and `DELETE`; `ducklake_flush_inlined_data`; time travel across the flush                             | no object and no `PutObject` before the flush; after it, the objects are exactly the current files and read as Parquet    |
+| `compactionAndCleanupLeaveOneFileOnLocalS3`   | large and inlined inserts, an inlined delete of rows in files, flushes, `ducklake_merge_adjacent_files`, `ducklake_rewrite_data_files`, expiry and cleanup | an inlined delete writes nothing; cleanup deletes exactly the scheduled files with `DeleteObjects` and leaves one file |
+
+It needs Docker and the `postgres` extension of DuckDB; without Docker, it is skipped.
+
 # DuckDB on the built-in Iceberg REST catalog
 
 `DuckDbIcebergIntegrationTest` attaches the catalog that LocalS3 serves at `/iceberg/v1` as a DuckDB database, with

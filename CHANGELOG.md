@@ -341,6 +341,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Changed
 
++ An `aws-chunked` upload, which the AWS SDK for Java 2.30+ sends by default for `PutObject` and `UploadPart` over
+  plain HTTP (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER`), is decoded while its body is written to the temporary
+  file, and its chunk and trailer signatures are verified along the way. In `PERSISTENCE` mode the file of such an
+  upload is renamed into place like any other, rather than decoded into a second file, so a large upload is written to
+  the disk once instead of twice. A body whose chunk signatures don't match is answered with `403 SignatureDoesNotMatch`
+  and a malformed or incomplete one with `400 IncompleteBody`; either closes the connection and deletes the file.
 + Closer to Amazon S3, as ceph/s3-tests checks it:
   + `AbortMultipartUpload` of an unknown upload ID, or of one already aborted or completed, answers
     `404 NoSuchUpload` instead of `204`.
@@ -403,6 +409,14 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ `ListObjectsV2` echoes the `start-after` of the request like Amazon S3 does: also next to a `continuation-token`,
+  which the listing continues from instead, and also when it is whitespace alone, e.g. `\n`. With `encoding-type=url`
+  it is URL-encoded like the keys.
++ `PutObjectRetention` that turns a `GOVERNANCE` retention into a `COMPLIANCE` one answers `403 AccessDenied` unless
+  the request sends `x-amz-bypass-governance-retention: true`, like Amazon S3. It was allowed without the bypass.
++ A browser form upload (`POST Object`) with a policy but no signature answers `400 InvalidArgument` rather than
+  `403 AccessDenied`, and a policy with a condition object that doesn't name exactly one field, e.g. `{}`, answers
+  `400 InvalidPolicyDocument` rather than failing its conditions with `403 AccessDenied`, like Amazon S3.
 + A service binds its port with `SO_REUSEADDR` (except on Windows), so that a fixed port, e.g. the `29090` of the
   Spring Boot starter, is bound again right after a stop while the connections that the stop closed are still in
   `TIME_WAIT`, e.g. when Spring Boot DevTools restarts the application context in the same JVM. A test of the starter

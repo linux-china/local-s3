@@ -57,9 +57,18 @@ test checks is something else. The IAM, STS, SNS, S3 Select and S3 Control tests
 that passes, which is to be taken off the list. `--update-known-failures` runs every test without the list and writes
 the failed ones to it, keeping the reason after the `#` of a test that still fails.
 
-A test without a reason is one to fix. One whose reason starts with `consistent with AWS` expects the behavior of
-another implementation, mostly RGW, where LocalS3 behaves like Amazon S3, e.g. `411 MissingContentLength` for a
-`PutObject` with `Transfer-Encoding: chunked` and no length; it stays on the list on purpose.
+The reason after the `#` of a test starts with its category:
+
+| Category | Meaning | |
+|---|---|---|
+| `consistent with AWS` | The test expects the behavior of another implementation, mostly RGW, where LocalS3 behaves like Amazon S3, e.g. `411 MissingContentLength` for a `PutObject` with `Transfer-Encoding: chunked` and no length. | kept |
+| `out of scope` | The test checks what LocalS3 doesn't do by design, e.g. enforce the public access block. | kept |
+| `test environment` | The test fails because of how the suite runs, not because of LocalS3. | kept |
+| `unverified` | LocalS3 differs from what the test expects, and it isn't known yet which of them Amazon S3 does. | to verify against Amazon S3, then fix or recategorize |
+| `divergence` | LocalS3 differs from Amazon S3. A test without a category is one too. | to fix |
+
+`python3 ceph-s3-tests/known_failures.py` prints the counts of the categories and the tests to fix or to verify, which
+a run prints at its end as well, and CI adds to the summary of its `s3-tests` job.
 
 A new version of s3-tests is taken by changing `S3_TESTS_COMMIT` in `run.sh`, running it with
 `--update-known-failures` and reviewing the change of `known-failures.txt`.
