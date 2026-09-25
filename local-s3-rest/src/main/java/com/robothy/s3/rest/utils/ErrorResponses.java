@@ -57,6 +57,24 @@ public final class ErrorResponses {
     }
   }
 
+  /**
+   * Respond to a request whose body can't be read as the document of its operation, e.g. XML that isn't well-formed
+   * or an element whose value doesn't fit. Amazon S3 answers it with {@code 400 MalformedXML}, and S3 Vectors with
+   * {@code 400 ValidationException}. It is an error of the client, which an AWS SDK doesn't retry, unlike the
+   * {@code InternalError} it would otherwise be.
+   *
+   * @param request the request.
+   * @param response the response to write the error to.
+   */
+  public static void malformedBody(HttpRequest request, HttpResponse response) {
+    if (isJsonRequest(request)) {
+      writeVectorsError(response, LocalS3VectorErrorType.VALIDATION, "The request body is not valid JSON of the "
+          + "operation.");
+    } else {
+      writeS3Error(request, response, S3ErrorCode.MalformedXML, S3ErrorCode.MalformedXML.description());
+    }
+  }
+
   private static void writeS3Error(HttpRequest request, HttpResponse response, S3ErrorCode errorCode,
                                    String message) {
     // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.

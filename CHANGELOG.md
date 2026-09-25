@@ -420,6 +420,10 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + Starting a `PERSISTENCE` service over the data directory of another service of the same JVM no longer deletes the
   temporary files of that service's uploads in progress, which failed them. The temporary files that a process which
   died left behind are deleted by the background sweep of unreferenced content instead, once they are a minute old.
++ A request whose body isn't the XML of its operation, e.g. a `PutBucketTagging`, `PutBucketVersioning`,
+  `DeleteObjects` or `CompleteMultipartUpload` whose body isn't well-formed, is empty, or names an unknown value, fails
+  with `400 MalformedXML` instead of `500 InternalError`, which the AWS SDKs retried before failing, and which was
+  logged as a failure of LocalS3. An S3 Vectors request whose body isn't JSON fails with `400 ValidationException`.
 + A single `PutObject` or `UploadPart` of more than 2 GiB and up to `maxRequestBodySize` (5 GiB) is stored instead of
   failing with `InternalError`: such a body is read from its temporary file rather than memory-mapped.
 + The data of S3 Vectors is written to the data directory instead of the working directory.

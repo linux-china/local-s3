@@ -34,7 +34,6 @@ test_s3.py::test_multipart_get_part  # consistent with AWS: a partNumber out of 
 test_s3.py::test_multipart_resend_first_finishes_last
 test_s3.py::test_multipart_single_get_part
 test_s3.py::test_multipart_sse_c_get_part
-test_s3.py::test_multipart_upload_empty
 test_s3.py::test_multipart_use_cksum_helper_sha1
 test_s3.py::test_multipart_use_cksum_helper_sha256
 test_s3.py::test_non_multipart_get_part  # consistent with AWS: a partNumber out of range is 416 InvalidPartNumber on Amazon S3; the test expects the 400 InvalidPart of RGW

@@ -66,6 +66,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
 
 public class LocalS3RouterFactory {
 
@@ -178,6 +179,7 @@ public class LocalS3RouterFactory {
         .exceptionHandler(LocalS3Exception.class, new LocalS3ExceptionHandler(serviceFactory))
         .exceptionHandler(LocalS3InvalidArgumentException.class, new LocalS3InvalidArgumentExceptionHandler())
         .exceptionHandler(LocalS3VectorException.class, new LocalS3VectorExceptionHandler(serviceFactory))
+        .exceptionHandler(JacksonException.class, new MalformedRequestBodyExceptionHandler())
         .exceptionHandler(Exception.class, new ExceptionHandler());
   }
 

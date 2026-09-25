@@ -95,6 +95,41 @@ class ErrorResponseIntegrationTest {
         + "</HostId>"), failed.body());
   }
 
+  /**
+   * A body that isn't the XML of its operation is an error of the client, {@code 400 MalformedXML}, which an AWS
+   * SDK doesn't retry, rather than an {@code InternalError}, which the SDK would retry before it failed.
+   */
+  @Test
+  @LocalS3
+  void aBodyThatIsNotXmlIsMalformedXml(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
+    s3.createBucket(request -> request.bucket(BUCKET));
+    String uploadId = s3.createMultipartUpload(request -> request.bucket(BUCKET).key("k")).uploadId();
+
+    String[][] requests = {
+        {"PUT", "/" + BUCKET + "?tagging", "garbage"},
+        {"PUT", "/" + BUCKET + "?versioning", "bad"},
+        {"POST", "/" + BUCKET + "?delete", "bad"},
+        {"POST", "/" + BUCKET + "/k?uploadId=" + uploadId, "not xml"},
+        {"POST", "/" + BUCKET + "/k?uploadId=" + uploadId, ""},
+        {"PUT", "/" + BUCKET + "?versioning", "<VersioningConfiguration><Status>Sideways"},
+    };
+    for (String[] request : requests) {
+      HttpResponse<String> response = send(endpoint, request[0], request[1], request[2], "application/xml");
+      String what = request[0] + " " + request[1] + " " + request[2];
+      assertEquals(400, response.statusCode(), what + ": " + response.body());
+      assertTrue(response.body().contains("<Code>MalformedXML</Code>"), what + ": " + response.body());
+    }
+  }
+
+  @Test
+  @LocalS3
+  void aBodyThatIsNotJsonIsAValidationErrorOfS3Vectors(LocalS3Endpoint endpoint) throws Exception {
+    HttpResponse<String> response = send(endpoint, "POST", "/CreateVectorBucket", "{not json", "application/json");
+
+    assertEquals(400, response.statusCode(), response.body());
+    assertEquals("ValidationException", response.headers().firstValue("x-amzn-errortype").orElse(null));
+  }
+
   private static String get(LocalS3Endpoint endpoint, String path) throws Exception {
     return send(endpoint, path).body();
   }
@@ -102,6 +137,16 @@ class ErrorResponseIntegrationTest {
   private static HttpResponse<String> send(LocalS3Endpoint endpoint, String path) throws Exception {
     return HttpClient.newHttpClient().send(
         HttpRequest.newBuilder(URI.create(endpoint.endpoint() + path)).GET().build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> send(LocalS3Endpoint endpoint, String method, String path, String body,
+                                           String contentType) throws Exception {
+    return HttpClient.newHttpClient().send(
+        HttpRequest.newBuilder(URI.create(endpoint.endpoint() + path))
+            .method(method, HttpRequest.BodyPublishers.ofString(body))
+            .header("Content-Type", contentType)
+            .build(),
         HttpResponse.BodyHandlers.ofString());
   }
 

@@ -2,8 +2,10 @@ package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.rest.netty.StreamingHttpResponse;
@@ -14,11 +16,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.exc.StreamWriteException;
+import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * The exception handlers of the router answer an exception that isn't a
  * {@linkplain com.robothy.s3.core.exception.LocalS3Exception} with an {@code InternalError} that doesn't reveal it,
- * an {@linkplain IllegalArgumentException} included.
+ * an {@linkplain IllegalArgumentException} included. A request body that can't be read is the exception: an error of
+ * the client, {@code MalformedXML}.
  */
 class LocalS3RouterFactoryExceptionHandlerTest {
 
@@ -60,6 +66,47 @@ class LocalS3RouterFactoryExceptionHandlerTest {
     assertTrue(body.contains("<Code>InternalError</Code>"), body);
     assertFalse(body.contains("42"), body);
   }
+
+  @Test
+  void aBodyThatIsNotWellFormedIsMalformedXml() {
+    StreamingHttpResponse response = handle(readFailure("garbage"));
+
+    assertEquals(HttpResponseStatus.BAD_REQUEST, response.getStatus());
+    String body = bodyWithoutTheRequestId(response);
+    assertTrue(body.contains("<Code>MalformedXML</Code>"), body);
+  }
+
+  @Test
+  void aBodyThatDoesNotFitTheModelIsMalformedXml() {
+    StreamingHttpResponse response = handle(readFailure("<V><Status>Sideways</Status></V>"));
+
+    assertEquals(HttpResponseStatus.BAD_REQUEST, response.getStatus());
+    assertTrue(bodyWithoutTheRequestId(response).contains("<Code>MalformedXML</Code>"));
+  }
+
+  /**
+   * A Jackson exception that isn't a failure to read a request, e.g. one of writing a response, is a failure of
+   * LocalS3, not of the client.
+   */
+  @Test
+  void aJacksonExceptionOfWritingIsAnInternalError() {
+    StreamingHttpResponse response = handle(new StreamWriteException(null, "Can't write it."));
+
+    assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
+    assertTrue(bodyWithoutTheRequestId(response).contains("<Code>InternalError</Code>"));
+  }
+
+  /**
+   * The exception that reading {@code xml} as a {@link Versioning} throws.
+   */
+  private static JacksonException readFailure(String xml) {
+    return assertThrows(JacksonException.class, () -> new XmlMapper().readValue(xml, Versioning.class));
+  }
+
+  record Versioning(@JsonProperty("Status") Status status) {
+  }
+
+  enum Status { Enabled, Suspended }
 
   @Test
   void numberFormatExceptionIsAnInternalError() {
