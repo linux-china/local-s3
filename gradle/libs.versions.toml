@@ -26,6 +26,10 @@ iceberg="1.11.0"
 parquet="1.17.1"
 hadoop="3.5.0"
 delta="4.4.0"
+paimon="2.0.0"
+hudi="1.2.1"
+# The Kryo that Hudi is built against, which it leaves to the bundles of Spark and Flink to bring.
+kryo="4.0.2"
 assertj="3.27.7"
 s3EncryptionClient="4.0.2"
 # The version of aws-crt that the AWS SDK above is built against, see awscrt.version in its aws-sdk-java-pom.
@@ -94,6 +98,15 @@ hadoopClientRuntime = { group = "org.apache.hadoop", name = "hadoop-client-runti
 # Hadoop's S3A connector, the S3 client of Spark, Delta Lake, Hudi and Paimon. It declares the whole AWS SDK as
 # software.amazon.awssdk:bundle, which the build excludes for the modules S3A uses, at the version of the SDK here.
 hadoopAws = { group = "org.apache.hadoop", name = "hadoop-aws", version.ref = "hadoop" }
+# Apache Paimon without Flink or Spark: the bundle is the core of Paimon with its formats, every dependency shaded. With
+# no FileIO of its own for s3a://, Paimon falls back to Hadoop's, so it reaches LocalS3 through S3A.
+paimonBundle = { group = "org.apache.paimon", name = "paimon-bundle", version.ref = "paimon" }
+# Apache Hudi without Spark: the write client of its Java engine, which writes, upserts and compacts a table on S3A.
+hudiJavaClient = { group = "org.apache.hudi", name = "hudi-java-client", version.ref = "hudi" }
+# Hudi serializes its records with Kryo, and HoodieRecord implements KryoSerializable.
+kryoShaded = { group = "com.esotericsoftware", name = "kryo-shaded", version.ref = "kryo" }
+# The Avro reader of Parquet, which reads the base files of a Hudi table back.
+parquetAvro = { group = "org.apache.parquet", name = "parquet-avro", version.ref = "parquet" }
 awssdkS3TransferManager = { group = "software.amazon.awssdk", name = "s3-transfer-manager", version.ref = "awssdkS3" }
 # The AWS Common Runtime, which S3AsyncClient.crtBuilder() builds its client on.
 awsCrt = { group = "software.amazon.awssdk.crt", name = "aws-crt", version.ref = "awsCrt" }

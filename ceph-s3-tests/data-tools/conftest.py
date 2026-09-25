@@ -4,8 +4,8 @@ with an access key of its own, so every request has to be signed right, and with
 
 ``LOCAL_S3_JAR`` overrides the jar, ``local-s3-standalone/build/libs/s3.jar``. The ``AWS_*`` variables of the shell
 are taken out of the environment of the tests before any client reads them: boto3, s3fs, PyIceberg and the
-``object_store`` crate of delta-rs and Polars would otherwise take the credentials, the region or the endpoint of a
-real account from there.
+``object_store`` crate of delta-rs, Polars, Lance and LanceDB would otherwise take the credentials, the region or the
+endpoint of a real account from there.
 """
 
 import json

@@ -1,14 +1,15 @@
 Local S3 integration test
 ==========================
 
-End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB, DuckLake, Apache Iceberg and Delta Lake.
+End-to-end tests of LocalS3 with real clients: the AWS SDK for Java v2, DuckDB, DuckLake, Apache Iceberg, Delta Lake,
+Apache Paimon and Apache Hudi.
 
 The tests are grouped by JUnit tag:
 
 | Task            | Tag          | Tests                                                                                    |
 |-----------------|--------------|------------------------------------------------------------------------------------------|
 | `test`          | untagged     | LocalS3 with the AWS SDK; CI runs them on Linux for every pull request                   |
-| `dataToolsTest` | `data-tools` | DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A, the slow ones; CI runs them in a job of their own, in parallel |
+| `dataToolsTest` | `data-tools` | DuckDB, Apache Iceberg, Delta Lake, Paimon, Hudi and Hadoop S3A, the slow ones; CI runs them in a job of their own, in parallel |
 | `realS3Test`    | `real-s3`    | the tests of `@RealS3`, which need AWS credentials; CI doesn't run them                   |
 
 `check` runs `test` and `dataToolsTest`.
@@ -24,6 +25,8 @@ The tests are grouped by JUnit tag:
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergS3FileIOIntegrationTest'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*IcebergRestCatalog*'
 ./gradlew :local-s3-integration-test:dataToolsTest --tests '*DeltaLakeIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*PaimonIntegrationTest'
+./gradlew :local-s3-integration-test:dataToolsTest --tests '*HudiIntegrationTest'
 ./gradlew :local-s3-integration-test:test --tests '*ConcurrentRangeReadIntegrationTest'
 ```
 
@@ -223,3 +226,40 @@ Notes:
   Hadoop's `Configuration`, so `javac` needs the class to resolve the `FileIO` overload the tests use.
 + `LocalS3DeltaFileIO` is written for clarity: an object being read is fetched whole, and one being written is
   buffered until it is closed. The tables of these tests are a few kilobytes.
+
+# Apache Paimon
+
+`PaimonIntegrationTest` runs the filesystem catalog of Paimon, without Flink or Spark, with its warehouse on
+`s3a://lake/paimon`. `paimon-bundle` has no `FileIO` of its own for `s3a://`, so Paimon falls back to Hadoop's, and
+reaches LocalS3 through the S3A connector of `HadoopS3AIntegrationTest`, the way a Flink or Spark job with
+`hadoop-aws` on its classpath does.
+
+| Step        | Paimon                                                                   | Checked                                                                     |
+|-------------|--------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| Create      | `createDatabase`, `createTable` of a partitioned primary-key table        | `listDatabases`, `listTables`; the table is on `HadoopFileIO`              |
+| Write       | two batch commits: inserts, then an update and a `DELETE` row by key      | two snapshots, and one data file per commit in each bucket                  |
+| Read        | a scan of the latest snapshot, and of `scan.snapshot-id = 1`             | the rows merged by key; time travel to the rows before the update           |
+| Compaction  | `BatchTableWrite.compact(partition, bucket, true)`, what `sys.compact` runs | a `COMPACT` snapshot, one file per bucket, and the same rows               |
+| Expiry      | `newExpireSnapshots()` down to one snapshot                              | the files the compaction replaced are deleted from the bucket              |
+| Drop        | `dropTable`                                                              | the directory of the table is gone                                         |
+
+# Apache Hudi
+
+`HudiIntegrationTest` runs the write client of the Java engine of Hudi, `hudi-java-client`, without Spark, on tables
+under `s3a://lake/hudi`, reached through S3A as well. The base files are read back with the Avro reader of Parquet,
+from the latest file slices of Hudi's file system view: the read-optimized view.
+
+| Test                                           | Hudi                                                                  | Checked                                                                  |
+|------------------------------------------------|-----------------------------------------------------------------------|--------------------------------------------------------------------------|
+| `insertsUpsertsAndDeletesInACopyOnWriteTable`  | a copy-on-write table: `insert`, `upsert` and `delete` by key, each a commit | three completed commits on the timeline, the rows of the latest base files, and the metadata table under `.hoodie/metadata/` |
+| `compactsTheLogFilesOfAMergeOnReadTable`       | a merge-on-read table: an `insert`, an `upsert` into log files, then `scheduleCompaction` and `compact` | the base files don't see the update until the compaction, which leaves no log file in the latest slices |
+
+Notes:
+
++ Hudi 1.x doesn't complete the instant of a write by itself: the test calls `commit(instant, statuses)`, and an
+  instant left inflight is rolled back by the next write.
++ Hudi leaves Kryo to the bundles of Spark and Flink, so the build adds `kryo-shaded` 4.0.2, the version Hudi is built
+  against. Paimon takes `lz4-java` from `at.yawk.lz4`, the maintained fork with the same packages, and Hudi from
+  `org.lz4`; the build picks the higher version of the two.
++ Hudi takes its file systems from the cache of Hadoop, keyed by `s3a://lake`, so the test closes them after each
+  test, whose LocalS3 has a port of its own.

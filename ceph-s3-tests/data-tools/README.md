@@ -8,12 +8,14 @@ an HTTP stack of its own, apart from the AWS SDK for Java that the other tests u
 |---|---|---|
 | `test_pyiceberg.py` | PyIceberg on the built-in Iceberg REST catalog, PyArrow's S3 file system | create, append, scan, time travel, delete, overwrite, partition pruning, schema evolution, rename and drop, with the storage vended by the catalog |
 | `test_delta.py` | delta-rs (`deltalake`) and Polars, Rust's `object_store` | write, append, delete, merge, overwrite, time travel; writers racing for a version, whose commits are `PUT`s with `If-None-Match: *` |
+| `test_lance.py` | Lance (`pylance`) and LanceDB, Rust's `object_store` | write, append, update, delete, overwrite, time travel, compaction and cleanup of old versions, an IVF_PQ index and nearest-neighbour search; writers racing for a version, whose manifests are `PUT`s with `If-None-Match: *`; a LanceDB table created, searched, optimized and dropped |
 | `test_s3fs_pandas.py` | fsspec's s3fs on aiobotocore, pandas | `pd.read_parquet` / `to_parquet` / `read_csv`, partitioned datasets, multipart uploads, range reads, copy, move, recursive delete |
 
 ```shell
 ./gradlew :local-s3-standalone:jar
 ceph-s3-tests/data-tools/run.sh               # or: just data-tools-py
 ceph-s3-tests/data-tools/run.sh -k delta      # the arguments go to pytest
+ceph-s3-tests/data-tools/run.sh -k lance      # Lance and LanceDB
 ```
 
 `conftest.py` starts the jar once, on a free port, with an access key of its own, so every request has to be signed

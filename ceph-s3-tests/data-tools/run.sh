@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the Python data tools, PyIceberg, delta-rs, Polars, s3fs and pandas, against the executable jar of LocalS3,
+# Runs the Python data tools, PyIceberg, delta-rs, Polars, Lance, LanceDB, s3fs and pandas, against the executable jar of LocalS3,
 # which conftest.py starts; see README.md.
 #
 #   ceph-s3-tests/data-tools/run.sh              every test

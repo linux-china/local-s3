@@ -3,15 +3,17 @@
 [project]
 name = "local-s3-data-tools"
 version = "0.0.0"
-description = "PyIceberg, delta-rs, Polars, s3fs and pandas against LocalS3"
+description = "PyIceberg, delta-rs, Polars, Lance, LanceDB, s3fs and pandas against LocalS3"
 requires-python = ">=3.12"
 dependencies = [
     "boto3>=1.43.75",
     "deltalake>=1.6.6",
+    "lancedb>=0.39.0",
     "pandas>=3.0.6",
     "polars>=1.44.2",
     "pyarrow>=25.0.1",
     "pyiceberg[pyarrow,pyiceberg-core]>=0.12.0",
+    "pylance>=12.0.0",
     "pytest>=9.1.1",
     "pytest-timeout>=2.4.0",
     "s3fs>=2025.1",

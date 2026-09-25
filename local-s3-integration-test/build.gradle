@@ -48,16 +48,30 @@ dependencies {
     testImplementation(libs.hadoopAws) {
         exclude group: 'software.amazon.awssdk', module: 'bundle'
     }
+    // Apache Paimon, for PaimonIntegrationTest, on the S3A connector above.
+    testImplementation(libs.paimonBundle)
+    // Apache Hudi, for HudiIntegrationTest, on the S3A connector above as well.
+    testImplementation(libs.hudiJavaClient)
+    // Hudi leaves Kryo to the bundles of Spark and Flink, and HoodieRecord implements KryoSerializable.
+    testImplementation(libs.kryoShaded)
+    testImplementation(libs.parquetAvro)
     testImplementation(libs.awssdkS3TransferManager)
     // The CRT-based S3 client, for CrtClientIntegrationTest.
     testImplementation(libs.awsCrt)
     testRuntimeOnly(libs.logbackClassic)
 }
 
+// lz4-java moved to at.yawk.lz4, with the same packages, which Paimon takes and Hudi, still on org.lz4 1.8.0, doesn't.
+configurations.configureEach {
+    resolutionStrategy.capabilitiesResolution.withCapability('org.lz4:lz4-java') {
+        selectHighestVersion()
+    }
+}
+
 // The tests fall into three groups, by JUnit tag:
 // - untagged: LocalS3 with the AWS SDK, which `test` runs, and the pull request builds with it;
-// - `data-tools`: DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A, whose dependencies and native code make them the slow ones, which
-//   `dataToolsTest` runs, in a job of their own in CI;
+// - `data-tools`: DuckDB, Apache Iceberg, Delta Lake, Apache Paimon, Apache Hudi and Hadoop S3A, whose dependencies
+//   and native code make them the slow ones, which `dataToolsTest` runs, in a job of their own in CI;
 // - `real-s3`: the tests of `@RealS3`, which need AWS credentials, which only `realS3Test` runs.
 tasks.named('test', Test) {
     useJUnitPlatform {
@@ -76,7 +90,7 @@ def requiredDuckDbTestClasses = [
 ] as Set
 
 def dataToolsTest = tasks.register('dataToolsTest', Test) {
-    description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg, Delta Lake and Hadoop S3A.'
+    description = 'Runs the end-to-end tests with DuckDB, Apache Iceberg, Delta Lake, Apache Paimon, Apache Hudi and Hadoop S3A.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     // hadoop-aws first: the test jar of iceberg-core carries a stub of S3ABlockOutputStream of its own, which would

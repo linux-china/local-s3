@@ -191,6 +191,21 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   another, and conditional creates with `If-None-Match: *` and `If-Match`. It runs under `dataToolsTest`. See
   [Hadoop S3A](docs/data-tools.md#hadoop-s3a).
 
++ **Apache Paimon and Apache Hudi are covered end to end, over S3A.** `PaimonIntegrationTest` runs the filesystem
+  catalog of Paimon 2.0, without Flink or Spark, on a warehouse under `s3a://`: a partitioned primary-key table
+  created, written, updated and deleted by key, read merged and by time travel, compacted to one file per bucket, its
+  old snapshots expired and the table dropped. `HudiIntegrationTest` runs the Java write client of Hudi 1.2 on a
+  copy-on-write table (insert, upsert, delete) and on a merge-on-read one, whose updates go to log files until a
+  compaction merges them into new base files. Both run under `dataToolsTest`. See
+  [Apache Paimon](docs/data-tools.md#apache-paimon) and [Apache Hudi](docs/data-tools.md#apache-hudi).
+
++ **Lance and LanceDB are covered end to end.** `ceph-s3-tests/data-tools/test_lance.py` drives Lance (`pylance`) and
+  LanceDB, which reach S3 with Rust's `object_store`, against the executable jar: writes, updates, deletes and time
+  travel, the compaction of fragments and the cleanup of old versions, an IVF_PQ index with a nearest-neighbour search,
+  a LanceDB table searched and optimized, and four writers racing for one version, whose manifests Lance creates with
+  `If-None-Match: *`: the losers get `412` and commit again, and every row is kept. See
+  [Lance and LanceDB](docs/data-tools.md#lance-and-lancedb).
+
 + **A built-in Iceberg REST catalog**, off by default: `icebergCatalog(true)`, `@LocalS3(icebergCatalog = true)`,
   `local-s3.iceberg-catalog.enabled` or `LOCAL_S3_ICEBERG_CATALOG=true` serves an
   [Iceberg REST catalog](https://iceberg.apache.org/spec/#rest-catalog) under `/iceberg/v1` on the same port, so a

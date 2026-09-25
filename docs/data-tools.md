@@ -1,6 +1,7 @@
 # Data tools
 
-How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake, Hadoop S3A and the [Python](#python) data tools at LocalS3,
+How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake, Hadoop S3A, [Apache Paimon](#apache-paimon),
+[Apache Hudi](#apache-hudi) and the [Python](#python) data tools at LocalS3,
 e.g. a LocalS3 started with `docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as
 end-to-end tests in [`local-s3-integration-test`](../local-s3-integration-test/README.md), and the Python ones in
 [`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md).
@@ -711,10 +712,68 @@ With Spark, the same as `spark.hadoop.fs.s3a.*`. The magic committer takes
 modules S3A uses, `s3` and `s3-transfer-manager` (and `sts` for its assumed-role credentials), which an
 application may do as well.
 
+## Apache Paimon
+
+Paimon reaches `s3a://` through Hadoop's S3A when `hadoop-aws` is on the classpath, as it is in most Flink and Spark
+deployments. A catalog passes its options that start with `hadoop.` to Hadoop, without the prefix, so it takes the
+[S3A settings](#hadoop-s3a) as `hadoop.fs.s3a.*`:
+
+```sql
+-- Flink SQL
+CREATE CATALOG paimon WITH (
+  'type' = 'paimon',
+  'warehouse' = 's3a://lake/paimon',
+  'hadoop.fs.s3a.endpoint' = 'http://localhost:29090',
+  'hadoop.fs.s3a.endpoint.region' = 'us-east-1',
+  'hadoop.fs.s3a.path.style.access' = 'true',
+  'hadoop.fs.s3a.connection.ssl.enabled' = 'false',
+  'hadoop.fs.s3a.access.key' = 'admin',
+  'hadoop.fs.s3a.secret.key' = 'admin'
+);
+```
+
+With Spark, the same options go under `spark.sql.catalog.paimon.*`, or the S3A ones under `spark.hadoop.fs.s3a.*`.
+Paimon's own `paimon-s3` jar, for `s3://`, shades S3A inside and takes `s3.endpoint`, `s3.access-key`,
+`s3.secret-key` and `s3.path.style.access = true` instead.
+
+`PaimonIntegrationTest` runs the filesystem catalog of `paimon-bundle`, without Flink or Spark, with these options: a
+partitioned primary-key table is created, written in two commits, the second of them updating and deleting rows by
+key, read merged and as of its first snapshot, compacted with `compact(partition, bucket, true)` — what
+`CALL sys.compact` runs — into one file per bucket, its old snapshots expired, which deletes the files the compaction
+replaced, and dropped.
+
+A filesystem catalog commits a snapshot by writing a temporary file and renaming it to `snapshot-<n>`, and a rename
+on S3A is a copy and a delete, not atomic. One writer per table is safe; concurrent writers of a table need a catalog
+with a lock, e.g. the Hive or JDBC catalog with `lock.enabled = true`, as they do on Amazon S3.
+
+## Apache Hudi
+
+Hudi reaches `s3a://` through Hadoop's S3A as well, so a Spark job takes the [S3A settings](#hadoop-s3a) as
+`spark.hadoop.fs.s3a.*`, and the table path is an `s3a://` URI:
+
+```python
+df.write.format("hudi") \
+    .option("hoodie.table.name", "trips") \
+    .option("hoodie.datasource.write.recordkey.field", "id") \
+    .option("hoodie.datasource.write.partitionpath.field", "city") \
+    .option("hoodie.datasource.write.table.type", "MERGE_ON_READ") \
+    .mode("append").save("s3a://lake/hudi/trips")
+```
+
+`HudiIntegrationTest` runs the write client of Hudi's Java engine, `hudi-java-client`, without Spark. A copy-on-write
+table takes an insert, an upsert and a delete by key, each a completed commit on the timeline under `.hoodie/`, with
+the metadata table under `.hoodie/metadata/`. On a merge-on-read table the updates of an upsert go to log files that
+the base files don't see, until `scheduleCompaction` and `compact` merge them into new base files and leave no log
+file in the latest file slices.
+
+Like on Amazon S3, concurrent writers of a Hudi table need optimistic concurrency control and a lock provider, which
+the test doesn't cover.
+
 ## Python
 
 The Python clients reach S3 each with an HTTP stack of its own: PyIceberg with PyArrow's S3 file system (the AWS SDK
-for C++), delta-rs and Polars with Rust's `object_store`, s3fs and pandas with aiobotocore on aiohttp. None of them
+for C++), delta-rs, Polars, Lance and LanceDB with Rust's `object_store`, s3fs and pandas with aiobotocore on
+aiohttp. None of them
 is the AWS SDK for Java of the other tests, so [`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md)
 runs them against the executable jar with signatures verified:
 
@@ -782,6 +841,39 @@ options, so keep `conditional_put` for them. `object_store` addresses buckets pa
 `test_delta.py` covers writes, appends, `delete`, `merge`, overwrites and time travel with both libraries, and races
 four writers for one version, with `conditional_put = etag` and without it: all of them keep their rows, and LocalS3
 refused the losers with `412`.
+
+### Lance and LanceDB
+
+Lance (`pylance`) and LanceDB take the options of `object_store`, as delta-rs does:
+
+```python
+import lance
+import lancedb
+
+storage_options = {
+    "aws_endpoint": "http://localhost:29090",
+    "aws_access_key_id": "admin",
+    "aws_secret_access_key": "admin",
+    "aws_region": "us-east-1",
+    "allow_http": "true",          # LocalS3 serves plain HTTP unless given a certificate
+}
+lance.write_dataset(table, "s3://vectors/events.lance", storage_options=storage_options)
+dataset = lance.dataset("s3://vectors/events.lance", storage_options=storage_options)
+dataset.create_index("vector", index_type="IVF_PQ", num_partitions=4, num_sub_vectors=4)
+dataset.to_table(nearest={"column": "vector", "q": query, "k": 5})
+
+db = lancedb.connect("s3://vectors/lancedb", storage_options=storage_options)
+db.create_table("docs", table).search(query).limit(5).to_list()
+```
+
+**The commit is a conditional `PUT`, as in delta-rs.** A version of a Lance dataset is the manifest under
+`_versions/`, which Lance creates on S3 with `If-None-Match: *`; the writer that loses the race gets `412` from LocalS3
+and, when its write doesn't conflict, commits again at the next version. No DynamoDB commit store is needed.
+
+`test_lance.py` covers writes, appends, `update`, `delete`, overwrites and time travel; the compaction of five
+fragments into one and the cleanup of old versions, which deletes the replaced files; an IVF_PQ index and a
+nearest-neighbour search; four writers racing for one version, which all keep their rows while LocalS3 refused the
+losers with `412`; and a LanceDB table created, appended to, searched, optimized and dropped.
 
 ### s3fs and pandas
 
