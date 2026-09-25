@@ -95,4 +95,10 @@ public class GetObjectAns {
    * The SSE-S3 or SSE-KMS encryption that the version was stored with; {@code null} if it wasn't stored with one.
    */
   private ServerSideEncryption serverSideEncryption;
+
+  /**
+   * When the restored copy of an archived version expires, in epoch milliseconds; {@code null} if the version has no
+   * restored copy, i.e. it was never restored or its restored copy expired.
+   */
+  private Long restoreExpiryDate;
 }

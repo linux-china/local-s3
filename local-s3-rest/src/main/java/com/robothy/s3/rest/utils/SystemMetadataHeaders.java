@@ -8,6 +8,7 @@ import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.enums.StorageClass;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -53,6 +54,8 @@ public final class SystemMetadataHeaders {
 
   private static final String AWS_CHUNKED = "aws-chunked";
 
+  private static final int MAX_WEBSITE_REDIRECT_LOCATION_BYTES = 2048;
+
   /**
    * The content type that an object stored without one is served with, which is what Amazon S3 answers: a
    * {@code GetObject} or {@code HeadObject} response always carries a {@code Content-Type}. Note that Amazon S3
@@ -88,6 +91,7 @@ public final class SystemMetadataHeaders {
         .contentLanguage(values.apply(Header.CONTENT_LANGUAGE.headerName))
         .expires(values.apply(Header.EXPIRES.headerName))
         .storageClass(storedStorageClass(storageClass(values)))
+        .websiteRedirectLocation(websiteRedirectLocation(values))
         .build();
     return systemMetadata.equals(new SystemMetadata()) ? null : systemMetadata;
   }
@@ -109,6 +113,30 @@ public final class SystemMetadataHeaders {
     } catch (IllegalArgumentException e) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidStorageClass);
     }
+  }
+
+  /**
+   * Read the {@code x-amz-website-redirect-location} that an object is stored with.
+   *
+   * @param values the value of a header name; {@code null} if there is none.
+   * @return the website redirect location; {@code null} if there is none.
+   * @throws LocalS3RequestException {@code InvalidArgument} if it is neither a path, which starts with {@code /}, nor
+   *     an {@code http://} or {@code https://} URL, or is longer than 2 KB, like Amazon S3 rejects it.
+   */
+  public static String websiteRedirectLocation(Function<String, String> values) {
+    String value = values.apply(AmzHeaderNames.X_AMZ_WEBSITE_REDIRECT_LOCATION);
+    if (value == null || value.isEmpty()) {
+      return null;
+    }
+    if (!(value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://"))) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidArgument,
+          "The website redirect location must have a prefix of 'http://' or 'https://' or '/'.");
+    }
+    if (value.getBytes(StandardCharsets.UTF_8).length > MAX_WEBSITE_REDIRECT_LOCATION_BYTES) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidArgument,
+          "The length of website redirect location cannot exceed 2,048 characters.");
+    }
+    return value;
   }
 
   /**
@@ -165,6 +193,8 @@ public final class SystemMetadataHeaders {
     // Answered only for a storage class other than STANDARD, like Amazon S3 does.
     if (systemMetadata != null) {
       ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_STORAGE_CLASS, systemMetadata.getStorageClass());
+      ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_WEBSITE_REDIRECT_LOCATION,
+          systemMetadata.getWebsiteRedirectLocation());
     }
   }
 

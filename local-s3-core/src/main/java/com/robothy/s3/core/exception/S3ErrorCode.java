@@ -39,7 +39,7 @@ public enum S3ErrorCode {
   InvalidDigest("InvalidDigest", 400, "The Content-MD5 you specified is not valid."),
   InvalidEncryptionAlgorithmError("InvalidEncryptionAlgorithmError", 400, "The encryption request you specified is not valid. The valid value is AES256."),
   //InvalidLocationConstraint("InvalidLocationConstraint", 400, "The specified location constraint is not valid. For more information about Regions, see How to Select a Region for Your Buckets."),
-  //InvalidObjectState("InvalidObjectState", 403, "The action is not valid for the current state of the object."),
+  InvalidObjectState("InvalidObjectState", 403, "The action is not valid for the current state of the object."),
   InvalidPart("InvalidPart", 400, "One or more of the specified parts could not be found. The part might not have been uploaded, or the specified entity tag might not have matched the part's entity tag."),
   InvalidPartNumber("InvalidPartNumber", 416, "The requested partnumber is not satisfiable"),
   InvalidPartOrder("InvalidPartOrder", 400, "The list of parts was not in ascending order. Parts list must be specified in order by part number."),

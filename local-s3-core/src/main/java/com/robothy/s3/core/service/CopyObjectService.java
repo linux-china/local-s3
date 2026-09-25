@@ -55,9 +55,11 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
     boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
     Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
     String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
-    // The storage class isn't copied: the copy has the one of the request, like Amazon S3 does.
-    SystemMetadata systemMetadataToUse = SystemMetadata.withStorageClass(replaceMetadata
-        ? options.getSystemMetadata() : srcObjectAns.getSystemMetadata(), options.getStorageClass());
+    // Neither the storage class nor the website redirect location is copied: the copy has the ones of the request,
+    // like Amazon S3 does.
+    SystemMetadata systemMetadataToUse = SystemMetadata.withWebsiteRedirectLocation(
+        SystemMetadata.withStorageClass(replaceMetadata ? options.getSystemMetadata()
+            : srcObjectAns.getSystemMetadata(), options.getStorageClass()), options.getWebsiteRedirectLocation());
 
     // The tagging of the source object is copied, unless the directive replaces it with the requested one.
     String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE
@@ -103,6 +105,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         && options.getMetadataDirective() != CopyObjectOptions.MetadataDirective.REPLACE
         && options.getTaggingDirective() != CopyObjectOptions.TaggingDirective.REPLACE
         && Objects.isNull(options.getStorageClass())
+        && Objects.isNull(options.getWebsiteRedirectLocation())
         && Objects.isNull(options.getChecksumAlgorithm())
         && Objects.isNull(options.getServerSideEncryption())
         && Objects.isNull(options.getCustomerEncryption());

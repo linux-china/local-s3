@@ -30,10 +30,11 @@ class SystemMetadataHeadersTest {
         "content-encoding", "gzip",
         "content-language", "de",
         "expires", "Thu, 01 Dec 2033 16:00:00 GMT",
-        "x-amz-storage-class", "GLACIER"), Map.of()));
+        "x-amz-storage-class", "GLACIER",
+        "x-amz-website-redirect-location", "/other.html"), Map.of()));
 
     assertEquals(new SystemMetadata("max-age=60", "inline", "gzip", "de", "Thu, 01 Dec 2033 16:00:00 GMT",
-        StorageClass.GLACIER), systemMetadata);
+        StorageClass.GLACIER, "/other.html"), systemMetadata);
   }
 
   @Test

@@ -2,10 +2,12 @@ package com.robothy.s3.core.model;
 
 /**
  * The configurations of which a bucket has several, each named by an ID, that LocalS3 <b>stores and returns but never
- * applies</b>: no storage class analysis runs, no inventory report is written and no CloudWatch metric is published.
+ * applies</b>: no storage class analysis runs, no object moves between access tiers, no inventory report is written
+ * and no CloudWatch metric is published.
  *
  * <p>They exist so that the clients that write them, e.g. Terraform's {@code aws_s3_bucket_metric},
- * {@code aws_s3_bucket_inventory} and {@code aws_s3_bucket_analytics_configuration} or CDK stacks, work against LocalS3
+ * {@code aws_s3_bucket_inventory}, {@code aws_s3_bucket_analytics_configuration} and
+ * {@code aws_s3_bucket_intelligent_tiering_configuration} or CDK stacks, work against LocalS3
  * instead of failing with {@code 501 NotImplemented}.
  *
  * <p>A bucket has none of them until one is put; reading or deleting an ID that the bucket doesn't have answers
@@ -18,6 +20,12 @@ public enum IdentifiedBucketConfiguration {
    * and the others of the {@code ?analytics} subresource.
    */
   ANALYTICS("AnalyticsConfiguration", "ListBucketAnalyticsConfigurationResult"),
+
+  /**
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketIntelligentTieringConfiguration.html">PutBucketIntelligentTieringConfiguration</a>
+   * and the others of the {@code ?intelligent-tiering} subresource.
+   */
+  INTELLIGENT_TIERING("IntelligentTieringConfiguration", "ListBucketIntelligentTieringConfigurationsOutput"),
 
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketInventoryConfiguration.html">PutBucketInventoryConfiguration</a>

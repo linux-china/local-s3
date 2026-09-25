@@ -81,6 +81,13 @@ public class VersionedObjectMetadata {
   private String uploadId;
 
   /**
+   * When the temporary copy that {@code RestoreObject} made of an archived version, e.g. a {@code GLACIER} one,
+   * expires, in epoch milliseconds; {@code null} if the version was never restored. LocalS3 restores at once, so a
+   * restore is never ongoing, and the content of the version is readable whether or not it was restored.
+   */
+  private Long restoreExpiryDate;
+
+  /**
    * Get object tagging.
    */
   public Optional<String[][]> getTagging() {

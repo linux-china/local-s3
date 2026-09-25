@@ -7,6 +7,7 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
+import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
@@ -32,7 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Serves a bucket as a
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html">static website</a>: the index
  * document of a directory, a redirect to a directory that was addressed without its trailing slash, the error document
- * of a key that isn't there, and the redirects of the {@code WebsiteConfiguration} of the bucket.
+ * of a key that isn't there, the redirects of the {@code WebsiteConfiguration} of the bucket, and the redirect of an
+ * object that was stored with an {@code x-amz-website-redirect-location}.
  *
  * <p>Amazon S3 serves a website on an endpoint of its own, which speaks no S3 API. LocalS3 serves it on the port of
  * its S3 API, and tells the requests apart by their credentials: a request that carries none, i.e. one a browser sent,
@@ -211,7 +213,14 @@ class StaticWebsiteController implements HttpRequestHandler {
     // A request for a directory is answered with the index document of that directory.
     String target = key.isEmpty() || key.endsWith("/") ? key + indexDocument : key;
     if (objectExists(bucket, target)) {
-      serve(request, response, target);
+      // An object stored with a website redirect location redirects instead of serving its content, like the website
+      // endpoint of Amazon S3 does.
+      Optional<String> redirectLocation = websiteRedirectLocation(bucket, target);
+      if (redirectLocation.isPresent()) {
+        redirect(response, HttpResponseStatus.MOVED_PERMANENTLY, redirectLocation.get());
+      } else {
+        serve(request, response, target);
+      }
       return;
     }
 
@@ -470,6 +479,21 @@ class StaticWebsiteController implements HttpRequestHandler {
       return !objectService.headObject(bucket, key, GetObjectOptions.builder().build()).isDeleteMarker();
     } catch (LocalS3Exception e) {
       return false;
+    }
+  }
+
+  /**
+   * The {@code x-amz-website-redirect-location} that an object was stored with.
+   *
+   * @return the location; empty if the object has none, or doesn't exist.
+   */
+  private Optional<String> websiteRedirectLocation(String bucket, String key) {
+    try {
+      SystemMetadata systemMetadata =
+          objectService.headObject(bucket, key, GetObjectOptions.builder().build()).getSystemMetadata();
+      return Optional.ofNullable(systemMetadata).map(SystemMetadata::getWebsiteRedirectLocation);
+    } catch (LocalS3Exception e) {
+      return Optional.empty();
     }
   }
 

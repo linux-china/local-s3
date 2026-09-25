@@ -100,7 +100,7 @@ class SupportedApiDocumentationTest {
   void theRoutesOfTheFactoryAreFound() {
     assertTrue(implementedS3Routes.size() > 40,
         "Found only " + implementedS3Routes.size() + " implemented S3 routes.");
-    assertTrue(notImplementedRoutes.size() > 5,
+    assertTrue(notImplementedRoutes.size() >= 3,
         "Found only " + notImplementedRoutes.size() + " unimplemented routes.");
     assertTrue(implementedVectorRoutes.size() > 10,
         "Found only " + implementedVectorRoutes.size() + " S3 Vectors routes.");

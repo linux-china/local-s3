@@ -76,6 +76,12 @@ public class CopyObjectOptions {
    */
   private StorageClass storageClass;
 
+  /**
+   * The website redirect location of the copy, which isn't copied from the source object whatever the metadata
+   * directive, like Amazon S3 does; {@code null} for none.
+   */
+  private String websiteRedirectLocation;
+
   private TaggingDirective taggingDirective;
 
   private String[][] tagging;

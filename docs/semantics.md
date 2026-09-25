@@ -14,6 +14,7 @@ Amazon S3 would refuse.
 - [Access control lists](#access-control-lists)
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Object Lock](#object-lock)
+- [Storage classes and restores](#storage-classes-and-restores)
 - [Appends and renames](#appends-and-renames)
 - [S3 Express One Zone directory buckets](#s3-express-one-zone-directory-buckets)
 - [Server-side encryption with S3 managed and KMS keys (SSE-S3, SSE-KMS)](#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms)
@@ -37,6 +38,9 @@ Amazon S3 would refuse.
   (`POST Object`) larger than 2 GiB is rejected with `EntityTooLarge`.
 + If credentials are configured, the signature of a request with a body is verified before the body is received, so
   the body of a request that fails anyway is neither uploaded nor buffered.
++ `x-amz-expected-bucket-owner` and `x-amz-source-expected-bucket-owner` are **accepted and ignored**: LocalS3 has one
+  account, which owns every bucket, so a request never fails with `403 AccessDenied` for naming another owner. A test
+  that relies on that check must run against Amazon S3.
 
 ## Conditional requests
 
@@ -281,6 +285,15 @@ own, and LocalS3 applies it:
 `website(website -> website.indexDocument(...).errorDocument(...))`, or the matching variables and properties,
 change the documents of the buckets that have no configuration of their own.
 
+### Website redirect locations
+
+An object stored with `x-amz-website-redirect-location` (`PutObject`, `CopyObject`, `CreateMultipartUpload` or a
+`POST Object` form field) is answered by the website with a `301` to that location instead of its content, whether it
+is addressed by its key or is the index document of a directory. The location is a path, e.g. `/docs/new.html`, or an
+`http://` or `https://` URL; anything else, or one longer than 2 KB, answers `400 InvalidArgument`. `GetObject` and
+`HeadObject` of the S3 API answer the header and the content as usual. Like on Amazon S3, `CopyObject` doesn't copy
+the location of its source; the copy has the one of the request, if any.
+
 ### Content types
 
 An object is served with the content type it was stored with. An object stored **without** one, which LocalS3 keeps as
@@ -370,6 +383,23 @@ being deleted, for testing compliance code, e.g. that a retention is set on what
 
 Unlike Amazon S3, LocalS3 doesn't require a `Content-MD5` or checksum on the requests that store a version with Object
 Lock settings.
+
+## Storage classes and restores
+
+`x-amz-storage-class` is stored with an object and answered by `HeadObject`, `GetObject` and the listings, but every
+object is kept and read the same way: a `GLACIER` or `DEEP_ARCHIVE` object is readable without a restore.
+
+`RestoreObject` records a restore rather than performing one, so that code that restores cold data before reading it
+runs against LocalS3:
+
++ An object of the `GLACIER` or `DEEP_ARCHIVE` storage class is restored **at once**: the first restore answers
+  `202 Accepted`, and one of an object whose restored copy hasn't expired answers `200 OK` and extends the copy.
++ `HeadObject` and `GetObject` then answer `x-amz-restore: ongoing-request="false", expiry-date="..."`, where the expiry
+  date is midnight UTC after `Days` days, like Amazon S3 rounds it. After that date the header is gone, and the next
+  restore answers `202` again.
++ `Days` is required; the `Tier` and the other elements of the `RestoreRequest` are ignored.
++ An object of any other storage class, including `GLACIER_IR` and `INTELLIGENT_TIERING`, answers
+  `403 InvalidObjectState`, and a delete marker `405 MethodNotAllowed`.
 
 ## Appends and renames
 

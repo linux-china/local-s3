@@ -269,6 +269,15 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   `501 NotImplemented`, so that Terraform's `aws_s3_bucket_metric`, `aws_s3_bucket_inventory` and
   `aws_s3_bucket_analytics_configuration`, and CDK stacks, work. They are **never applied**: no report or metric is
   produced. See [the API list](docs/apis.md).
++ **Intelligent-Tiering configurations**: the `Put`, `Get`, `List` and `Delete` operations of `?intelligent-tiering`
+  store and return the configurations of a bucket by ID like the analytics ones, so that Terraform's
+  `aws_s3_bucket_intelligent_tiering_configuration` works. No object ever moves between access tiers.
++ **RestoreObject**: restoring a `GLACIER` or `DEEP_ARCHIVE` object completes at once, answering `202 Accepted` the
+  first time and `200 OK` while the restored copy lasts; `HeadObject` and `GetObject` answer `x-amz-restore`. Other
+  storage classes answer `403 InvalidObjectState`. See [semantics](docs/semantics.md#storage-classes-and-restores).
++ **Website redirect location**: `x-amz-website-redirect-location` of `PutObject`, `CopyObject`,
+  `CreateMultipartUpload` and `POST Object` is stored with the object, answered by `GetObject` and `HeadObject`, and
+  the static website redirects a request for the object to it.
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
   and for the domains of `s3Api(s3 -> s3.virtualHostDomains(...))` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
 + **Change listeners**: `changeListener` and `events(events -> events.listener(...).executor(...))` deliver an

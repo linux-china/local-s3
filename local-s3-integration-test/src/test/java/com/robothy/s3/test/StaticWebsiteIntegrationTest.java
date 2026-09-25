@@ -160,6 +160,28 @@ class StaticWebsiteIntegrationTest {
     }
 
     @Test
+    void anObjectWithAWebsiteRedirectLocationRedirectsToIt() throws Exception {
+      start(authenticated().build());
+      s3.putObject(b -> b.bucket(PUBLIC_BUCKET).key("old.html").websiteRedirectLocation("/" + PUBLIC_BUCKET + "/"),
+          RequestBody.fromString("moved", StandardCharsets.UTF_8));
+      s3.putObject(b -> b.bucket(PUBLIC_BUCKET).key("away/index.html")
+          .websiteRedirectLocation("https://example.com/away"), RequestBody.fromString("moved"));
+
+      HttpResponse<String> response = get("/" + PUBLIC_BUCKET + "/old.html");
+      assertEquals(301, response.statusCode());
+      assertEquals("/" + PUBLIC_BUCKET + "/", response.headers().firstValue("Location").orElseThrow());
+      // The index document of a directory redirects too.
+      HttpResponse<String> directory = get("/" + PUBLIC_BUCKET + "/away/");
+      assertEquals(301, directory.statusCode());
+      assertEquals("https://example.com/away", directory.headers().firstValue("Location").orElseThrow());
+
+      // The S3 API answers the location and serves the content.
+      assertEquals("/" + PUBLIC_BUCKET + "/",
+          s3.headObject(b -> b.bucket(PUBLIC_BUCKET).key("old.html")).websiteRedirectLocation());
+      assertEquals("moved", s3.getObjectAsBytes(b -> b.bucket(PUBLIC_BUCKET).key("old.html")).asUtf8String());
+    }
+
+    @Test
     void aKeyThatIsNotThereIsAnsweredWithAnErrorPage() throws Exception {
       start(authenticated().build());
 

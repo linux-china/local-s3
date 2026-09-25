@@ -19,6 +19,7 @@ versioning, see [semantics.md](semantics.md).
 + DeleteBucketAnalyticsConfiguration
 + DeleteBucketCors
 + DeleteBucketEncryption
++ DeleteBucketIntelligentTieringConfiguration
 + DeleteBucketInventoryConfiguration
 + DeleteBucketLifecycle
 + DeleteBucketMetricsConfiguration
@@ -43,6 +44,7 @@ versioning, see [semantics.md](semantics.md).
 + GetBucketAnalyticsConfiguration
 + GetBucketCors
 + GetBucketEncryption
++ GetBucketIntelligentTieringConfiguration
 + GetBucketInventoryConfiguration
 + GetBucketLifecycleConfiguration
 + GetBucketLogging
@@ -60,6 +62,7 @@ versioning, see [semantics.md](semantics.md).
 + HeadBucket
 + HeadObject
 + ListBucketAnalyticsConfigurations
++ ListBucketIntelligentTieringConfigurations
 + ListBucketInventoryConfigurations
 + ListBucketMetricsConfigurations
 + ListBuckets
@@ -73,6 +76,7 @@ versioning, see [semantics.md](semantics.md).
 + PutBucketAnalyticsConfiguration
 + PutBucketCors
 + PutBucketEncryption
++ PutBucketIntelligentTieringConfiguration
 + PutBucketInventoryConfiguration
 + PutBucketLifecycleConfiguration
 + PutBucketLogging
@@ -92,6 +96,7 @@ versioning, see [semantics.md](semantics.md).
 + PutObjectLockConfiguration
 + PutObjectRetention
 + RenameObject
++ RestoreObject
 + UploadPart
 + UploadPartCopy
 + PutPublicAccessBlock
@@ -124,10 +129,11 @@ LocalS3. A bucket that was never configured answers like a new bucket of Amazon 
 | `GetBucketRequestPayment`          | `<Payer>BucketOwner</Payer>`                             | –                                    |
 | `GetBucketOwnershipControls`       | `<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership>` | `404 OwnershipControlsNotFoundError` |
 
-The analytics, inventory and metrics configurations of a bucket, of which it has several, each named by the `id`
-parameter, are **stored and returned as they were put, but never applied** either: no storage class analysis runs, no
-inventory report is written and no CloudWatch metric is published. They exist so that Terraform's
-`aws_s3_bucket_metric`, `aws_s3_bucket_inventory` and `aws_s3_bucket_analytics_configuration`, or CDK stacks that
+The analytics, intelligent-tiering, inventory and metrics configurations of a bucket, of which it has several, each
+named by the `id` parameter, are **stored and returned as they were put, but never applied** either: no storage class
+analysis runs, no object moves between access tiers, no inventory report is written and no CloudWatch metric is
+published. They exist so that Terraform's `aws_s3_bucket_metric`, `aws_s3_bucket_inventory`,
+`aws_s3_bucket_analytics_configuration` and `aws_s3_bucket_intelligent_tiering_configuration`, or CDK stacks that
 declare them, work against LocalS3. A bucket has none until one is put; getting or deleting an `id` it doesn't have
 answers `404 NoSuchConfiguration`, and a `PUT` whose `id` isn't the `<Id>` of its document answers
 `400 InvalidArgument`. The `List…` operations answer every configuration on one page, in the order of their IDs.
@@ -140,6 +146,10 @@ configuration was deleted, answers `GetBucketWebsite` with `404 NoSuchWebsiteCon
 Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` headers of `PutObject`, `CopyObject` and
 `CreateMultipartUpload`, retention and legal holds) protects object versions from being deleted, see
 [semantics.md](semantics.md#object-lock).
+
+`RestoreObject` of a `GLACIER` or `DEEP_ARCHIVE` object completes at once, and `HeadObject` answers the restored copy
+with `x-amz-restore`, so that code that restores cold data before reading it works; see
+[semantics.md](semantics.md#storage-classes-and-restores).
 
 `RenameObject` and appends (`PutObject` with `x-amz-write-offset-bytes`), which Amazon S3 offers for S3 Express One Zone
 directory buckets, work on the buckets whose versioning was never enabled, see
@@ -306,15 +316,8 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 
 **Object retrieval and transformation**
 + GetObjectTorrent
-+ RestoreObject
 + SelectObjectContent
 + WriteGetObjectResponse
-
-**Intelligent tiering**
-+ DeleteBucketIntelligentTieringConfiguration
-+ GetBucketIntelligentTieringConfiguration
-+ ListBucketIntelligentTieringConfigurations
-+ PutBucketIntelligentTieringConfiguration
 
 ## Not routed at all
 

@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.handler;
 
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.ANALYTICS;
+import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.INTELLIGENT_TIERING;
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.INVENTORY;
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.METRICS;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.ACCELERATE;
@@ -88,20 +89,8 @@ public class LocalS3RouterFactory {
    * route.
    */
   private static final List<NotImplementedOperation> NOT_IMPLEMENTED_OPERATIONS = List.of(
-      // Intelligent-tiering configurations, of which a bucket has several, each named by an id: a GET with the id reads
-      // one, and a GET without it lists them. The analytics, inventory and metrics ones, which are addressed the same
-      // way, are stored and returned, see IdentifiedBucketConfiguration.
-      new NotImplementedOperation("GetBucketIntelligentTieringConfiguration", GET, BUCKET_PATH,
-          has("intelligent-tiering", "id")),
-      new NotImplementedOperation("ListBucketIntelligentTieringConfigurations", GET, BUCKET_PATH,
-          has("intelligent-tiering").andHasNot("id")),
-      new NotImplementedOperation("PutBucketIntelligentTieringConfiguration", PUT, BUCKET_PATH,
-          has("intelligent-tiering")),
-      new NotImplementedOperation("DeleteBucketIntelligentTieringConfiguration", DELETE, BUCKET_PATH,
-          has("intelligent-tiering")),
       // Object retrieval and transformation.
       new NotImplementedOperation("GetObjectTorrent", GET, BUCKET_KEY_PATH, has("torrent")),
-      new NotImplementedOperation("RestoreObject", POST, BUCKET_KEY_PATH, has("restore")),
       new NotImplementedOperation("SelectObjectContent", POST, BUCKET_KEY_PATH, has("select")),
       new NotImplementedOperation("WriteGetObjectResponse", POST, "/WriteGetObjectResponse", null)
   );
@@ -327,6 +316,8 @@ public class LocalS3RouterFactory {
             shared.storedConfiguration().get(ANALYTICS))
         .add("GetBucketCors", GET, BUCKET_PATH, has("cors"), new GetBucketCorsController(factory))
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
+        .add("GetBucketIntelligentTieringConfiguration", GET, BUCKET_PATH, has("intelligent-tiering", "id"),
+            shared.storedConfiguration().get(INTELLIGENT_TIERING))
         .add("GetBucketInventoryConfiguration", GET, BUCKET_PATH, has("inventory", "id"),
             shared.storedConfiguration().get(INVENTORY))
         .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
@@ -353,6 +344,8 @@ public class LocalS3RouterFactory {
         .add("HeadBucket", HEAD, BUCKET_PATH, new HeadBucketController(factory))
         .add("ListBucketAnalyticsConfigurations", GET, BUCKET_PATH, has("analytics").andHasNot("id"),
             shared.storedConfiguration().list(ANALYTICS))
+        .add("ListBucketIntelligentTieringConfigurations", GET, BUCKET_PATH,
+            has("intelligent-tiering").andHasNot("id"), shared.storedConfiguration().list(INTELLIGENT_TIERING))
         .add("ListBucketInventoryConfigurations", GET, BUCKET_PATH, has("inventory").andHasNot("id"),
             shared.storedConfiguration().list(INVENTORY))
         .add("ListBucketMetricsConfigurations", GET, BUCKET_PATH, has("metrics").andHasNot("id"),
@@ -381,6 +374,8 @@ public class LocalS3RouterFactory {
             shared.storedConfiguration().delete(ANALYTICS))
         .add("DeleteBucketCors", DELETE, BUCKET_PATH, has("cors"), new DeleteBucketCorsController(factory))
         .add("DeleteBucketEncryption", DELETE, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::delete)
+        .add("DeleteBucketIntelligentTieringConfiguration", DELETE, BUCKET_PATH, has("intelligent-tiering"),
+            shared.storedConfiguration().delete(INTELLIGENT_TIERING))
         .add("DeleteBucketInventoryConfiguration", DELETE, BUCKET_PATH, has("inventory"),
             shared.storedConfiguration().delete(INVENTORY))
         .add("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::delete)
@@ -403,6 +398,8 @@ public class LocalS3RouterFactory {
             shared.storedConfiguration().put(ANALYTICS))
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
+        .add("PutBucketIntelligentTieringConfiguration", PUT, BUCKET_PATH, has("intelligent-tiering"),
+            shared.storedConfiguration().put(INTELLIGENT_TIERING))
         .add("PutBucketInventoryConfiguration", PUT, BUCKET_PATH, has("inventory"),
             shared.storedConfiguration().put(INVENTORY))
         .add("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::put)
@@ -464,6 +461,7 @@ public class LocalS3RouterFactory {
         .add("PutObjectRetention", PUT, BUCKET_KEY_PATH, has("retention"), shared.objectLock()::putRetention)
         .add("PutObjectTagging", PUT, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::put)
         .add("RenameObject", PUT, BUCKET_KEY_PATH, has("renameObject"), new RenameObjectController(factory))
+        .add("RestoreObject", POST, BUCKET_KEY_PATH, has("restore"), new RestoreObjectController(factory))
         .add("UploadPart", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), new UploadPartController(factory))
         .add("UploadPartCopy", PUT, BUCKET_KEY_PATH, has("uploadId", "partNumber"), copySource,
             new UploadPartCopyController(factory));

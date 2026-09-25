@@ -39,6 +39,13 @@ public class SystemMetadata {
   private StorageClass storageClass;
 
   /**
+   * The {@code x-amz-website-redirect-location} that the object was stored with: a path in the same bucket, e.g.
+   * {@code /docs/index.html}, or an {@code http://} or {@code https://} URL. {@code GetObject} and {@code HeadObject}
+   * answer it, and the static website endpoint redirects a request for the object to it.
+   */
+  private String websiteRedirectLocation;
+
+  /**
    * The storage class of an object.
    *
    * @param systemMetadata the system-defined metadata of the object; {@code null} if it has none.
@@ -60,6 +67,21 @@ public class SystemMetadata {
     SystemMetadata result = Objects.isNull(systemMetadata) ? new SystemMetadata()
         : systemMetadata.toBuilder().build();
     result.setStorageClass(storageClass == StorageClass.STANDARD ? null : storageClass);
+    return result.equals(new SystemMetadata()) ? null : result;
+  }
+
+  /**
+   * The system-defined metadata with another website redirect location.
+   *
+   * @param systemMetadata the system-defined metadata; {@code null} for none.
+   * @param websiteRedirectLocation the website redirect location; {@code null} for none.
+   * @return a copy with the website redirect location; {@code null} if it carries nothing else.
+   */
+  public static SystemMetadata withWebsiteRedirectLocation(SystemMetadata systemMetadata,
+                                                           String websiteRedirectLocation) {
+    SystemMetadata result = Objects.isNull(systemMetadata) ? new SystemMetadata()
+        : systemMetadata.toBuilder().build();
+    result.setWebsiteRedirectLocation(websiteRedirectLocation);
     return result.equals(new SystemMetadata()) ? null : result;
   }
 

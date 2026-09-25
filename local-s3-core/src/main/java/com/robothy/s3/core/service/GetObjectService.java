@@ -123,6 +123,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .objectLock(latestObject.getObjectLock())
         .customerEncryption(latestObject.getCustomerEncryption())
         .serverSideEncryption(latestObject.getServerSideEncryption())
+        .restoreExpiryDate(RestoreObjectService.activeRestoreExpiryDate(latestObject))
         .build();
   }
 
@@ -195,6 +196,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .objectLock(versionedObjectMetadata.getObjectLock())
           .customerEncryption(versionedObjectMetadata.getCustomerEncryption())
           .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
+          .restoreExpiryDate(RestoreObjectService.activeRestoreExpiryDate(versionedObjectMetadata))
           .build();
     }
   }

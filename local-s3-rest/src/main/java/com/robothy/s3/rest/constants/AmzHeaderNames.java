@@ -44,6 +44,10 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_STORAGE_CLASS = "x-amz-storage-class";
 
+  public static final String X_AMZ_WEBSITE_REDIRECT_LOCATION = "x-amz-website-redirect-location";
+
+  public static final String X_AMZ_RESTORE = "x-amz-restore";
+
   public static final String X_AMZ_TAGGING = "x-amz-tagging";
 
   public static final String X_AMZ_TAGGING_COUNT = "x-amz-tagging-count";

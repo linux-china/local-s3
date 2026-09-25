@@ -42,9 +42,13 @@ class RouteResolutionTest {
     assertEquals(404, get.statusCode(), get.body());
     assertTrue(get.body().contains("<Code>NoSuchConfiguration</Code>"), get.body());
 
+    HttpResponse<String> tieringList = get("/bucket?intelligent-tiering");
+    assertEquals(200, tieringList.statusCode(), tieringList.body());
+    assertTrue(tieringList.body().contains("<ListBucketIntelligentTieringConfigurationsOutput"), tieringList.body());
+
     HttpResponse<String> tiering = get("/bucket?intelligent-tiering&id=archive");
-    assertEquals(501, tiering.statusCode());
-    assertTrue(tiering.body().contains("'GetBucketIntelligentTieringConfiguration'"), tiering.body());
+    assertEquals(404, tiering.statusCode(), tiering.body());
+    assertTrue(tiering.body().contains("<Code>NoSuchConfiguration</Code>"), tiering.body());
   }
 
   @Test

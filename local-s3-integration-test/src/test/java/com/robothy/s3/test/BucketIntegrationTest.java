@@ -395,6 +395,37 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void testIntelligentTieringConfigurationsAreStoredButNotApplied(S3Client s3) {
+    String bucketName = "my-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+
+    assertTrue(s3.listBucketIntelligentTieringConfigurations(b -> b.bucket(bucketName))
+        .intelligentTieringConfigurationList().isEmpty());
+    S3Exception none = assertThrows(S3Exception.class, () -> s3.getBucketIntelligentTieringConfiguration(
+        b -> b.bucket(bucketName).id("archive")));
+    assertEquals(404, none.statusCode());
+    assertEquals("NoSuchConfiguration", none.awsErrorDetails().errorCode());
+
+    IntelligentTieringConfiguration tiering = IntelligentTieringConfiguration.builder()
+        .id("archive")
+        .status(IntelligentTieringStatus.ENABLED)
+        .filter(f -> f.prefix("logs/"))
+        .tierings(Tiering.builder().accessTier(IntelligentTieringAccessTier.ARCHIVE_ACCESS).days(90).build())
+        .build();
+    s3.putBucketIntelligentTieringConfiguration(b -> b.bucket(bucketName).id("archive")
+        .intelligentTieringConfiguration(tiering));
+    assertEquals(tiering, s3.getBucketIntelligentTieringConfiguration(b -> b.bucket(bucketName).id("archive"))
+        .intelligentTieringConfiguration());
+    assertEquals(List.of(tiering), s3.listBucketIntelligentTieringConfigurations(b -> b.bucket(bucketName))
+        .intelligentTieringConfigurationList());
+
+    s3.deleteBucketIntelligentTieringConfiguration(b -> b.bucket(bucketName).id("archive"));
+    assertTrue(s3.listBucketIntelligentTieringConfigurations(b -> b.bucket(bucketName))
+        .intelligentTieringConfigurationList().isEmpty());
+  }
+
+  @Test
+  @LocalS3
   void testBucketEncryption(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
