@@ -21,6 +21,8 @@ class BucketMetadataTest {
   void addObjectMetadata() {
     BucketMetadata bucketMetadata = new BucketMetadata();
     assertThrows(InvalidObjectKeyException.class, () -> bucketMetadata.putObjectMetadata("", new ObjectMetadata()));
+    bucketMetadata.putObjectMetadata(" ", new ObjectMetadata());
+    assertTrue(bucketMetadata.getObjectMetadata(" ").isPresent());
 
     ObjectMetadata objectMetadata = new ObjectMetadata();
     bucketMetadata.putObjectMetadata("abc.txt", objectMetadata);

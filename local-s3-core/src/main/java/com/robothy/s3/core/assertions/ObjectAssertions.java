@@ -6,7 +6,6 @@ import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
-import com.robothy.s3.core.util.Strings;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -28,7 +27,8 @@ public class ObjectAssertions {
   public static final int MAX_TAG_VALUE_LENGTH = 256;
 
   public static void assertObjectKeyIsValid(String key) {
-    if (Strings.isBlank(key)) {
+    // Amazon S3 takes a key of whitespace alone, e.g. " ", like any other.
+    if (key == null || key.isEmpty()) {
       throw new InvalidObjectKeyException(key);
     }
   }

@@ -132,6 +132,10 @@ public class ListItemUtils {
   }
 
   public static Optional<String> commonPrefix(String key, String effectivePrefix, String delimiter) {
+    // A marker before the prefix, e.g. an empty one, leaves the keys before the prefix in the view.
+    if (!key.startsWith(effectivePrefix)) {
+      return Optional.empty();
+    }
     String suffix = key.substring(effectivePrefix.length());
     if (Objects.nonNull(delimiter) && suffix.contains(delimiter)) {
       return Optional.of(effectivePrefix + suffix.substring(0, suffix.indexOf(delimiter) + delimiter.length()));
