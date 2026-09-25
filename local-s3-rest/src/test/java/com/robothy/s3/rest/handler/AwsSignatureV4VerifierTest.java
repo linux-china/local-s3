@@ -463,6 +463,41 @@ class AwsSignatureV4VerifierTest {
         .errorCode());
   }
 
+  /**
+   * SigV4a and Signature Version 2 only have their access key checked, not their signature.
+   */
+  @Test
+  void checksOnlyTheAccessKeyOfSigV4aAndSignatureVersion2() {
+    Map<CharSequence, String> headers = new HashMap<>();
+    headers.put("host", "examplebucket.s3.amazonaws.com");
+    headers.put("x-amz-date", AMZ_DATE);
+    headers.put("x-amz-region-set", "*");
+    headers.put("x-amz-content-sha256", "STREAMING-AWS4-ECDSA-P256-SHA256-PAYLOAD");
+    headers.put("authorization", "AWS4-ECDSA-P256-SHA256 Credential=" + ACCESS_KEY_ID
+        + "/20130524/s3/aws4_request, SignedHeaders=host;x-amz-date;x-amz-region-set, Signature=3045022100abcd");
+    HttpRequest sigV4a = request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT));
+    assertTrue(verifier.verify(sigV4a).authenticated());
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(sigV4a);
+    assertTrue(head.result().authenticated());
+    assertEquals(ChunkSignatures.UNVERIFIED, AwsSignatureV4Verifier.chunkSignatures(head.verifiedHead()));
+
+    headers.put("authorization", headers.get("authorization").replace(ACCESS_KEY_ID, "UNKNOWNKEY"));
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+
+    headers.put("authorization", "AWS " + ACCESS_KEY_ID + ":frJIUN8DYpKDtOLCwo//yllqDzg=");
+    assertTrue(verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).authenticated());
+    headers.put("authorization", "AWS UNKNOWNKEY:frJIUN8DYpKDtOLCwo//yllqDzg=");
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+
+    Map<CharSequence, String> host = Map.of("host", "examplebucket.s3.amazonaws.com");
+    assertTrue(verifyHead(host, PUT_OBJECT_PATH + "?X-Amz-Algorithm=AWS4-ECDSA-P256-SHA256&X-Amz-Credential="
+        + ACCESS_KEY_ID + "%2F20130524%2Fs3%2Faws4_request&X-Amz-Signature=3045", HttpMethod.GET).authenticated());
+    assertTrue(verifyHead(host, PUT_OBJECT_PATH + "?AWSAccessKeyId=" + ACCESS_KEY_ID
+        + "&Expires=1369353600&Signature=abc%3D", HttpMethod.GET).authenticated());
+    assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(host, PUT_OBJECT_PATH
+        + "?AWSAccessKeyId=UNKNOWNKEY&Expires=1369353600&Signature=abc%3D", HttpMethod.GET).errorCode());
+  }
+
   private static Map<CharSequence, String> dateSignedHeaders(String date) {
     Map<CharSequence, String> headers = putObjectHeaders();
     headers.remove("x-amz-date");

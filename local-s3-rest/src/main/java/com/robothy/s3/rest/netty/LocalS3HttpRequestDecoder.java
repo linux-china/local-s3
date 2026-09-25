@@ -452,7 +452,9 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     boolean awsChunked = AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD.equals(payload)
         || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payload)
         || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD.equals(payload)
-        || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payload);
+        || AmzHeaderValues.STREAMING_UNSIGNED_PAYLOAD_TRAILER.equals(payload)
+        || AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD.equals(payload)
+        || AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER.equals(payload);
     String length = headers.get(AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH);
     if (!awsChunked || length == null) {
       return -1;

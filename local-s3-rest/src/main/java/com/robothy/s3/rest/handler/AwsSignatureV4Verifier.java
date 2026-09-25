@@ -33,10 +33,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Verifies AWS Signature Version 4 requests for a single access key pair, and for the temporary credentials that the
@@ -55,10 +58,19 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>The service of the scope is <em>checked</em> rather than trusted: a request that the router sent to the S3 Tables
  * endpoint because its scope said {@code s3tables} is verified for that service, so claiming a scope buys a client
  * nothing it couldn't have signed for.
+ *
+ * <p>A request signed with SigV4a ({@code AWS4-ECDSA-P256-SHA256}), which multi-Region access points and some CRT
+ * based clients use, or with the legacy Signature Version 2 ({@code AWS AKID:signature}, or {@code AWSAccessKeyId} and
+ * {@code Signature} in a presigned URL), only has its access key checked, not its signature, so that such clients
+ * work; a warning is logged the first time.
  */
 final class AwsSignatureV4Verifier {
 
+  private static final Logger log = LoggerFactory.getLogger(AwsSignatureV4Verifier.class);
+
   static final String ALGORITHM = "AWS4-HMAC-SHA256";
+  static final String SIGV4A_ALGORITHM = "AWS4-ECDSA-P256-SHA256";
+  private static final String SIGV2_PREFIX = "AWS ";
   private static final String CHUNK_ALGORITHM = "AWS4-HMAC-SHA256-PAYLOAD";
   private static final String TRAILER_ALGORITHM = "AWS4-HMAC-SHA256-TRAILER";
   private static final String TERMINATOR = "aws4_request";
@@ -80,6 +92,8 @@ final class AwsSignatureV4Verifier {
   private final String secretAccessKey;
   private final SessionCredentialIssuer sessionCredentialIssuer;
   private final Clock clock;
+  private final AtomicBoolean sigV4aWarned = new AtomicBoolean();
+  private final AtomicBoolean sigV2Warned = new AtomicBoolean();
 
   AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey) {
     this(accessKeyId, secretAccessKey, Clock.systemUTC());
@@ -167,12 +181,34 @@ final class AwsSignatureV4Verifier {
     try {
       Optional<String> authorization = request.header(HttpHeaderNames.AUTHORIZATION.toString());
       if (authorization.isPresent()) {
-        return verifyAuthorizationHeader(request, authorization.get(), bodyReceived);
+        String value = authorization.get();
+        if (value.startsWith(SIGV4A_ALGORITHM + " ")) {
+          return accessKeyOnly(verifySigV4aAccessKey(request, value));
+        }
+        if (value.startsWith(SIGV2_PREFIX)) {
+          return accessKeyOnly(verifySigV2AccessKey(request, value));
+        }
+        return verifyAuthorizationHeader(request, value, bodyReceived);
       }
 
       RawRequestTarget target = RawRequestTarget.parse(request.getUri(), request.getPath());
       List<QueryParameter> queryParameters = parseQuery(target.rawQuery());
-      if (queryParameter(queryParameters, "X-Amz-Algorithm").isPresent()) {
+      Optional<String> presignedAlgorithm = queryParameter(queryParameters, "X-Amz-Algorithm");
+      if (presignedAlgorithm.isPresent() && SIGV4A_ALGORITHM.equals(presignedAlgorithm.get())) {
+        return accessKeyOnly(verifySigV4aCredential(
+            requiredQueryParameter(queryParameters, "X-Amz-Credential"),
+            queryParameter(queryParameters, "X-Amz-Security-Token")
+                .or(() -> queryParameter(queryParameters, "X-Amz-S3session-Token"))
+                .orElse(null)));
+      }
+      Optional<String> sigV2AccessKeyId = queryParameter(queryParameters, "AWSAccessKeyId");
+      if (presignedAlgorithm.isEmpty() && sigV2AccessKeyId.isPresent()
+          && queryParameter(queryParameters, "Signature").isPresent()) {
+        warnOnce(sigV2Warned, "Signature Version 2");
+        return accessKeyOnly(resolveCredential(sigV2AccessKeyId.get(),
+            queryParameter(queryParameters, "x-amz-security-token").orElse(null)).result());
+      }
+      if (presignedAlgorithm.isPresent()) {
         // The signature of a presigned URL doesn't cover the body, so the head is all there is to verify.
         VerificationResult result = verifyPresignedUrl(request, target, queryParameters);
         return new HeadVerification(result, result.authenticated() ? VerifiedHead.COMPLETE : null);
@@ -183,6 +219,59 @@ final class AwsSignatureV4Verifier {
     } catch (IllegalArgumentException e) {
       return HeadVerification.failed(VerificationResult.failure(S3ErrorCode.AuthorizationHeaderMalformed,
           e.getMessage()));
+    }
+  }
+
+  private static HeadVerification accessKeyOnly(VerificationResult result) {
+    // Nothing that depends on the body is verified either, e.g. the ECDSA chunk signatures of SigV4a.
+    return new HeadVerification(result, result.authenticated() ? VerifiedHead.COMPLETE : null);
+  }
+
+  /**
+   * Check the access key of a request signed with SigV4a, e.g.
+   * {@code AWS4-ECDSA-P256-SHA256 Credential=AKID/20130524/s3/aws4_request, SignedHeaders=..., Signature=...}; its
+   * ECDSA signature isn't verified.
+   */
+  private VerificationResult verifySigV4aAccessKey(HttpRequest request, String authorization) {
+    Map<String, String> attributes = authorizationAttributes(authorization.substring(SIGV4A_ALGORITHM.length() + 1));
+    Map<String, String> headers = normalizedHeaders(request);
+    return verifySigV4aCredential(requiredAttribute(attributes, "Credential"),
+        Optional.ofNullable(headers.get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN))
+            .orElse(headers.get(AmzHeaderNames.X_AMZ_S3SESSION_TOKEN)));
+  }
+
+  /**
+   * Check the access key of a SigV4a credential scope, {@code <access key>/<date>/<service>/aws4_request}, which has
+   * no region: the regions that a SigV4a signature is valid in are in {@code X-Amz-Region-Set} instead.
+   */
+  private VerificationResult verifySigV4aCredential(String credential, String sessionToken) {
+    int separator = credential.indexOf('/');
+    if (separator <= 0) {
+      throw new IllegalArgumentException("The credential scope is malformed.");
+    }
+    warnOnce(sigV4aWarned, "SigV4a (" + SIGV4A_ALGORITHM + ")");
+    return resolveCredential(credential.substring(0, separator), sessionToken).result();
+  }
+
+  /**
+   * Check the access key of a request signed with Signature Version 2, {@code AWS <access key>:<signature>}; its
+   * signature isn't verified.
+   */
+  private VerificationResult verifySigV2AccessKey(HttpRequest request, String authorization) {
+    String credential = authorization.substring(SIGV2_PREFIX.length()).trim();
+    int separator = credential.lastIndexOf(':');
+    if (separator <= 0 || separator == credential.length() - 1) {
+      throw new IllegalArgumentException("The Authorization header is malformed.");
+    }
+    warnOnce(sigV2Warned, "Signature Version 2");
+    return resolveCredential(credential.substring(0, separator),
+        normalizedHeaders(request).get(AmzHeaderNames.X_AMZ_SECURITY_TOKEN)).result();
+  }
+
+  private static void warnOnce(AtomicBoolean warned, String signingVersion) {
+    if (warned.compareAndSet(false, true)) {
+      log.warn("LocalS3 received a request signed with {}, whose signature isn't verified: only its access key is "
+          + "checked.", signingVersion);
     }
   }
 
@@ -608,14 +697,7 @@ final class AwsSignatureV4Verifier {
     if (!authorization.startsWith(ALGORITHM + " ")) {
       throw new IllegalArgumentException("Unsupported Authorization algorithm.");
     }
-    Map<String, String> attributes = new LinkedHashMap<>();
-    for (String item : authorization.substring(ALGORITHM.length() + 1).split(",")) {
-      String[] pair = item.trim().split("=", 2);
-      if (pair.length != 2 || pair[1].isBlank()) {
-        throw new IllegalArgumentException("The Authorization header is malformed.");
-      }
-      attributes.put(pair[0], pair[1]);
-    }
+    Map<String, String> attributes = authorizationAttributes(authorization.substring(ALGORITHM.length() + 1));
     String credential = requiredAttribute(attributes, "Credential");
     String signedHeaders = requiredAttribute(attributes, "SignedHeaders");
     String signature = requiredAttribute(attributes, "Signature");
@@ -623,6 +705,18 @@ final class AwsSignatureV4Verifier {
       throw new IllegalArgumentException("The Authorization signature is malformed.");
     }
     return new ParsedAuthorization(credential, signedHeaders, signature);
+  }
+
+  private static Map<String, String> authorizationAttributes(String value) {
+    Map<String, String> attributes = new LinkedHashMap<>();
+    for (String item : value.split(",")) {
+      String[] pair = item.trim().split("=", 2);
+      if (pair.length != 2 || pair[1].isBlank()) {
+        throw new IllegalArgumentException("The Authorization header is malformed.");
+      }
+      attributes.put(pair[0], pair[1]);
+    }
+    return attributes;
   }
 
   private static String requiredAttribute(Map<String, String> attributes, String name) {

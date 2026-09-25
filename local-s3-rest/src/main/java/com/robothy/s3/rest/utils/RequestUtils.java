@@ -52,6 +52,9 @@ public class RequestUtils {
     switch (amzContentSha256) {
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA_256_PAYLOAD:
       case AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER:
+      // The ECDSA chunk signatures of SigV4a aren't verified, so they're skipped like the HMAC ones.
+      case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD:
+      case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER:
         result.setDecodedBody(new AwsChunkedDecodingInputStream(RequestBodies.inputStream(request.getBody())));
         result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
@@ -60,10 +63,6 @@ public class RequestUtils {
         result.setDecodedBody(new AwsUnsignedChunkedDecodingInputStream(RequestBodies.inputStream(request.getBody())));
         result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
         break;
-      case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD:
-      case AmzHeaderValues.STREAMING_AWS4_ECDSA_P256_SHA256_PAYLOAD_TRAILER:
-        throw new LocalS3RequestException(S3ErrorCode.NotImplemented,
-            "The payload signing algorithm " + amzContentSha256 + " is not implemented.");
       default:
         // Taken before the body is read: the body is only the content of its file while it is unread.
         RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
