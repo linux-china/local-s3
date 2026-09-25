@@ -483,6 +483,41 @@ class DuckDbParquetIntegrationTest {
   }
 
   /**
+   * {@code OVERWRITE} of a directory with more files than a listing page holds and a {@code DeleteObjects} request
+   * takes: DuckDB lists the directory page by page, following the continuation tokens, and deletes what it found in
+   * batches. The objects of a sibling prefix, which starts with the name of the directory, are kept.
+   */
+  @Test
+  void overwritesADirectoryOfMoreFilesThanAListingPageHolds() throws Exception {
+    int files = 1500;
+    byte[] stale = "stale".getBytes();
+    for (int i = 0; i < files; i++) {
+      String key = "wide/part=" + i + "/data_0.parquet";
+      s3.putObject(request -> request.bucket(BUCKET).key(key), RequestBody.fromBytes(stale));
+    }
+    s3.putObject(request -> request.bucket(BUCKET).key("wide-archive/data_0.parquet"), RequestBody.fromBytes(stale));
+    s3.putObject(request -> request.bucket(BUCKET).key("wide.csv"), RequestBody.fromBytes(stale));
+    long listingsBefore = count(operations(), "ListObjectsV2");
+    long batchDeletesBefore = count(operations(), "DeleteObjects");
+    long deletesBefore = count(operations(), "DeleteObject");
+
+    execute(duckdb, "COPY (SELECT i AS id, i % 2 AS part FROM range(0, 10) t(i)) "
+        + "TO 's3://lake/wide' (FORMAT parquet, PARTITION_BY (part), OVERWRITE)");
+
+    assertEquals(List.of("wide/part=0/data_0.parquet", "wide/part=1/data_0.parquet"), keys("wide/"));
+    assertEquals(List.of("wide-archive/data_0.parquet"), keys("wide-archive/"));
+    assertEquals(List.of("wide.csv"), keys("wide.csv"));
+    assertTrue(count(operations(), "ListObjectsV2") - listingsBefore >= 2,
+        "The listing of the directory must follow its continuation token: " + operations().keySet());
+    // At most 1000 keys a request: the 1500 files take two of them at least.
+    long batchDeletes = count(operations(), "DeleteObjects") - batchDeletesBefore;
+    assertTrue(batchDeletes >= 2, "OVERWRITE must delete the files in batches: " + batchDeletes + " DeleteObjects, "
+        + (count(operations(), "DeleteObject") - deletesBefore) + " DeleteObject");
+    assertEquals(List.of(List.of(10L, 45L)),
+        rows(duckdb, "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/wide/**/*.parquet')"));
+  }
+
+  /**
    * {@code PER_THREAD_OUTPUT} writes a file per thread, {@code data_0.parquet} to {@code data_<n>.parquet}, and
    * {@code OVERWRITE} replaces every file of the directory, however many an earlier run on more threads wrote: the
    * listing finds them and they are deleted, so none of them is read with the new ones.
