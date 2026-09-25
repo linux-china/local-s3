@@ -151,6 +151,9 @@ class AdminEndpointsTest {
       assertTrue(sql.contains("USE_SSL false"), sql);
       assertTrue(sql.contains("ENDPOINT 'http://" + host + "/iceberg'"), sql);
       assertTrue(sql.contains("AUTHORIZATION_TYPE 'none'"), sql);
+      assertTrue(sql.contains("-- ATTACH 'arn:aws:s3tables:us-east-1:000000000000:bucket/<table-bucket>' AS tb "
+          + "(TYPE ICEBERG, ENDPOINT 'http://" + host + "/iceberg', AUTHORIZATION_TYPE 'none');"), sql);
+      assertTrue(sql.contains("SESSION_TOKEN"), sql);
       assertTrue(send(localS3, "GET", "/_admin/snippets/pyiceberg", null).body()
           .contains("uri=\"http://" + host + "/iceberg\""));
       assertEquals(404, send(localS3, "GET", "/_admin/snippets/unknown", null).statusCode(),

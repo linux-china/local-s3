@@ -88,6 +88,21 @@ COPY (SELECT * FROM events) TO 's3://demo1/events' (FORMAT parquet, PARTITION_BY
 SELECT * FROM read_parquet('s3://demo1/events/**/*.parquet', hive_partitioning = true);
 ```
 
+Temporary credentials, e.g. the ones that a catalog like Apache Polaris gets with `AssumeRole` from the
+[STS endpoint](embedding.md#temporary-credentials-sts) of LocalS3 and hands out, take their session token as well:
+
+```sql
+CREATE SECRET local_s3_session (
+    TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false, REGION 'us-east-1',
+    KEY_ID 'ASIA...', SECRET '...', SESSION_TOKEN '...'
+);
+```
+
+`COPY ... (OVERWRITE)` and `PER_THREAD_OUTPUT` replace the files of a directory by listing it and deleting them, and
+the values of `PARTITION_BY` are escaped by DuckDB itself, e.g. `city=New%20York`; keys with spaces and `+` are
+listed with `%20` and `%2B` under `encoding-type=url`, as Amazon S3 lists them. `DuckDbParquetIntegrationTest` covers
+all three.
+
 Without `URL_STYLE 'path'` / `s3_url_style = 'path'`, DuckDB sends virtual-hosted-style requests to
 `demo1.localhost:29090`, which work only where that name resolves to LocalS3; LocalS3 accepts them for `localhost` and
 the [virtual host domains](deployment.md#configuration) it is configured with.
@@ -232,6 +247,13 @@ name a client sends; a [table bucket](#amazon-s3-tables) is attached by naming i
 ATTACH 'arn:aws:s3tables:us-east-1:000000000000:bucket/lakehouse' AS tb (
     TYPE ICEBERG, ENDPOINT 'http://localhost:29090/iceberg', AUTHORIZATION_TYPE 'none');
 ```
+
+DuckDB's own way into Amazon S3 Tables, `ATTACH 'arn:...' (TYPE ICEBERG, ENDPOINT_TYPE s3_tables)`, **can't be pointed
+at LocalS3**: as of DuckDB 1.5 it always sends its requests to `s3tables.<region>.amazonaws.com` and ignores an
+`ENDPOINT`, and `AUTHORIZATION_TYPE 'sigv4'` with an `ENDPOINT` of LocalS3 fails with `Could not parse AWS service from
+host`. Use the `ATTACH` above instead: the same ARN, as the warehouse of the REST catalog. The tables it creates are
+tables of the S3 Tables API (`ListTables`, `GetTableMetadataLocation`), which
+`DuckDbIcebergIntegrationTest.duckdb_attaches_a_table_bucket_by_its_arn` checks.
 
 The attached catalog is then a database like any other, and the writes are Iceberg commits:
 

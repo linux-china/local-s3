@@ -49,6 +49,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.Credentials;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -476,6 +478,146 @@ class DuckDbParquetIntegrationTest {
             .map(S3Object::key).toList());
     assertEquals(List.of(List.of(5L, 1L)), rows(duckdb, "SELECT part, count(*) "
         + "FROM read_parquet('s3://lake/daily/**/*.parquet', hive_partitioning = true) GROUP BY part"));
+    assertTrue(count(operations(), "DeleteObjects") + count(operations(), "DeleteObject") > 0,
+        "OVERWRITE must delete the files it replaces: " + operations().keySet());
+  }
+
+  /**
+   * {@code PER_THREAD_OUTPUT} writes a file per thread, {@code data_0.parquet} to {@code data_<n>.parquet}, and
+   * {@code OVERWRITE} replaces every file of the directory, however many an earlier run on more threads wrote: the
+   * listing finds them and they are deleted, so none of them is read with the new ones.
+   */
+  @Test
+  void overwritesTheFilesThatPerThreadOutputWrote() throws Exception {
+    // A table, which is scanned on every thread, unlike range().
+    execute(duckdb, "CREATE TABLE numbers AS SELECT i AS id FROM range(0, 1000000) t(i)");
+    execute(duckdb, "SET threads = 4");
+    execute(duckdb, "COPY numbers TO 's3://lake/per-thread' (FORMAT parquet, PER_THREAD_OUTPUT)");
+    List<String> first = keys("per-thread/");
+    assertTrue(first.size() >= 2, "Each thread must have written a file of its own: " + first);
+    assertEquals(1000000L, single(duckdb, "SELECT count(*) FROM read_parquet('s3://lake/per-thread/*.parquet')"));
+
+    long deletesBefore = count(operations(), "DeleteObjects") + count(operations(), "DeleteObject");
+    execute(duckdb, "SET threads = 1");
+    execute(duckdb, "COPY (SELECT i AS id FROM range(0, 10) t(i)) "
+        + "TO 's3://lake/per-thread' (FORMAT parquet, PER_THREAD_OUTPUT, OVERWRITE)");
+
+    List<String> second = keys("per-thread/");
+    assertEquals(1, second.size(), second.toString());
+    assertTrue(count(operations(), "DeleteObjects") + count(operations(), "DeleteObject") > deletesBefore,
+        "OVERWRITE must delete the files of the earlier run: " + operations().keySet());
+    assertEquals(List.of(List.of(10L, 45L)),
+        rows(duckdb, "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/per-thread/*.parquet')"));
+  }
+
+  /**
+   * Keys with spaces and plus signs, which a glob finds with a listing of {@code encoding-type=url} and a client then
+   * decodes. A space is {@code %20} there, as it is in Amazon S3, and not the {@code +} of an HTML form: a client that
+   * decodes with a plain percent decoding, as DuckDB and many Python and Rust clients do, would otherwise read
+   * {@code New+York} and request a key that doesn't exist, and a {@code +} of a key has to be {@code %2B} to be told
+   * apart from it.
+   *
+   * <p>DuckDB escapes the values of Hive partitions itself, so {@code city=New York} is the key
+   * {@code city=New%20York}, whose {@code %} the listing encodes again; the directories of the plain files have the
+   * space and the {@code +} as they are.
+   */
+  @Test
+  void readsBackKeysAndPartitionsWithSpacesAndPlusSigns() throws Exception {
+    execute(duckdb, "COPY (SELECT * FROM (VALUES (1, 'New York'), (2, 'a+b'), (3, 'New York'), (4, 'x y+z'), "
+        + "(5, 'plain')) t(id, city)) TO 's3://lake/cities' (FORMAT parquet, PARTITION_BY (city))");
+    execute(duckdb, "COPY (SELECT 10 AS id) TO 's3://lake/plain/New York/a+b 1.parquet' (FORMAT parquet)");
+    execute(duckdb, "COPY (SELECT 20 AS id) TO 's3://lake/plain/x y+z/c d.parquet' (FORMAT parquet)");
+
+    assertEquals(List.of(
+            "cities/city=New%20York/data_0.parquet",
+            "cities/city=a%2Bb/data_0.parquet",
+            "cities/city=plain/data_0.parquet",
+            "cities/city=x%20y%2Bz/data_0.parquet"),
+        keys("cities/"));
+    assertEquals(List.of("plain/New York/a+b 1.parquet", "plain/x y+z/c d.parquet"), keys("plain/"));
+
+    String listing = listUrlEncoded("");
+    assertTrue(listing.contains("<Key>plain/New%20York/a%2Bb%201.parquet</Key>"), listing);
+    assertTrue(listing.contains("<Key>plain/x%20y%2Bz/c%20d.parquet</Key>"), listing);
+    assertTrue(listing.contains("<Key>cities/city%3DNew%2520York/data_0.parquet</Key>"), listing);
+    assertFalse(listing.contains("+"), "A listing of encoding-type=url has no + at all: " + listing);
+    String delimited = listUrlEncoded("&prefix=plain%2F&delimiter=%2F");
+    assertTrue(delimited.contains("<Prefix>plain/New%20York/</Prefix>"), delimited);
+    assertTrue(delimited.contains("<Prefix>plain/x%20y%2Bz/</Prefix>"), delimited);
+
+    assertEquals(List.of(
+            List.of("New York", 2L, 4L),
+            List.of("a+b", 1L, 2L),
+            List.of("plain", 1L, 5L),
+            List.of("x y+z", 1L, 4L)),
+        rows(duckdb, "SELECT city, count(*), sum(id)::BIGINT "
+            + "FROM read_parquet('s3://lake/cities/**/*.parquet', hive_partitioning = true) GROUP BY city ORDER BY city"));
+    assertEquals(4L, single(duckdb, "SELECT sum(id)::BIGINT "
+        + "FROM read_parquet('s3://lake/cities/*/*.parquet', hive_partitioning = true) WHERE city = 'New York'"));
+    assertEquals(30L, single(duckdb, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/plain/*/*.parquet')"));
+    assertEquals(10L, single(duckdb, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/plain/New York/*.parquet')"));
+    assertEquals(20L, single(duckdb, "SELECT sum(id)::BIGINT FROM read_parquet('s3://lake/plain/x y+z/*.parquet')"));
+    assertEquals(List.of("s3://lake/plain/New York/a+b 1.parquet", "s3://lake/plain/x y+z/c d.parquet"),
+        column(duckdb, "SELECT file FROM glob('s3://lake/plain/**') ORDER BY file"));
+  }
+
+  /**
+   * A {@code ListObjectsV2} of the bucket with {@code encoding-type=url}, as LocalS3 answers it.
+   *
+   * @param query more parameters, e.g. {@code &prefix=a%2F}.
+   */
+  private String listUrlEncoded(String query) throws Exception {
+    HttpResponse<String> listing = httpClient.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"
+            + localS3.getPort() + "/" + BUCKET + "?list-type=2&encoding-type=url" + query)).build(),
+        HttpResponse.BodyHandlers.ofString());
+    assertEquals(200, listing.statusCode(), listing.body());
+    return listing.body();
+  }
+
+  /**
+   * The temporary credentials of STS, which an Iceberg REST catalog, e.g. Apache Polaris or Lakekeeper, gets with
+   * {@code AssumeRole} and vends to DuckDB: a secret with a {@code SESSION_TOKEN}, which DuckDB sends as
+   * {@code x-amz-security-token} with every request it signs. The catalog is played by the STS client here, since the
+   * built-in catalog vends the key pair of the service.
+   */
+  @Test
+  void readsAndWritesWithTheTemporaryCredentialsOfSts() throws Exception {
+    LocalS3 signed = start(LocalS3.builder().port(-1).buckets(BUCKET).credentials(ACCESS_KEY, SECRET_KEY));
+    try (StsClient sts = StsClient.builder()
+        .endpointOverride(URI.create("http://127.0.0.1:" + signed.getPort()))
+        .region(Region.US_EAST_1)
+        .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+        .build()) {
+      Credentials vended = sts.assumeRole(request -> request.roleArn("arn:aws:iam::000000000000:role/catalog")
+          .roleSessionName("duckdb").durationSeconds(900)).credentials();
+      assertTrue(vended.accessKeyId().startsWith("ASIA"), vended.accessKeyId());
+
+      try (Connection session = duckDb(signed.getPort(), vended.accessKeyId(), vended.secretAccessKey(),
+               vended.sessionToken());
+           Connection withoutToken = duckDb(signed.getPort(), vended.accessKeyId(), vended.secretAccessKey());
+           Connection forgedToken = duckDb(signed.getPort(), vended.accessKeyId(), vended.secretAccessKey(),
+               vended.sessionToken().replaceFirst(".$", vended.sessionToken().endsWith("A") ? "B" : "A"))) {
+        execute(session, "COPY (SELECT i AS id, i % 3 AS part FROM range(0, 30) t(i)) "
+            + "TO 's3://lake/temporary' (FORMAT parquet, PARTITION_BY (part))");
+        assertEquals(List.of(List.of(30L, 435L)), rows(session,
+            "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/temporary/**/*.parquet')"));
+
+        for (Connection refused : List.of(withoutToken, forgedToken)) {
+          execute(refused, "SET http_retries = 0");
+          SQLException denied = assertThrows(SQLException.class,
+              () -> single(refused, "SELECT count(*) FROM read_parquet('s3://lake/temporary/**/*.parquet')"));
+          assertTrue(denied.getMessage().contains("403") || denied.getMessage().contains("400"),
+              denied.getMessage());
+        }
+      }
+    } finally {
+      signed.shutdown();
+    }
+  }
+
+  private List<String> keys(String prefix) {
+    return s3.listObjectsV2Paginator(request -> request.bucket(BUCKET).prefix(prefix)).contents().stream()
+        .map(S3Object::key).sorted().toList();
   }
 
   /**
@@ -608,11 +750,22 @@ class DuckDbParquetIntegrationTest {
    * An in-memory DuckDB with the {@code httpfs} extension and an S3 secret for LocalS3, like the README describes.
    */
   private static Connection duckDb(int port, String accessKey, String secretKey) throws SQLException {
+    return duckDb(port, accessKey, secretKey, null);
+  }
+
+  /**
+   * An in-memory DuckDB with an S3 secret of temporary credentials, whose session token it sends with every request.
+   *
+   * @param sessionToken the session token of the credentials; {@code null} for a key pair of its own.
+   */
+  private static Connection duckDb(int port, String accessKey, String secretKey, String sessionToken)
+      throws SQLException {
     Connection connection = DriverManager.getConnection("jdbc:duckdb:");
     try {
       loadHttpfs(connection);
       execute(connection, "CREATE SECRET local_s3 (TYPE s3, ENDPOINT '127.0.0.1:" + port + "', URL_STYLE 'path', "
-          + "USE_SSL false, KEY_ID '" + accessKey + "', SECRET '" + secretKey + "', REGION 'us-east-1')");
+          + "USE_SSL false, KEY_ID '" + accessKey + "', SECRET '" + secretKey + "', REGION 'us-east-1'"
+          + (sessionToken == null ? "" : ", SESSION_TOKEN '" + sessionToken + "'") + ")");
       return connection;
     } catch (SQLException | RuntimeException e) {
       connection.close();
@@ -656,6 +809,16 @@ class DuckDbParquetIntegrationTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute(sql);
     }
+  }
+
+  private static <T> List<T> column(Connection connection, String sql) throws SQLException {
+    List<T> values = new ArrayList<>();
+    for (List<Object> row : rows(connection, sql)) {
+      @SuppressWarnings("unchecked")
+      T value = (T) row.get(0);
+      values.add(value);
+    }
+    return values;
   }
 
   private static List<List<Object>> rows(Connection connection, String sql) throws SQLException {

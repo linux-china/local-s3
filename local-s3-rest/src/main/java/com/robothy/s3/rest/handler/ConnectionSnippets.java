@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
@@ -194,6 +195,7 @@ final class ConnectionSnippets {
         .append("    SECRET ").append(sqlString(secretAccessKey())).append(",\n")
         .append("    REGION ").append(sqlString(region())).append("\n")
         .append(");\n");
+    sql.append("-- Temporary credentials, e.g. of an AssumeRole on this endpoint, add SESSION_TOKEN '...' to the secret.\n");
     if (target.https() && isSelfSigned()) {
       sql.append("-- The certificate is self-signed: save the PEM block that LocalS3 logged on startup, and trust it.\n")
           .append("SET ca_cert_file = 'local-s3.pem';\n");
@@ -213,7 +215,13 @@ final class ConnectionSnippets {
         .append("    ENDPOINT ").append(sqlString(icebergUri(target))).append(",\n")
         .append("    AUTHORIZATION_TYPE 'none'\n")
         .append(");\n")
-        .append("SHOW ALL TABLES;\n"));
+        .append("SHOW ALL TABLES;\n")
+        // ENDPOINT_TYPE s3_tables of DuckDB always calls AWS, whatever ENDPOINT says, so a table bucket is attached
+        // like the catalog above, with its ARN as the warehouse.
+        .append("-- A table bucket of the S3 Tables API, by its ARN:\n")
+        .append("-- ATTACH ").append(sqlString(S3TablesArn.ofBucket(region(), S3TablesArn.DEFAULT_ACCOUNT_ID, "<table-bucket>").toString()))
+        .append(" AS tb (TYPE ICEBERG, ENDPOINT ").append(sqlString(icebergUri(target)))
+        .append(", AUTHORIZATION_TYPE 'none');\n"));
     return sql.toString();
   }
 

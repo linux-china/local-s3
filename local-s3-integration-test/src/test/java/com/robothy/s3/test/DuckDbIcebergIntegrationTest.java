@@ -51,6 +51,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Object;
+import software.amazon.awssdk.services.s3tables.S3TablesClient;
+import software.amazon.awssdk.services.s3tables.model.TableSummary;
 
 /**
  * DuckDB on the built-in Iceberg REST catalog of LocalS3, the link that the "IDE with an embedded S3 and DuckDB"
@@ -369,6 +371,40 @@ class DuckDbIcebergIntegrationTest {
       assertEquals(10L, single(pasted, "SELECT sum(id)::BIGINT FROM ice.pasted.t"));
     }
     assertTrue(catalog.tableExists(TableIdentifier.of("pasted", "t")));
+  }
+
+  /**
+   * A table bucket of the S3 Tables API, attached by its ARN. DuckDB reaches Amazon S3 Tables with
+   * {@code ENDPOINT_TYPE s3_tables}, but that always sends its requests to {@code s3tables.<region>.amazonaws.com}
+   * and ignores an {@code ENDPOINT}, and its {@code AUTHORIZATION_TYPE 'sigv4'} refuses a host that isn't one of AWS.
+   * So LocalS3 is attached the way any REST catalog is, with the ARN as the warehouse, and the table that DuckDB
+   * creates there is one that the S3 Tables API lists.
+   */
+  @Test
+  void duckdb_attaches_a_table_bucket_by_its_arn() throws Exception {
+    try (S3TablesClient tables = S3TablesClient.builder()
+        .endpointOverride(URI.create("http://127.0.0.1:" + localS3.getPort()))
+        .region(Region.US_EAST_1)
+        .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+        .build()) {
+      String arn = tables.createTableBucket(request -> request.name("duck-tables")).arn();
+      execute(duckdb, "ATTACH '" + arn + "' AS tb (TYPE ICEBERG, ENDPOINT '" + catalogUri()
+          + "', AUTHORIZATION_TYPE 'none')");
+
+      execute(duckdb, "CREATE SCHEMA tb.sales");
+      execute(duckdb, "CREATE TABLE tb.sales.orders AS SELECT range AS id FROM range(10)");
+      execute(duckdb, "INSERT INTO tb.sales.orders VALUES (10)");
+      assertEquals(55L, single(duckdb, "SELECT sum(id)::BIGINT FROM tb.sales.orders"));
+
+      assertEquals(List.of("orders"), tables.listTables(request -> request.tableBucketARN(arn).namespace("sales"))
+          .tables().stream().map(TableSummary::name).toList());
+      String location = tables.getTableMetadataLocation(request -> request.tableBucketARN(arn).namespace("sales")
+          .name("orders")).metadataLocation();
+      assertEquals(55L, single(duckdb, "SELECT sum(id)::BIGINT FROM iceberg_scan('" + location + "')"),
+          "The metadata location of the S3 Tables API is the current version of the table DuckDB wrote.");
+      assertFalse(keys("sales/").stream().findAny().isPresent(),
+          "A table bucket keeps its tables out of the warehouse of the built-in catalog.");
+    }
   }
 
   private String catalogUri() {
