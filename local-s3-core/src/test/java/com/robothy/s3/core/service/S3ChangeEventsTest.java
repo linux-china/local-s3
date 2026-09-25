@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.PreconditionFailedException;
+import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
@@ -105,7 +106,7 @@ class S3ChangeEventsTest extends LocalS3ServiceTestBase {
     uploadPart(objectService, "aborted.bin", aborted);
     changes.clear();
     objectService.abortMultipartUpload(BUCKET, "aborted.bin", aborted);
-    objectService.abortMultipartUpload(BUCKET, "aborted.bin", aborted);
+    assertThrows(UploadNotExistException.class, () -> objectService.abortMultipartUpload(BUCKET, "aborted.bin", aborted));
     assertEquals(List.of(S3Change.multipartUploadAborted("AbortMultipartUpload", BUCKET, "aborted.bin", aborted)),
         changes, "Aborting an upload that doesn't exist changes nothing.");
 

@@ -136,6 +136,21 @@ public class RequestAssertions {
   }
 
   /**
+   * Assert that a read, GetObject or HeadObject, carries no {@code x-amz-server-side-encryption}: the header is for
+   * writes only, and Amazon S3 rejects a read that sends it. A read of an object encrypted with SSE-S3 or SSE-KMS needs
+   * no header at all; one encrypted with SSE-C sends the {@code x-amz-server-side-encryption-customer-*} ones.
+   *
+   * @param request HTTP request.
+   */
+  public static void assertNoServerSideEncryptionForRead(HttpRequest request) {
+    Optional<String> encryption = request.header(AmzHeaderNames.X_AMZ_SERVER_SIDE_ENCRYPTION);
+    if (encryption.isPresent()) {
+      throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_SERVER_SIDE_ENCRYPTION, encryption.get(),
+          "x-amz-server-side-encryption header is not supported for this operation.");
+    }
+  }
+
+  /**
    * Assert that the uploadId is in the query parameters.
    *
    * @param request HTTP request.

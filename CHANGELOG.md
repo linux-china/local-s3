@@ -325,6 +325,18 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Changed
 
++ Closer to Amazon S3, as ceph/s3-tests checks it:
+  + `AbortMultipartUpload` of an unknown upload ID, or of one already aborted or completed, answers
+    `404 NoSuchUpload` instead of `204`.
+  + `DeletePublicAccessBlock` answers `204 No Content` instead of `200`.
+  + `UploadPartCopy` rejects an `x-amz-copy-source-range` beyond the end of the source with `400 InvalidRange`.
+  + `PutBucketLifecycleConfiguration` gives a rule put without an `ID` a generated one, and rejects a `Date` of an
+    `Expiration` or a `Transition` that isn't an ISO 8601 date at midnight UTC with `400 InvalidArgument`.
+  + `GetObject` and `HeadObject` that send `x-amz-server-side-encryption` answer `400 InvalidArgument`.
+  + A part of an object, read with `partNumber`, has the checksum type of the object, e.g. `COMPOSITE` for SHA-1 and
+    SHA-256, rather than `FULL_OBJECT`.
+  + POST Object stores the `x-amz-server-side-encryption-customer-*` fields of the form like `PutObject` stores the
+    headers, and checks the policy against the key with `${filename}` replaced by the name of the file.
 + LocalS3 no longer depends on `commons-codec`, `commons-io`, `commons-lang3` and `commons-collections4`: the JDK
   does what they did. An application that used them through LocalS3 needs to declare them itself. The executable jar
   is about 2.6 MB smaller.

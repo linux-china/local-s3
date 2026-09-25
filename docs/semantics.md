@@ -350,8 +350,10 @@ What is checked is the structure that Amazon S3 checks, so a configuration that 
 | More than 1000 rules | `400 InvalidRequest` |
 | An `ID` longer than 255 characters, or the same `ID` in two rules | `400 InvalidArgument` |
 | An `x-amz-transition-default-minimum-object-size` other than `all_storage_classes_128K` or `varies_by_storage_class` | `400 InvalidArgument` |
+| A `Date` of an `Expiration` or a `Transition` that isn't an ISO 8601 date at midnight UTC, e.g. `20200101` | `400 InvalidArgument` |
 
-The contents of the filters and actions aren't checked beyond that. The document is stored as it was put, and `GetBucketLifecycleConfiguration` returns it as is, with the `x-amz-transition-default-minimum-object-size` it
+The contents of the filters and actions aren't checked beyond that. The document is stored as it was put, except that a
+rule without an `ID` gets a generated one, like on Amazon S3, and `GetBucketLifecycleConfiguration` returns it as is, with the `x-amz-transition-default-minimum-object-size` it
 was put with, `all_storage_classes_128K` by default. A bucket without a configuration answers
 `404 NoSuchLifecycleConfiguration`; deleting the configuration of such a bucket succeeds.
 

@@ -76,9 +76,11 @@ public class MultipartUploadIntegrationTest {
         s3.createMultipartUpload(b -> b.bucket(bucketName).key("a.txt"));
     assertDoesNotThrow(() -> s3.abortMultipartUpload(
         b -> b.bucket(bucketName).key("a.txt").uploadId(initiateMultipartUploadResult.uploadId())));
-    // abort multiple times
-    assertDoesNotThrow(() -> s3.abortMultipartUpload(
+    // abort again: the upload no longer exists
+    S3Exception again = assertThrows(S3Exception.class, () -> s3.abortMultipartUpload(
         b -> b.bucket(bucketName).key("a.txt").uploadId(initiateMultipartUploadResult.uploadId())));
+    assertEquals(404, again.statusCode());
+    assertEquals("NoSuchUpload", again.awsErrorDetails().errorCode());
 
     // upload to an aborted multipart upload.
     assertThrows(S3Exception.class, () -> s3.uploadPart(b -> b.bucket(bucketName)

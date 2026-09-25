@@ -8,6 +8,7 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.PutObjectAns;
+import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Tagging;
@@ -17,6 +18,7 @@ import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.service.ServiceFactory;
+import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.MultipartFormData;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
@@ -36,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
@@ -44,8 +47,8 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * of a file by an HTML form that a browser posts to a bucket.
  *
  * <p>The form carries what a {@code PutObject} request carries in its headers: the {@code key}, which may contain
- * {@code ${filename}}, the {@code Content-Type}, the system-defined metadata, {@code x-amz-meta-*} and
- * {@code tagging}. If the service requires signed requests, the form must carry a {@code policy} and its signature,
+ * {@code ${filename}}, the {@code Content-Type}, the system-defined metadata, {@code x-amz-meta-*},
+ * {@code tagging} and the {@code x-amz-server-side-encryption*} fields, SSE-C ones included. If the service requires signed requests, the form must carry a {@code policy} and its signature,
  * see {@linkplain AwsSignatureV4Verifier#verifyPostPolicy}; a form that carries a policy has it checked either way,
  * see {@linkplain PostPolicy}, so that a form can be debugged against a service that doesn't require signatures.
  *
@@ -111,29 +114,35 @@ class PostObjectController implements HttpRequestHandler {
         throw new LocalS3RequestException(result.errorCode(), result.message());
       }
     }
+    // The key with ${filename} replaced by the name of the file, which is also what the policy is checked against,
+    // like Amazon S3 does.
+    Optional<String> formKey = form.field("key")
+        .map(value -> value.replace(FILENAME_VARIABLE, form.file().filename()));
     if (policy.isPresent()) {
       List<String> fieldNames = new ArrayList<>();
       form.fields().forEach(field -> fieldNames.add(field.name()));
-      PostPolicy.parse(policy.get()).check(clock.instant(), bucketName, fieldNames, form::field,
-          file.readableBytes());
+      PostPolicy.parse(policy.get()).check(clock.instant(), bucketName, fieldNames,
+          name -> "key".equalsIgnoreCase(name) ? formKey : form.field(name), file.readableBytes());
     }
 
-    String key = form.field("key")
-        .map(value -> value.replace(FILENAME_VARIABLE, form.file().filename()))
+    String key = formKey
         .filter(value -> !value.isEmpty())
         .orElseThrow(() -> new LocalS3InvalidArgumentException("key", "",
             "Bucket POST must contain a field named 'key'.  If it is specified, please check the order of the "
                 + "fields."));
 
+    Function<String, String> values = name -> form.field(name).orElse(null);
+    CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromValues(values);
     PutObjectOptions options = PutObjectOptions.builder()
         .operation(OPERATION)
         .contentType(form.field("Content-Type").orElse(null))
-        .systemMetadata(SystemMetadataHeaders.fromValues(name -> form.field(name).orElse(null)))
+        .systemMetadata(SystemMetadataHeaders.fromValues(values))
         .size(file.readableBytes())
         .content(new ByteBufInputStream(file.duplicate()))
         .tagging(tagging(form))
         .userMetadata(userMetadata(form))
-        .serverSideEncryption(ServerSideEncryptionHeaders.fromValues(name -> form.field(name).orElse(null), null))
+        .customerEncryption(customerEncryption)
+        .serverSideEncryption(ServerSideEncryptionHeaders.fromValues(values, customerEncryption))
         .build();
     PutObjectAns ans = objectService.putObject(bucketName, key, options);
 
@@ -141,6 +150,7 @@ class PostObjectController implements HttpRequestHandler {
     ResponseUtils.addCommonHeaders(response);
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, ans.getVersionId());
     ResponseUtils.addETag(response, ans.getEtag());
+    CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
     ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), true);
     Optional<URI> redirect = form.field("success_action_redirect").or(() -> form.field("redirect"))
         .flatMap(PostObjectController::redirectUri);

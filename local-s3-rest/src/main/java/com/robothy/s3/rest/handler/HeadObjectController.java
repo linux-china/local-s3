@@ -37,6 +37,7 @@ class HeadObjectController implements HttpRequestHandler {
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
+    RequestAssertions.assertNoServerSideEncryptionForRead(request);
 
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))

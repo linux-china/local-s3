@@ -17,17 +17,17 @@ class AbortMultipartUploadServiceTest extends LocalS3ServiceTestBase {
   void abortMultipartUpload(BucketService bucketService, ObjectService objectService) {
     String bucketName = "test-abort-multipart-upload";
     bucketService.createBucket(bucketName);
-    // This behavior is not the same as the AWS S3. AWS S3 will throw NoSuchUpload exception.
-    // LocalS3 won't do anything in this scenario because we don't want to store aborted upload ID.
-    assertDoesNotThrow(() -> objectService.abortMultipartUpload(bucketName, "a.txt", "test-abort-multipart-upload"));
+    // Like Amazon S3, an unknown upload ID is NoSuchUpload.
+    assertThrows(UploadNotExistException.class,
+        () -> objectService.abortMultipartUpload(bucketName, "a.txt", "test-abort-multipart-upload"));
 
 
     String uploadId1 = objectService.createMultipartUpload(bucketName, "a.txt", CreateMultipartUploadOptions.builder()
         .contentType("text/plain")
         .build());
     assertDoesNotThrow(() -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId1));
-    // abort multiple times
-    assertDoesNotThrow(() -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId1));
+    // abort again
+    assertThrows(UploadNotExistException.class, () -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId1));
 
 
     String uploadId2 = objectService.createMultipartUpload(bucketName, "a.txt", CreateMultipartUploadOptions.builder()
@@ -62,7 +62,8 @@ class AbortMultipartUploadServiceTest extends LocalS3ServiceTestBase {
         .data(new ByteArrayInputStream("Hello".getBytes()))
         .build());
     assertDoesNotThrow(() -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId3));
-    assertDoesNotThrow(() -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId3));
+    assertThrows(UploadNotExistException.class, () -> objectService.abortMultipartUpload(bucketName, "a.txt", uploadId3));
+    assertDoesNotThrow(() -> objectService.listParts(bucketName, "a.txt", uploadId4, 0, null));
   }
 
 }

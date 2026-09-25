@@ -172,6 +172,12 @@ public class FlexibleChecksumIntegrationTest {
         .checksumMode(ChecksumMode.ENABLED));
     assertEquals(part1 + part2, get.asUtf8String());
     assertEquals(composite, get.response().checksumSHA256());
+
+    // A part is read with its own checksum, of the type of the checksum of the object.
+    HeadObjectResponse headPart = s3.headObject(b -> b.bucket(BUCKET).key("a.txt").partNumber(1)
+        .checksumMode(ChecksumMode.ENABLED));
+    assertEquals(Checksums.sha256(part1), headPart.checksumSHA256());
+    assertEquals(ChecksumType.COMPOSITE, headPart.checksumType());
   }
 
   /**

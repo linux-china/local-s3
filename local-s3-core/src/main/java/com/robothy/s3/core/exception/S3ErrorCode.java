@@ -46,6 +46,11 @@ public enum S3ErrorCode {
   //InvalidPayer("InvalidPayer", 403, "All access to this object has been disabled. Please contact AWS Support for further assistance."),
   InvalidPolicyDocument("InvalidPolicyDocument", 400, "The content of the form does not meet the conditions specified in the policy document."),
   InvalidRange("InvalidRange", 416, "The requested range cannot be satisfied."),
+  /**
+   * The {@code x-amz-copy-source-range} of an UploadPartCopy that goes beyond the end of the source: unlike a
+   * {@code Range} of a read, which Amazon S3 answers with {@code 416}, it is a {@code 400}.
+   */
+  InvalidCopySourceRange("InvalidRange", 400, "The x-amz-copy-source-range is not valid for the size of the source object."),
   InvalidRequest("InvalidRequest", 400, ""),
   InvalidSecurity("InvalidSecurity", 403, "The provided security credentials are not valid."),
   //InvalidSOAPRequest("InvalidSOAPRequest", 400, "The SOAP request body is invalid."),

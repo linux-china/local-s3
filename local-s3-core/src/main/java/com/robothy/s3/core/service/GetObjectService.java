@@ -246,10 +246,12 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         ObjectPartMetadata part = parts.get(partNumber - 1);
         contentLength = part.getSize();
         // The checksum of the part, which is what the content read is, when the object has one of its algorithm.
+        // Like Amazon S3, it is reported with the type of the checksum of the object, e.g. COMPOSITE for SHA-256.
         ObjectChecksum objectChecksum = version.getChecksum();
         ObjectChecksum partChecksum = part.getChecksum();
         checksum = Objects.nonNull(objectChecksum) && Objects.nonNull(partChecksum)
-            && objectChecksum.getAlgorithm() == partChecksum.getAlgorithm() ? partChecksum : null;
+            && objectChecksum.getAlgorithm() == partChecksum.getAlgorithm()
+            ? new ObjectChecksum(partChecksum.getAlgorithm(), objectChecksum.getType(), partChecksum.getValue()) : null;
         answer.partsCount(parts.size());
       }
       // A read of a part is a partial content, even of the only part of an object; an empty part has no range.

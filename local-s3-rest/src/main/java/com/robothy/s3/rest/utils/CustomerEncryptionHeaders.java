@@ -10,6 +10,7 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.function.Function;
 
 /**
  * Reads the customer-provided encryption key (SSE-C) of a request from its
@@ -53,12 +54,29 @@ public final class CustomerEncryptionHeaders {
    * Read the customer key of a request from the headers whose names start with a prefix instead of {@code x-amz-}.
    */
   private static CustomerEncryption fromRequest(HttpRequest request, String prefix) {
+    return fromValues(name -> request.header(name).orElse(null), prefix);
+  }
+
+  /**
+   * Read the customer key from named values, e.g. the {@code x-amz-server-side-encryption-customer-*} fields of a
+   * {@code POST} form.
+   *
+   * @param values the value of a header name; {@code null} if it has none.
+   * @return the encryption; {@code null} if none of the values are given.
+   * @throws LocalS3InvalidArgumentException if a value is missing, or the key or its digest is invalid.
+   * @throws LocalS3RequestException {@code InvalidEncryptionAlgorithmError} if the algorithm isn't {@code AES256}.
+   */
+  public static CustomerEncryption fromValues(Function<String, String> values) {
+    return fromValues(values, "");
+  }
+
+  private static CustomerEncryption fromValues(Function<String, String> values, String prefix) {
     String algorithmHeader = headerName(prefix, AmzHeaderNames.X_AMZ_SSE_CUSTOMER_ALGORITHM);
     String keyHeader = headerName(prefix, AmzHeaderNames.X_AMZ_SSE_CUSTOMER_KEY);
     String keyMd5Header = headerName(prefix, AmzHeaderNames.X_AMZ_SSE_CUSTOMER_KEY_MD5);
-    String algorithm = request.header(algorithmHeader).orElse(null);
-    String key = request.header(keyHeader).orElse(null);
-    String keyMd5 = request.header(keyMd5Header).orElse(null);
+    String algorithm = values.apply(algorithmHeader);
+    String key = values.apply(keyHeader);
+    String keyMd5 = values.apply(keyMd5Header);
     if (algorithm == null && key == null && keyMd5 == null) {
       return null;
     }

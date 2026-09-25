@@ -244,8 +244,11 @@ public record LifecycleRule(String id, boolean enabled, Filter filter, Integer e
   /**
    * Parse the {@code Date} of an expiration, an ISO 8601 date at midnight UTC, e.g. {@code 2030-01-01T00:00:00Z}, or a
    * date without a time.
+   *
+   * @return the date in epoch milliseconds.
+   * @throws DateTimeParseException if the text is none of them.
    */
-  private static long parseDate(String text) {
+  public static long parseDate(String text) {
     try {
       return OffsetDateTime.parse(text).toInstant().toEpochMilli();
     } catch (DateTimeParseException e) {

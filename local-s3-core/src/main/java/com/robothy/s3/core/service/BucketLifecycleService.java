@@ -5,8 +5,12 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
+import com.robothy.s3.core.model.LifecycleRule;
 import com.robothy.s3.core.model.internal.BucketMetadata;
+import com.robothy.s3.core.util.LifecycleRuleIds;
 import java.io.StringReader;
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -25,8 +29,10 @@ import javax.xml.stream.XMLStreamReader;
  * <p>A configuration is validated the way Amazon S3 validates the structure of one, so that a configuration that
  * Amazon S3 rejects isn't accepted: the document must be a {@code LifecycleConfiguration} of 1 to
  * {@value #MAX_RULES} {@code Rule}s, each with a {@code Status} of {@code Enabled} or {@code Disabled}, at least one
- * action, and a unique {@code ID} of at most {@value #MAX_RULE_ID_LENGTH} characters. The contents of the actions and
- * filters aren't checked, since nothing reads them. The document is stored as it was put, and returned as is.
+ * action, and a unique {@code ID} of at most {@value #MAX_RULE_ID_LENGTH} characters; the {@code Date} of an
+ * {@code Expiration} or a {@code Transition} must be an ISO 8601 date at midnight UTC. The other contents of the
+ * actions and filters aren't checked. The document is stored as it was put, and returned as is, except that a rule
+ * put without an {@code ID} gets a generated one, like on Amazon S3, which tools such as Terraform rely on.
  *
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>
@@ -85,8 +91,9 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         throw new LocalS3InvalidArgumentException("x-amz-transition-default-minimum-object-size", minimumObjectSize,
             "Invalid value for x-amz-transition-default-minimum-object-size.");
       }
-      validateLifecycleConfiguration(configuration);
-      BucketLifecycleConfiguration lifecycle = new BucketLifecycleConfiguration(configuration, minimumObjectSize);
+      String stored = validateLifecycleConfiguration(configuration)
+          ? configuration : LifecycleRuleIds.withGeneratedIds(configuration);
+      BucketLifecycleConfiguration lifecycle = new BucketLifecycleConfiguration(stored, minimumObjectSize);
       bucketMetadata.setLifecycle(lifecycle);
       return lifecycle;
     });
@@ -118,7 +125,12 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     });
   }
 
-  private static void validateLifecycleConfiguration(String configuration) {
+  /**
+   * Validate a configuration.
+   *
+   * @return whether every rule has an {@code ID}.
+   */
+  private static boolean validateLifecycleConfiguration(String configuration) {
     if (configuration == null || configuration.isBlank()) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
@@ -129,7 +141,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     try {
       XMLStreamReader reader = factory.createXMLStreamReader(new StringReader(configuration));
       try {
-        validateLifecycleConfiguration(reader);
+        return validateLifecycleConfiguration(reader);
       } finally {
         reader.close();
       }
@@ -138,12 +150,13 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     }
   }
 
-  private static void validateLifecycleConfiguration(XMLStreamReader reader) throws XMLStreamException {
+  private static boolean validateLifecycleConfiguration(XMLStreamReader reader) throws XMLStreamException {
     if (nextElement(reader) != XMLStreamConstants.START_ELEMENT
         || !"LifecycleConfiguration".equals(reader.getLocalName())) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
     int rules = 0;
+    boolean allHaveIds = true;
     Set<String> ids = new HashSet<>();
     while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
       if (!"Rule".equals(reader.getLocalName())) {
@@ -153,7 +166,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
             "The number of lifecycle rules must not exceed the allowed limit of " + MAX_RULES + " rules.");
       }
-      validateRule(reader, ids);
+      allHaveIds &= validateRule(reader, ids);
     }
     if (rules == 0) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
@@ -164,12 +177,15 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
       }
     }
+    return allHaveIds;
   }
 
   /**
    * Validate the rule whose start element the reader is at, and leave the reader at its end element.
+   *
+   * @return whether the rule has an {@code ID}.
    */
-  private static void validateRule(XMLStreamReader reader, Set<String> ids) throws XMLStreamException {
+  private static boolean validateRule(XMLStreamReader reader, Set<String> ids) throws XMLStreamException {
     String id = null;
     String status = null;
     boolean hasAction = false;
@@ -179,6 +195,9 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         id = reader.getElementText();
       } else if ("Status".equals(element)) {
         status = reader.getElementText();
+      } else if ("Expiration".equals(element) || "Transition".equals(element)) {
+        hasAction = true;
+        validateDateOfAction(reader);
       } else {
         hasAction |= RULE_ACTIONS.contains(element);
         skipElement(reader);
@@ -199,6 +218,30 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
       if (!ids.add(id)) {
         throw new LocalS3InvalidArgumentException("ID", id,
             "Rule ID must be unique. Found same ID for more than one rule.");
+      }
+    }
+    return id != null;
+  }
+
+  /**
+   * Validate the {@code Date} of the {@code Expiration} or {@code Transition} whose start element the reader is at,
+   * and leave the reader at its end element. Amazon S3 takes an ISO 8601 date at midnight UTC only.
+   */
+  private static void validateDateOfAction(XMLStreamReader reader) throws XMLStreamException {
+    while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
+      if (!"Date".equals(reader.getLocalName())) {
+        skipElement(reader);
+        continue;
+      }
+      String date = reader.getElementText().trim();
+      long millis;
+      try {
+        millis = LifecycleRule.parseDate(date);
+      } catch (DateTimeParseException e) {
+        throw new LocalS3InvalidArgumentException("Date", date, "Invalid date format, must be in ISO 8601 format.");
+      }
+      if (millis % Duration.ofDays(1).toMillis() != 0) {
+        throw new LocalS3InvalidArgumentException("Date", date, "'Date' must be at midnight GMT");
       }
     }
   }

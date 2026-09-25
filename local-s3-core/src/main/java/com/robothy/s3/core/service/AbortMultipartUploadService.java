@@ -3,6 +3,7 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.event.S3Change;
+import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
@@ -14,8 +15,8 @@ import java.util.NavigableMap;
 public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, StorageApplicable {
 
   /**
-   * If the upload ID is not found, do nothing. Otherwise, abort the multipart upload
-   * and release the storage space.
+   * Abort the multipart upload and release the storage space. Like Amazon S3, an upload ID that is not found,
+   * or no longer found as the upload was aborted or completed, is {@code 404 NoSuchUpload}.
    *
    * @param bucketName bucket name.
    * @param objectKey object key.
@@ -28,8 +29,7 @@ public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, 
       ObjectAssertions.assertObjectKeyIsValid(objectKey);
       NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
       if (!uploads.containsKey(objectKey) || !uploads.get(objectKey).containsKey(uploadId)) {
-        // do nothing if the uploadId is not found.
-        return;
+        throw new UploadNotExistException(objectKey, uploadId);
       }
 
       UploadMetadata uploadMetadata = uploads.get(objectKey).remove(uploadId);

@@ -50,6 +50,23 @@ public class UploadPartCopyIntegrationTest {
   }
 
   /**
+   * A copy range that goes beyond the end of the source is rejected with {@code 400 InvalidRange}, like on Amazon S3,
+   * rather than clamped to the source as a read would be.
+   */
+  @Test
+  @LocalS3
+  void rejectsACopyRangeBeyondTheEndOfTheSource(S3Client s3) {
+    prepare(s3);
+    String uploadId = startUpload(s3);
+
+    S3Exception e = assertThrows(S3Exception.class, () -> s3.uploadPartCopy(b -> b.bucket(BUCKET).key(TARGET_KEY)
+        .uploadId(uploadId).partNumber(1)
+        .sourceBucket(BUCKET).sourceKey(SOURCE_KEY).copySourceRange("bytes=0-" + SOURCE_CONTENT.length())));
+    assertEquals(400, e.statusCode());
+    assertEquals("InvalidRange", e.awsErrorDetails().errorCode());
+  }
+
+  /**
    * Two ranges of the source object are copied into two parts, which complete to the source object again. The
    * first part is 5 MiB, the minimum size of a part that other parts follow.
    */

@@ -46,6 +46,27 @@ class ServerSideEncryptionIntegrationTest {
   private static final String CONTEXT = Base64.getEncoder()
       .encodeToString("{\"department\":\"data\"}".getBytes(StandardCharsets.UTF_8));
 
+  /**
+   * {@code x-amz-server-side-encryption} is for writes only: a read that sends it is rejected, like on Amazon S3.
+   */
+  @Test
+  @LocalS3
+  void rejectsServerSideEncryptionOnReads(S3Client s3) {
+    s3.createBucket(b -> b.bucket("sse-read"));
+    s3.putObject(b -> b.bucket("sse-read").key("a.txt").serverSideEncryption(ServerSideEncryption.AES256),
+        RequestBody.fromString("a"));
+
+    S3Exception get = assertThrows(S3Exception.class, () -> s3.getObjectAsBytes(b -> b.bucket("sse-read").key("a.txt")
+        .overrideConfiguration(o -> o.putHeader("x-amz-server-side-encryption", "AES256"))));
+    assertEquals(400, get.statusCode());
+    assertEquals("InvalidArgument", get.awsErrorDetails().errorCode());
+    S3Exception head = assertThrows(S3Exception.class, () -> s3.headObject(b -> b.bucket("sse-read").key("a.txt")
+        .overrideConfiguration(o -> o.putHeader("x-amz-server-side-encryption", "aws:kms"))));
+    assertEquals(400, head.statusCode());
+    // Without the header, the read succeeds.
+    assertEquals("a", s3.getObjectAsBytes(b -> b.bucket("sse-read").key("a.txt")).asUtf8String());
+  }
+
   @Test
   @LocalS3(buckets = BUCKET)
   void storesAndAnswersSseS3(S3Client s3) {

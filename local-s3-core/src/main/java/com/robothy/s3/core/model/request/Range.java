@@ -123,6 +123,15 @@ public class Range {
   }
 
   /**
+   * The number of bytes of a {@code bytes=start-end} range, whose both ends are given.
+   *
+   * @return the length; empty for a {@code bytes=start-} or {@code bytes=-suffix} range.
+   */
+  public Optional<Long> length() {
+    return start != null && end != null ? Optional.of(end - start + 1) : Optional.empty();
+  }
+
+  /**
    * Resolve concrete start/end byte positions given the total object size.
    *
    * @return {@code long[2]} with inclusive {@code [start, end]} positions

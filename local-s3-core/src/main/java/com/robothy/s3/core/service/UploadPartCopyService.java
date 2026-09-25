@@ -7,6 +7,7 @@ import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.answers.UploadPartCopyAns;
+import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.model.request.UploadPartCopyOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import java.io.IOException;
@@ -48,6 +49,14 @@ public interface UploadPartCopyService extends GetObjectService, UploadPartServi
     if (source.isDeleteMarker()) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
           "The source of a copy request may not specifically refer to a delete marker by version id.");
+    }
+
+    // A read clamps a range that goes beyond the end of the object, while Amazon S3 rejects such a copy range.
+    Long rangeLength = options.getCopySourceRange().flatMap(Range::length).orElse(null);
+    if (rangeLength != null && source.getSize() != rangeLength) {
+      LocalS3RequestException invalidRange = new LocalS3RequestException(S3ErrorCode.InvalidCopySourceRange);
+      closeQuietly(source.getContent(), invalidRange);
+      throw invalidRange;
     }
 
     UploadPartAns part;
