@@ -286,6 +286,51 @@ class LocalS3AutoConfigurationTest {
   }
 
   @Test
+  void publishesTheEndpointToTheEnvironment() {
+    runner.withPropertyValues("app.endpoint=${local.s3.endpoint}", "app.port=${local.s3.port}").run(context -> {
+      URI endpoint = context.getBean(LocalS3Lifecycle.class).endpoint();
+      assertEquals(endpoint.toString(), context.getEnvironment().getProperty("local.s3.endpoint"));
+      assertEquals(endpoint.getPort(), context.getEnvironment().getProperty("local.s3.port", Integer.class));
+      assertEquals(endpoint.toString(), context.getEnvironment().getProperty("app.endpoint"));
+      assertEquals(String.valueOf(endpoint.getPort()), context.getEnvironment().getProperty("app.port"));
+      assertEquals(-1, context.getBean(LocalS3Properties.class).getPort(), "local-s3.port stays the configured one.");
+    });
+  }
+
+  @Test
+  void theEndpointIsNotPublishedAfterTheContextIsClosed() {
+    runner.run(context -> {
+      org.springframework.core.env.Environment environment = context.getEnvironment();
+      LocalS3 localS3 = context.getBean(LocalS3.class);
+      context.close();
+      assertNull(environment.getProperty("local.s3.endpoint"));
+      assertFalse(localS3.isRunning(), "Reading the property doesn't start the service of a closed context again.");
+    });
+  }
+
+  /**
+   * A client that isn't one of the starter reaches the service at a random port through the placeholder, which is
+   * resolved while the beans are created, before the lifecycle of the context starts the service.
+   */
+  @Test
+  void springCloudAwsReachesTheServiceThroughTheEndpointPlaceholder() {
+    // Without the async client of the starter, the one of S3CrtAsyncClientAutoConfiguration would need the CRT.
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(S3AutoConfiguration.class, AwsAutoConfiguration.class, CredentialsProviderAutoConfiguration.class, RegionProviderAutoConfiguration.class,
+            LocalS3AutoConfiguration.class))
+        .withPropertyValues("local-s3.port=-1", "local-s3.buckets=uploads", "local-s3.clients.enabled=false",
+            "spring.cloud.aws.region.static=us-east-1", "spring.cloud.aws.s3.endpoint=${local.s3.endpoint}",
+            "spring.cloud.aws.s3.path-style-access-enabled=true",
+            "spring.cloud.aws.credentials.access-key=local-s3", "spring.cloud.aws.credentials.secret-key=local-s3")
+        .run(context -> {
+          assertNull(context.getStartupFailure());
+          S3Template template = context.getBean(S3Template.class);
+          template.upload("uploads", "a.txt", new ByteArrayInputStream("Hello".getBytes(StandardCharsets.UTF_8)));
+          assertTrue(template.objectExists("uploads", "a.txt"));
+        });
+  }
+
+  @Test
   void appliesTheCustomizersAfterTheProperties() {
     runner.withPropertyValues("local-s3.buckets=from-properties").withUserConfiguration(Customizers.class)
         .run(context -> {

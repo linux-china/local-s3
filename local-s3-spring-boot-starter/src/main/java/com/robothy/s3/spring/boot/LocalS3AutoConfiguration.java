@@ -121,6 +121,18 @@ public class LocalS3AutoConfiguration {
     return new LocalS3Lifecycle(localS3);
   }
 
+  /**
+   * Publishes {@code local.s3.endpoint} and {@code local.s3.port} to the environment, see
+   * {@linkplain LocalS3PropertySource}. Static, since it post-processes the bean factory before this configuration is
+   * created.
+   *
+   * @return the registrar of the property source.
+   */
+  @Bean
+  static LocalS3PropertySource.Registrar localS3PropertySourceRegistrar() {
+    return new LocalS3PropertySource.Registrar();
+  }
+
   // Set directly rather than through PropertyMapper: Spring Boot 4 changed the parameter of Source.as() from a
   // Function to a Source.Adapter, and made Source.to() skip a null value, so a starter compiled against one line
   // fails on the other with a NoClassDefFoundError, or applies the nulls. A value that isn't configured is left out,

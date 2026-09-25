@@ -257,6 +257,37 @@ A bean that uses the service without a client bean of the starter, e.g. through 
 lifecycle of the context hasn't yet, while `localS3.getPort()` on its own is the configured port, i.e. `0` for a
 random one, until the service starts.
 
+### Endpoint placeholders
+
+Like `local.server.port` of the web server, the starter publishes the endpoint of the service to the `Environment`, so
+a client that isn't one of the starter — MinIO SDK, a DuckDB or Iceberg setting, Spring Cloud AWS — reaches it with a
+placeholder, also on a random port, without injecting `LocalS3Lifecycle`:
+
+| Property            | Value                    |
+|---------------------|--------------------------|
+| `local.s3.endpoint` | `http://127.0.0.1:29090` |
+| `local.s3.port`     | `29090`                  |
+
+```yaml
+local-s3:
+  port: 0
+  clients:
+    enabled: false
+spring.cloud.aws:
+  credentials: { access-key: local-s3, secret-key: local-s3 } # any pair, unless local-s3.credentials are set
+  s3:
+    endpoint: ${local.s3.endpoint}
+    path-style-access-enabled: true
+```
+
+```java
+@Value("${local.s3.endpoint}") String endpoint;
+```
+
+Reading one of them starts the service if it isn't running yet, like creating a client bean does, so a placeholder
+also resolves while the beans are created. They are named after `local.server.port` rather than under `local-s3.*`,
+since `local-s3.port` is the configured port, i.e. `0` for a random one.
+
 ## LocalS3 locally, Amazon S3 in production
 
 `local-s3.enabled=false` leaves the service out — and with it the `S3Client`, `S3AsyncClient` and `S3Presigner` beans
