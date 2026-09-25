@@ -54,6 +54,13 @@ public final class S3ChangePublisher {
   }
 
   /**
+   * Unsubscribe every listener, e.g. those of an application that is gone, when another one takes the data over.
+   */
+  public void clearListeners() {
+    listeners.clear();
+  }
+
+  /**
    * The executor that runs the listeners.
    *
    * @return the executor.

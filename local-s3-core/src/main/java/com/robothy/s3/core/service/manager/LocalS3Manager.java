@@ -139,6 +139,13 @@ public interface LocalS3Manager {
   }
 
   /**
+   * Unsubscribe every change listener, including those subscribed through {@linkplain #addChangeListener} by hand.
+   */
+  default void clearChangeListeners() {
+    bucketService().bucketGuard().changePublisher().clearListeners();
+  }
+
+  /**
    * Set the executor that runs the {@linkplain #addChangeListener subscribed} change listeners. By default a listener
    * runs on the thread that made the change, before the operation returns; another executor runs the listeners apart
    * from the operations, so that a slow listener doesn't hold them up.

@@ -16,6 +16,9 @@ import org.springframework.context.SmartLifecycle;
  * service running. Starting a running service does nothing.
  *
  * <p>The application context stops the service, so it registers no JVM shutdown hook of its own.
+ *
+ * <p>Under Spring Boot DevTools, an {@code IN_MEMORY} service keeps its data across the restarts of the application:
+ * the service of the new context takes over the data of the stopped one, see {@linkplain LocalS3DevToolsRestart}.
  */
 public class LocalS3Lifecycle implements SmartLifecycle {
 
@@ -26,8 +29,25 @@ public class LocalS3Lifecycle implements SmartLifecycle {
 
   private final LocalS3 localS3;
 
+  private final boolean keepDataAcrossRestarts;
+
   public LocalS3Lifecycle(LocalS3 localS3) {
+    this(localS3, false);
+  }
+
+  /**
+   * A lifecycle that may carry the data of the service across the restarts of Spring Boot DevTools.
+   *
+   * @param localS3 the service, not started yet.
+   * @param keepDataAcrossRestarts whether the service takes over the data of the service of the context that DevTools
+   *     closed, and keeps its own data for the next context once it is stopped.
+   */
+  public LocalS3Lifecycle(LocalS3 localS3, boolean keepDataAcrossRestarts) {
     this.localS3 = Objects.requireNonNull(localS3);
+    this.keepDataAcrossRestarts = keepDataAcrossRestarts;
+    if (keepDataAcrossRestarts) {
+      LocalS3DevToolsRestart.takeOver(localS3);
+    }
   }
 
   @Override
@@ -40,6 +60,9 @@ public class LocalS3Lifecycle implements SmartLifecycle {
   @Override
   public synchronized void stop() {
     localS3.shutdown();
+    if (keepDataAcrossRestarts) {
+      LocalS3DevToolsRestart.keep(localS3);
+    }
   }
 
   @Override

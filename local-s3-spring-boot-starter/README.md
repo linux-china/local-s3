@@ -288,6 +288,22 @@ Reading one of them starts the service if it isn't running yet, like creating a 
 also resolves while the beans are created. They are named after `local.server.port` rather than under `local-s3.*`,
 since `local-s3.port` is the configured port, i.e. `0` for a random one.
 
+## Spring Boot DevTools
+
+A DevTools restart closes the application context and creates a new one in the same JVM, so the embedded service is
+stopped and built again. An `IN_MEMORY` service keeps its data across these restarts: the service of the new context
+takes over the buckets, objects, vector buckets, table buckets and Iceberg catalog of the stopped one. Only the data is
+carried over. The new service is built from the configuration of the new context, with its own listeners, seeders and
+customizers, and the seeders run again when it starts.
+
+The data is only taken over if the mode, `local-s3.data-path` and `local-s3.in-memory.max-size` haven't changed;
+otherwise the new service starts empty. A fixed `local-s3.port` is bound again after each restart, and `0` picks a new
+random port. A `PERSISTENCE` service already keeps its data in its data path. Set `local-s3.devtools.keep-data=false`
+to start empty after every restart.
+
+This relies on DevTools loading the starter with its base class loader, which is the default for jars. If
+`restart.include` puts the starter in the restart class loader, the data isn't kept.
+
 ## LocalS3 locally, Amazon S3 in production
 
 `local-s3.enabled=false` leaves the service out — and with it the `S3Client`, `S3AsyncClient` and `S3Presigner` beans

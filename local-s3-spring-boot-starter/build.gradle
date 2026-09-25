@@ -52,6 +52,8 @@ dependencies {
     testImplementation(libs.micrometerCore)
     testImplementation("org.springframework.boot:spring-boot-micrometer-metrics")
     testImplementation("org.springframework:spring-tx")
+    // The RestartClassLoader of DevTools, which the tests of the restarts load the application context with.
+    testImplementation("org.springframework.boot:spring-boot-devtools")
     // Spring Cloud AWS, whose S3 auto-configuration defines clients of its own, which the ones of the starter win over.
     testImplementation(libs.springCloudAwsStarterS3)
     testRuntimeOnly(libs.logbackClassic)

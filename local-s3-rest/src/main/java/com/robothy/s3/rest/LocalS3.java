@@ -387,6 +387,70 @@ public class LocalS3 implements AutoCloseable {
 
     }
 
+    /**
+     * Take over the data of another {@code IN_MEMORY} service that is shut down, so that this one starts with the
+     * buckets, objects, vector buckets, table buckets and Iceberg catalog that the other one held, rather than empty.
+     * Meant for a host that recreates its service in the same JVM, e.g. an application that Spring Boot DevTools
+     * restarts, whose service would otherwise lose its data at every restart.
+     *
+     * <p>The data is moved, not shared: the other service is left without it, as if it had never been started. The
+     * change listeners of the other service, and those subscribed to its manager by hand, are unsubscribed, and the
+     * listeners and the executor of this service subscribed instead. The Iceberg catalog is taken over only if this
+     * service serves one with the same warehouse and table location; otherwise this one creates its own. The default
+     * buckets and the seeders of this service are applied when it starts, like at any start.
+     *
+     * @param previous the service to take the data of.
+     * @return {@code true} if the data was taken over; {@code false} if the data can't back this service, e.g. because
+     *     either service isn't {@code IN_MEMORY}, their data paths or in-memory limits differ, this service has data of
+     *     its own, or the other one is running or holds no data.
+     */
+    public boolean takeOverDataOf(@NonNull LocalS3 previous) {
+        if (previous == this) {
+            return false;
+        }
+        // Neither service may start or shut down meanwhile. A host takes over from a service that is gone, so the two
+        // aren't locked the other way round at the same time.
+        synchronized (this) {
+            synchronized (previous) {
+                if (!canTakeOverDataOf(previous)) {
+                    return false;
+                }
+                LocalS3Manager manager = previous.s3Manager;
+                manager.clearChangeListeners();
+                manager.changeListenerExecutor(config.changeListenerExecutor());
+                config.changeListeners().forEach(manager::addChangeListener);
+                this.s3Manager = manager;
+                this.localS3VectorsManager = previous.localS3VectorsManager;
+                this.localS3TablesManager = previous.localS3TablesManager;
+                LocalS3IcebergCatalog catalog = config.icebergCatalog();
+                LocalS3IcebergCatalog previousCatalog = previous.config.icebergCatalog();
+                if (catalog != null && previousCatalog != null
+                        && catalog.warehouse().equals(previousCatalog.warehouse())
+                        && catalog.uniqueTableLocation() == previousCatalog.uniqueTableLocation()) {
+                    this.localS3IcebergManager = previous.localS3IcebergManager;
+                }
+                previous.s3Manager = null;
+                previous.localS3VectorsManager = null;
+                previous.localS3TablesManager = null;
+                previous.localS3IcebergManager = null;
+                log.info("LocalS3 took over the in-memory data of the previous service.");
+                return true;
+            }
+        }
+    }
+
+    private boolean canTakeOverDataOf(LocalS3 previous) {
+        LocalS3Config other = previous.config;
+        return !running && s3Manager == null && localS3VectorsManager == null
+                && !previous.running && previous.s3Manager != null && previous.localS3VectorsManager != null
+                && previous.localS3TablesManager != null
+                && config.mode() == LocalS3Mode.IN_MEMORY && other.mode() == LocalS3Mode.IN_MEMORY
+                // The managers were created with them, and start from the initial data of the path.
+                && Objects.equals(config.dataPath(), other.dataPath())
+                && config.maxInMemoryBytes() == other.maxInMemoryBytes()
+                && config.initialDataCacheEnabled() == other.initialDataCacheEnabled();
+    }
+
     private ServiceFactory createServiceFactory() {
         // Keep the managers across a restart, so that a service that is started again serves the data it held.
         if (s3Manager == null) {

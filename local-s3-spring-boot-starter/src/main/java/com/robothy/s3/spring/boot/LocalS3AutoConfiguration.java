@@ -115,10 +115,21 @@ public class LocalS3AutoConfiguration {
     return new ClasspathLocalS3Seeder(properties.getSeed().getClasspath(), context);
   }
 
+  /**
+   * Starts and stops the service with the context. Under Spring Boot DevTools, whose restart class loader loads the
+   * application, an {@code IN_MEMORY} service keeps its data across the restarts, unless
+   * {@code local-s3.devtools.keep-data=false}.
+   *
+   * @param localS3 the service.
+   * @param properties the configuration.
+   * @param context the application context, whose class loader tells whether DevTools restarts it.
+   * @return the lifecycle of the service.
+   */
   @Bean
   @ConditionalOnMissingBean
-  public LocalS3Lifecycle localS3Lifecycle(LocalS3 localS3) {
-    return new LocalS3Lifecycle(localS3);
+  public LocalS3Lifecycle localS3Lifecycle(LocalS3 localS3, LocalS3Properties properties, ApplicationContext context) {
+    return new LocalS3Lifecycle(localS3, properties.getDevtools().isKeepData()
+        && LocalS3DevToolsRestart.isRestartable(context.getClassLoader()));
   }
 
   /**

@@ -902,4 +902,55 @@ class LocalS3Test {
     }
   }
 
+
+  @Test
+  void takesOverTheDataOfAStoppedInMemoryService() {
+    List<String> previousChanges = new java.util.concurrent.CopyOnWriteArrayList<>();
+    LocalS3 previous = LocalS3.builder().port(-1)
+        .events(events -> events.listener(change -> previousChanges.add(change.bucketName())))
+        .build();
+    previous.start();
+    previous.getS3Manager().bucketService().createBucket("kept");
+    previous.getS3Manager().addChangeListener(change -> previousChanges.add(change.bucketName()));
+    previous.shutdown();
+    previousChanges.clear();
+
+    List<String> changes = new java.util.concurrent.CopyOnWriteArrayList<>();
+    LocalS3 next = LocalS3.builder().port(-1).buckets("configured")
+        .events(events -> events.listener(change -> changes.add(change.bucketName())))
+        .build();
+    assertTrue(next.takeOverDataOf(previous));
+    assertThrows(IllegalStateException.class, previous::getS3Manager, "The data is moved, not shared.");
+    assertFalse(next.takeOverDataOf(previous), "Nothing is left to take over.");
+    next.start();
+    try {
+      BucketService buckets = next.getS3Manager().bucketService();
+      assertDoesNotThrow(() -> buckets.getBucket("kept"));
+      assertDoesNotThrow(() -> buckets.getBucket("configured"));
+      buckets.createBucket("after");
+      assertTrue(changes.contains("after"));
+      assertTrue(previousChanges.isEmpty(), "The listeners of the previous service no longer hear of the changes.");
+    } finally {
+      next.shutdown();
+    }
+  }
+
+  @Test
+  void refusesToTakeOverDataThatCannotBackTheService() throws IOException {
+    LocalS3 running = LocalS3.builder().port(-1).build();
+    running.start();
+    try {
+      assertFalse(LocalS3.builder().port(-1).build().takeOverDataOf(running), "A running service keeps its data.");
+    } finally {
+      running.shutdown();
+    }
+    assertFalse(LocalS3.builder().port(-1).storage(storage -> storage.maxInMemoryBytes(1024)).build().takeOverDataOf(running),
+        "A manager is created with its in-memory limit.");
+    Path dataPath = Files.createTempDirectory("local-s3");
+    assertFalse(LocalS3.builder().port(-1).dataPath(dataPath.toString()).build().takeOverDataOf(running),
+        "A manager starts from the initial data of its data path.");
+    assertFalse(LocalS3.builder().port(-1).build().takeOverDataOf(LocalS3.builder().port(-1).build()),
+        "A service that was never started holds no data.");
+    assertTrue(LocalS3.builder().port(-1).build().takeOverDataOf(running));
+  }
 }

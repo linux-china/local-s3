@@ -90,6 +90,8 @@ public class LocalS3Properties {
 
   private final Website website = new Website();
 
+  private final Devtools devtools = new Devtools();
+
   public boolean isEnabled() {
     return enabled;
   }
@@ -204,6 +206,31 @@ public class LocalS3Properties {
 
   public Events getEvents() {
     return events;
+  }
+
+  public Devtools getDevtools() {
+    return devtools;
+  }
+
+  /**
+   * The restarts of Spring Boot DevTools, which close the application context and create a new one in the same JVM.
+   */
+  public static class Devtools {
+
+    /**
+     * Whether an IN_MEMORY service keeps its data across the restarts of DevTools: the service of the new context takes
+     * over the buckets and objects of the closed one, if its mode, data path and in-memory limit are the same.
+     */
+    private boolean keepData = true;
+
+    public boolean isKeepData() {
+      return keepData;
+    }
+
+    public void setKeepData(boolean keepData) {
+      this.keepData = keepData;
+    }
+
   }
 
   /**
