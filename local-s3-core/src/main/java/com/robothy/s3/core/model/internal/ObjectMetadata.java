@@ -216,6 +216,17 @@ public class ObjectMetadata {
   }
 
   /**
+   * Whether the latest version of this object is a delete marker, i.e. whether a listing leaves the object out.
+   *
+   * @return {@code true} if the latest version is a delete marker; {@code false} if it isn't, or there is none.
+   */
+  @JsonIgnore
+  public boolean isLatestDeleted() {
+    var latest = versionedObjectMap.firstEntry();
+    return latest != null && latest.getValue().isDeleted();
+  }
+
+  /**
    * Get the latest version ID of this object. It may be a virtual version.
    *
    * @return the latest version of this object.

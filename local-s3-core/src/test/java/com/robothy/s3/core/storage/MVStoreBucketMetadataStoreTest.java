@@ -16,6 +16,9 @@ import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.answers.ListObjectsAns;
+import com.robothy.s3.core.service.ListObjectsService;
+import com.robothy.s3.datatypes.response.S3Object;
 import com.robothy.s3.core.util.JsonUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -228,6 +231,38 @@ class MVStoreBucketMetadataStoreTest {
     assertEquals("etag-7", loaded.getObjectMap().get("key-7").get().getVersionedObjectMap().get("v7").getEtag());
     assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count(),
         "Only the object that was asked for has been read.");
+  }
+
+  /**
+   * The header of an object tells whether its latest version is a delete marker, so that a listing of a bucket that
+   * was just opened steps over its deleted keys without reading their metadata.
+   */
+  @Test
+  void aListingOfAFetchedBucketDoesNotReadItsDeletedObjects() {
+    BucketMetadata bucket = bucket("my-bucket");
+    for (int i = 0; i < 100; i++) {
+      ObjectMetadata object = objectMetadata("1", "etag-" + i);
+      VersionedObjectMetadata marker = new VersionedObjectMetadata();
+      marker.setDeleted(true);
+      object.putVersionedObjectMetadata("2", marker);
+      bucket.putObjectMetadata("deleted-" + i, object);
+    }
+    bucket.putObjectMetadata("live", objectMetadata("1", "etag-live"));
+    store.store("my-bucket", bucket);
+    assertTrue(localS3Store.store().<String, String>openMap("objects/my-bucket").get("deleted-0")
+        .contains("\"latestDeleted\":true"));
+
+    BucketMetadata loaded = store.fetch("my-bucket");
+    ListObjectsAns page = ListObjectsService.listObjectsAndCommonPrefixes(loaded.getObjectMap(), "", null, 10);
+    assertEquals(List.of("live"), page.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count(),
+        "Only the object that is listed has been read.");
+
+    ListObjectsAns delimited = ListObjectsService.listObjectsAndCommonPrefixes(loaded.getObjectMap(), "", "-", 1);
+    assertTrue(delimited.getCommonPrefixes().isEmpty(), "A prefix that rolls up only deleted objects isn't listed.");
+    assertEquals(List.of("live"), delimited.getObjects().stream().map(S3Object::getKey).toList());
+    assertTrue(delimited.getNextMarker().isEmpty());
+    assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count());
   }
 
   /**

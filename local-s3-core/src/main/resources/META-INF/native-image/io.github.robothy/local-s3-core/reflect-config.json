@@ -66,6 +66,7 @@
       {"name":"getKey","parameterTypes":[] },
       {"name":"getVersionedObjectMap","parameterTypes":[] },
       {"name":"getVirtualVersion","parameterTypes":[] },
+      {"name":"isLatestDeleted","parameterTypes":[] },
       {"name":"setKey","parameterTypes":["java.lang.String"] },
       {"name":"setVersionedObjectMap","parameterTypes":["java.util.concurrent.ConcurrentSkipListMap"] },
       {"name":"setVirtualVersion","parameterTypes":["java.lang.String"] }

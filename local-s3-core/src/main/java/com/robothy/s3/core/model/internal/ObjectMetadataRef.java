@@ -63,6 +63,13 @@ public final class ObjectMetadataRef {
   private volatile int persistedSize;
 
   /**
+   * Whether the latest version of the object is a delete marker, as the store last held it; {@code null} if that isn't
+   * known. Kept while the metadata is out of heap, so that a listing can step over the deleted objects of a versioned
+   * bucket without reading each of them, see {@linkplain #isLatestDeleted()}.
+   */
+  private volatile Boolean latestDeleted;
+
+  /**
    * Whether a change has taken hold of the metadata and it has not been written yet, which keeps it in heap.
    */
   private volatile boolean pinned;
@@ -96,8 +103,25 @@ public final class ObjectMetadataRef {
    * @return the reference.
    */
   public static ObjectMetadataRef lazy(String key, Function<String, String> source, ObjectMetadataCache cache) {
-    return new ObjectMetadataRef(Objects.requireNonNull(key, "key"), null, Objects.requireNonNull(source, "source"),
-        Objects.requireNonNull(cache, "cache"));
+    return lazy(key, source, cache, null);
+  }
+
+  /**
+   * A reference to the metadata of a key that is kept in a store, read the first time it is needed, whose store also
+   * tells whether the latest version of the object is a delete marker.
+   *
+   * @param key the object key.
+   * @param source reads the persisted form of the metadata of a key, as JSON.
+   * @param cache bounds how many such references keep their metadata in heap.
+   * @param latestDeleted whether the latest version is a delete marker; {@code null} if the store doesn't tell.
+   * @return the reference.
+   */
+  public static ObjectMetadataRef lazy(String key, Function<String, String> source, ObjectMetadataCache cache,
+                                       Boolean latestDeleted) {
+    ObjectMetadataRef ref = new ObjectMetadataRef(Objects.requireNonNull(key, "key"), null,
+        Objects.requireNonNull(source, "source"), Objects.requireNonNull(cache, "cache"));
+    ref.latestDeleted = latestDeleted;
+    return ref;
   }
 
   /**
@@ -138,6 +162,24 @@ public final class ObjectMetadataRef {
   @JsonValue
   public ObjectMetadata persisted() {
     return read();
+  }
+
+  /**
+   * Whether the latest version of the object is a delete marker, which a listing asks of every key it steps over.
+   * Answered from the metadata if it is in heap, else from what was recorded when it was last read or evicted, so a
+   * listing of a versioned bucket full of deleted keys neither reads them from the store nor evicts what is cached in
+   * favour of them. Only a reference that has never been read, of a store that didn't tell, reads its metadata, once,
+   * without caching it.
+   *
+   * @return {@code true} if the latest version is a delete marker.
+   */
+  public boolean isLatestDeleted() {
+    ObjectMetadata inHeap = metadata;
+    if (inHeap != null) {
+      return inHeap.isLatestDeleted();
+    }
+    Boolean known = latestDeleted;
+    return known != null ? known : read().isLatestDeleted();
   }
 
   /**
@@ -221,7 +263,12 @@ public final class ObjectMetadataRef {
       return false;
     }
     ObjectMetadata inHeap = metadata;
-    return inHeap != null && METADATA.compareAndSet(this, inHeap, null);
+    if (inHeap == null) {
+      return false;
+    }
+    // Recorded before it is dropped, as it is what the store holds: only a written reference is unpinned.
+    latestDeleted = inHeap.isLatestDeleted();
+    return METADATA.compareAndSet(this, inHeap, null);
   }
 
   /**
@@ -263,6 +310,7 @@ public final class ObjectMetadataRef {
     ObjectMetadata parsed = JsonUtils.fromJson(json, ObjectMetadata.class);
     // Read from where it is kept, so only what changes from here on needs writing.
     parsed.markPersisted();
+    latestDeleted = parsed.isLatestDeleted();
     return parsed;
   }
 

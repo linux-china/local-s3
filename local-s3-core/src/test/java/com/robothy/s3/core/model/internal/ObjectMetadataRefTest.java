@@ -80,6 +80,39 @@ class ObjectMetadataRefTest {
     assertEquals("v1", ref.get().getLatestVersion());
   }
 
+  /**
+   * Whether the latest version is a delete marker is kept once the metadata is evicted, so asking it again doesn't
+   * read the store.
+   */
+  @Test
+  void knowsWhetherTheLatestVersionIsDeletedWithoutReadingItAgain() {
+    ObjectMetadata deleted = objectMetadata();
+    VersionedObjectMetadata marker = new VersionedObjectMetadata();
+    marker.setDeleted(true);
+    deleted.putVersionedObjectMetadata("v2", marker);
+    String json = JsonUtils.toJson(deleted);
+    int[] reads = {0};
+    ObjectMetadataRef ref = ObjectMetadataRef.lazy("a", key -> {
+      reads[0]++;
+      return json;
+    }, ObjectMetadataCache.unbounded());
+
+    assertTrue(ref.isLatestDeleted());
+    assertFalse(ref.isLoaded(), "Asking doesn't keep the metadata in heap.");
+    assertTrue(ref.isLatestDeleted());
+    assertEquals(1, reads[0], "The answer is kept.");
+
+    ref.get();
+    assertTrue(ref.evict());
+    assertTrue(ref.isLatestDeleted());
+    assertEquals(2, reads[0]);
+
+    ObjectMetadataRef told = ObjectMetadataRef.lazy("a", key -> {
+      throw new AssertionError("Not read.");
+    }, ObjectMetadataCache.unbounded(), Boolean.FALSE);
+    assertFalse(told.isLatestDeleted());
+  }
+
   @Test
   void aReferenceOnlyInHeapIsNeverEvicted() {
     ObjectMetadataRef ref = ObjectMetadataRef.of(objectMetadata());

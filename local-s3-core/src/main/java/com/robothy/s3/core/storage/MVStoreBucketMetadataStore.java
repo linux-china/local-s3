@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
@@ -107,7 +108,20 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     @JsonIgnore
     abstract NavigableMap<String, VersionedObjectMetadata> getVersionedObjectMap();
 
+    /**
+     * Written with the header, so that opening a bucket knows which keys are deleted without reading their versions.
+     */
+    @JsonProperty(LATEST_DELETED_PROPERTY)
+    @JsonIgnore(false)
+    abstract boolean isLatestDeleted();
+
   }
+
+  /**
+   * The property of the header of an object, i.e. a value of an {@code objects/} map, that tells whether the latest
+   * version of the object is a delete marker; missing from a header written before it was added.
+   */
+  private static final String LATEST_DELETED_PROPERTY = "latestDeleted";
 
   /**
    * Writes the settings of a bucket without the objects and the uploads it holds, which are stored on their own.
@@ -239,8 +253,11 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     // in progress are read whole, being few and short lived.
     MVMap<String, String> objects = objects(bucketName);
     Function<String, String> source = objectSource(objects, versions(bucketName));
-    for (String key : objects.keySet()) {
-      bucketMetadata.putObjectMetadataRef(key, ObjectMetadataRef.lazy(key, source, objectMetadataCache));
+    // The headers are read with the keys, being in the same pages, so that a listing knows which keys are deleted.
+    for (Cursor<String, String> cursor = objects.cursor(null); cursor.hasNext(); ) {
+      String key = cursor.next();
+      bucketMetadata.putObjectMetadataRef(key,
+          ObjectMetadataRef.lazy(key, source, objectMetadataCache, latestDeletedOf(cursor.getValue())));
     }
     uploads(bucketName).forEach((key, json) -> bucketMetadata.getUploads().put(key, readUploads(json)));
     // A bucket that was just read has nothing left to write.
@@ -444,6 +461,25 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
    */
   private static boolean holdsVersions(String objectJson) {
     return objectJson.contains("\"" + VERSIONS_PROPERTY + "\"");
+  }
+
+  /**
+   * Whether the latest version of an object is a delete marker, as its header tells; {@code null} if it doesn't, e.g.
+   * it was written before the header told, or it is a whole {@linkplain ObjectMetadata}. The header is matched rather
+   * than parsed, as every key of a bucket is read so when it is opened; a header holds no text of its own besides
+   * IDs, so the property can't be matched inside a value.
+   */
+  static Boolean latestDeletedOf(String header) {
+    if (header == null || holdsVersions(header)) {
+      return null;
+    }
+    if (header.contains("\"" + LATEST_DELETED_PROPERTY + "\":true")) {
+      return Boolean.TRUE;
+    }
+    if (header.contains("\"" + LATEST_DELETED_PROPERTY + "\":false")) {
+      return Boolean.FALSE;
+    }
+    return null;
   }
 
   private static String writeObjectHeader(ObjectMetadata objectMetadata) {

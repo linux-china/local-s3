@@ -58,7 +58,8 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
    * <p>Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, see
    * {@linkplain ListItemUtils#skipPrefix}, so that a page takes O(page size &times; log N) steps however many keys its
    * common prefixes roll up, rather than a step per key. Only the objects whose latest version is a delete marker are
-   * stepped over one by one, as a common prefix is only listed if it rolls up an object that isn't deleted.
+   * stepped over one by one, as a common prefix is only listed if it rolls up an object that isn't deleted; that is
+   * answered by {@linkplain ObjectMetadataRef#isLatestDeleted()}, without reading their metadata.
    */
   static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadataRef> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {
     if (filteredObjects.isEmpty() || 0 == maxKeys) {
@@ -79,9 +80,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     while (entries.hasNext()) {
       Map.Entry<String, ObjectMetadataRef> entry = entries.next();
       String key = entry.getKey();
-      // Only the objects of the page, and the deleted ones stepped over, have their metadata read.
-      ObjectMetadata objectMetadata = entry.getValue().get();
-      if (objectMetadata.getLatest().isDeleted()) {
+      // Only the objects of the page have their metadata read; the deleted ones are stepped over by what their
+      // reference knows, so that a bucket full of delete markers isn't read from the store key by key.
+      if (entry.getValue().isLatestDeleted()) {
         continue;
       }
 
@@ -90,7 +91,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
         commonPrefixes.add(commonPrefix.get());
         entries = ListItemUtils.skipPrefix(filteredObjects, commonPrefix.get()).entrySet().iterator();
       } else {
-        objects.add(fetchLatestObject(key, objectMetadata));
+        objects.add(fetchLatestObject(key, entry.getValue().get()));
       }
 
       int keyCount = commonPrefixes.size() + objects.size();
@@ -130,7 +131,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     String commonPrefix = commonPrefixOpt.get();
     while (entries.hasNext()) {
       Map.Entry<String, ObjectMetadataRef> entry = entries.next();
-      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().get().getLatest().isDeleted()) {
+      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().isLatestDeleted()) {
         return commonPrefix;
       }
     }
