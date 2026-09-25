@@ -6,10 +6,18 @@ import com.github.dockerjava.api.command.StopContainerCmd;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.testcontainers.containers.BindMode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
@@ -51,7 +59,14 @@ public class ReachabilityMetadataGenerator {
    * the native executable; the {@code collectReachabilityMetadata} Gradle task passes it in.
    */
   private static final String NATIVE_IMAGE = System.getProperty("graalvm.native-image",
-      "ghcr.io/graalvm/native-image-community:21.0.2-ol9");
+      "ghcr.io/graalvm/native-image-community:25i4-ol10");
+
+  /**
+   * Directory that the tracing agent writes the metadata to, a {@code META-INF/native-image/<group-id>/<artifact-id>}
+   * one, which is where GraalVM 25 looks for it; the {@code collectReachabilityMetadata} Gradle task passes it in.
+   */
+  private static final String METADATA_DIR = System.getProperty("graalvm.reachability-metadata-dir",
+      "build/reachability-metadata/META-INF/native-image/io.github.robothy/local-s3-standalone");
 
   public static void main(String[] args) throws IOException {
     int port = 38080;
@@ -61,7 +76,7 @@ public class ReachabilityMetadataGenerator {
     try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE)) {
 
       container.port(port)
-          .withFileSystemBind("build/reachability-metadata/META-INF/native-image", "/metadata", BindMode.READ_WRITE)
+          .withFileSystemBind(METADATA_DIR, "/metadata", BindMode.READ_WRITE)
           .withFileSystemBind("build/libs", "/app", BindMode.READ_WRITE)
           .withFileSystemBind(dataPath.getAbsolutePath(), "/data", BindMode.READ_WRITE)
           .withCreateContainerCmdModifier(cmd -> cmd.withEntrypoint(""))
@@ -80,11 +95,12 @@ public class ReachabilityMetadataGenerator {
       }
 
     }
+    takeOverAgentOutput(Path.of(METADATA_DIR));
 
     /*======== Load data from data path. ========*/
     try (CollectReachabilityMetadataContainer container = new CollectReachabilityMetadataContainer(NATIVE_IMAGE)) {
       container.port(port)
-          .withFileSystemBind("build/reachability-metadata/META-INF/native-image", "/metadata", BindMode.READ_WRITE)
+          .withFileSystemBind(METADATA_DIR, "/metadata", BindMode.READ_WRITE)
           .withFileSystemBind("build/libs", "/app", BindMode.READ_WRITE)
           .withFileSystemBind(dataPath.getAbsolutePath(), "/data", BindMode.READ_WRITE)
           .withCreateContainerCmdModifier(cmd -> cmd.withEntrypoint(""))
@@ -96,7 +112,50 @@ public class ReachabilityMetadataGenerator {
         cmd.exec();
       }
     }
+    takeOverAgentOutput(Path.of(METADATA_DIR));
 
+    registerAllMembersOfLocalS3Types(Path.of(METADATA_DIR, "reachability-metadata.json"));
+  }
+
+  /**
+   * Register every constructor, method and field of the LocalS3 types that the agent recorded. GraalVM 25 lets a
+   * program list all the members of a registered type, but throws {@code MissingReflectionRegistrationError} when it
+   * invokes one that the agent didn't see invoked, e.g. the setter of a checksum that no request of this generator
+   * carries. Jackson finds such a setter and fails the request over it, where GraalVM 21 didn't list the member and
+   * Jackson ignored the property.
+   */
+  static void registerAllMembersOfLocalS3Types(Path metadataFile) throws IOException {
+    JsonMapper mapper = JsonMapper.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
+    JsonNode metadata = mapper.readTree(metadataFile.toFile());
+    for (JsonNode entry : metadata.path("reflection")) {
+      JsonNode type = entry.path("type");
+      if (type.isString() && type.stringValue().startsWith("com.robothy.")) {
+        ((ObjectNode) entry).put("allDeclaredConstructors", true)
+            .put("allDeclaredMethods", true)
+            .put("allDeclaredFields", true);
+      }
+    }
+    mapper.writeValue(metadataFile.toFile(), metadata);
+  }
+
+  /**
+   * Move the output that the tracing agent left in a temporary directory of {@code metadataDir} into it. The agent of
+   * GraalVM 25 leaves it there when it believes that another process modified its lock file, which the bind mounts of
+   * Docker Desktop make it believe now and then, and the metadata of the run is then missing, the next run merging
+   * into nothing. The agent is the only process that writes the directory, so take its output over as it would have.
+   */
+  static void takeOverAgentOutput(Path metadataDir) throws IOException {
+    try (DirectoryStream<Path> tempDirs = Files.newDirectoryStream(metadataDir, "agent-*.tmp*")) {
+      for (Path tempDir : tempDirs) {
+        try (Stream<Path> files = Files.list(tempDir)) {
+          for (Path file : files.toList()) {
+            Files.move(file, metadataDir.resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+          }
+        }
+        Files.delete(tempDir);
+        System.out.println("Took over the reachability metadata that the agent left in " + tempDir + ".");
+      }
+    }
   }
 
   /**

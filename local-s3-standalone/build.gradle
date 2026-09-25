@@ -73,9 +73,15 @@ static List<String> shellCommand(List<String> executor, String command) {
     return commandLine
 }
 
-// GraalVM Community for JDK 21. The tracing agent that collects reachability metadata and the
+// GraalVM Community for JDK 25 (LTS). The tracing agent that collects reachability metadata and the
 // native-image builder must be the same version, so both tasks below use this image.
-def graalvmNativeImage = 'ghcr.io/graalvm/native-image-community:21.0.2-ol9'
+def graalvmNativeImage = 'ghcr.io/graalvm/native-image-community:25i4-ol10'
+
+// Where the tracing agent writes its reachability-metadata.json, under the class path entry build/reachability-metadata.
+// It has to be a META-INF/native-image/<group-id>/<artifact-id> directory: GraalVM 25 ignores a
+// reachability-metadata.json right in META-INF/native-image, and the native executable then misses every
+// registration that the agent collected.
+def agentMetadataPath = 'META-INF/native-image/io.github.robothy/local-s3-standalone'
 
 tasks.register('collectReachabilityMetadata', JavaExec) {
     group = 'native-image'
@@ -94,12 +100,13 @@ tasks.register('collectReachabilityMetadata', JavaExec) {
     mainClass.set('com.robothy.s3.docker.ReachabilityMetadataGenerator')
     classpath = sourceSets.test.runtimeClasspath + sourceSets.main.runtimeClasspath
     systemProperty("graalvm.native-image", graalvmNativeImage)
+    systemProperty("graalvm.reachability-metadata-dir", "build/reachability-metadata/${agentMetadataPath}")
 
     doFirst {
         // Start from scratch, so that no metadata collected by another GraalVM version is left behind.
         var metadataDir = new File(dockerBuildDir, "reachability-metadata")
         metadataDir.deleteDir()
-        new File(metadataDir, "META-INF/native-image").mkdirs()
+        new File(metadataDir, agentMetadataPath).mkdirs()
     }
 }
 
@@ -120,20 +127,21 @@ tasks.register('buildGraalVMNativeImage', Exec) {
     // `--initialize-at-run-time=io.netty.handler.ssl.JdkSslServerContext`: netty-codec-http asks for the whole
     // of `io.netty` to be initialized at build time, but the class initializer of JdkSslServerContext parses a
     // certificate, which initializes the buffer classes that netty-buffer asks to be initialized at run time,
-    // and the build fails over them. `--no-fallback`: a fallback image needs a JDK to run, which the image that
-    // carries this executable doesn't have, so a build that cannot produce a native executable must fail instead
-    // of quietly producing one (H2 MVStore reaching Java serialization is what makes the builder consider it).
+    // and the build fails over them. GraalVM 25 never builds a fallback image and installs the exit handlers of an
+    // executable by default, so `--no-fallback` and `--install-exit-handlers` are not needed anymore.
+    // The metadata directory is mounted on its own: the file sharing of Docker Desktop may still show the one under
+    // /project as it was before collectReachabilityMetadata recreated it, i.e. empty, and the executable then
+    // silently misses every registration that the agent collected.
     // language=bash
     def runLocalS3 = """docker run --rm \
 -v ${dockerProjectDir}:/project \
 -v ${dockerBuildDir}/bin:/app \
+-v ${dockerBuildDir}/reachability-metadata:/reachability-metadata \
 ${graalvmNativeImage} \
 -jar /project/build/libs/s3.jar \
 --initialize-at-build-time=ch.qos.logback,org.slf4j \
 --initialize-at-run-time=io.netty.handler.ssl.JdkSslServerContext \
---no-fallback \
---install-exit-handlers \
---class-path /project/build/reachability-metadata
+--class-path /reachability-metadata
 """
     commandLine shellCommand(executor, runLocalS3)
 }

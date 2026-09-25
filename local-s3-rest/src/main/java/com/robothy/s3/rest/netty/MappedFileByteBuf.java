@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.buffer.UnpooledDirectByteBuf;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -76,12 +77,38 @@ final class MappedFileByteBuf extends UnpooledDirectByteBuf {
   @Override
   protected void deallocate() {
     super.deallocate();
-    freeDirect(mapped);
+    unmap(mapped);
     try {
       Files.deleteIfExists(file);
     } catch (IOException e) {
       log.warn("Failed to delete temporary request body file {}.", file, e);
       file.toFile().deleteOnExit();
+    }
+  }
+
+  /**
+   * Unmap {@code buffer} right away. Netty's {@code freeDirect} can't do it on JDK 25+, where Netty frees only the
+   * buffers that it allocated itself and throws for any other, a mapped one included; {@code Unsafe.invokeCleaner} is
+   * what Netty used on earlier JDKs. A failure only leaves the unmapping to the garbage collector, so it must not fail
+   * the release of the request body.
+   */
+  private static void unmap(MappedByteBuffer buffer) {
+    try {
+      UNSAFE.invokeCleaner(buffer);
+    } catch (RuntimeException e) {
+      log.warn("Failed to unmap a request body buffer, it is unmapped when garbage collected.", e);
+    }
+  }
+
+  private static final sun.misc.Unsafe UNSAFE;
+
+  static {
+    try {
+      Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+      field.setAccessible(true);
+      UNSAFE = (sun.misc.Unsafe) field.get(null);
+    } catch (ReflectiveOperationException e) {
+      throw new ExceptionInInitializerError(e);
     }
   }
 
