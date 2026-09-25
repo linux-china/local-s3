@@ -7,8 +7,11 @@ import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
 
+import java.net.URI;
 import java.util.List;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -56,6 +59,8 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 @ConditionalOnProperty(name = "local-s3.enabled", havingValue = "true", matchIfMissing = true)
 @EnableConfigurationProperties(LocalS3Properties.class)
 public class LocalS3AutoConfiguration {
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3AutoConfiguration.class);
 
   /**
    * The key pair of the clients when LocalS3 accepts unsigned requests. Any pair is accepted; the clients sign with one
@@ -224,7 +229,7 @@ public class LocalS3AutoConfiguration {
     @ConditionalOnMissingBean
     S3Client s3Client(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
       return S3Client.builder()
-          .endpointOverride(lifecycle.endpoint())
+          .endpointOverride(pointAtLocalS3(S3Client.class, lifecycle))
           .region(Region.of(properties.getClients().getRegion()))
           .credentialsProvider(credentials(lifecycle.getLocalS3()))
           .forcePathStyle(true)
@@ -236,7 +241,7 @@ public class LocalS3AutoConfiguration {
     @ConditionalOnClass(name = "software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient")
     S3AsyncClient s3AsyncClient(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
       return S3AsyncClient.builder()
-          .endpointOverride(lifecycle.endpoint())
+          .endpointOverride(pointAtLocalS3(S3AsyncClient.class, lifecycle))
           .region(Region.of(properties.getClients().getRegion()))
           .credentialsProvider(credentials(lifecycle.getLocalS3()))
           .forcePathStyle(true)
@@ -247,11 +252,24 @@ public class LocalS3AutoConfiguration {
     @ConditionalOnMissingBean
     S3Presigner s3Presigner(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
       return S3Presigner.builder()
-          .endpointOverride(lifecycle.endpoint())
+          .endpointOverride(pointAtLocalS3(S3Presigner.class, lifecycle))
           .region(Region.of(properties.getClients().getRegion()))
           .credentialsProvider(credentials(lifecycle.getLocalS3()))
           .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
           .build();
+    }
+
+    /**
+     * The endpoint of the service, logged loudly: the starter is meant for development and tests, and one that ends up
+     * on the classpath of a production build by mistake, e.g. as an {@code implementation} rather than a
+     * {@code developmentOnly} dependency, silently points the clients of the application at the embedded service.
+     */
+    private static URI pointAtLocalS3(Class<?> clientType, LocalS3Lifecycle lifecycle) {
+      URI endpoint = lifecycle.endpoint();
+      log.warn("The {} bean points at the embedded LocalS3 at {}, not at Amazon S3. The LocalS3 starter is meant for "
+              + "development and tests only; set local-s3.enabled=false, or local-s3.clients.enabled=false, to leave it "
+              + "out.", clientType.getSimpleName(), endpoint);
+      return endpoint;
     }
 
     private static AwsCredentialsProvider credentials(LocalS3 localS3) {
