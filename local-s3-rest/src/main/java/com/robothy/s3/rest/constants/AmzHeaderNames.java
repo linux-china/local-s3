@@ -155,6 +155,11 @@ public class AmzHeaderNames {
   public static final String X_AMZ_CHECKSUM_TYPE = "x-amz-checksum-type";
 
   /**
+   * The size of the object, in bytes, that a {@code CompleteMultipartUpload} request expects.
+   */
+  public static final String X_AMZ_MP_OBJECT_SIZE = "x-amz-mp-object-size";
+
+  /**
    * {@code ENABLED} asks GetObject and HeadObject for the checksum of the object.
    */
   public static final String X_AMZ_CHECKSUM_MODE = "x-amz-checksum-mode";

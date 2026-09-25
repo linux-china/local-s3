@@ -6,6 +6,7 @@ versioning work, which entity tags it answers, and when change events are delive
 LocalS3 aims to reject what Amazon S3 rejects, so a test that passes against LocalS3 doesn't pass with a request that
 Amazon S3 would refuse.
 
+- [Stored, not applied](#stored-not-applied)
 - [Request validation](#request-validation)
 - [Conditional requests](#conditional-requests)
 - [Versioning](#versioning)
@@ -22,6 +23,38 @@ Amazon S3 would refuse.
 - [The KMS endpoint](#the-kms-endpoint)
 - [Change events](#change-events)
 
+## Stored, not applied
+
+Many configurations are accepted, stored and read back as they were put, so that code that sets them on the way to
+something else, e.g. Terraform, CDK or an application that configures its bucket when it starts, runs against
+LocalS3. What they would do on Amazon S3 doesn't happen. This table gathers them, so you can tell at a glance whether a
+test relies on one of them; such a test has to run against Amazon S3.
+
+| API | What LocalS3 does | What differs from Amazon S3 |
+|---|---|---|
+| `PutBucketLifecycleConfiguration` | Stored; applied only when a test asks, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle` | Amazon S3 applies the rules by itself, once a day. See [lifecycle configuration](#lifecycle-configuration) |
+| `PutBucketNotificationConfiguration` | Stored and returned as put; the ARNs aren't checked | No event reaches SNS, SQS, Lambda or EventBridge; use a [change listener](#change-events) instead |
+| `PutBucketAcl`, `PutObjectAcl`, `x-amz-acl`, `x-amz-grant-*` | Stored and returned | Not enforced against signed requests; only a public `READ` opens a bucket to anonymous [website](#which-buckets-are-public) reads. See [access control lists](#access-control-lists) |
+| `PutBucketPolicy`, `PutPublicAccessBlock` | Stored and returned | Not enforced against signed requests; only an `Allow` of `s3:GetObject` to `*` opens a bucket to anonymous [website](#which-buckets-are-public) reads, and conditions aren't evaluated |
+| `PutBucketOwnershipControls` | Stored and returned | ACLs keep working under `BucketOwnerEnforced` |
+| `PutBucketAccelerateConfiguration` | Stored and returned | Nothing is accelerated |
+| `PutBucketLogging` | Stored and returned | No access log is written |
+| `PutBucketRequestPayment` | Stored and returned | Nothing is billed to the requester |
+| `PutBucketReplication` | Stored and returned | Nothing is replicated |
+| `PutBucketAnalyticsConfiguration`, `PutBucketIntelligentTieringConfiguration`, `PutBucketInventoryConfiguration`, `PutBucketMetricsConfiguration` | Stored and returned, by `id` | No analysis runs, no object changes tier, no inventory report is written, no CloudWatch metric is published |
+| `x-amz-storage-class` | Stored and answered by `HeadObject`, `GetObject` and the listings | Every object is kept and read the same way: a `GLACIER` or `DEEP_ARCHIVE` object is readable without a restore. See [storage classes and restores](#storage-classes-and-restores) |
+| `RestoreObject` | The restore completes at once | `Tier` is ignored; Amazon S3 takes minutes to hours |
+| `x-amz-server-side-encryption*`, `PutBucketEncryption` | Stored and answered like Amazon S3; the default encryption of a bucket applies to the headers | Nothing is encrypted, and the KMS key ID isn't resolved. See [SSE-S3, SSE-KMS](#server-side-encryption-with-s3-managed-and-kms-keys-sse-s3-sse-kms) |
+| `x-amz-server-side-encryption-customer-*` (SSE-C) | Validated; the MD5 of the key is stored and checked on reads | Nothing is encrypted, and HTTPS isn't required. See [SSE-C](#server-side-encryption-with-customer-provided-keys-sse-c) |
+| KMS `Encrypt`, `GenerateDataKey`, … | A faithful round trip, bound to the key ID and context | No key is stored and nothing is secret. See [the KMS endpoint](#the-kms-endpoint) |
+| `x-amz-expected-bucket-owner`, `x-amz-source-expected-bucket-owner` | Ignored | Never `403 AccessDenied`: LocalS3 has one account, which owns every bucket |
+| `POST Object` fields `acl`, `x-amz-storage-class`, server-side encryption | Like the headers of `PutObject` above; they still have to be named by the policy | As above |
+| S3 Vectors `PutVectorBucketPolicy` | Stored and returned | Not enforced |
+| S3 Tables encryption, storage class, resource policies, maintenance, metrics, replication, record expiration | Stored and read back | Nothing is encrypted or tiered, no policy is enforced, no job runs: `GetTableMaintenanceJobStatus` answers `Not_Yet_Run`. See [the S3 Tables API](#the-s3-tables-api) |
+
+An operation that LocalS3 doesn't have at all answers `501 NotImplemented` rather than pretending to succeed, and is
+counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#known-unimplemented-amazon-s3-apis).
+
 ## Request validation
 
 + Bucket names must follow the [naming rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html)
@@ -30,6 +63,9 @@ Amazon S3 would refuse.
 + Every part of a multipart upload except the last one must be at least 5 MiB, the
   [minimum part size](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html) of Amazon S3; otherwise
   `CompleteMultipartUpload` fails with `EntityTooSmall`. An upload with a single part may be of any size.
++ `CompleteMultipartUpload` checks `x-amz-mp-object-size`, like Amazon S3: a size that isn't the sum of the parts
+  fails with `400 InvalidRequest`, and one that isn't a non-negative number with `400 InvalidArgument`. The upload is
+  kept, so it can be completed again with the right parts or aborted.
 + A request body is limited to 5 GiB by default (`netty(netty -> netty.maxRequestBodySize(...))`), and its header
   section to 16 KiB (`maxRequestHeaderSize`). A body whose declared `Content-Length` is already too large is rejected with
   `EntityTooLarge` before `100 Continue` is sent, so the client never uploads it.

@@ -110,6 +110,28 @@ public class MultipartUploadValidationIntegrationTest {
     assertEquals("InvalidPart", thrown.awsErrorDetails().errorCode());
   }
 
+  /**
+   * An {@code x-amz-mp-object-size} that isn't the size of the parts fails with {@code InvalidRequest}, like Amazon S3,
+   * and the upload is kept, so it can be completed with the right size.
+   */
+  @Test
+  @LocalS3
+  void rejectsAnObjectSizeThatDoesNotMatchTheParts(S3Client s3) {
+    String uploadId = startUpload(s3);
+    UploadPartResponse first = s3.uploadPart(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("hello"));
+
+    S3Exception thrown = assertThrows(S3Exception.class, () -> s3.completeMultipartUpload(b -> b.bucket(BUCKET)
+        .key(KEY).uploadId(uploadId).mpuObjectSize(6L).multipartUpload(completed(first.eTag()))));
+    assertEquals(400, thrown.statusCode());
+    assertEquals("InvalidRequest", thrown.awsErrorDetails().errorCode());
+    assertEquals(1, s3.listParts(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId)).parts().size());
+
+    assertDoesNotThrow(() -> s3.completeMultipartUpload(b -> b.bucket(BUCKET).key(KEY).uploadId(uploadId)
+        .mpuObjectSize(5L).multipartUpload(completed(first.eTag()))));
+    assertEquals(5, s3.headObject(b -> b.bucket(BUCKET).key(KEY)).contentLength());
+  }
+
   private static CompletedMultipartUpload completed(String... etags) {
     CompletedPart[] parts = new CompletedPart[etags.length];
     for (int i = 0; i < etags.length; i++) {

@@ -83,7 +83,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   /**
    * The operation of a request that no route matches.
    */
-  static final String NOT_FOUND_OPERATION = "NotFound";
+  static final String NOT_FOUND_OPERATION = OperationHandler.NOT_FOUND_OPERATION;
 
   /**
    * The operation of a request that several routes match equally.

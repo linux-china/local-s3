@@ -5,6 +5,7 @@ import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import com.robothy.s3.datatypes.enums.ChecksumType;
+import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.model.request.CompletedPart;
@@ -58,6 +59,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
 
     RequestChecksum expectedChecksum = ChecksumHeaders.fromHeaders(request);
     ChecksumType expectedChecksumType = ChecksumHeaders.type(request);
+    Long expectedObjectSize = expectedObjectSize(request);
     CompleteMultipartUploadAns completeMultipartUploadAns;
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       CompleteMultipartUpload completeMultipartUpload = xmlMapper.readValue(in, CompleteMultipartUpload.class);
@@ -74,7 +76,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
               .collect(Collectors.toList());
       completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
           multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags(),
-          RequestUtils.extractPreconditions(request), expectedChecksum, expectedChecksumType);
+          RequestUtils.extractPreconditions(request), expectedChecksum, expectedChecksumType, expectedObjectSize);
     }
 
     CompleteMultipartUploadResult result = CompleteMultipartUploadResult.builder()
@@ -93,6 +95,30 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
+  }
+
+  /**
+   * The size of the object that the request expects.
+   *
+   * @return the {@code x-amz-mp-object-size}; {@code null} if the request expects none.
+   * @throws LocalS3InvalidArgumentException if the header isn't a non-negative number.
+   */
+  private static Long expectedObjectSize(HttpRequest request) {
+    String value = request.header(AmzHeaderNames.X_AMZ_MP_OBJECT_SIZE).orElse(null);
+    if (Objects.isNull(value)) {
+      return null;
+    }
+    long size;
+    try {
+      size = Long.parseLong(value.trim());
+    } catch (NumberFormatException e) {
+      size = -1;
+    }
+    if (size < 0) {
+      throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_MP_OBJECT_SIZE, value,
+          "The object size must be a non-negative number of bytes.");
+    }
+    return size;
   }
 
   /**

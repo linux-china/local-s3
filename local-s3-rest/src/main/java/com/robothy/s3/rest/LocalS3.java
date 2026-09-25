@@ -559,7 +559,8 @@ public class LocalS3 implements AutoCloseable {
                 started == null ? 0 : started.inFlightRequests(),
                 objects.statistics(), localS3VectorsManager.statistics(),
                 requests == null ? 0 : requests.totalRequests(),
-                requests == null ? Map.of() : requests.operations());
+                requests == null ? Map.of() : requests.operations(),
+                requests == null ? Map.of() : requests.notImplemented());
     }
 
     /**

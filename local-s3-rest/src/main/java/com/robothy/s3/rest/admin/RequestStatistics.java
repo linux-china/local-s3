@@ -1,11 +1,13 @@
 package com.robothy.s3.rest.admin;
 
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -15,14 +17,17 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.LongSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Records the requests that a LocalS3 service answered: per operation, the number of requests and errors, the
- * requests per second of the last minute and the latency; and the last requests themselves, for debugging what a
- * client sends.
+ * requests per second of the last minute and the latency; the requests answered {@code 501 NotImplemented}, which tell
+ * a user what their client needs that LocalS3 lacks; and the last requests themselves, for debugging what a client
+ * sends.
  *
  * <p>The latency of a request is the time from when it was handed to the request executor, with its body received,
  * until its response was written. The percentiles are estimated from a histogram whose buckets double, so they are
@@ -61,6 +66,15 @@ public final class RequestStatistics implements RequestRecorder {
   private static final Pattern SECRET_PARAMETER =
       Pattern.compile("(?i)([?&](?:X-Amz-Signature|X-Amz-Credential|X-Amz-Security-Token|Signature|AWSAccessKeyId)=)[^&]*");
 
+  /**
+   * The query parameters of a signature, which don't tell one operation from another.
+   */
+  private static final Pattern SIGNATURE_PARAMETER =
+      Pattern.compile("(?i)X-Amz-(?:Algorithm|Credential|Date|Expires|SignedHeaders|Signature|Security-Token)"
+          + "|Signature|AWSAccessKeyId|Expires");
+
+  private static final int NOT_IMPLEMENTED = 501;
+
   private final int recentCapacity;
 
   private final Set<String> unrecordedOperations;
@@ -72,6 +86,8 @@ public final class RequestStatistics implements RequestRecorder {
   private final long createdNanos;
 
   private final Map<String, OperationCounter> operations = new ConcurrentHashMap<>();
+
+  private final Map<String, LongAdder> notImplemented = new ConcurrentHashMap<>();
 
   /**
    * Guarded by itself.
@@ -107,6 +123,9 @@ public final class RequestStatistics implements RequestRecorder {
     }
     long now = nanoTime.getAsLong();
     operations.computeIfAbsent(operation, name -> new OperationCounter()).record(status, durationNanos, now);
+    if (status == NOT_IMPLEMENTED) {
+      notImplemented.computeIfAbsent(notImplementedName(request, operation), name -> new LongAdder()).increment();
+    }
     if (recentCapacity == 0) {
       return;
     }
@@ -132,6 +151,19 @@ public final class RequestStatistics implements RequestRecorder {
         TimeUnit.NANOSECONDS.toSeconds(now - createdNanos) + 1));
     Map<String, OperationStatistics> result = new TreeMap<>();
     operations.forEach((name, counter) -> result.put(name, counter.snapshot(now, windowSeconds)));
+    return result;
+  }
+
+  /**
+   * The requests answered {@code 501 NotImplemented}, by the operation that LocalS3 routes but doesn't implement, e.g.
+   * {@code SelectObjectContent}, or, for a request that no route matches, by its method, the shape of its path and the
+   * names of its query parameters, e.g. {@code GET /{bucket}?analytics}.
+   *
+   * @return the number of requests, ordered by name.
+   */
+  public Map<String, Long> notImplemented() {
+    Map<String, Long> result = new TreeMap<>();
+    notImplemented.forEach((name, count) -> result.put(name, count.sum()));
     return result;
   }
 
@@ -166,9 +198,42 @@ public final class RequestStatistics implements RequestRecorder {
    */
   public void clear() {
     operations.clear();
+    notImplemented.clear();
     synchronized (recentRequests) {
       recentRequests.clear();
     }
+  }
+
+  /**
+   * The name that a request answered {@code 501} is counted by: the operation, if the router named it; otherwise the
+   * method and the shape of the path, without the names of buckets and keys, which would count every bucket apart, and
+   * the names of the query parameters, which name the operation of Amazon S3, without the ones of a signature.
+   */
+  static String notImplementedName(HttpRequest request, String operation) {
+    if (!OperationHandler.UNKNOWN_OPERATION.equals(operation) && !OperationHandler.NOT_FOUND_OPERATION.equals(operation)) {
+      return operation;
+    }
+    // The router puts the bucket and the key into the parameters when it matches the path, which also covers a
+    // virtual-hosted request, whose path lacks the bucket; otherwise the path tells them.
+    Map<CharSequence, List<String>> params = request.getParams() == null ? Map.of() : request.getParams();
+    String shape;
+    if (params.containsKey("key")) {
+      shape = "/{bucket}/{key}";
+    } else if (params.containsKey("bucket")) {
+      shape = "/{bucket}";
+    } else {
+      String path = request.getPath() == null ? "/" : request.getPath();
+      long segments = Arrays.stream(path.split("/")).filter(segment -> !segment.isEmpty()).count();
+      shape = segments == 0 ? "/" : segments == 1 ? "/{bucket}" : "/{bucket}/{key}";
+    }
+    String parameters = params.keySet().stream()
+        .map(CharSequence::toString)
+        .filter(name -> !"bucket".equals(name) && !"key".equals(name))
+        .filter(name -> !SIGNATURE_PARAMETER.matcher(name).matches())
+        .sorted()
+        .distinct()
+        .collect(Collectors.joining("&"));
+    return request.getMethod() + " " + shape + (parameters.isEmpty() ? "" : "?" + parameters);
   }
 
   static String hideSecrets(String uri) {

@@ -7,6 +7,9 @@ routes of the router by `SupportedApiDocumentationTest`, so they can't drift fro
 For how the supported operations behave where Amazon S3 leaves room for interpretation, e.g. conditional requests and
 versioning, see [semantics.md](semantics.md).
 
+Many configurations below are stored and read back but never applied, e.g. notifications, replication and ACLs.
+[Stored, not applied](semantics.md#stored-not-applied) lists them in one table, with how each differs from Amazon S3.
+
 ## Supported Amazon S3 APIs
 
 + AbortMultipartUpload
@@ -323,3 +326,7 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 
 Every other operation of the S3 API that isn't listed on this page has no route, and answers `501 NotImplemented`
 from the fallback handler, e.g. `LocalS3 does not implement PATCH /<bucket>.`
+
+`GET /_admin/stats` counts the requests answered `501` under `notImplemented`, by operation, e.g.
+`SelectObjectContent`, or, for a request without a route, by its method, the shape of its path and its query
+parameters, e.g. `GET /{bucket}?analytics`. It tells which operations your client needs that LocalS3 lacks.

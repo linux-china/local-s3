@@ -58,6 +58,7 @@ class AdminEndpointsTest {
       assertEquals(1, stats.at("/operations/GetObject/clientErrors").asLong());
       assertFalse(stats.get("operations").has("HealthCheck"));
       assertFalse(stats.get("operations").has("AdminStats"), "The admin endpoints don't record themselves.");
+      assertTrue(stats.get("notImplemented").isEmpty(), "No request was answered 501: " + stats);
 
       JsonNode requests = objectMapper.readTree(send(localS3, "GET", "/_admin/requests?limit=2", null).body())
           .get("requests");
@@ -68,6 +69,13 @@ class AdminEndpointsTest {
       assertEquals("PutObject", requests.get(1).get("operation").asText());
       assertFalse(requests.get(1).get("requestId").asText().isEmpty());
       assertEquals(400, send(localS3, "GET", "/_admin/requests?limit=-1", null).statusCode());
+
+      // The requests answered 501 tell which operations a client needs that LocalS3 lacks.
+      assertEquals(501, send(localS3, "PATCH", "/bucket/a.txt", "x").statusCode());
+      assertEquals(501, send(localS3, "GET", "/bucket/a.txt?torrent", null).statusCode());
+      JsonNode notImplemented = statsWithRequests(localS3, 5).get("notImplemented");
+      assertEquals(1, notImplemented.path("PATCH /{bucket}/{key}").asLong(), notImplemented.toString());
+      assertEquals(1, notImplemented.path("GetObjectTorrent").asLong(), notImplemented.toString());
     } finally {
       localS3.shutdown();
     }

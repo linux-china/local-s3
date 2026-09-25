@@ -9,6 +9,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -104,10 +105,34 @@ class RequestStatisticsTest {
     assertEquals("request-1", request.requestId());
   }
 
+  /**
+   * A routed but unimplemented operation is counted by its name, an unrouted request by its method, the shape of its
+   * path and its query parameters, without the names of buckets, keys and signatures; the router names it
+   * {@code NotFound}, and a request answered without a router {@code Unknown}.
+   */
+  @Test
+  void countsTheRequestsAnsweredNotImplemented() {
+    record("SelectObjectContent", 501, 1);
+    record("SelectObjectContent", 501, 1);
+    record("PutObject", 500, 1);
+    statistics.record(request(HttpMethod.GET, "/my-bucket", "analytics", "X-Amz-Signature"), "NotFound", 501, null, 1);
+    statistics.record(request(HttpMethod.GET, "/other-bucket", "analytics"), "NotFound", 501, null, 1);
+    statistics.record(request(HttpMethod.PATCH, "/bucket/a/b.txt"), "Unknown", 501, null, 1);
+    // A virtual-hosted request, whose bucket the router put into the parameters.
+    statistics.record(request(HttpMethod.GET, "/", "analytics", "bucket"), "NotFound", 501, null, 1);
+
+    assertEquals(Map.of("SelectObjectContent", 2L, "GET /{bucket}?analytics", 3L, "PATCH /{bucket}/{key}", 1L),
+        statistics.notImplemented());
+    assertEquals(3, statistics.operations().get("NotFound").serverErrors());
+  }
+
   @Test
   void clearForgetsTheRequests() {
     record("PutObject", 200, 1);
+    record("SelectObjectContent", 501, 1);
     statistics.clear();
+
+    assertTrue(statistics.notImplemented().isEmpty());
 
     assertTrue(statistics.operations().isEmpty());
     assertTrue(statistics.recentRequests(10).isEmpty());
@@ -122,6 +147,14 @@ class RequestStatisticsTest {
 
   private static HttpRequest request(HttpMethod method, String uri) {
     return HttpRequest.builder().method(method).uri(uri).path(uri).build();
+  }
+
+  private static HttpRequest request(HttpMethod method, String path, String... parameters) {
+    Map<CharSequence, List<String>> params = new HashMap<>();
+    for (String parameter : parameters) {
+      params.put(parameter, List.of(""));
+    }
+    return HttpRequest.builder().method(method).uri(path).path(path).params(params).build();
   }
 
 }

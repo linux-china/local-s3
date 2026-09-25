@@ -158,6 +158,30 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
                                                              ObjectPreconditions preconditions,
                                                              RequestChecksum expectedChecksum,
                                                              ChecksumType expectedChecksumType) {
+    return completeMultipartUpload(bucket, key, uploadId, completeParts, minimumPartSize, compositeEtag, preconditions,
+        expectedChecksum, expectedChecksumType, null);
+  }
+
+  /**
+   * Complete a multipart upload like
+   * {@linkplain #completeMultipartUpload(String, String, String, List, long, boolean, ObjectPreconditions,
+   * RequestChecksum, ChecksumType)}, if the object is of the size that the request expects, the
+   * {@code x-amz-mp-object-size} header, like Amazon S3 checks it. A client that lost a part, or counted one twice,
+   * is told before the object is stored; the upload is kept, so that it can be completed again or aborted.
+   *
+   * @param expectedObjectSize the size of the object, in bytes, that the request expects; {@code null} if it expects
+   *     none.
+   * @return result of the complete multipart operation.
+   * @throws LocalS3RequestException {@code 400 InvalidRequest} if the size of the object isn't
+   *     {@code expectedObjectSize}.
+   */
+  default CompleteMultipartUploadAns completeMultipartUpload(String bucket, String key, String uploadId,
+                                                             List<CompleteMultipartUploadPartOption> completeParts,
+                                                             long minimumPartSize, boolean compositeEtag,
+                                                             ObjectPreconditions preconditions,
+                                                             RequestChecksum expectedChecksum,
+                                                             ChecksumType expectedChecksumType,
+                                                             Long expectedObjectSize) {
     // prepareCompleteMultipartUpload read locks the bucket while the upload is validated. The parts of the returned
     // upload are a snapshot of the ones that complete it, so a part uploaded again from here on isn't mixed in.
     UploadMetadata uploadMetadata;
@@ -183,6 +207,10 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .checksum(part.getValue().getChecksum())
           .build());
       size += partSize;
+    }
+    if (expectedObjectSize != null && expectedObjectSize != size) {
+      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "The provided 'x-amz-mp-object-size' header "
+          + "value " + expectedObjectSize + " does not match what was computed: " + size);
     }
     ObjectChecksum checksum = objectChecksum(uploadMetadata, completeParts, layout, expectedChecksum,
         expectedChecksumType);

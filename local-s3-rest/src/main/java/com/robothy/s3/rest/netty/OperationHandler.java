@@ -19,6 +19,11 @@ public record OperationHandler(String operation, HttpRequestHandler handler) imp
    */
   public static final String UNKNOWN_OPERATION = "Unknown";
 
+  /**
+   * The operation of a request that no route of a router matches, which its fallback handler answers.
+   */
+  public static final String NOT_FOUND_OPERATION = "NotFound";
+
   public OperationHandler {
     Objects.requireNonNull(operation);
     Objects.requireNonNull(handler);

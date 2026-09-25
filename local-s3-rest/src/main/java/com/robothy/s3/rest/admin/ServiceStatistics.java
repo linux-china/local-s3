@@ -16,8 +16,13 @@ import java.util.Map;
  * @param totalRequests the number of requests recorded since the service started or was reset, besides the health
  *     checks and the requests of the {@code /_admin} endpoints.
  * @param operations the statistics of the recorded requests by operation, e.g. {@code PutObject}.
+ * @param notImplemented the number of recorded requests answered {@code 501 NotImplemented}, by the operation that
+ *     LocalS3 doesn't implement, e.g. {@code SelectObjectContent}, or by the method, path shape and query parameters of
+ *     a request that no route matches, e.g. {@code GET /{bucket}?analytics}; see
+ *     {@linkplain RequestStatistics#notImplemented()}.
  */
 public record ServiceStatistics(String mode, String startedAt, long uptimeSeconds, int inFlightRequests,
                                 ObjectStatistics data, VectorStatistics vectors, long totalRequests,
-                                Map<String, RequestStatistics.OperationStatistics> operations) {
+                                Map<String, RequestStatistics.OperationStatistics> operations,
+                                Map<String, Long> notImplemented) {
 }
