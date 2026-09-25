@@ -55,7 +55,11 @@ class DeleteObjectServiceTest extends LocalS3ServiceTestBase {
     // delete with incorrect version ID
     assertDoesNotThrow(() -> objectService.deleteObject(bucketName, key, "incorrect-version-id"));
     objectService.deleteObject(bucketName, key, ObjectMetadata.NULL_VERSION);
-    assertThrows(ObjectNotExistException.class, () -> objectService.deleteObject(bucketName, key, ObjectMetadata.NULL_VERSION));
+    // Deleting a version of a key that holds none succeeds, like Amazon S3.
+    DeleteObjectAns deleteMissingAns = objectService.deleteObject(bucketName, key, ObjectMetadata.NULL_VERSION);
+    assertFalse(deleteMissingAns.isDeleteMarker());
+    assertEquals(ObjectMetadata.NULL_VERSION, deleteMissingAns.getVersionId());
+    assertDoesNotThrow(() -> objectService.deleteObject(bucketName, "never-existed", "some-version-id"));
     BucketAssertions.assertBucketIsEmpty(bucketMetadata);
 
     /*-- bucket versioning is enabled --*/

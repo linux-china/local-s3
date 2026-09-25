@@ -51,11 +51,11 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
 
     List<Object> results = objectService.deleteObjects(bucketName, request1);
 
-    assertInstanceOf(S3Error.class, results.get(0));
-    S3Error s3Error = (S3Error) results.get(0);
-    assertEquals("a.txt", s3Error.getKey());
-    assertEquals("123", s3Error.getVersionId());
-    assertEquals(S3ErrorCode.NoSuchKey.code(), s3Error.getCode());
+    // A version of a key that holds none is reported as deleted, like Amazon S3 reports it.
+    assertInstanceOf(DeleteResult.Deleted.class, results.get(0));
+    DeleteResult.Deleted deletedVersion = (DeleteResult.Deleted) results.get(0);
+    assertEquals("a.txt", deletedVersion.getKey());
+    assertEquals("123", deletedVersion.getVersionId());
 
     assertInstanceOf(DeleteResult.Deleted.class, results.get(1));
     DeleteResult.Deleted deleted = (DeleteResult.Deleted) results.get(1);
@@ -64,8 +64,7 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
 
     DeleteObjectsRequest request2 = new DeleteObjectsRequest(objectsToDelete, true);
     List<Object> results2 = objectService.deleteObjects(bucketName, request2);
-    assertEquals(1, results2.size());
-    assertInstanceOf(S3Error.class, results2.get(0));
+    assertEquals(0, results2.size());
   }
 
   @MethodSource("localS3Services")

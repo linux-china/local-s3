@@ -1,7 +1,6 @@
 package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
-import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
@@ -73,18 +72,20 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
       DeleteObjectAns ans;
       if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
         ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
-      } else {
-        if (Objects.nonNull(versionId)) {
-          long now = System.currentTimeMillis();
-          bucketMetadata.getObjectMetadataRef(key).map(ObjectMetadataRef::get)
-              .flatMap(objectMetadata -> ObjectMetadata.NULL_VERSION.equals(versionId)
-                  ? objectMetadata.getVirtualVersion().flatMap(objectMetadata::getVersionedObjectMetadata)
-                  : objectMetadata.getVersionedObjectMetadata(versionId))
-              .ifPresent(version ->
-                  ObjectLockAssertions.assertVersionIsDeletable(version, now, bypassGovernanceRetention));
+      } else if (Objects.nonNull(versionId)) {
+        Optional<VersionedObjectMetadata> version = bucketMetadata.getObjectMetadataRef(key).map(ObjectMetadataRef::get)
+            .flatMap(objectMetadata -> ObjectMetadata.NULL_VERSION.equals(versionId)
+                ? objectMetadata.getVirtualVersion().flatMap(objectMetadata::getVersionedObjectMetadata)
+                : objectMetadata.getVersionedObjectMetadata(versionId));
+        long now = System.currentTimeMillis();
+        version.ifPresent(v -> ObjectLockAssertions.assertVersionIsDeletable(v, now, bypassGovernanceRetention));
+        ans = deleteWithVersionId(storage(), bucketMetadata, key, versionId);
+        if (version.isEmpty()) {
+          // The version is already gone: the delete succeeds, and changes nothing to publish.
+          return ans;
         }
-        ans = Objects.isNull(versionId) ? deleteWithoutVersionId(storage(), bucketMetadata, key)
-            : deleteWithVersionId(storage(), bucketMetadata, key, versionId);
+      } else {
+        ans = deleteWithoutVersionId(storage(), bucketMetadata, key);
       }
       publishChange(S3Change.objectDeleted("DeleteObject", bucketName, key, ans.getVersionId(), ans.isDeleteMarker()));
       return ans;
@@ -166,16 +167,26 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
   }
 
   /**
-   * Delete with version ID.
+   * Delete with version ID. Like Amazon S3, it is idempotent: deleting a version that doesn't exist, or a version of a
+   * key that holds none, succeeds, so that the retries and the concurrent cleanups of a client, e.g. the
+   * {@code DeleteObjects} of Iceberg, Delta Lake or DuckLake, don't fail on a version that is already gone. The
+   * preconditions of the request, e.g. {@code If-Match}, are evaluated before, and still fail on a missing key.
    * <ul>
-   *    <li>The object key must exist(This behavior is not the same as AmazonS3).</li>
+   *    <li>If the key holds no version, do nothing and return the given version ID.</li>
    *    <li>If the version ID is 'null', try to find the virtual version object and remove.</li>
    *    <li>If the version ID is exists, find the versioned object and remove.</li>
    *    <li>If the version ID is not exists, do nothing and return the given version ID.</li>
    * </ul>
    */
   static DeleteObjectAns deleteWithVersionId(Storage storage, BucketMetadata bucketMetadata, String key, String versionId) {
-    ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
+    Optional<ObjectMetadata> objectMetadataOpt = bucketMetadata.getObjectMetadata(key);
+    if (objectMetadataOpt.isEmpty()) {
+      return DeleteObjectAns.builder()
+          .isDeleteMarker(false)
+          .versionId(versionId)
+          .build();
+    }
+    ObjectMetadata objectMetadata = objectMetadataOpt.get();
     boolean isDeleteMarker = false;
     if (ObjectMetadata.NULL_VERSION.equals(versionId)) {
       Optional<String> virtualVersionOpt = objectMetadata.getVirtualVersion();

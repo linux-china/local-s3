@@ -135,8 +135,8 @@ class S3ChangeEventsTest extends LocalS3ServiceTestBase {
     List<Object> results = objectService.deleteObjects(BUCKET, new DeleteObjectsRequest(List.of(
         new ObjectIdentifier("a.txt", null), new ObjectIdentifier("missing.txt", "123")), true));
 
-    assertEquals(1, results.size(), "A quiet result only reports the error.");
-    assertEquals(1, changes.size(), "The key that failed to be deleted isn't published.");
+    assertEquals(0, results.size(), "A quiet result only reports errors, and a version that is gone isn't one.");
+    assertEquals(1, changes.size(), "A version that is already gone changes nothing, so it isn't published.");
     S3Change deleted = changes.get(0);
     assertEquals("DeleteObjects", deleted.operation());
     assertEquals("a.txt", deleted.key());

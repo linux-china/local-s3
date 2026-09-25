@@ -53,4 +53,3 @@ test_s3.py::test_sse_kms_read_declare  # GetObject that sends x-amz-server-side-
 test_s3.py::test_sse_s3_default_method_head  # HeadObject that sends x-amz-server-side-encryption: AES256 succeeds; Amazon S3 answers 400, as the header is not for reads
 test_s3.py::test_versioning_bucket_atomic_upload_return_version_id  # PutObject to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
 test_s3.py::test_versioning_bucket_multipart_upload_return_version_id  # CompleteMultipartUpload to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
-test_s3.py::test_versioning_concurrent_multi_object_delete  # deleting a version of a key that has no versions left is NoSuchKey, see DeleteObjectService#deleteWithVersionId; Amazon S3 answers it as deleted, so all concurrent DeleteObjects but the first report errors

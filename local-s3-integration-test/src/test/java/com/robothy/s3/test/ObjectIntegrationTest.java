@@ -388,7 +388,9 @@ public class ObjectIntegrationTest {
         .build();
 
     DeleteObjectsResponse deleteObjectsResponse = s3.deleteObjects(deleteObjectsRequest);
-    assertEquals(1, deleteObjectsResponse.deleted().size());
+    // A version of a key that holds none is reported as deleted, like Amazon S3 reports it.
+    assertEquals(2, deleteObjectsResponse.deleted().size());
+    assertTrue(deleteObjectsResponse.errors().isEmpty());
 
 
     s3.putObject(PutObjectRequest.builder().bucket(bucketName).key("a.txt").build(), RequestBody.fromString("Hello"));

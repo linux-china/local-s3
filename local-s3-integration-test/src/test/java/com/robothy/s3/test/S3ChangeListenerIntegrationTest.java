@@ -224,8 +224,9 @@ public class S3ChangeListenerIntegrationTest {
     objectChanges.clear();
     DeleteObjectsResponse response = s3.deleteObjects(request -> request.bucket(BUCKET)
         .delete(delete -> delete.objects(ObjectIdentifier.builder().key("a.txt").build(), missingVersion)));
-    assertEquals(1, response.deleted().size());
-    assertEquals(1, response.errors().size());
+    // The version that is gone is reported as deleted, like Amazon S3 reports it, but changes nothing to publish.
+    assertEquals(2, response.deleted().size());
+    assertTrue(response.errors().isEmpty());
     assertEquals(1, objectChanges.size());
     S3Change deleted = objectChanges.get(0);
     assertEquals(S3ChangeType.OBJECT_DELETED, deleted.type());
@@ -237,7 +238,7 @@ public class S3ChangeListenerIntegrationTest {
     DeleteObjectsResponse quietResponse = s3.deleteObjects(request -> request.bucket(BUCKET)
         .delete(delete -> delete.quiet(true).objects(ObjectIdentifier.builder().key("b.txt").build(), missingVersion)));
     assertTrue(quietResponse.deleted().isEmpty());
-    assertEquals(1, quietResponse.errors().size());
+    assertTrue(quietResponse.errors().isEmpty());
     assertEquals(1, objectChanges.size());
     assertEquals("b.txt", objectChanges.get(0).key());
   }
