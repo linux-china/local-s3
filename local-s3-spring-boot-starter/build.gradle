@@ -24,6 +24,11 @@ dependencies {
     // application that only embeds the service, for other processes, doesn't get the AWS SDK and its Netty 4.1 modules.
     // The S3AsyncClient bean also needs the netty-nio-client of the AWS SDK.
     compileOnly(libs.awssdkS3)
+    // Optional as well: the S3VectorsClient, S3TablesClient and S3TransferManager beans, defined when the application
+    // brings the module of the client. The S3TransferManager also needs the netty-nio-client of the AWS SDK.
+    compileOnly(libs.awssdkS3vectors)
+    compileOnly(libs.awssdkS3tables)
+    compileOnly(libs.awssdkS3TransferManager)
 
     // Optional integrations, which the application brings: Actuator health and Micrometer metrics.
     compileOnly(libs.springBootHealth)
@@ -45,6 +50,9 @@ dependencies {
     testImplementation(platform(libs.springBootBom))
     testImplementation(libs.awssdkS3)
     testImplementation(libs.awssdkNettyNioClient)
+    testImplementation(libs.awssdkS3vectors)
+    testImplementation(libs.awssdkS3tables)
+    testImplementation(libs.awssdkS3TransferManager)
     testImplementation(libs.springBootTest)
     // The contexts of ApplicationContextRunner are AssertJ assert providers.
     testImplementation("org.assertj:assertj-core")

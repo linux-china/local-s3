@@ -70,6 +70,21 @@ too:
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>netty-nio-client</artifactId>
 </dependency>
+<!-- S3VectorsClient, optional -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3vectors</artifactId>
+</dependency>
+<!-- S3TablesClient, optional -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3tables</artifactId>
+</dependency>
+<!-- S3TransferManager, optional, with netty-nio-client -->
+<dependency>
+    <groupId>software.amazon.awssdk</groupId>
+    <artifactId>s3-transfer-manager</artifactId>
+</dependency>
 ```
 
 The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. `netty-nio-client`
@@ -136,11 +151,14 @@ The starter defines:
   [Initial data](#initial-data);
 + with the AWS SDK, an `S3Client`, an `S3AsyncClient` (with `netty-nio-client`) and an `S3Presigner` that point at the
   service, with path-style requests and the
-  credentials of the service. Creating one starts the service, so a bean can use it while it is initialized, even with a
+  credentials of the service, and, with their modules, an `S3VectorsClient` (`s3vectors`), an `S3TablesClient`
+  (`s3tables`) and an `S3TransferManager` (`s3-transfer-manager` and `netty-nio-client`, over an `S3AsyncClient` of its
+  own with multipart transfers enabled). Creating one starts the service, so a bean can use it while it is initialized, even with a
   random port. The starter backs off from a client that the application defines itself, and from all of them with
   `local-s3.clients.enabled=false`. It is ordered before the S3 auto-configurations of
   [Spring Cloud AWS](https://github.com/awspring/spring-cloud-aws) (`spring-cloud-aws-starter-s3`), so these back off
-  from the clients of the starter, and `S3Template` uses them;
+  from the clients of the starter, and `S3Template` uses them. Its `s3VectorsClient`, which it defines whatever the
+  application defines, is built with the `S3VectorsClientBuilder` of the starter, so it points at the service too;
 + the `S3Change`s that the service commits as application events. They are published on the thread that
   made the change, so a change that the application makes through `localS3.getS3Manager()` in a transaction reaches a
   `@TransactionalEventListener` once the transaction commits. Changes made while the context is refreshed,

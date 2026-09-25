@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -29,6 +30,10 @@ import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3tables.S3TablesClient;
+import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
+import software.amazon.awssdk.services.s3vectors.S3VectorsClientBuilder;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 /**
  * Embeds a LocalS3 service in a Spring Boot application:
@@ -42,7 +47,9 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  *   <li>the {@code S3Change}s that the service commits, published to the application context, where
  *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
  *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
- *   service, unless the application defines its own, when the AWS SDK is on the classpath.</li>
+ *   service, unless the application defines its own, when the AWS SDK is on the classpath, and likewise an
+ *   {@linkplain S3VectorsClient}, an {@linkplain S3TablesClient} and an {@linkplain S3TransferManager} when their
+ *   modules are.</li>
  * </ul>
  *
  * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3.
@@ -53,7 +60,9 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  */
 @AutoConfiguration(beforeName = {
     "io.awspring.cloud.autoconfigure.s3.S3AutoConfiguration",
-    "io.awspring.cloud.autoconfigure.s3.S3CrtAsyncClientAutoConfiguration"
+    "io.awspring.cloud.autoconfigure.s3.S3CrtAsyncClientAutoConfiguration",
+    "io.awspring.cloud.autoconfigure.s3.S3TransferManagerAutoConfiguration",
+    "io.awspring.cloud.autoconfigure.s3vectors.S3VectorClientAutoConfiguration"
 })
 @ConditionalOnClass(LocalS3.class)
 @ConditionalOnProperty(name = "local-s3.enabled", havingValue = "true", matchIfMissing = true)
@@ -280,6 +289,83 @@ public class LocalS3AutoConfiguration {
         secretAccessKey = DEFAULT_CLIENT_KEY;
       }
       return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey));
+    }
+
+    /**
+     * The builder of the client of the S3 Vectors API, with {@code software.amazon.awssdk:s3vectors}, which
+     * {@linkplain LocalS3VectorsClientAutoConfiguration} builds the client with. A builder rather than the client,
+     * because Spring Cloud AWS defines its {@code s3VectorsClient} whatever the application defines, from the
+     * {@code S3VectorsClientBuilder} bean, which it backs off from: its client then points at the service too.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(S3VectorsClient.class)
+    static class VectorsClientConfiguration {
+
+      @Bean
+      @ConditionalOnMissingBean
+      S3VectorsClientBuilder s3VectorsClientBuilder(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
+        return S3VectorsClient.builder()
+            .endpointOverride(pointAtLocalS3(S3VectorsClient.class, lifecycle))
+            .region(Region.of(properties.getClients().getRegion()))
+            .credentialsProvider(credentials(lifecycle.getLocalS3()));
+      }
+
+    }
+
+    /**
+     * The client of the S3 Tables API, with {@code software.amazon.awssdk:s3tables}. It is pointed straight at the
+     * service, since it always signs, and the {@code s3tables} service of its credential scope is what tells its
+     * requests from the S3 ones, whose paths they share.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(S3TablesClient.class)
+    static class TablesClientConfiguration {
+
+      @Bean
+      @ConditionalOnMissingBean
+      S3TablesClient s3TablesClient(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
+        return S3TablesClient.builder()
+            .endpointOverride(pointAtLocalS3(S3TablesClient.class, lifecycle))
+            .region(Region.of(properties.getClients().getRegion()))
+            .credentialsProvider(credentials(lifecycle.getLocalS3()))
+            .build();
+      }
+
+    }
+
+    /**
+     * The transfer manager, with {@code software.amazon.awssdk:s3-transfer-manager} and {@code netty-nio-client}. It
+     * transfers through an {@linkplain S3AsyncClient} of its own, with multipart uploads and downloads enabled, rather
+     * than through the {@code S3AsyncClient} bean, whose {@code putObject} would then split large objects into parts
+     * too. The configuration closes that client after the transfer manager, which doesn't close a client it was given.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(value = S3TransferManager.class,
+        name = "software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient")
+    static class TransferManagerConfiguration implements DisposableBean {
+
+      private S3AsyncClient transferClient;
+
+      @Bean
+      @ConditionalOnMissingBean
+      S3TransferManager s3TransferManager(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
+        transferClient = S3AsyncClient.builder()
+            .endpointOverride(pointAtLocalS3(S3TransferManager.class, lifecycle))
+            .region(Region.of(properties.getClients().getRegion()))
+            .credentialsProvider(credentials(lifecycle.getLocalS3()))
+            .forcePathStyle(true)
+            .multipartEnabled(true)
+            .build();
+        return S3TransferManager.builder().s3Client(transferClient).build();
+      }
+
+      @Override
+      public void destroy() {
+        if (transferClient != null) {
+          transferClient.close();
+        }
+      }
+
     }
 
   }

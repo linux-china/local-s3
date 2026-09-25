@@ -19,6 +19,8 @@ import io.awspring.cloud.autoconfigure.core.CredentialsProviderAutoConfiguration
 import io.awspring.cloud.autoconfigure.core.RegionProviderAutoConfiguration;
 import io.awspring.cloud.autoconfigure.s3.S3AutoConfiguration;
 import io.awspring.cloud.autoconfigure.s3.S3CrtAsyncClientAutoConfiguration;
+import io.awspring.cloud.autoconfigure.s3.S3TransferManagerAutoConfiguration;
+import io.awspring.cloud.autoconfigure.s3vectors.S3VectorClientAutoConfiguration;
 import io.awspring.cloud.s3.S3Template;
 import java.io.ByteArrayInputStream;
 import java.net.ConnectException;
@@ -28,6 +30,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -51,11 +54,15 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3tables.S3TablesClient;
+import software.amazon.awssdk.services.s3vectors.S3VectorsClient;
+import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 class LocalS3AutoConfigurationTest {
 
   private final ApplicationContextRunner runner = new ApplicationContextRunner()
-      .withConfiguration(AutoConfigurations.of(LocalS3AutoConfiguration.class))
+      .withConfiguration(AutoConfigurations.of(LocalS3AutoConfiguration.class,
+          LocalS3VectorsClientAutoConfiguration.class))
       .withPropertyValues("local-s3.port=-1");
 
   @Test
@@ -161,6 +168,43 @@ class LocalS3AutoConfigurationTest {
   }
 
   @Test
+  void definesTheClientsOfTheOtherApisThatPointAtTheService(@TempDir Path directory) throws Exception {
+    runner.withPropertyValues("local-s3.buckets=transfers").run(context -> {
+      S3VectorsClient vectors = context.getBean(S3VectorsClient.class);
+      vectors.createVectorBucket(request -> request.vectorBucketName("vectors"));
+      assertEquals(List.of("vectors"), vectors.listVectorBuckets(request -> { }).vectorBuckets().stream()
+          .map(bucket -> bucket.vectorBucketName()).toList());
+
+      S3TablesClient tables = context.getBean(S3TablesClient.class);
+      tables.createTableBucket(request -> request.name("tables"));
+      assertEquals(List.of("tables"), tables.listTableBuckets(request -> { }).tableBuckets().stream()
+          .map(bucket -> bucket.name()).toList());
+
+      S3TransferManager transferManager = context.getBean(S3TransferManager.class);
+      Path upload = Files.writeString(directory.resolve("upload.txt"), "Transferred");
+      transferManager.uploadFile(request -> request.source(upload)
+          .putObjectRequest(put -> put.bucket("transfers").key("a.txt"))).completionFuture().join();
+      Path download = directory.resolve("download.txt");
+      transferManager.downloadFile(request -> request.destination(download)
+          .getObjectRequest(get -> get.bucket("transfers").key("a.txt"))).completionFuture().join();
+      assertEquals("Transferred", Files.readString(download));
+    });
+  }
+
+  @Test
+  void definesTheClientsOfTheOtherApisOnlyWithTheirModules() {
+    runner.withClassLoader(new FilteredClassLoader("software.amazon.awssdk.services.s3vectors.",
+        "software.amazon.awssdk.services.s3tables.", "software.amazon.awssdk.transfer.")).run(context -> {
+      assertNull(context.getStartupFailure());
+      assertTrue(context.containsBean("s3Client"));
+      assertFalse(context.containsBean("s3VectorsClientBuilder"));
+      assertFalse(context.containsBean("s3VectorsClient"));
+      assertFalse(context.containsBean("s3TablesClient"));
+      assertFalse(context.containsBean("s3TransferManager"));
+    });
+  }
+
+  @Test
   void theClientsSignWithTheCredentialsThatTheServiceRequires() {
     runner.withPropertyValues("local-s3.buckets=signed",
         "local-s3.credentials.access-key-id=spring-key",
@@ -245,6 +289,10 @@ class LocalS3AutoConfigurationTest {
       assertFalse(context.containsBean("s3Client"));
       assertFalse(context.containsBean("s3AsyncClient"));
       assertFalse(context.containsBean("s3Presigner"));
+      assertFalse(context.containsBean("s3VectorsClientBuilder"));
+      assertFalse(context.containsBean("s3VectorsClient"));
+      assertFalse(context.containsBean("s3TablesClient"));
+      assertFalse(context.containsBean("s3TransferManager"));
     });
   }
 
@@ -261,7 +309,8 @@ class LocalS3AutoConfigurationTest {
     // The names are checked because nothing else would notice a renamed class: the alphabetical order, which Spring
     // Boot starts from, happens to put com.robothy before io.awspring too.
     String[] before = LocalS3AutoConfiguration.class.getAnnotation(AutoConfiguration.class).beforeName();
-    assertEquals(List.of(S3AutoConfiguration.class.getName(), S3CrtAsyncClientAutoConfiguration.class.getName()),
+    assertEquals(List.of(S3AutoConfiguration.class.getName(), S3CrtAsyncClientAutoConfiguration.class.getName(),
+        S3TransferManagerAutoConfiguration.class.getName(), S3VectorClientAutoConfiguration.class.getName()),
         List.of(before));
   }
 
@@ -282,6 +331,26 @@ class LocalS3AutoConfigurationTest {
               .getObjectAsBytes(request -> request.bucket("uploads").key("a.txt")).asUtf8String());
           assertTrue(template.createSignedGetURL("uploads", "a.txt", Duration.ofMinutes(1)).toString()
               .startsWith(context.getBean(LocalS3Lifecycle.class).endpoint().toString()));
+        });
+  }
+
+  /**
+   * Spring Cloud AWS defines its {@code s3VectorsClient} whatever the application defines, from the builder of the
+   * starter, which it backs off from.
+   */
+  @Test
+  void springCloudAwsBuildsItsS3VectorsClientWithTheBuilderOfTheStarter() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(S3VectorClientAutoConfiguration.class, AwsAutoConfiguration.class,
+            CredentialsProviderAutoConfiguration.class, RegionProviderAutoConfiguration.class,
+            LocalS3AutoConfiguration.class, LocalS3VectorsClientAutoConfiguration.class))
+        .withPropertyValues("local-s3.port=-1", "spring.cloud.aws.region.static=us-east-1")
+        .run(context -> {
+          assertNull(context.getStartupFailure());
+          assertEquals(1, context.getBeansOfType(S3VectorsClient.class).size());
+          S3VectorsClient vectors = context.getBean(S3VectorsClient.class);
+          vectors.createVectorBucket(request -> request.vectorBucketName("vectors"));
+          assertEquals(1, vectors.listVectorBuckets(request -> { }).vectorBuckets().size());
         });
   }
 
