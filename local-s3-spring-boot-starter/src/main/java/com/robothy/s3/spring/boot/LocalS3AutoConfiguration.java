@@ -3,6 +3,7 @@ package com.robothy.s3.spring.boot;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Builder;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
+import com.robothy.s3.rest.LocalS3Cors;
 import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.netty.RequestRecorder;
@@ -188,6 +189,11 @@ public class LocalS3AutoConfiguration {
     LocalS3Properties.Website website = properties.getWebsite();
     builder.website(settings -> settings.settings(new LocalS3Website(website.isEnabled(), website.isAllBuckets(),
         website.getIndexDocument(), website.getErrorDocument())));
+
+    LocalS3Cors cors = properties.getCors().toLocalS3Cors();
+    if (cors.enabled()) {
+      builder.defaultCors(cors);
+    }
 
     LocalS3Properties.Credentials credentials = properties.getCredentials();
     boolean hasAccessKeyId = hasText(credentials.getAccessKeyId());

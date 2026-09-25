@@ -50,6 +50,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@linkplain #tls(Consumer)} — the certificate of HTTPS and whether HTTP is refused,
  *       {@linkplain TlsSettings};</li>
  *   <li>{@linkplain #website(Consumer)} — the static website hosting, {@linkplain WebsiteSettings};</li>
+ *   <li>{@linkplain #defaultCors(Consumer)} — the CORS rule of the buckets without one of their own,
+ *       {@linkplain CorsSettings};</li>
  *   <li>{@linkplain #icebergCatalog(Consumer)} — the Iceberg REST catalog, {@linkplain IcebergCatalogSettings}.</li>
  * </ul>
  *
@@ -125,6 +127,8 @@ public class LocalS3Builder {
     private LocalS3IcebergCatalog icebergCatalog;
 
     private LocalS3Website website = LocalS3Website.defaults();
+
+    private LocalS3Cors cors = LocalS3Cors.disabled();
 
     /**
      * Set the host that local-s3 service listens on.
@@ -670,6 +674,46 @@ public class LocalS3Builder {
     }
 
     /**
+     * Allow the cross-origin requests of browsers by a default CORS rule, which applies where no CORS configuration of
+     * a bucket does: to the buckets that weren't configured with {@code PutBucketCors}, and to the requests that
+     * address no bucket, e.g. {@code ListBuckets} and the Iceberg REST catalog. A bucket that has a configuration of
+     * its own keeps it, like in Amazon S3. It is off by default:
+     *
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .defaultCors(cors -> cors.allowedOrigins("http://localhost:5173"))
+     *      .build();
+     * }</pre>
+     *
+     * <p>Unless told otherwise, the rule allows every method that a CORS rule of Amazon S3 may allow, every request
+     * header, and exposes the response headers that the clients of a browser read, e.g. {@code ETag}; see
+     * {@linkplain LocalS3Cors}. An allowed origin, and {@code *} above all, lets its pages reach the data of the
+     * service from a browser, which is meant for local development.
+     *
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
+     *
+     * @param cors configures the default CORS rule of the service.
+     * @return builder.
+     * @throws IllegalArgumentException if a method isn't one that Amazon S3 allows, or a value is blank.
+     */
+    public LocalS3Builder defaultCors(@NonNull Consumer<CorsSettings> cors) {
+        cors.accept(new CorsSettings());
+        return this;
+    }
+
+    /**
+     * Allow the cross-origin requests of browsers by a default CORS rule; see {@linkplain #defaultCors(Consumer)}.
+     *
+     * @param cors the default rule; {@code null} for none, which is the default.
+     * @return builder.
+     */
+    public LocalS3Builder defaultCors(LocalS3Cors cors) {
+        this.cors = Objects.requireNonNullElseGet(cors, LocalS3Cors::disabled);
+        return this;
+    }
+
+    /**
      * Serve an <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> beside the S3 API, on
      * the same port, under {@code /iceberg/v1}, so that a test of Apache Iceberg needs no catalog of its own:
      *
@@ -738,7 +782,7 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags,
-                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website);
+                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website, cors);
     }
 
     /**
@@ -1331,6 +1375,90 @@ public class LocalS3Builder {
          */
         public WebsiteSettings settings(LocalS3Website website) {
             LocalS3Builder.this.website = Objects.requireNonNullElseGet(website, LocalS3Website::defaults);
+            return this;
+        }
+
+    }
+
+    /**
+     * The default CORS settings of a service; see {@linkplain LocalS3Cors}. {@linkplain LocalS3Builder#defaultCors(Consumer)}
+     * hands one out; every method writes the setting through to the builder it came from, so a settings object is only
+     * good while that call runs.
+     */
+    public final class CorsSettings {
+
+        private CorsSettings() {
+        }
+
+        /**
+         * Set the origins that are allowed, e.g. {@code http://localhost:5173}; each may contain one {@code *}
+         * wildcard, and {@code *} alone allows every origin. No origin turns the default rule off.
+         *
+         * @param origins the origins.
+         * @return these settings.
+         */
+        public CorsSettings allowedOrigins(String... origins) {
+            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedOrigins(List.of(origins));
+            return this;
+        }
+
+        /**
+         * Set the methods that are allowed, among {@code GET}, {@code PUT}, {@code POST}, {@code DELETE} and
+         * {@code HEAD}; none, the default, allows all of them.
+         *
+         * @param methods the methods.
+         * @return these settings.
+         * @throws IllegalArgumentException if a method isn't one of them.
+         */
+        public CorsSettings allowedMethods(String... methods) {
+            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedMethods(List.of(methods));
+            return this;
+        }
+
+        /**
+         * Set the request headers that are allowed, each may contain one {@code *} wildcard; none, the default, allows
+         * every header.
+         *
+         * @param headers the headers.
+         * @return these settings.
+         */
+        public CorsSettings allowedHeaders(String... headers) {
+            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedHeaders(List.of(headers));
+            return this;
+        }
+
+        /**
+         * Set the response headers that the pages may read; none, the default, exposes
+         * {@linkplain LocalS3Cors#DEFAULT_EXPOSE_HEADERS}.
+         *
+         * @param headers the headers.
+         * @return these settings.
+         */
+        public CorsSettings exposeHeaders(String... headers) {
+            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withExposeHeaders(List.of(headers));
+            return this;
+        }
+
+        /**
+         * Set the seconds that a browser may cache a preflight response.
+         *
+         * @param maxAgeSeconds the seconds; {@code null} for the browser's default.
+         * @return these settings.
+         */
+        public CorsSettings maxAgeSeconds(Integer maxAgeSeconds) {
+            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withMaxAgeSeconds(maxAgeSeconds);
+            return this;
+        }
+
+        /**
+         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
+         * configuration.
+         *
+         * @param cors the settings; {@code null} for none.
+         * @return these settings.
+         */
+        public CorsSettings settings(LocalS3Cors cors) {
+            LocalS3Builder.this.cors = Objects.requireNonNullElseGet(cors, LocalS3Cors::disabled);
             return this;
         }
 

@@ -1,6 +1,9 @@
 package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.rest.LocalS3;
@@ -22,11 +25,14 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.Bucket;
 import software.amazon.awssdk.services.s3.model.BucketLocationConstraint;
 import software.amazon.awssdk.services.s3.model.BucketType;
 import software.amazon.awssdk.services.s3.model.CreateSessionResponse;
 import software.amazon.awssdk.services.s3.model.DataRedundancy;
+import software.amazon.awssdk.services.s3.model.ListDirectoryBucketsResponse;
 import software.amazon.awssdk.services.s3.model.LocationType;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
@@ -84,6 +90,41 @@ class S3ExpressIntegrationTest {
     assertTrue(validity.compareTo(Duration.ofMinutes(4)) > 0 && validity.compareTo(Duration.ofMinutes(5)) <= 0,
         validity::toString);
     assertEquals("AES256", session.serverSideEncryptionAsString());
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  void listsTheDirectoryBucketsOnly(boolean verifySignatures) {
+    URI endpoint = start(verifySignatures);
+    S3Client s3 = s3(endpoint);
+    s3.createBucket(b -> b.bucket("general-purpose"));
+    List<String> directoryBuckets = List.of("a--usw2-az1--x-s3", "b--usw2-az1--x-s3", "c--use1-az4--x-s3");
+    directoryBuckets.forEach(bucket -> s3.createBucket(b -> b.bucket(bucket)));
+
+    ListDirectoryBucketsResponse all = s3.listDirectoryBuckets(b -> { });
+    assertEquals(directoryBuckets, all.buckets().stream().map(Bucket::name).toList());
+    assertEquals("us-west-2", all.buckets().get(0).bucketRegion());
+    assertNull(all.continuationToken());
+
+    List<String> paged = s3.listDirectoryBucketsPaginator(b -> b.maxDirectoryBuckets(2)).buckets().stream()
+        .map(Bucket::name).toList();
+    assertEquals(directoryBuckets, paged);
+
+    ListDirectoryBucketsResponse firstPage = s3.listDirectoryBuckets(b -> b.maxDirectoryBuckets(2));
+    assertEquals(2, firstPage.buckets().size());
+    assertNotNull(firstPage.continuationToken());
+
+    // ListBuckets, signed for s3, still lists every bucket.
+    assertEquals(4, s3.listBuckets().buckets().size());
+  }
+
+  @Test
+  void rejectsAMaxDirectoryBucketsOutOfRange() {
+    URI endpoint = start(false);
+    S3Client s3 = s3(endpoint);
+    S3Exception e = assertThrows(S3Exception.class, () -> s3.listDirectoryBuckets(b -> b.maxDirectoryBuckets(1001)));
+    assertEquals(400, e.statusCode());
+    assertEquals("InvalidArgument", e.awsErrorDetails().errorCode());
   }
 
   @Test

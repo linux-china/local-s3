@@ -145,6 +145,11 @@ are set by a variable alone. A container is configured by the variables; `java -
 | `LOCAL_S3_WEBSITE_ALL_BUCKETS` | `false` | Serve **every** bucket as a static website, not the public ones alone, which also lets an unsigned request read the objects of a private bucket. Meant for local development. |
 | `LOCAL_S3_WEBSITE_INDEX_DOCUMENT` | `index.html` | The index document of the buckets that have no `WebsiteConfiguration` of their own. |
 | `LOCAL_S3_WEBSITE_ERROR_DOCUMENT` | | The error document of the buckets that have no `WebsiteConfiguration` of their own, e.g. `error.html`; unset answers a generic error page. |
+| `LOCAL_S3_CORS_ALLOWED_ORIGINS` | | Comma-separated origins that the [default CORS rule](semantics.md#cors) allows, e.g. `*` or `http://localhost:5173`. Setting it turns the rule on; it applies to the buckets that have no CORS configuration of their own and to the requests that address no bucket. `*` lets every web page open in a browser reach the service. |
+| `LOCAL_S3_CORS_ALLOWED_METHODS` | `GET,PUT,POST,DELETE,HEAD` | Comma-separated methods that the default CORS rule allows. |
+| `LOCAL_S3_CORS_ALLOWED_HEADERS` | `*` | Comma-separated request headers that the default CORS rule allows. |
+| `LOCAL_S3_CORS_EXPOSE_HEADERS` | `ETag`, `x-amz-version-id`, … | Comma-separated response headers that the default CORS rule lets a page read. |
+| `LOCAL_S3_CORS_MAX_AGE_SECONDS` | | Seconds that a browser may cache a preflight response of the default CORS rule. |
 | `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS, alongside plain HTTP on the same port, with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
 | `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). |
 | `LOCAL_S3_TLS_REQUIRED` | `false` | Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port, so that a plain HTTP request fails. No effect without a certificate; see [HTTPS](#https). |

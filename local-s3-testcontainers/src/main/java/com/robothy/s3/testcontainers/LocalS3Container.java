@@ -79,6 +79,8 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
 
   private static final String WEBSITE_ALL_BUCKETS = "LOCAL_S3_WEBSITE_ALL_BUCKETS";
 
+  private static final String CORS_ALLOWED_ORIGINS = "LOCAL_S3_CORS_ALLOWED_ORIGINS";
+
   private static final String ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
 
   private static final String SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
@@ -319,6 +321,17 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
    */
   public LocalS3Container withWebsiteAllBuckets(boolean enabled) {
     return super.withEnv(WEBSITE_ALL_BUCKETS, Boolean.toString(enabled));
+  }
+
+  /**
+   * Allow the cross-origin requests of browsers from some origins by a default CORS rule, which applies to the buckets
+   * that have no CORS configuration of their own; it is off by default. {@code *} allows every origin.
+   *
+   * @param origins the origins, e.g. {@code http://localhost:5173}.
+   * @return this.
+   */
+  public LocalS3Container withCorsAllowedOrigins(String... origins) {
+    return super.withEnv(CORS_ALLOWED_ORIGINS, String.join(",", origins));
   }
 
   /**

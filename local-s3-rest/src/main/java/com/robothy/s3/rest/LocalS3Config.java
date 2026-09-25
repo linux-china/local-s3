@@ -58,6 +58,8 @@ import org.jspecify.annotations.Nullable;
  *     serve none, which is the default.
  * @param website how the buckets are served as static websites to the requests that carry no credentials;
  *     {@code null} is {@linkplain LocalS3Website#defaults()}, which serves the public buckets.
+ * @param cors the default CORS rule of the buckets that have no CORS configuration of their own, and of the requests
+ *     that address no bucket; {@code null} is {@linkplain LocalS3Cors#disabled()}, which is the default.
  */
 public record LocalS3Config(
     String bindHost,
@@ -89,7 +91,8 @@ public record LocalS3Config(
     @Nullable LocalS3Tls tls,
     boolean tlsRequired,
     @Nullable LocalS3IcebergCatalog icebergCatalog,
-    LocalS3Website website) {
+    LocalS3Website website,
+    LocalS3Cors cors) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -170,6 +173,7 @@ public record LocalS3Config(
     virtualHostDomains = List.copyOf(virtualHostDomains);
     requestRecorder = requestRecorder == null ? RequestRecorder.NONE : requestRecorder;
     website = website == null ? LocalS3Website.defaults() : website;
+    cors = cors == null ? LocalS3Cors.disabled() : cors;
   }
 
   /**
@@ -224,6 +228,16 @@ public record LocalS3Config(
   }
 
   /**
+   * Whether the cross-origin requests of browsers are allowed by a default CORS rule where no bucket configuration
+   * applies.
+   *
+   * @return {@code true} if {@linkplain #cors() a default rule} allows an origin.
+   */
+  public boolean corsEnabled() {
+    return cors.enabled();
+  }
+
+  /**
    * Whether the service serves an Iceberg REST catalog beside its S3 API.
    *
    * @return {@code true} if a {@linkplain #icebergCatalog() catalog} is configured.
@@ -260,7 +274,7 @@ public record LocalS3Config(
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
-        + ", icebergCatalog=" + icebergCatalog + ", website=" + website + "]";
+        + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors + "]";
   }
 
   /*

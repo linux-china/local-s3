@@ -339,6 +339,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 | Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
+| Default CORS rule | `defaultCors(cors -> ...)` | `allowedOrigins`, `allowedMethods`, `allowedHeaders`, `exposeHeaders`, `maxAgeSeconds`, `settings(LocalS3Cors)`; see [CORS](semantics.md#cors) |
 | Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `uniqueTableLocation`, `settings(LocalS3IcebergCatalog)` |
 
 ```java
@@ -374,7 +375,8 @@ and, when the application has the AWS SDK, which is an optional dependency, defi
 and an `S3Presigner` that point at it. `local-s3.seed.classpath` names a directory tree of the classpath that the
 service starts with, as `<bucket>/<key>`. `local-s3.website.*` configures
 [static website hosting](semantics.md#static-website-hosting): `enabled`, `all-buckets`, `index-document` and
-`error-document`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
+`error-document`. `local-s3.cors.*` configures the [default CORS rule](semantics.md#cors) of the buckets without one
+of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-headers` and `max-age`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
 `testAndDevelopmentOnly`, a Maven `test` scope or profile). If the production jar includes it, the application
 starts a local service and its `S3Client` points at it.
 

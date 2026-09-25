@@ -69,6 +69,7 @@ Many configurations below are stored and read back but never applied, e.g. notif
 + ListBucketInventoryConfigurations
 + ListBucketMetricsConfigurations
 + ListBuckets
++ ListDirectoryBuckets
 + ListObjects
 + ListObjectsV2
 + ListObjectVersions
@@ -153,6 +154,11 @@ Object Lock (`x-amz-bucket-object-lock-enabled`, the `x-amz-object-lock-*` heade
 `RestoreObject` of a `GLACIER` or `DEEP_ARCHIVE` object completes at once, and `HeadObject` answers the restored copy
 with `x-amz-restore`, so that code that restores cold data before reading it works; see
 [semantics.md](semantics.md#storage-classes-and-restores).
+
+`ListDirectoryBuckets` lists the buckets named like S3 Express One Zone directory buckets, e.g.
+`my-bucket--usw2-az1--x-s3`, paginated with `max-directory-buckets` (at most 1000) and `continuation-token`. It is a
+`GET /` like `ListBuckets`, told apart by its `max-directory-buckets` parameter or by the `s3express` service that the
+AWS SDKs sign it for. `ListBuckets` keeps listing every bucket, the directory buckets included.
 
 `RenameObject` and appends (`PutObject` with `x-amz-write-offset-bytes`), which Amazon S3 offers for S3 Express One Zone
 directory buckets, work on the buckets whose versioning was never enabled, see

@@ -135,7 +135,8 @@ public class LocalS3RouterFactory {
         ? serviceFactory.getInstance(VirtualHostParser.class)
         : new VirtualHostParser(Set.of());
     CorsResponseHeaders corsResponseHeaders = serviceFactory.containsInstance(BucketService.class)
-        ? new CorsResponseHeaders(serviceFactory.getInstance(BucketService.class))
+        ? new CorsResponseHeaders(serviceFactory.getInstance(BucketService.class),
+            CorsResponseHeaders.defaultConfiguration(serviceFactory))
         : null;
     // The temporary credentials of the STS endpoint are verified with a key derived from the secret access key, so that
     // they remain valid across restarts.
@@ -295,6 +296,10 @@ public class LocalS3RouterFactory {
         .add("HeadHealthCheck", HEAD, HEALTH_CHECK_PATH, healthCheck)
         .add("BucketCorsPreflight", OPTIONS, BUCKET_PATH, corsPreflight)
         .add("ObjectCorsPreflight", OPTIONS, BUCKET_KEY_PATH, corsPreflight);
+    // The default CORS rule of a service also answers the preflight requests that address no bucket.
+    if (corsPreflight.hasDefaultConfiguration()) {
+      routes.router().servicePreflight(corsPreflight);
+    }
 
     // Only a running service has an administration; a router of handlers alone doesn't.
     if (serviceFactory.containsInstance(LocalS3Admin.class)) {
@@ -367,6 +372,9 @@ public class LocalS3RouterFactory {
         .add("ListBucketMetricsConfigurations", GET, BUCKET_PATH, has("metrics").andHasNot("id"),
             shared.storedConfiguration().list(METRICS))
         .add("ListBuckets", GET, "/", new ListBucketsController(factory))
+        // A request without the parameter is told apart by its signing name, see LocalS3Router#match.
+        .add(ListDirectoryBucketsController.OPERATION, GET, "/", has("max-directory-buckets"),
+            new ListDirectoryBucketsController(factory))
         .add("ListMultipartUploads", GET, BUCKET_PATH, has("uploads"), new ListMultipartUploadsController(factory))
         .add("ListObjects", GET, BUCKET_PATH, new ListObjectsController(factory))
         .add("ListObjectsV2", GET, BUCKET_PATH, equalTo("list-type", "2"), new ListObjectsV2Controller(factory))

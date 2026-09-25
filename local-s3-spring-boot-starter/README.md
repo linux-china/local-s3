@@ -246,6 +246,26 @@ A bucket is public once its ACL grants the `AllUsers` group `READ`, e.g. with th
 bucket policy allows `s3:GetObject` to every principal. `all-buckets: true` serves every bucket without publishing it,
 which is handy while developing a page locally and lets an unsigned request read any object of the service.
 
+## CORS for browsers
+
+A page served by the dev server of a frontend, e.g. Vite on `http://localhost:5173`, reaches LocalS3 from another
+origin, so the browser asks for CORS first. Rather than calling `PutBucketCors` for every bucket, give the service a
+[default CORS rule](../docs/semantics.md#cors), which applies to the buckets that have no CORS configuration of their
+own:
+
+```yaml
+local-s3:
+  cors:
+    allowed-origins: http://localhost:5173   # "*" allows every page; unset, the default, allows none
+    # allowed-methods: GET,PUT,POST,DELETE,HEAD
+    # allowed-headers: "*"
+    # expose-headers: ETag,x-amz-version-id
+    # max-age: 50m
+```
+
+An allowed origin lets its pages read and write the data of the service from a browser; keep it to the origins of your
+own pages, and to development.
+
 ## Startup order
 
 `LocalS3Lifecycle` starts the service in a phase before the web server, and creating one of the client beans starts it

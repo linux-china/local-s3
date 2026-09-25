@@ -130,6 +130,45 @@ public final class LocalS3Environment {
    */
   public static final String LOCAL_S3_WEBSITE_ERROR_DOCUMENT = "LOCAL_S3_WEBSITE_ERROR_DOCUMENT";
 
+  /**
+   * The comma-separated origins that the default CORS rule allows, e.g. {@code *} or
+   * {@code http://localhost:5173,http://localhost:3000}. Setting it turns the rule on; it applies to the buckets that
+   * have no CORS configuration of their own.
+   *
+   * @see LocalS3Builder#defaultCors(java.util.function.Consumer)
+   */
+  public static final String LOCAL_S3_CORS_ALLOWED_ORIGINS = "LOCAL_S3_CORS_ALLOWED_ORIGINS";
+
+  /**
+   * The comma-separated methods that the default CORS rule allows, e.g. {@code GET,HEAD}; unset, all of
+   * {@code GET}, {@code PUT}, {@code POST}, {@code DELETE} and {@code HEAD}.
+   *
+   * @see LocalS3Builder.CorsSettings#allowedMethods(String...)
+   */
+  public static final String LOCAL_S3_CORS_ALLOWED_METHODS = "LOCAL_S3_CORS_ALLOWED_METHODS";
+
+  /**
+   * The comma-separated request headers that the default CORS rule allows; unset, every header.
+   *
+   * @see LocalS3Builder.CorsSettings#allowedHeaders(String...)
+   */
+  public static final String LOCAL_S3_CORS_ALLOWED_HEADERS = "LOCAL_S3_CORS_ALLOWED_HEADERS";
+
+  /**
+   * The comma-separated response headers that the default CORS rule exposes; unset,
+   * {@linkplain LocalS3Cors#DEFAULT_EXPOSE_HEADERS}.
+   *
+   * @see LocalS3Builder.CorsSettings#exposeHeaders(String...)
+   */
+  public static final String LOCAL_S3_CORS_EXPOSE_HEADERS = "LOCAL_S3_CORS_EXPOSE_HEADERS";
+
+  /**
+   * The seconds that a browser may cache a preflight response of the default CORS rule.
+   *
+   * @see LocalS3Builder.CorsSettings#maxAgeSeconds(Integer)
+   */
+  public static final String LOCAL_S3_CORS_MAX_AGE_SECONDS = "LOCAL_S3_CORS_MAX_AGE_SECONDS";
+
   public static final String AWS_BUCKETS = "AWS_BUCKETS";
 
   /**
@@ -205,6 +244,16 @@ public final class LocalS3Environment {
         .ifPresent(indexDocument -> builder.website(website -> website.indexDocument(indexDocument)));
     variable(variables, LOCAL_S3_WEBSITE_ERROR_DOCUMENT)
         .ifPresent(errorDocument -> builder.website(website -> website.errorDocument(errorDocument)));
+    variable(variables, LOCAL_S3_CORS_ALLOWED_ORIGINS).ifPresent(origins -> builder.defaultCors(
+        cors -> cors.allowedOrigins(LocalS3Cors.split(origins).toArray(String[]::new))));
+    variable(variables, LOCAL_S3_CORS_ALLOWED_METHODS).ifPresent(methods -> builder.defaultCors(
+        cors -> cors.allowedMethods(LocalS3Cors.split(methods).toArray(String[]::new))));
+    variable(variables, LOCAL_S3_CORS_ALLOWED_HEADERS).ifPresent(headers -> builder.defaultCors(
+        cors -> cors.allowedHeaders(LocalS3Cors.split(headers).toArray(String[]::new))));
+    variable(variables, LOCAL_S3_CORS_EXPOSE_HEADERS).ifPresent(headers -> builder.defaultCors(
+        cors -> cors.exposeHeaders(LocalS3Cors.split(headers).toArray(String[]::new))));
+    variable(variables, LOCAL_S3_CORS_MAX_AGE_SECONDS)
+        .ifPresent(maxAge -> builder.defaultCors(cors -> cors.maxAgeSeconds(parseCorsMaxAgeSeconds(maxAge))));
 
     String tlsCert = variable(variables, LOCAL_S3_TLS_CERT).orElse(null);
     String tlsKey = variable(variables, LOCAL_S3_TLS_KEY).orElse(null);
@@ -351,6 +400,19 @@ public final class LocalS3Environment {
     }
     throw new IllegalArgumentException("\"" + bytes + "\" is not a valid " + LOCAL_S3_IN_MEMORY_MAX_BYTES
         + "; use a positive number of bytes, e.g. 536870912 or 512m.");
+  }
+
+  private static int parseCorsMaxAgeSeconds(String maxAge) {
+    try {
+      int value = Integer.parseInt(maxAge);
+      if (value >= 0) {
+        return value;
+      }
+    } catch (NumberFormatException e) {
+      // Rejected below.
+    }
+    throw new IllegalArgumentException("\"" + maxAge + "\" is not a valid " + LOCAL_S3_CORS_MAX_AGE_SECONDS
+        + "; use a number of seconds, e.g. 3000.");
   }
 
   private static int parsePort(String port) {

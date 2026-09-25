@@ -113,6 +113,13 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ **A default CORS rule for browsers**, off by default: `LocalS3.builder().defaultCors(cors -> cors.allowedOrigins("*"))`,
+  `LOCAL_S3_CORS_ALLOWED_ORIGINS=*` or `local-s3.cors.allowed-origins=http://localhost:5173`. It answers the
+  cross-origin requests of a bucket that has **no** CORS configuration of its own, and of the requests that address no
+  bucket (`ListBuckets`, `/iceberg/v1`, `/s3tables`), so a single page application, a presigned upload, DuckDB-WASM or a
+  notebook in a browser needs no `PutBucketCors` for every bucket first. A bucket configured with `PutBucketCors` keeps
+  its own rules, as in Amazon S3. See [CORS](docs/semantics.md#cors).
+
 + **The Amazon S3 Tables API**, on the S3 port and always on: table buckets, their namespaces and tables, and the
   `UpdateTableMetadataLocation` commits that move a table from one metadata file to the next. All 49 operations are
   answered, so an `S3TablesClient` of the AWS SDK and the `s3-tables-catalog` library of Iceberg both run against

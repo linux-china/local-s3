@@ -119,7 +119,18 @@ final class CommandLine {
             option("--website-index-document", LocalS3Environment.LOCAL_S3_WEBSITE_INDEX_DOCUMENT, "<name>",
                     "Index document of the buckets with no website configuration. Default index.html."),
             option("--website-error-document", LocalS3Environment.LOCAL_S3_WEBSITE_ERROR_DOCUMENT, "<name>",
-                    "Error document of the buckets with no website configuration, e.g. error.html."));
+                    "Error document of the buckets with no website configuration, e.g. error.html."),
+            option("--cors-allowed-origins", LocalS3Environment.LOCAL_S3_CORS_ALLOWED_ORIGINS, "<origins>",
+                    "Comma-separated origins, or *, that a default CORS rule allows on the buckets without a CORS"
+                            + " configuration of their own. Default none."),
+            option("--cors-allowed-methods", LocalS3Environment.LOCAL_S3_CORS_ALLOWED_METHODS, "<methods>",
+                    "Comma-separated methods of the default CORS rule. Default GET,PUT,POST,DELETE,HEAD."),
+            option("--cors-allowed-headers", LocalS3Environment.LOCAL_S3_CORS_ALLOWED_HEADERS, "<headers>",
+                    "Comma-separated request headers of the default CORS rule. Default *."),
+            option("--cors-expose-headers", LocalS3Environment.LOCAL_S3_CORS_EXPOSE_HEADERS, "<headers>",
+                    "Comma-separated response headers the default CORS rule exposes. Default ETag, x-amz-*, ..."),
+            option("--cors-max-age-seconds", LocalS3Environment.LOCAL_S3_CORS_MAX_AGE_SECONDS, "<seconds>",
+                    "Seconds a browser may cache a preflight response of the default CORS rule."));
 
     /**
      * The width the help is wrapped to, which leaves an 80 column terminal wrapping the longest lines alone

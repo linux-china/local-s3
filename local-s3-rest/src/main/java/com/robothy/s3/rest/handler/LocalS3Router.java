@@ -15,6 +15,7 @@ import com.robothy.s3.rest.netty.ChunkSignatures;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
+import com.robothy.s3.rest.utils.SigV4Requests;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
@@ -90,6 +91,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   static final String AMBIGUOUS_OPERATION = "AmbiguousRequest";
 
+  /**
+   * The operation of a CORS preflight request that addresses no bucket, which the default CORS rule answers.
+   */
+  static final String SERVICE_PREFLIGHT_OPERATION = "ServiceCorsPreflight";
+
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
   /**
@@ -147,6 +153,12 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * Serves the built-in console; {@code null} if the service serves none, e.g. a router of handlers alone.
    */
   private ConsoleController consoleController;
+
+  /**
+   * Answers the CORS preflight requests that address no bucket, e.g. of the Iceberg REST catalog, by the default CORS
+   * rule of the service; {@code null} if the service has no default rule.
+   */
+  private CorsPreflightController servicePreflightController;
 
   LocalS3Router() {
     this(null, new VirtualHostParser(Set.of()));
@@ -255,6 +267,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  /**
+   * Answer the CORS preflight requests that address no bucket, e.g. {@code OPTIONS /} or of the Iceberg REST catalog
+   * and the S3 Tables API, by the default CORS rule of the service.
+   *
+   * @param preflightController the controller; {@code null} to leave them to the routes, which answer no such request.
+   * @return this router.
+   */
+  LocalS3Router servicePreflight(CorsPreflightController preflightController) {
+    this.servicePreflightController = preflightController;
+    return this;
+  }
+
   @Override
   public Router route(Route rule) {
     return route(null, rule);
@@ -290,25 +314,29 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       return new OperationHandler(ConsoleController.operation(request.getMethod(), trimPath(request.getPath())),
           consoleController);
     }
+    if (isServicePreflight(request)) {
+      return new OperationHandler(SERVICE_PREFLIGHT_OPERATION, servicePreflightController::handleWithoutBucket);
+    }
     if (stsController != null && StsController.isStsRequest(request)) {
-      return matchSts(request);
+      return withCorsHeaders(request, matchSts(request));
     }
     if (kmsController != null && KmsController.isKmsRequest(request)) {
-      return matchKms(request);
+      return withCorsHeaders(request, matchKms(request));
     }
     if (icebergController != null && IcebergCatalogController.isIcebergRequest(request)) {
-      return matchIceberg(request);
+      return withCorsHeaders(request, matchIceberg(request));
     }
     // After the catalog, whose own paths a client may sign for s3tables too, and before the S3 routes, whose paths
     // this API shares: only the credential scope of the request tells the two apart.
     if (s3TablesController != null && S3TablesController.isS3TablesRequest(request)) {
-      return matchS3Tables(request);
+      return withCorsHeaders(request, matchS3Tables(request));
     }
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
         .orElseGet(() -> notFoundHandler() == null ? null
             : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
+    handler = asListDirectoryBuckets(request, handler);
 
     // A bucket that is served as a static website answers an unsigned read of a browser, which the S3 routes above
     // would answer with a listing, with an XML error, or, of a service that requires signed requests, not at all.
@@ -330,6 +358,24 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       }
     }
     return withCorsHeaders(request, handler);
+  }
+
+  /**
+   * The handler of {@code ListDirectoryBuckets}, if a request that the routes answer with {@code ListBuckets} is one.
+   * Both are a {@code GET /}, and a {@code ListDirectoryBuckets} without parameters has nothing of its own but the
+   * {@code s3express} service that the AWS SDKs sign it for, which a route can't declare. A {@code GET /} of a directory
+   * bucket addressed by its host is routed to {@code ListObjects} before, and left as it is.
+   */
+  private OperationHandler asListDirectoryBuckets(HttpRequest request, OperationHandler handler) {
+    if (handler == null || !"ListBuckets".equals(handler.operation())
+        || !"s3express".equals(SigV4Requests.signingService(request))) {
+      return handler;
+    }
+    return operations.entrySet().stream()
+        .filter(entry -> ListDirectoryBucketsController.OPERATION.equals(entry.getValue()))
+        .findFirst()
+        .map(entry -> new OperationHandler(entry.getValue(), entry.getKey().getHandler()))
+        .orElse(handler);
   }
 
   /**
@@ -570,6 +616,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
             .orElse(false)
         && request.header(HttpHeaderNames.AUTHORIZATION.toString()).isEmpty()
         && !Objects.toString(request.getUri(), "").contains("X-Amz-Algorithm=");
+  }
+
+  /**
+   * Whether a request is a CORS preflight that addresses no bucket, which the default CORS rule of the service answers:
+   * one of the service itself, e.g. {@code OPTIONS /}, or of the Iceberg REST catalog or the S3 Tables API, whose paths
+   * aren't buckets.
+   */
+  private boolean isServicePreflight(HttpRequest request) {
+    if (servicePreflightController == null || !isPreflight(request)) {
+      return false;
+    }
+    return (icebergController != null && IcebergCatalogController.isIcebergRequest(request))
+        || (s3TablesController != null && S3TablesController.isS3TablesRequest(request))
+        || bucketAndKey(request) == null;
   }
 
   private static boolean isPreflight(HttpRequest request) {

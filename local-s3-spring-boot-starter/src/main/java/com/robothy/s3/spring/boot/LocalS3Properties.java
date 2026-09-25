@@ -2,6 +2,7 @@ package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3Cors;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
@@ -90,6 +91,8 @@ public class LocalS3Properties {
 
   private final Website website = new Website();
 
+  private final Cors cors = new Cors();
+
   private final Devtools devtools = new Devtools();
 
   public boolean isEnabled() {
@@ -162,6 +165,10 @@ public class LocalS3Properties {
 
   public Website getWebsite() {
     return website;
+  }
+
+  public Cors getCors() {
+    return cors;
   }
 
   public boolean isCompositeMultipartEtags() {
@@ -567,6 +574,92 @@ public class LocalS3Properties {
 
     public void setErrorDocument(String errorDocument) {
       this.errorDocument = errorDocument;
+    }
+
+  }
+
+  /**
+   * The default CORS rule of LocalS3, which answers the cross-origin requests of browsers where the bucket has no CORS
+   * configuration of its own, and the requests that address no bucket, e.g. of the Iceberg REST catalog. It is off
+   * unless {@code local-s3.cors.allowed-origins} is set. An allowed origin, and {@code *} above all, lets its pages
+   * reach the data of the service from a browser, which is meant for local development.
+   */
+  public static class Cors {
+
+    /**
+     * The origins that are allowed, e.g. http://localhost:5173; each may contain one * wildcard, and * alone allows
+     * every origin. Empty turns the default rule off.
+     */
+    private List<String> allowedOrigins = new ArrayList<>();
+
+    /**
+     * The methods that are allowed, among GET, PUT, POST, DELETE and HEAD; empty for all of them.
+     */
+    private List<String> allowedMethods = new ArrayList<>();
+
+    /**
+     * The request headers that are allowed; empty for every header.
+     */
+    private List<String> allowedHeaders = new ArrayList<>();
+
+    /**
+     * The response headers that the pages may read; empty for the ones that the clients of a browser read, e.g. ETag.
+     */
+    private List<String> exposeHeaders = new ArrayList<>();
+
+    /**
+     * How long a browser may cache a preflight response; unset for the browser's default.
+     */
+    private Duration maxAge;
+
+    public List<String> getAllowedOrigins() {
+      return allowedOrigins;
+    }
+
+    public void setAllowedOrigins(List<String> allowedOrigins) {
+      this.allowedOrigins = allowedOrigins;
+    }
+
+    public List<String> getAllowedMethods() {
+      return allowedMethods;
+    }
+
+    public void setAllowedMethods(List<String> allowedMethods) {
+      this.allowedMethods = allowedMethods;
+    }
+
+    public List<String> getAllowedHeaders() {
+      return allowedHeaders;
+    }
+
+    public void setAllowedHeaders(List<String> allowedHeaders) {
+      this.allowedHeaders = allowedHeaders;
+    }
+
+    public List<String> getExposeHeaders() {
+      return exposeHeaders;
+    }
+
+    public void setExposeHeaders(List<String> exposeHeaders) {
+      this.exposeHeaders = exposeHeaders;
+    }
+
+    public Duration getMaxAge() {
+      return maxAge;
+    }
+
+    public void setMaxAge(Duration maxAge) {
+      this.maxAge = maxAge;
+    }
+
+    /**
+     * These properties as the default CORS rule of the service.
+     *
+     * @return the rule; {@linkplain LocalS3Cors#disabled()} without an allowed origin.
+     */
+    LocalS3Cors toLocalS3Cors() {
+      return new LocalS3Cors(allowedOrigins, allowedMethods, allowedHeaders, exposeHeaders,
+          maxAge == null ? null : Math.toIntExact(maxAge.toSeconds()));
     }
 
   }

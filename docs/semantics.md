@@ -12,6 +12,7 @@ Amazon S3 would refuse.
 - [Versioning](#versioning)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
 - [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
+- [CORS](#cors)
 - [Access control lists](#access-control-lists)
 - [Lifecycle configuration](#lifecycle-configuration)
 - [Object Lock](#object-lock)
@@ -218,6 +219,52 @@ the bucket allows `POST` from it and exposes those headers.
 
 Accepted but not applied, like the headers of `PutObject`: `acl`, `x-amz-storage-class` and the server-side
 encryption fields. They still have to be named by the policy.
+
+## CORS
+
+`PutBucketCors`, `GetBucketCors` and `DeleteBucketCors` manage the CORS configuration of a bucket, and LocalS3 applies
+it like Amazon S3: a preflight `OPTIONS` request is answered by the first rule that allows its origin, its
+`Access-Control-Request-Method` and all of its `Access-Control-Request-Headers`, and `403` if none does or the bucket
+has no configuration; the response of an actual request carries the `Access-Control-*` headers of the rule that allows
+it. Preflight requests are never signed, so they are answered without credentials.
+
+### The default CORS rule
+
+On a developer's machine, configuring every bucket before a page in a browser can reach it is busywork: a single page
+application that uploads with presigned URLs, DuckDB-WASM or a notebook reading data, a browser tool pointed at the
+Iceberg catalog under `/iceberg/v1`. A service can therefore have a **default CORS rule**, which is off by default:
+
+```java
+LocalS3.builder().defaultCors(cors -> cors.allowedOrigins("*")).build();
+```
+
+```shell
+LOCAL_S3_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+```properties
+local-s3.cors.allowed-origins=http://localhost:5173
+```
+
+It applies only where no bucket configuration does, so a bucket keeps the semantics of Amazon S3:
+
+| Request | Answered by |
+|---|---|
+| A bucket with a CORS configuration of its own | That configuration alone; a request that it doesn't allow isn't allowed by the default rule either. |
+| A bucket without one, or one that doesn't exist yet | The default rule. |
+| No bucket: `ListBuckets`, `OPTIONS /`, the Iceberg REST catalog, the S3 Tables API under `/s3tables` | The default rule. |
+
+Unless told otherwise, the rule allows `GET`, `PUT`, `POST`, `DELETE` and `HEAD`, every request header, and exposes the
+response headers that the clients of a browser read, e.g. `ETag` for a multipart upload and `x-amz-version-id`; the
+builder, the `LOCAL_S3_CORS_*` variables and the `local-s3.cors.*` properties narrow each of them, and set the max age
+of a preflight response. With `*` the responses carry `Access-Control-Allow-Origin: *`, so a page can't send
+credentials such as cookies; a listed origin is echoed back with `Access-Control-Allow-Credentials: true`.
+
+**The risk.** An allowed origin lets its pages read and write the data of the service from the browser of anyone who
+opens them, and `*` allows every web page, including one that a developer happens to visit while the service runs on
+`localhost`. That is usually what a local service is for, but on a service that other machines reach, or that holds
+data worth protecting, list the origins of your own pages rather than `*`, and require signed requests with
+credentials.
 
 ## Access control lists
 

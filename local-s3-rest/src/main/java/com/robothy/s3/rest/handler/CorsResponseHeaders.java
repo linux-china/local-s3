@@ -4,6 +4,8 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.CORSRule;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -14,7 +16,9 @@ import java.util.Optional;
 
 /**
  * Adds CORS headers to the responses of cross-origin requests, i.e. requests with an {@code Origin} header, by the
- * matching rule of the bucket's CORS configuration, so that browsers let the page read the responses.
+ * matching rule of the bucket's CORS configuration, so that browsers let the page read the responses. Where no bucket
+ * configuration applies, i.e. the bucket has none or the request addresses no bucket, the default CORS rule of the
+ * service applies, if it has one; see {@linkplain com.robothy.s3.rest.LocalS3Cors}.
  */
 final class CorsResponseHeaders {
 
@@ -22,8 +26,33 @@ final class CorsResponseHeaders {
 
   private final BucketService bucketService;
 
+  private final CORSConfiguration defaultConfiguration;
+
   CorsResponseHeaders(BucketService bucketService) {
+    this(bucketService, null);
+  }
+
+  /**
+   * Create the CORS headers of a service.
+   *
+   * @param bucketService reads the CORS configurations of the buckets.
+   * @param defaultConfiguration the default CORS rule of the service; {@code null} for none.
+   */
+  CorsResponseHeaders(BucketService bucketService, CORSConfiguration defaultConfiguration) {
     this.bucketService = Objects.requireNonNull(bucketService);
+    this.defaultConfiguration = defaultConfiguration;
+  }
+
+  /**
+   * The default CORS rule of a service, as a CORS configuration.
+   *
+   * @param serviceFactory the services of the service.
+   * @return the configuration; {@code null} if the service has no default rule, e.g. a router of handlers alone.
+   */
+  static CORSConfiguration defaultConfiguration(ServiceFactory serviceFactory) {
+    return serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class).cors().toCorsConfiguration()
+        : null;
   }
 
   /**
@@ -34,17 +63,21 @@ final class CorsResponseHeaders {
    */
   void apply(HttpRequest request, HttpResponse response) {
     Optional<String> origin = request.header(HttpHeaderNames.ORIGIN.toString());
-    String bucketName = bucketName(request);
-    if (origin.isEmpty() || bucketName == null) {
+    if (origin.isEmpty()) {
       return;
     }
-
+    String bucketName = bucketName(request);
     Optional<CORSConfiguration> configuration;
-    try {
-      configuration = bucketService.getBucketCors(bucketName);
-    } catch (LocalS3Exception e) {
-      // E.g. the bucket doesn't exist; the request handler reports it.
-      return;
+    if (bucketName == null) {
+      configuration = Optional.ofNullable(defaultConfiguration);
+    } else {
+      try {
+        configuration = bucketService.getBucketCors(bucketName).or(() -> Optional.ofNullable(defaultConfiguration));
+      } catch (LocalS3Exception e) {
+        // E.g. the bucket doesn't exist, which the request handler reports: the page reads the error by the default
+        // rule, if the service has one.
+        configuration = Optional.ofNullable(defaultConfiguration);
+      }
     }
     configuration.flatMap(config -> CorsRules.match(config, origin.get(), request.getMethod().name(), List.of()))
         .ifPresent(rule -> addHeaders(response, rule, origin.get(), List.of()));

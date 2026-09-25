@@ -157,6 +157,25 @@ class LocalS3AutoConfigurationTest {
     });
   }
 
+  @Test
+  void mapsTheCorsPropertiesToTheDefaultCorsRule() {
+    runner.withPropertyValues("local-s3.clients.enabled=false").run(context ->
+        assertFalse(context.getBean(LocalS3.class).getConfig().corsEnabled(), "The default CORS rule is off."));
+
+    runner.withPropertyValues(
+        "local-s3.clients.enabled=false",
+        "local-s3.cors.allowed-origins=http://localhost:5173",
+        "local-s3.cors.allowed-methods=get,put",
+        "local-s3.cors.max-age=50m"
+    ).run(context -> {
+      LocalS3Config config = context.getBean(LocalS3.class).getConfig();
+      assertTrue(config.corsEnabled());
+      assertEquals(List.of("http://localhost:5173"), config.cors().allowedOrigins());
+      assertEquals(List.of("GET", "PUT"), config.cors().allowedMethods());
+      assertEquals(3000, config.cors().maxAgeSeconds());
+    });
+  }
+
   /**
    * The data of an embedded service is set up for the application, and built again if it is lost, so its changes are
    * committed in the background rather than one by one.
