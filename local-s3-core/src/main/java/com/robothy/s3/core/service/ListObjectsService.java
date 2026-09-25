@@ -118,21 +118,21 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
    *
    * @param currentKey the key of the last item.
    * @param entries the entries after the last item; after its common prefix, if the last item is one.
-   * @return the key of the last item, or its common prefix; {@code null} if nothing is left to list.
+   * @return the key of the last item, or its common prefix; {@code null} if nothing is left to list, e.g. the keys
+   *     left are all of objects whose latest version is a delete marker, so that no empty page is announced.
    */
   static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadataRef>> entries,
           String effectivePrefix, String delimiter) {
 
     Optional<String> commonPrefixOpt = ListItemUtils.commonPrefix(currentKey, effectivePrefix, delimiter);
-    if (commonPrefixOpt.isEmpty()) {
-      return entries.hasNext() ? currentKey : null;
-    }
-
-    String commonPrefix = commonPrefixOpt.get();
+    String nextMarker = commonPrefixOpt.orElse(currentKey);
     while (entries.hasNext()) {
       Map.Entry<String, ObjectMetadataRef> entry = entries.next();
-      if (!entry.getKey().startsWith(commonPrefix) && !entry.getValue().isLatestDeleted()) {
-        return commonPrefix;
+      if (entry.getValue().isLatestDeleted()) {
+        continue;
+      }
+      if (commonPrefixOpt.isEmpty() || !entry.getKey().startsWith(commonPrefixOpt.get())) {
+        return nextMarker;
       }
     }
 

@@ -1,11 +1,13 @@
 package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
+import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
@@ -161,6 +163,62 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(List.of("z/"), secondPage.getCommonPrefixes());
     assertTrue(secondPage.getNextMarker().isEmpty());
     assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
+  }
+
+  /**
+   * A full page followed only by deleted objects is the last page, whether it ends at an object or a common prefix.
+   */
+  @org.junit.jupiter.api.Test
+  void notTruncatedWhenOnlyDeletedObjectsAreLeft() {
+    int[] visits = new int[1];
+    NavigableMap<String, ObjectMetadataRef> objects = new ConcurrentSkipListMap<>();
+    objects.put("a.txt", countingObject(visits, false));
+    objects.put("b.txt", countingObject(visits, false));
+    objects.put("c.txt", countingObject(visits, true));
+    objects.put("d/1", countingObject(visits, true));
+
+    ListObjectsAns endsAtObject = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 2);
+    assertEquals(List.of("a.txt", "b.txt"), endsAtObject.getObjects().stream().map(S3Object::getKey).toList());
+    assertTrue(endsAtObject.getNextMarker().isEmpty());
+    assertFalse(endsAtObject.isTruncated());
+
+    objects.put("e.txt", countingObject(visits, false));
+    ListObjectsAns truncated = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 2);
+    assertEquals("b.txt", truncated.getNextMarker().orElseThrow());
+    assertTrue(truncated.isTruncated());
+
+    objects.clear();
+    objects.put("a/1", countingObject(visits, false));
+    objects.put("a/2", countingObject(visits, false));
+    objects.put("b.txt", countingObject(visits, true));
+    ListObjectsAns endsAtPrefix = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 1);
+    assertEquals(List.of("a/"), endsAtPrefix.getCommonPrefixes());
+    assertTrue(endsAtPrefix.getNextMarker().isEmpty());
+    assertFalse(endsAtPrefix.isTruncated());
+  }
+
+  @MethodSource("localS3Services")
+  @ParameterizedTest
+  void notTruncatedWhenOnlyDeleteMarkersAreLeft(BucketService bucketService, ObjectService objectService) {
+    String bucketName = "trailing-delete-markers";
+    bucketService.createBucket(bucketName);
+    ByteArrayInputStream content = new ByteArrayInputStream("Hello".getBytes());
+    PutObjectOptions putObjectOptions = PutObjectOptions.builder().content(content).size(5).build();
+    for (String key : List.of("a", "b", "c", "d")) {
+      content.reset();
+      objectService.putObject(bucketName, key, putObjectOptions);
+    }
+    objectService.deleteObject(bucketName, "c");
+    objectService.deleteObject(bucketName, "d");
+
+    ListObjectsAns v1 = objectService.listObjects(bucketName, null, null, null, 2, null);
+    assertEquals(List.of("a", "b"), v1.getObjects().stream().map(S3Object::getKey).toList());
+    assertFalse(v1.isTruncated());
+
+    ListObjectsV2Ans v2 = objectService.listObjectsV2(bucketName, null, null, null, false, 2, null, null);
+    assertEquals(List.of("a", "b"), v2.getObjects().stream().map(S3Object::getKey).toList());
+    assertFalse(v2.isTruncated());
+    assertTrue(v2.getNextContinuationToken().isEmpty());
   }
 
   private static ObjectMetadataRef countingObject(int[] visits, boolean deleted) {
