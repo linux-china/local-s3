@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.util.ObjectKeys;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
@@ -10,7 +11,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
  */
 public class ListItemUtils {
 
-  private static final ConcurrentSkipListMap<String, ?> EMPTY_OBJECT_MAP = new ConcurrentSkipListMap<>();
+  private static final ConcurrentSkipListMap<String, ?> EMPTY_OBJECT_MAP = ObjectKeys.newMap();
 
   private static <T> ConcurrentSkipListMap<String, T> emptyItemMap() {
     //noinspection unchecked
@@ -34,7 +35,7 @@ public class ListItemUtils {
         return filteredByMarker;
     }
     String commonPrefix = commonPrefixOpt.get();
-    if (commonPrefix.compareTo(keyMarker) > 0) {
+    if (ObjectKeys.compare(commonPrefix, keyMarker) > 0) {
       return filteredByMarker;
     }
 
@@ -53,7 +54,7 @@ public class ListItemUtils {
 
     String firstKey = filteredByMarker.firstKey();
     String firstKeyCommonPrefix;
-    if (!firstKey.contains(delimiter) || (firstKeyCommonPrefix = calculateCommonPrefix(firstKey, delimiter)).compareTo(keyMarker) > 0) {
+    if (!firstKey.contains(delimiter) || ObjectKeys.compare(firstKeyCommonPrefix = calculateCommonPrefix(firstKey, delimiter), keyMarker) > 0) {
       return filteredByMarker;
     }
 
@@ -102,7 +103,7 @@ public class ListItemUtils {
   /**
    * The greatest key that is not greater than every key starting with {@code prefix}, e.g. the last key that a common
    * prefix rolls up, if any key starts with it. Unlike {@code floorKey(prefix + Character.MAX_VALUE)}, it doesn't miss
-   * the keys that continue the prefix with {@code Character.MAX_VALUE}.
+   * the keys that continue the prefix with a character that sorts after {@code Character.MAX_VALUE}.
    *
    * @param items the items, e.g. a view of the items that are listed.
    * @param prefix the prefix.
@@ -118,22 +119,12 @@ public class ListItemUtils {
   }
 
   /**
-   * The least string that is greater than every string starting with {@code prefix}: the prefix with its last
-   * character that isn't {@code Character.MAX_VALUE} incremented, and the characters after it dropped. Appending
-   * {@code Character.MAX_VALUE} to the prefix instead would miss the keys that continue the prefix with that character.
+   * The least key that sorts after every key starting with {@code prefix}, in the order of the keys that S3 lists.
    *
-   * @param prefix the prefix.
-   * @return the successor, or {@code null} if the prefix is empty or only {@code Character.MAX_VALUE}s, so that no
-   *     string is greater than all strings starting with it.
+   * @see ObjectKeys#prefixSuccessor(String)
    */
   static String prefixSuccessor(String prefix) {
-    for (int i = prefix.length() - 1; i >= 0; i--) {
-      char c = prefix.charAt(i);
-      if (c != Character.MAX_VALUE) {
-        return prefix.substring(0, i) + (char) (c + 1);
-      }
-    }
-    return null;
+    return ObjectKeys.prefixSuccessor(prefix);
   }
 
   public static String calculateCommonPrefix(String key, String delimiter) {

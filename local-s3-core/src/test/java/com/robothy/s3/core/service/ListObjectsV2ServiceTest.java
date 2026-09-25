@@ -214,6 +214,28 @@ class ListObjectsV2ServiceTest extends LocalS3ServiceTestBase {
     }
 
     /**
+     * Keys are listed in the order of their UTF-8 bytes, as S3 lists them: U+FFFD (EF BF BD) before a supplementary
+     * character such as U+1F600 (F0 9F 98 80), which UTF-16 order puts the other way around.
+     */
+    @MethodSource("localS3Services")
+    @ParameterizedTest
+    void listObjectsV2InUtf8Order(BucketService bucketService, ObjectService objectService) {
+        String bucket = prepareKeys(bucketService, objectService,
+                "a",
+                "\uFFFD",
+                "\uD83D\uDE00",
+                "dir/\uFFFD",
+                "dir/\uD83D\uDE00",
+                "dir0");
+        List<String> expected = List.of("a", "dir/\uFFFD", "dir/\uD83D\uDE00", "dir0", "\uFFFD", "\uD83D\uDE00");
+        assertEquals(expected, listAllKeys(objectService, bucket, null, null, 1000));
+        assertEquals(expected, listAllKeys(objectService, bucket, null, null, 1));
+        assertEquals(List.of("a", "dir/", "dir0", "\uFFFD", "\uD83D\uDE00"), listAllKeys(objectService, bucket, "/", null, 1));
+        ListObjectsV2Ans afterFffd = objectService.listObjectsV2(bucket, null, null, null, false, 1000, null, "\uFFFD");
+        assertEquals(List.of("\uD83D\uDE00"), afterFffd.getObjects().stream().map(S3Object::getKey).toList());
+    }
+
+    /**
      * The keys and common prefixes of every page, following the continuation tokens to the end.
      */
     private static List<String> listAllKeys(ObjectService objectService, String bucket, String delimiter, String prefix,

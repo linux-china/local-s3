@@ -9,6 +9,7 @@ import com.robothy.s3.core.model.BucketObjectLockConfiguration;
 import com.robothy.s3.core.model.IdentifiedBucketConfiguration;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.util.BucketEncryptionConfigurations;
+import com.robothy.s3.core.util.ObjectKeys;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
@@ -19,7 +20,6 @@ import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -52,7 +52,7 @@ public class BucketMetadata {
    * heap, see {@linkplain ObjectMetadataRef}.
    */
   @JsonDeserialize(converter = ObjectMetadataMapConverter.class)
-  private NavigableMap<String, ObjectMetadataRef> objectMap = new ConcurrentSkipListMap<>();
+  private NavigableMap<String, ObjectMetadataRef> objectMap = ObjectKeys.newMap();
 
   /**
    * The greatest ID that the generator produced for anything this bucket references, e.g. a version ID or the ID of a
@@ -102,7 +102,7 @@ public class BucketMetadata {
    * key - object key.
    */
   @JsonDeserialize(converter = UploadMetadataMapConverter.class)
-  private NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new ConcurrentSkipListMap<>();
+  private NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = ObjectKeys.newMap();
 
   /**
    * null - default, user not set versioning.

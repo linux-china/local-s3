@@ -2,6 +2,7 @@ package com.robothy.s3.core.converters.deserializer;
 
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
+import com.robothy.s3.core.util.ObjectKeys;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 import tools.jackson.databind.util.StdConverter;
@@ -19,7 +20,7 @@ public class ObjectMetadataMapConverter
 
   @Override
   public ConcurrentSkipListMap<String, ObjectMetadataRef> convert(Map<String, ObjectMetadata> value) {
-    ConcurrentSkipListMap<String, ObjectMetadataRef> refs = new ConcurrentSkipListMap<>();
+    ConcurrentSkipListMap<String, ObjectMetadataRef> refs = ObjectKeys.newMap();
     value.forEach((key, metadata) -> refs.put(key, ObjectMetadataRef.of(metadata)));
     return refs;
   }

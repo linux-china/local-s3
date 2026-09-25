@@ -2,10 +2,10 @@ package com.robothy.s3.core.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
+import com.robothy.s3.core.util.ObjectKeys;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
 import org.junit.jupiter.api.Test;
 
 class ListItemUtilsTest {
@@ -13,23 +13,23 @@ class ListItemUtilsTest {
   @Test
   void filterByPrefix() {
     NavigableMap<String, ObjectMetadata>
-        filtered = ListItemUtils.filterByPrefix(new ConcurrentSkipListMap<>(Map.of()), "prefix");
+        filtered = ListItemUtils.filterByPrefix(ObjectKeys.newMap(Map.of()), "prefix");
     assertEquals(0, filtered.size());
 
     ObjectMetadata object = new ObjectMetadata();
-    NavigableMap<String, ObjectMetadata> filtered1 = ListItemUtils.filterByPrefix(new ConcurrentSkipListMap<>(
+    NavigableMap<String, ObjectMetadata> filtered1 = ListItemUtils.filterByPrefix(ObjectKeys.newMap(
         Map.of("prefix", object, "prefiu", object, "prefix1", object)), "prefix");
     assertEquals(2, filtered1.size());
 
     NavigableMap<String, ObjectMetadata> filtered2 =
-        ListItemUtils.filterByPrefix(new ConcurrentSkipListMap<>(Map.of("prefix", object)), null);
+        ListItemUtils.filterByPrefix(ObjectKeys.newMap(Map.of("prefix", object)), null);
     assertEquals(1, filtered2.size());
 
-    NavigableMap<String, ObjectMetadata> filtered3 = ListItemUtils.filterByPrefix(new ConcurrentSkipListMap<>(Map.of(
+    NavigableMap<String, ObjectMetadata> filtered3 = ListItemUtils.filterByPrefix(ObjectKeys.newMap(Map.of(
         "prefix1", object, "prefix2", object, "prefiy", object)), "prefix");
     assertEquals(2, filtered3.size());
 
-    NavigableMap<String, ObjectMetadata> filtered4 = ListItemUtils.filterByPrefix(new ConcurrentSkipListMap<>(Map.of(
+    NavigableMap<String, ObjectMetadata> filtered4 = ListItemUtils.filterByPrefix(ObjectKeys.newMap(Map.of(
         "prefiy", object, "prefiz", object)), "prefix");
     assertEquals(0, filtered4.size());
   }
@@ -40,7 +40,7 @@ class ListItemUtilsTest {
   @Test
   void filterByPrefixKeepsKeysThatContinueThePrefixWithTheMaxCharacter() {
     ObjectMetadata object = new ObjectMetadata();
-    NavigableMap<String, ObjectMetadata> items = new ConcurrentSkipListMap<>(Map.of(
+    NavigableMap<String, ObjectMetadata> items = ObjectKeys.newMap(Map.of(
         "a", object, "a\uFFFF", object, "a\uFFFFb", object, "b", object));
     assertEquals(List.of("a", "a\uFFFF", "a\uFFFFb"),
         List.copyOf(ListItemUtils.filterByPrefix(items, "a").keySet()));
@@ -51,13 +51,13 @@ class ListItemUtilsTest {
   @Test
   void lastKeyNotAfterPrefix() {
     ObjectMetadata object = new ObjectMetadata();
-    NavigableMap<String, ObjectMetadata> items = new ConcurrentSkipListMap<>(Map.of(
+    NavigableMap<String, ObjectMetadata> items = ObjectKeys.newMap(Map.of(
         "a", object, "dir/a", object, "dir/\uFFFFz", object, "dir0", object));
     assertEquals("dir/\uFFFFz", ListItemUtils.lastKeyNotAfterPrefix(items, "dir/"));
     assertEquals("a", ListItemUtils.lastKeyNotAfterPrefix(items, "b"));
     assertNull(ListItemUtils.lastKeyNotAfterPrefix(items, "0"));
     assertEquals("dir0", ListItemUtils.lastKeyNotAfterPrefix(items, ""));
-    assertNull(ListItemUtils.lastKeyNotAfterPrefix(new ConcurrentSkipListMap<String, ObjectMetadata>(), ""));
+    assertNull(ListItemUtils.lastKeyNotAfterPrefix(ObjectKeys.<ObjectMetadata>newMap(), ""));
     NavigableMap<String, ObjectMetadata> view = items.headMap("dir/a", true);
     assertEquals("dir/a", ListItemUtils.lastKeyNotAfterPrefix(view, "dir/"));
   }
@@ -65,8 +65,12 @@ class ListItemUtilsTest {
   @Test
   void prefixSuccessor() {
     assertEquals("dir0", ListItemUtils.prefixSuccessor("dir/"));
-    assertEquals("dis", ListItemUtils.prefixSuccessor("dir\uFFFF\uFFFF"));
-    assertNull(ListItemUtils.prefixSuccessor("\uFFFF"));
+    // U+FFFF is followed by the supplementary characters, whose surrogates sort after it.
+    assertEquals("dir\uFFFF\uD800", ListItemUtils.prefixSuccessor("dir\uFFFF\uFFFF"));
+    assertEquals("dir\uE000", ListItemUtils.prefixSuccessor("dir\uD7FF"));
+    assertEquals("dis", ListItemUtils.prefixSuccessor("dir\uDFFF\uDFFF"));
+    assertEquals("\uDC00", ListItemUtils.prefixSuccessor("\uDBFF\uDFFF"));
+    assertNull(ListItemUtils.prefixSuccessor("\uDFFF"));
     assertNull(ListItemUtils.prefixSuccessor(""));
   }
 
@@ -77,7 +81,7 @@ class ListItemUtilsTest {
   @Test
   void skipPrefix() {
     ObjectMetadata object = new ObjectMetadata();
-    NavigableMap<String, ObjectMetadata> items = new ConcurrentSkipListMap<>(Map.of(
+    NavigableMap<String, ObjectMetadata> items = ObjectKeys.newMap(Map.of(
         "dir/a", object, "dir/\uFFFF", object, "dir/\uFFFF\uFFFFz", object, "dir0", object, "e", object));
 
     assertEquals(List.of("dir0", "e"), List.copyOf(ListItemUtils.skipPrefix(items, "dir/").keySet()));
@@ -85,6 +89,19 @@ class ListItemUtilsTest {
     NavigableMap<String, ObjectMetadata> view = items.subMap("dir/", true, "dir/\uFFFF", true);
     assertTrue(ListItemUtils.skipPrefix(view, "dir/").isEmpty());
     assertEquals(List.of("dir/\uFFFF"), List.copyOf(ListItemUtils.skipPrefix(view, "dir/a").keySet()));
+  }
+
+  /**
+   * Skipping a prefix skips the keys that continue it with a supplementary character, which sort after U+FFFF.
+   */
+  @Test
+  void skipPrefixWithSupplementaryCharacters() {
+    ObjectMetadata object = new ObjectMetadata();
+    NavigableMap<String, ObjectMetadata> items = ObjectKeys.newMap(Map.of(
+        "dir/\uFFFD", object, "dir/\uD83D\uDE00", object, "dir/\uDBFF\uDFFF", object, "dir0", object));
+    assertEquals(List.of("dir0"), List.copyOf(ListItemUtils.skipPrefix(items, "dir/").keySet()));
+    assertEquals(List.of("dir/\uD83D\uDE00", "dir/\uDBFF\uDFFF", "dir0"),
+        List.copyOf(ListItemUtils.skipPrefix(items, "dir/\uFFFD").keySet()));
   }
 
 }
