@@ -6,6 +6,7 @@ import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -13,6 +14,7 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
+import io.netty.util.internal.PlatformDependent;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.Set;
@@ -108,6 +110,10 @@ final class NettyServer {
             this.serverSocketChannel = new ServerBootstrap().group(parentGroup, childGroup)
                     .handler(new LoggingHandler(LogLevel.DEBUG))
                     .channel(NioServerSocketChannel.class)
+                    // Rebind a fixed port right after a stop, e.g. when Spring Boot DevTools restarts the context in
+                    // the same JVM, while the connections that the stop closed are still in TIME_WAIT. Not on Windows,
+                    // where SO_REUSEADDR would let a second socket bind a port that is in use.
+                    .option(ChannelOption.SO_REUSEADDR, !PlatformDependent.isWindows())
                     .childHandler(new LocalS3ServerInitializer(config, executor, router, xmlMapper,
                             requestBodyFileDirectory, inFlightRequests, requestRecorder))
                     .bind(config.bindHost(), port)

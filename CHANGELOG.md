@@ -357,6 +357,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ A service binds its port with `SO_REUSEADDR` (except on Windows), so that a fixed port, e.g. the `29090` of the
+  Spring Boot starter, is bound again right after a stop while the connections that the stop closed are still in
+  `TIME_WAIT`, e.g. when Spring Boot DevTools restarts the application context in the same JVM. A test of the starter
+  closes and creates the context again on the same port and `PERSISTENCE` data directory, and checks that the
+  metadata store is released.
 + `CreateBucket` of a bucket that already exists answers like Amazon S3 answers the owner of the bucket, which every
   client of LocalS3 is: `200 OK` in us-east-1, leaving the bucket and its objects as they are, and
   `409 BucketAlreadyOwnedByYou` in any other region. It answered `409 BucketAlreadyExists`, which code that creates a
