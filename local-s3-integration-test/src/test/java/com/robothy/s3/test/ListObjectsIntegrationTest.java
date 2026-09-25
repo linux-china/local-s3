@@ -295,6 +295,30 @@ public class ListObjectsIntegrationTest {
     assertEquals("dir1/key2", objectListing1.contents().get(0).key());
   }
 
+  @Test
+  @LocalS3
+  @DisplayName("An empty delimiter means no grouping for ListObjects, ListObjectsV2 and ListObjectVersions")
+  void testEmptyDelimiter(S3Client s3) {
+    String bucketName = prepareKeys(s3, "bar", "baz", "cab", "dir/foo");
+
+    ListObjectsResponse v1 = s3.listObjects(req -> req.bucket(bucketName).delimiter(""));
+    assertEquals(4, v1.contents().size());
+    assertEquals(0, v1.commonPrefixes().size());
+    assertNull(v1.delimiter());
+
+    ListObjectsV2Response v2 = s3.listObjectsV2(req -> req.bucket(bucketName).delimiter(""));
+    assertEquals(4, v2.contents().size());
+    assertEquals(0, v2.commonPrefixes().size());
+    assertEquals(4, v2.keyCount());
+    assertNull(v2.delimiter());
+
+    ListObjectVersionsResponse versions = s3.listObjectVersions(req -> req.bucket(bucketName).delimiter(""));
+    assertEquals(4, versions.versions().size());
+    assertEquals(0, versions.commonPrefixes().size());
+    // ListVersionsResult writes the elements without a value as empty ones.
+    assertEquals("", versions.delimiter());
+  }
+
   private String prepareKeys(S3Client s3, String... keys) {
     String bucket = "test-list-objects" + System.currentTimeMillis();
     s3.createBucket(req -> req.bucket(bucket));

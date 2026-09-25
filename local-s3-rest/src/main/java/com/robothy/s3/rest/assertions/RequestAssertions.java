@@ -41,13 +41,14 @@ public class RequestAssertions {
   }
 
   /**
-   * Assert that user provided delimiter is a character.
+   * Fetch the user provided delimiter. An empty delimiter ({@code delimiter=}) means "no grouping"
+   * in S3, so it is normalized to empty.
    *
    * @param request HTTP request.
-   * @return fetched character or null.
+   * @return fetched delimiter, or empty if absent or blank.
    */
   public static Optional<String> assertDelimiterIsValid(HttpRequest request) {
-    return request.parameter("delimiter");
+    return request.parameter("delimiter").filter(delimiter -> !delimiter.isEmpty());
   }
 
   /**
