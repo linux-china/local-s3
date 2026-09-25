@@ -49,6 +49,20 @@ your own user instead, and keep the ownership of the directory, start the contai
 >
 > The warning is logged by `com.robothy.s3.rest.LocalS3`; a service that is meant to be open can silence it there.
 
+> **Credentials don't protect a catalog that vends them.** The [Iceberg REST catalog](data-tools.md#the-built-in-iceberg-rest-catalog)
+> answers anonymous requests, and with credential vending on, which is its default, it hands the key pair of the
+> service to whoever loads a table, and signs any S3 request at `/iceberg/v1/aws/s3/sign`. `GET /iceberg/v1/config`
+> carries the endpoint, the region and the path-style addressing alone, but anyone who reaches the port may create a
+> table and load it. A service with credentials, a catalog that vends them and an address other than a loopback one
+> says so when it starts:
+>
+> ```
+> !! The Iceberg REST catalog on 0.0.0.0:29090 answers anonymous requests and vends the credentials of this service: everyone who reaches this port can obtain the secret key from a loaded table, and have any S3 request signed at /iceberg/v1/aws/s3/sign.
+> ```
+>
+> On a shared network, turn credential vending off, `icebergCatalog(iceberg -> iceberg.credentialVending(false))`, and
+> configure the engines with the keys by hand, or publish the port to the loopback address of the host alone.
+
 `local-s3-standalone/docker-compose.yaml` starts both images side by side, on ports `29090` and `39090`.
 
 ## Executable jar

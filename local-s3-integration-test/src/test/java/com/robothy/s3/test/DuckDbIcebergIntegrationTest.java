@@ -185,7 +185,7 @@ class DuckDbIcebergIntegrationTest {
 
   /**
    * DuckDB is never given an S3 secret here. It reaches the storage because the catalog vends it: {@code GET
-   * /v1/config} and every loaded table carry the endpoint, the path-style addressing and the credentials of LocalS3,
+   * /v1/config} carries the endpoint and the path-style addressing, and every loaded table the credentials of LocalS3,
    * out of which DuckDB makes an S3 secret of its own, scoped to the location of the table.
    */
   @Test

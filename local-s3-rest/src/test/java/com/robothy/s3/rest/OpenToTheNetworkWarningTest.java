@@ -65,6 +65,30 @@ class OpenToTheNetworkWarningTest {
     assertFalse(log.contains(WARNING), log);
   }
 
+  @Test
+  void aCatalogThatVendsCredentialsOnAWildcardBindHostWarns() {
+    String log = logOf(LocalS3.create(LocalS3.builder().bindHost("0.0.0.0").port(29090).credentials("ak", "sk")
+        .icebergCatalog(true).buildConfig())::warnIfCatalogVendsCredentialsToTheNetwork);
+
+    assertTrue(log.contains("WARN"), log);
+    assertTrue(log.contains("0.0.0.0:29090"), log);
+    assertTrue(log.contains("vends the credentials of this service"), log);
+    assertTrue(log.contains("credentialVending(false)"), "The warning says how to turn it off: " + log);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"no-vending", "no-credentials", "loopback"})
+  void aCatalogThatCannotLeakCredentialsToTheNetworkDoesNotWarn(String setup) {
+    LocalS3Builder builder = LocalS3.builder().bindHost("loopback".equals(setup) ? "127.0.0.1" : "0.0.0.0");
+    if (!"no-credentials".equals(setup)) {
+      builder.credentials("ak", "sk");
+    }
+    builder.icebergCatalog(iceberg -> iceberg.credentialVending(!"no-vending".equals(setup)));
+    String log = logOf(LocalS3.create(builder.buildConfig())::warnIfCatalogVendsCredentialsToTheNetwork);
+
+    assertFalse(log.contains("vends the credentials"), log);
+  }
+
   /**
    * The defaults of an embedded service, which is what the tests of an application start: no credentials, and the
    * loopback bind host. Starting one doesn't warn, so the warning doesn't turn into noise that is scrolled past.

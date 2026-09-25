@@ -64,8 +64,15 @@ class IcebergCatalogEndpointTest {
       // The endpoint is the host the request arrived on, so the client is told a name that works for it.
       assertEquals("http://127.0.0.1:" + localS3.getPort(), defaults.path("s3.endpoint").asString());
       assertEquals("true", defaults.path("s3.path-style-access").asString());
-      assertEquals("an-access-key", defaults.path("s3.access-key-id").asString());
-      assertEquals("a-secret-key", defaults.path("s3.secret-access-key").asString());
+      // The catalog answers anonymous requests, so the keys are vended with a loaded table alone.
+      assertFalse(defaults.has("s3.access-key-id"), defaults.toString());
+      assertFalse(defaults.has("s3.secret-access-key"), defaults.toString());
+      post(localS3, "/iceberg/v1/namespaces", """
+          {"namespace":["db"],"properties":{}}""");
+      ObjectNode created = IcebergJson.read(post(localS3, "/iceberg/v1/namespaces/db/tables", """
+          {"name":"orders","schema":%s}""".formatted(SCHEMA)).body());
+      assertEquals("an-access-key", created.path("config").path("s3.access-key-id").asString());
+      assertEquals("a-secret-key", created.path("config").path("s3.secret-access-key").asString());
 
       // The warehouse bucket is created with the service, so a table can be created without preparing anything.
       assertEquals("warehouse", localS3.getS3Manager().bucketService().getBucket("warehouse").getName());

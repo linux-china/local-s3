@@ -252,7 +252,8 @@ catalog = RestCatalog("local", uri="http://localhost:29090/iceberg")
 
 The `iceberg` extension of DuckDB attaches a REST catalog as a database and writes to it as well as reads from it,
 which is the shortest path from an IDE to a lakehouse table. Against the built-in catalog it takes one statement and
-**no S3 secret**: the endpoint, the path-style addressing and the credentials are vended by the catalog, so DuckDB is
+**no S3 secret**: the endpoint and the path-style addressing are vended by `GET /v1/config`, and the credentials by
+every loaded table, so DuckDB is
 never told where the storage is — nor that it speaks plain HTTP, which is what the `USE_SSL false` of a hand-written
 secret is for.
 

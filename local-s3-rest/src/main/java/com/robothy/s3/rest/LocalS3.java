@@ -210,6 +210,7 @@ public class LocalS3 implements AutoCloseable {
             logCertificate(config.tls());
         }
         warnIfOpenToTheNetwork();
+        warnIfCatalogVendsCredentialsToTheNetwork();
         // LocalS3Container of local-s3-testcontainers, including released versions, waits for this exact line.
         log.info("LocalS3 started.");
     }
@@ -239,6 +240,30 @@ public class LocalS3 implements AutoCloseable {
                 REST catalog answer anonymous requests.
                 !! Set LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRET_ACCESS_KEY, or LocalS3Builder.credentials(...), to require \
                 signed requests; bind 127.0.0.1 to serve this machine alone.""", config.bindHost(), port);
+    }
+
+    /**
+     * Warn that the Iceberg REST catalog hands the credentials of the service to whoever asks, which a catalog does
+     * that vends credentials on a service that has them and is reachable from other machines: the catalog answers
+     * anonymous requests, a loaded table carries the access key and the secret key, and the remote signing routes sign
+     * any S3 request with them. Requiring signed requests keeps out no one who reaches the catalog.
+     *
+     * <p>{@code GET /v1/config} carries no keys, but anyone may create a table and load it. Turning credential vending
+     * off, or binding a loopback address, turns the warning off; the logger of this class silences it.
+     *
+     * <p>Package-private for the same reason as {@linkplain #warnIfOpenToTheNetwork()}.
+     */
+    void warnIfCatalogVendsCredentialsToTheNetwork() {
+        if (!config.authenticationEnabled() || !config.icebergCatalogEnabled()
+                || !config.icebergCatalog().credentialVending() || !config.reachableFromOtherHosts()) {
+            return;
+        }
+        log.warn("""
+                !! The Iceberg REST catalog on {}:{} answers anonymous requests and vends the credentials of this \
+                service: everyone who reaches this port can obtain the secret key from a loaded table, and have any \
+                S3 request signed at /iceberg/v1/aws/s3/sign.
+                !! Turn credential vending off, icebergCatalog(iceberg -> iceberg.credentialVending(false)), or bind \
+                127.0.0.1 to serve this machine alone.""", config.bindHost(), port);
     }
 
     /**

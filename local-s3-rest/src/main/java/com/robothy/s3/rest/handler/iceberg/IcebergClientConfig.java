@@ -16,8 +16,8 @@ import tools.jackson.databind.node.ObjectNode;
  * The settings that the Iceberg catalog hands its clients: where LocalS3 is, and the credentials to reach it with.
  *
  * <p>This is the <em>credential vending</em> of the REST catalog. An engine that is given nothing but the catalog URI
- * asks {@code GET /v1/config} when it starts and reads the {@code config} of every table it loads, and both of them
- * answer with the {@code s3.*} properties of this service. So a Spark, Trino or PyIceberg configured with one line
+ * asks {@code GET /v1/config} when it starts, which answers where the storage is, and reads the {@code config} of
+ * every table it loads, which answers the keys to it as well. So a Spark, Trino or PyIceberg configured with one line
  * reaches the storage as well:
  *
  * <pre>{@code
@@ -98,8 +98,11 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    *
    * <p>{@code overrides} wins over what the client was configured with, and carries the warehouse: the client is
    * talking to this catalog, so this catalog says where its tables live. {@code defaults} is what the client falls
-   * back to, and carries the S3 settings, so that a client that was configured with its own endpoint or credentials
-   * keeps them.
+   * back to, and carries the S3 settings, so that a client that was configured with its own endpoint keeps it.
+   *
+   * <p>The settings carry no keys. The catalog answers anonymous requests, and {@code /v1/config} is the first thing
+   * anyone who finds the port asks, so a secret key in its answer is a secret key handed to the network. The keys go
+   * out with a loaded table alone, whose {@code config} is what the {@code FileIO} of the client reads them from.
    *
    * @param request the request, whose {@code Host} the endpoint is taken from.
    * @param warehouse the warehouse location of the catalog.
@@ -138,7 +141,10 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       overrides.put("prefix", prefix);
     }
     ObjectNode response = IcebergJson.newObject();
-    response.set("defaults", IcebergJson.fromStringMap(tableConfig(request)));
+    Map<String, String> defaults = new LinkedHashMap<>(tableConfig(request));
+    defaults.remove("s3.access-key-id");
+    defaults.remove("s3.secret-access-key");
+    response.set("defaults", IcebergJson.fromStringMap(defaults));
     response.set("overrides", overrides);
     ArrayNode endpoints = IcebergJson.newArray();
     ENDPOINTS.forEach(endpoints::add);
