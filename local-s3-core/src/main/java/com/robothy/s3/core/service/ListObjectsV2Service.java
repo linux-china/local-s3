@@ -42,7 +42,7 @@ public interface ListObjectsV2Service extends ListObjectsService {
           String nextContinuationToken = ContinuationTokenUtils.encode(
               calculateNextContinuationToken(listObjectsAns.getNextMarker().orElse(null), bucketMetadata,
                   Objects.toString(prefix, ""), delimiter));
-          ListObjectsService.encodeIfNeeded(listObjectsAns, encodingType);
+          ListObjectsService.encodeIfNeeded(listObjectsAns, encodingType, true);
           ListObjectsV2Ans listObjectsV2Ans = ListObjectsV2Ans.builder()
               .continuationToken(continuationToken)
               .delimiter(listObjectsAns.getDelimiter())

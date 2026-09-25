@@ -40,6 +40,11 @@ class UrlEncodingTypeIntegrationTest {
     assertTrue(listObjects.contains("<Key>asdf%2Bb</Key>"), listObjects);
     assertTrue(listObjects.contains("<Key>%C3%A9~%2A</Key>"), listObjects);
 
+    // ListObjects (v1) leaves its own Prefix unencoded, as Amazon S3 does; ListObjectsV2 below encodes it.
+    String listObjectsWithPrefix = get(endpoint, "/encoding?encoding-type=url&prefix=city%3DNew%20York/");
+    assertTrue(listObjectsWithPrefix.contains("<Prefix>city=New York/</Prefix>"), listObjectsWithPrefix);
+    assertTrue(listObjectsWithPrefix.contains("<Key>city%3DNew%20York/a.parquet</Key>"), listObjectsWithPrefix);
+
     String listObjectsV2 = get(endpoint, "/encoding?list-type=2&encoding-type=url&prefix=city%3DNew%20York/");
     assertTrue(listObjectsV2.contains("<Key>city%3DNew%20York/a.parquet</Key>"), listObjectsV2);
     assertTrue(listObjectsV2.contains("<Prefix>city%3DNew%20York/</Prefix>"), listObjectsV2);

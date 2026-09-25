@@ -113,6 +113,11 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(0, listObjectsAns2.getObjects().size());
     assertEquals(1, listObjectsAns2.getCommonPrefixes().size());
     assertEquals("dir1%40/", listObjectsAns2.getCommonPrefixes().get(0));
+
+    // Like Amazon S3, ListObjects (v1) encodes the keys and common prefixes, but not the Prefix itself.
+    ListObjectsAns listObjectsAns3 = objectService.listObjects(bucketName, "/", "url", null, 2, "dir1@");
+    assertEquals("dir1@", listObjectsAns3.getPrefix());
+    assertEquals("dir1%40/", listObjectsAns3.getCommonPrefixes().get(0));
   }
 
 

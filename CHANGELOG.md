@@ -436,6 +436,9 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   which a client that decodes by RFC 3986, e.g. of Python or Rust, read as a plus, so that it asked for a key that
   doesn't exist, e.g. a Hive partition `city=New York`. The AWS SDK for Java decodes both. `ListObjectVersions`
   encodes its prefix, delimiter, key markers and common prefixes too, and no longer encodes the `/` of a key.
++ `ListObjects` (v1) with `encoding-type=url` leaves its `Prefix` unencoded, as Amazon S3 does, since botocore decodes
+  only its delimiter, markers and keys: boto3 and the AWS CLI read a prefix such as `\n` back as it was sent.
+  `ListObjectsV2` still encodes it.
 + Error codes and details that differed from the ones of Amazon S3, which tests that assert the type of an exception
   tell apart; ceph/s3-tests pass 29 more tests:
   + `HeadObject` and `GetObject` of a key whose current version is a delete marker answer `404 NoSuchKey` with

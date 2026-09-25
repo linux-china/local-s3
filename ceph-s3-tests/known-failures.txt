@@ -5,7 +5,6 @@
 # Amazon S3, and `divergence`, or a test without a category, is to be fixed.
 test_s3.py::test_block_public_object_canned_acls  # out of scope: LocalS3 stores the public access block without enforcing it, like ACLs, so a public-read PutObject is not denied (403)
 test_s3.py::test_bucket_get_location  # consistent with AWS: GetBucketLocation of a us-east-1 bucket is an empty LocationConstraint on Amazon S3; the test, with api_name us-east-1, expects "us-east-1"
-test_s3.py::test_bucket_list_prefix_unreadable  # divergence: ListObjects (v1) with encoding-type=url URL-encodes the top-level Prefix ("%0A"); botocore decodes only Delimiter, Marker and NextMarker of v1, as Amazon S3 leaves Prefix unencoded there
 test_s3.py::test_bucket_recreate_new_acl  # consistent with AWS: recreating an owned bucket in us-east-1 is 200 on Amazon S3; the test expects the 409 BucketAlreadyExists of RGW
 test_s3.py::test_bucket_recreate_overwrite_acl  # consistent with AWS: recreating an owned bucket in us-east-1 is 200 on Amazon S3; the test expects the 409 BucketAlreadyExists of RGW
 test_s3.py::test_copy_part_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]  # consistent with AWS: UploadPart to an SSE-C upload with another key than the upload's is 403 AccessDenied, see docs/semantics.md; the test expects the 400 of RGW

@@ -45,7 +45,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       listObjectsAns.setDelimiter(delimiter);
       listObjectsAns.setMarker(Objects.isNull(marker) ? "" : marker);
       listObjectsAns.setPrefix(effectivePrefix);
-      encodeIfNeeded(listObjectsAns, encodingType);
+      // Amazon S3 leaves the Prefix of ListObjects (v1) unencoded, and botocore decodes only its Delimiter, Marker,
+      // NextMarker and keys; an encoded Prefix, e.g. "%0A" for "\n", would reach a boto3 client as it was sent.
+      encodeIfNeeded(listObjectsAns, encodingType, false);
       return listObjectsAns;
     });
   }
@@ -152,7 +154,12 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     return object;
   }
 
-  static void encodeIfNeeded(ListObjectsAns listObjectsAns, String encodingType) {
+  /**
+   * Encode the keys of a listing if {@code encodingType} asks for it.
+   *
+   * @param encodePrefix whether the Prefix is encoded too: it is by ListObjectsV2, and not by ListObjects (v1).
+   */
+  static void encodeIfNeeded(ListObjectsAns listObjectsAns, String encodingType, boolean encodePrefix) {
     if (Objects.isNull(encodingType)) {
       return;
     }
@@ -169,7 +176,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       encodedPrefixes.add(S3ObjectUtils.urlEncodeEscapeSlash(commonPrefix)));
     listObjectsAns.setCommonPrefixes(encodedPrefixes);
     listObjectsAns.setDelimiter(S3ObjectUtils.urlEncodeEscapeSlash(listObjectsAns.getDelimiter()));
-    listObjectsAns.setPrefix(S3ObjectUtils.urlEncodeEscapeSlash(listObjectsAns.getPrefix()));
+    if (encodePrefix) {
+      listObjectsAns.setPrefix(S3ObjectUtils.urlEncodeEscapeSlash(listObjectsAns.getPrefix()));
+    }
     listObjectsAns.setMarker(S3ObjectUtils.urlEncodeEscapeSlash(listObjectsAns.getMarker()));
     listObjectsAns.setNextMarker(S3ObjectUtils.urlEncodeEscapeSlash(listObjectsAns.getNextMarker().orElse(null)));
   }
