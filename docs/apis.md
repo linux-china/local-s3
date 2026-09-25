@@ -16,9 +16,12 @@ versioning, see [semantics.md](semantics.md).
 + CreateSession
 + CompleteMultipartUpload
 + DeleteBucket
++ DeleteBucketAnalyticsConfiguration
 + DeleteBucketCors
 + DeleteBucketEncryption
++ DeleteBucketInventoryConfiguration
 + DeleteBucketLifecycle
++ DeleteBucketMetricsConfiguration
 + DeleteBucketOwnershipControls
 + DeleteBucketPolicy
 + DeleteBucketReplication
@@ -37,10 +40,13 @@ versioning, see [semantics.md](semantics.md).
 + GetObjectRetention
 + GetBucketAccelerateConfiguration
 + GetBucketAcl
++ GetBucketAnalyticsConfiguration
 + GetBucketCors
 + GetBucketEncryption
++ GetBucketInventoryConfiguration
 + GetBucketLifecycleConfiguration
 + GetBucketLogging
++ GetBucketMetricsConfiguration
 + GetBucketNotificationConfiguration
 + GetBucketOwnershipControls
 + GetBucketPolicy
@@ -53,6 +59,9 @@ versioning, see [semantics.md](semantics.md).
 + GetBucketLocation
 + HeadBucket
 + HeadObject
++ ListBucketAnalyticsConfigurations
++ ListBucketInventoryConfigurations
++ ListBucketMetricsConfigurations
 + ListBuckets
 + ListObjects
 + ListObjectsV2
@@ -61,10 +70,13 @@ versioning, see [semantics.md](semantics.md).
 + ListParts
 + PutBucketAccelerateConfiguration
 + PutBucketAcl
++ PutBucketAnalyticsConfiguration
 + PutBucketCors
 + PutBucketEncryption
++ PutBucketInventoryConfiguration
 + PutBucketLifecycleConfiguration
 + PutBucketLogging
++ PutBucketMetricsConfiguration
 + PutBucketNotificationConfiguration
 + PutBucketOwnershipControls
 + PutBucketPolicy
@@ -111,6 +123,14 @@ LocalS3. A bucket that was never configured answers like a new bucket of Amazon 
 | `GetBucketLogging`                 | an empty `BucketLoggingStatus`                           | –                                    |
 | `GetBucketRequestPayment`          | `<Payer>BucketOwner</Payer>`                             | –                                    |
 | `GetBucketOwnershipControls`       | `<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership>` | `404 OwnershipControlsNotFoundError` |
+
+The analytics, inventory and metrics configurations of a bucket, of which it has several, each named by the `id`
+parameter, are **stored and returned as they were put, but never applied** either: no storage class analysis runs, no
+inventory report is written and no CloudWatch metric is published. They exist so that Terraform's
+`aws_s3_bucket_metric`, `aws_s3_bucket_inventory` and `aws_s3_bucket_analytics_configuration`, or CDK stacks that
+declare them, work against LocalS3. A bucket has none until one is put; getting or deleting an `id` it doesn't have
+answers `404 NoSuchConfiguration`, and a `PUT` whose `id` isn't the `<Id>` of its document answers
+`400 InvalidArgument`. The `List…` operations answer every configuration on one page, in the order of their IDs.
 
 The website configuration of a bucket (`PutBucketWebsite`, `GetBucketWebsite`, `DeleteBucketWebsite`) **is applied**:
 its index and error documents, redirects and routing rules decide how the bucket is served as a website on the port of
@@ -289,20 +309,6 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 + RestoreObject
 + SelectObjectContent
 + WriteGetObjectResponse
-
-**Analytics, inventory and metrics**
-+ DeleteBucketAnalyticsConfiguration
-+ DeleteBucketInventoryConfiguration
-+ DeleteBucketMetricsConfiguration
-+ GetBucketAnalyticsConfiguration
-+ GetBucketInventoryConfiguration
-+ GetBucketMetricsConfiguration
-+ ListBucketAnalyticsConfigurations
-+ ListBucketInventoryConfigurations
-+ ListBucketMetricsConfigurations
-+ PutBucketAnalyticsConfiguration
-+ PutBucketInventoryConfiguration
-+ PutBucketMetricsConfiguration
 
 **Intelligent tiering**
 + DeleteBucketIntelligentTieringConfiguration

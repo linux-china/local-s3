@@ -68,6 +68,7 @@ public enum S3ErrorCode {
   MissingRequestBodyError("MissingRequestBodyError", 400, "This happens when the user sends an empty XML document as a request. The error message is, \"Request body is empty.\""),
   NoLoggingStatusForKey("NoLoggingStatusForKey", 400, "There is no such thing as a logging status subresource for a key."),  NoSuchBucket("NoSuchBucket", 404, "The specified bucket does not exist."),
   NoSuchBucketPolicy("NoSuchBucketPolicy", 404, "The specified bucket does not have a bucket policy."),
+  NoSuchConfiguration("NoSuchConfiguration", 404, "The specified configuration does not exist."),
   NoSuchCORSConfiguration("NoSuchCORSConfiguration", 404, "The CORS configuration does not exist."),
   NoSuchPublicAccessBlockConfiguration("NoSuchPublicAccessBlockConfiguration", 404, "The public access block configuration does not exist."),
   NoSuchTagSet("NoSuchTagSet", 404, "The TagSet does not exist."),

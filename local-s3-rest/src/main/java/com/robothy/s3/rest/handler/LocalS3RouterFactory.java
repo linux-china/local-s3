@@ -1,5 +1,8 @@
 package com.robothy.s3.rest.handler;
 
+import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.ANALYTICS;
+import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.INVENTORY;
+import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.METRICS;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.ACCELERATE;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.LOGGING;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.OWNERSHIP_CONTROLS;
@@ -84,13 +87,9 @@ public class LocalS3RouterFactory {
    * route.
    */
   private static final List<NotImplementedOperation> NOT_IMPLEMENTED_OPERATIONS = List.of(
-      // Bucket configurations of which a bucket has several, each named by an id: a GET with the id reads one, and a
-      // GET without it lists them.
-      new NotImplementedOperation("GetBucketAnalyticsConfiguration", GET, BUCKET_PATH, has("analytics", "id")),
-      new NotImplementedOperation("ListBucketAnalyticsConfigurations", GET, BUCKET_PATH,
-          has("analytics").andHasNot("id")),
-      new NotImplementedOperation("PutBucketAnalyticsConfiguration", PUT, BUCKET_PATH, has("analytics")),
-      new NotImplementedOperation("DeleteBucketAnalyticsConfiguration", DELETE, BUCKET_PATH, has("analytics")),
+      // Intelligent-tiering configurations, of which a bucket has several, each named by an id: a GET with the id reads
+      // one, and a GET without it lists them. The analytics, inventory and metrics ones, which are addressed the same
+      // way, are stored and returned, see IdentifiedBucketConfiguration.
       new NotImplementedOperation("GetBucketIntelligentTieringConfiguration", GET, BUCKET_PATH,
           has("intelligent-tiering", "id")),
       new NotImplementedOperation("ListBucketIntelligentTieringConfigurations", GET, BUCKET_PATH,
@@ -99,16 +98,6 @@ public class LocalS3RouterFactory {
           has("intelligent-tiering")),
       new NotImplementedOperation("DeleteBucketIntelligentTieringConfiguration", DELETE, BUCKET_PATH,
           has("intelligent-tiering")),
-      new NotImplementedOperation("GetBucketInventoryConfiguration", GET, BUCKET_PATH, has("inventory", "id")),
-      new NotImplementedOperation("ListBucketInventoryConfigurations", GET, BUCKET_PATH,
-          has("inventory").andHasNot("id")),
-      new NotImplementedOperation("PutBucketInventoryConfiguration", PUT, BUCKET_PATH, has("inventory")),
-      new NotImplementedOperation("DeleteBucketInventoryConfiguration", DELETE, BUCKET_PATH, has("inventory")),
-      new NotImplementedOperation("GetBucketMetricsConfiguration", GET, BUCKET_PATH, has("metrics", "id")),
-      new NotImplementedOperation("ListBucketMetricsConfigurations", GET, BUCKET_PATH,
-          has("metrics").andHasNot("id")),
-      new NotImplementedOperation("PutBucketMetricsConfiguration", PUT, BUCKET_PATH, has("metrics")),
-      new NotImplementedOperation("DeleteBucketMetricsConfiguration", DELETE, BUCKET_PATH, has("metrics")),
       // Object retrieval and transformation.
       new NotImplementedOperation("GetObjectTorrent", GET, BUCKET_KEY_PATH, has("torrent")),
       new NotImplementedOperation("RestoreObject", POST, BUCKET_KEY_PATH, has("restore")),
@@ -332,11 +321,17 @@ public class LocalS3RouterFactory {
         .add("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate"),
             shared.storedConfiguration().get(ACCELERATE))
         .add("GetBucketAcl", GET, BUCKET_PATH, has("acl"), new GetBucketAclController(factory))
+        .add("GetBucketAnalyticsConfiguration", GET, BUCKET_PATH, has("analytics", "id"),
+            shared.storedConfiguration().get(ANALYTICS))
         .add("GetBucketCors", GET, BUCKET_PATH, has("cors"), new GetBucketCorsController(factory))
         .add("GetBucketEncryption", GET, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::get)
+        .add("GetBucketInventoryConfiguration", GET, BUCKET_PATH, has("inventory", "id"),
+            shared.storedConfiguration().get(INVENTORY))
         .add("GetBucketLifecycleConfiguration", GET, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::get)
         .add("GetBucketLocation", GET, BUCKET_PATH, has("location"), new GetBucketLocationController(factory))
         .add("GetBucketLogging", GET, BUCKET_PATH, has("logging"), shared.storedConfiguration().get(LOGGING))
+        .add("GetBucketMetricsConfiguration", GET, BUCKET_PATH, has("metrics", "id"),
+            shared.storedConfiguration().get(METRICS))
         .add("GetBucketNotificationConfiguration", GET, BUCKET_PATH, has("notification"),
             shared.bucketNotification()::get)
         .add("GetObjectLockConfiguration", GET, BUCKET_PATH, has("object-lock"), shared.objectLock()::getConfiguration)
@@ -354,6 +349,12 @@ public class LocalS3RouterFactory {
         .add("GetPublicAccessBlock", GET, BUCKET_PATH, has("publicAccessBlock"),
             new GetPublicAccessBlockController(factory))
         .add("HeadBucket", HEAD, BUCKET_PATH, new HeadBucketController(factory))
+        .add("ListBucketAnalyticsConfigurations", GET, BUCKET_PATH, has("analytics").andHasNot("id"),
+            shared.storedConfiguration().list(ANALYTICS))
+        .add("ListBucketInventoryConfigurations", GET, BUCKET_PATH, has("inventory").andHasNot("id"),
+            shared.storedConfiguration().list(INVENTORY))
+        .add("ListBucketMetricsConfigurations", GET, BUCKET_PATH, has("metrics").andHasNot("id"),
+            shared.storedConfiguration().list(METRICS))
         .add("ListBuckets", GET, "/", new ListBucketsController(factory))
         .add("ListMultipartUploads", GET, BUCKET_PATH, has("uploads"), new ListMultipartUploadsController(factory))
         .add("ListObjects", GET, BUCKET_PATH, new ListObjectsController(factory))
@@ -374,9 +375,15 @@ public class LocalS3RouterFactory {
     routes
         .add("CreateBucket", PUT, BUCKET_PATH, new CreateBucketController(factory))
         .add("DeleteBucket", DELETE, BUCKET_PATH, new DeleteBucketController(factory))
+        .add("DeleteBucketAnalyticsConfiguration", DELETE, BUCKET_PATH, has("analytics"),
+            shared.storedConfiguration().delete(ANALYTICS))
         .add("DeleteBucketCors", DELETE, BUCKET_PATH, has("cors"), new DeleteBucketCorsController(factory))
         .add("DeleteBucketEncryption", DELETE, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::delete)
+        .add("DeleteBucketInventoryConfiguration", DELETE, BUCKET_PATH, has("inventory"),
+            shared.storedConfiguration().delete(INVENTORY))
         .add("DeleteBucketLifecycle", DELETE, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::delete)
+        .add("DeleteBucketMetricsConfiguration", DELETE, BUCKET_PATH, has("metrics"),
+            shared.storedConfiguration().delete(METRICS))
         .add("DeleteBucketOwnershipControls", DELETE, BUCKET_PATH, has("ownershipControls"),
             shared.storedConfiguration().delete(OWNERSHIP_CONTROLS))
         .add("DeleteBucketPolicy", DELETE, BUCKET_PATH, has("policy"), shared.bucketPolicy()::delete)
@@ -390,10 +397,16 @@ public class LocalS3RouterFactory {
         .add("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate"),
             shared.storedConfiguration().put(ACCELERATE))
         .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
+        .add("PutBucketAnalyticsConfiguration", PUT, BUCKET_PATH, has("analytics"),
+            shared.storedConfiguration().put(ANALYTICS))
         .add("PutBucketCors", PUT, BUCKET_PATH, has("cors"), new PutBucketCorsController(factory))
         .add("PutBucketEncryption", PUT, BUCKET_PATH, has("encryption"), shared.bucketEncryption()::put)
+        .add("PutBucketInventoryConfiguration", PUT, BUCKET_PATH, has("inventory"),
+            shared.storedConfiguration().put(INVENTORY))
         .add("PutBucketLifecycleConfiguration", PUT, BUCKET_PATH, has("lifecycle"), shared.bucketLifecycle()::put)
         .add("PutBucketLogging", PUT, BUCKET_PATH, has("logging"), shared.storedConfiguration().put(LOGGING))
+        .add("PutBucketMetricsConfiguration", PUT, BUCKET_PATH, has("metrics"),
+            shared.storedConfiguration().put(METRICS))
         .add("PutBucketNotificationConfiguration", PUT, BUCKET_PATH, has("notification"),
             shared.bucketNotification()::put)
         .add("PutBucketOwnershipControls", PUT, BUCKET_PATH, has("ownershipControls"),

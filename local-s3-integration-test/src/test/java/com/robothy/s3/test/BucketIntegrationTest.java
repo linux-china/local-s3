@@ -322,6 +322,79 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void testMetricsInventoryAndAnalyticsConfigurationsAreStoredButNotApplied(S3Client s3) {
+    String bucketName = "my-bucket";
+    s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+
+    assertTrue(s3.listBucketMetricsConfigurations(ListBucketMetricsConfigurationsRequest.builder()
+        .bucket(bucketName).build()).metricsConfigurationList().isEmpty());
+    S3Exception noMetrics = assertThrows(S3Exception.class, () -> s3.getBucketMetricsConfiguration(
+        GetBucketMetricsConfigurationRequest.builder().bucket(bucketName).id("EntireBucket").build()));
+    assertEquals(404, noMetrics.statusCode());
+    assertEquals("NoSuchConfiguration", noMetrics.awsErrorDetails().errorCode());
+
+    s3.putBucketMetricsConfiguration(PutBucketMetricsConfigurationRequest.builder()
+        .bucket(bucketName).id("EntireBucket")
+        .metricsConfiguration(MetricsConfiguration.builder().id("EntireBucket").build())
+        .build());
+    s3.putBucketMetricsConfiguration(PutBucketMetricsConfigurationRequest.builder()
+        .bucket(bucketName).id("Documents")
+        .metricsConfiguration(MetricsConfiguration.builder().id("Documents")
+            .filter(MetricsFilter.builder().prefix("documents/").build()).build())
+        .build());
+    assertEquals("documents/", s3.getBucketMetricsConfiguration(GetBucketMetricsConfigurationRequest.builder()
+        .bucket(bucketName).id("Documents").build()).metricsConfiguration().filter().prefix());
+    ListBucketMetricsConfigurationsResponse metrics = s3.listBucketMetricsConfigurations(
+        ListBucketMetricsConfigurationsRequest.builder().bucket(bucketName).build());
+    assertFalse(metrics.isTruncated());
+    assertEquals(List.of("Documents", "EntireBucket"),
+        metrics.metricsConfigurationList().stream().map(MetricsConfiguration::id).toList());
+    s3.deleteBucketMetricsConfiguration(DeleteBucketMetricsConfigurationRequest.builder()
+        .bucket(bucketName).id("Documents").build());
+    assertEquals(1, s3.listBucketMetricsConfigurations(ListBucketMetricsConfigurationsRequest.builder()
+        .bucket(bucketName).build()).metricsConfigurationList().size());
+
+    InventoryConfiguration inventory = InventoryConfiguration.builder()
+        .id("daily")
+        .isEnabled(true)
+        .includedObjectVersions(InventoryIncludedObjectVersions.CURRENT)
+        .schedule(InventorySchedule.builder().frequency(InventoryFrequency.DAILY).build())
+        .destination(InventoryDestination.builder().s3BucketDestination(InventoryS3BucketDestination.builder()
+            .bucket("arn:aws:s3:::inventory-bucket").format(InventoryFormat.CSV).build()).build())
+        .build();
+    s3.putBucketInventoryConfiguration(PutBucketInventoryConfigurationRequest.builder()
+        .bucket(bucketName).id("daily").inventoryConfiguration(inventory).build());
+    assertEquals(inventory, s3.getBucketInventoryConfiguration(GetBucketInventoryConfigurationRequest.builder()
+        .bucket(bucketName).id("daily").build()).inventoryConfiguration());
+    assertEquals(List.of(inventory), s3.listBucketInventoryConfigurations(
+        ListBucketInventoryConfigurationsRequest.builder().bucket(bucketName).build()).inventoryConfigurationList());
+    s3.deleteBucketInventoryConfiguration(DeleteBucketInventoryConfigurationRequest.builder()
+        .bucket(bucketName).id("daily").build());
+    S3Exception noInventory = assertThrows(S3Exception.class, () -> s3.deleteBucketInventoryConfiguration(
+        DeleteBucketInventoryConfigurationRequest.builder().bucket(bucketName).id("daily").build()));
+    assertEquals("NoSuchConfiguration", noInventory.awsErrorDetails().errorCode());
+
+    AnalyticsConfiguration analytics = AnalyticsConfiguration.builder()
+        .id("images")
+        .filter(AnalyticsFilter.builder().prefix("images/").build())
+        .storageClassAnalysis(StorageClassAnalysis.builder().build())
+        .build();
+    s3.putBucketAnalyticsConfiguration(PutBucketAnalyticsConfigurationRequest.builder()
+        .bucket(bucketName).id("images").analyticsConfiguration(analytics).build());
+    assertEquals(analytics, s3.getBucketAnalyticsConfiguration(GetBucketAnalyticsConfigurationRequest.builder()
+        .bucket(bucketName).id("images").build()).analyticsConfiguration());
+    assertEquals(List.of(analytics), s3.listBucketAnalyticsConfigurations(
+        ListBucketAnalyticsConfigurationsRequest.builder().bucket(bucketName).build()).analyticsConfigurationList());
+
+    // The id of the request must be the one of the configuration.
+    S3Exception mismatch = assertThrows(S3Exception.class, () -> s3.putBucketAnalyticsConfiguration(
+        PutBucketAnalyticsConfigurationRequest.builder().bucket(bucketName).id("other")
+            .analyticsConfiguration(analytics).build()));
+    assertEquals("InvalidArgument", mismatch.awsErrorDetails().errorCode());
+  }
+
+  @Test
+  @LocalS3
   void testBucketEncryption(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());

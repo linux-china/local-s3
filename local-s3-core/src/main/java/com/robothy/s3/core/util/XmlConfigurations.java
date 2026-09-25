@@ -3,6 +3,7 @@ package com.robothy.s3.core.util;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import java.io.StringReader;
+import java.util.Optional;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
@@ -53,6 +54,43 @@ public final class XmlConfigurations {
         if (!rootSeen) {
           throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
         }
+      } finally {
+        reader.close();
+      }
+    } catch (XMLStreamException e) {
+      throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
+    }
+  }
+
+  /**
+   * Read the text of a child of the root element of a well-formed configuration, e.g. the {@code Id} of a
+   * {@code MetricsConfiguration}.
+   *
+   * @param configuration the document, which {@linkplain #assertWellFormed} accepted.
+   * @param childElement the local name of the child.
+   * @return the trimmed text of the first child of that name; empty if the root has none.
+   * @throws LocalS3RequestException with {@linkplain S3ErrorCode#MalformedXML} if the document isn't well-formed.
+   */
+  public static Optional<String> childText(String configuration, String childElement) {
+    XMLInputFactory factory = XMLInputFactory.newDefaultFactory();
+    factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+    factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
+    try {
+      XMLStreamReader reader = factory.createXMLStreamReader(new StringReader(configuration));
+      try {
+        int depth = 0;
+        while (reader.hasNext()) {
+          int event = reader.next();
+          if (event == XMLStreamConstants.START_ELEMENT) {
+            depth++;
+            if (depth == 2 && childElement.equals(reader.getLocalName())) {
+              return Optional.of(reader.getElementText().trim());
+            }
+          } else if (event == XMLStreamConstants.END_ELEMENT) {
+            depth--;
+          }
+        }
+        return Optional.empty();
       } finally {
         reader.close();
       }

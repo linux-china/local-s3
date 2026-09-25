@@ -264,6 +264,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   **never applied**. See [semantics](docs/semantics.md#lifecycle-configuration).
   Paginated `ListBuckets`. Operations that LocalS3 knows but doesn't implement answer `501 NotImplemented` naming the
   operation; see [the API list](docs/apis.md).
++ **Analytics, inventory and metrics configurations**: the `Put`, `Get`, `List` and `Delete` operations of
+  `?analytics`, `?inventory` and `?metrics` store and return the configurations of a bucket by ID instead of answering
+  `501 NotImplemented`, so that Terraform's `aws_s3_bucket_metric`, `aws_s3_bucket_inventory` and
+  `aws_s3_bucket_analytics_configuration`, and CDK stacks, work. They are **never applied**: no report or metric is
+  produced. See [the API list](docs/apis.md).
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
   and for the domains of `s3Api(s3 -> s3.virtualHostDomains(...))` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
 + **Change listeners**: `changeListener` and `events(events -> events.listener(...).executor(...))` deliver an

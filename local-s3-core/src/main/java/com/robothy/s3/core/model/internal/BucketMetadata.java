@@ -6,6 +6,7 @@ import com.robothy.s3.core.converters.deserializer.ObjectMetadataMapConverter;
 import com.robothy.s3.core.converters.deserializer.UploadMetadataMapConverter;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.model.BucketObjectLockConfiguration;
+import com.robothy.s3.core.model.IdentifiedBucketConfiguration;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.util.BucketEncryptionConfigurations;
 import com.robothy.s3.datatypes.AccessControlPolicy;
@@ -143,6 +144,13 @@ public class BucketMetadata {
    * {@linkplain com.robothy.s3.core.service.BucketStoredConfigurationService}.
    */
   private Map<String, String> storedConfigurations = new ConcurrentHashMap<>();
+
+  /**
+   * The configurations of which the bucket has several, each named by an ID, that LocalS3 stores but never applies, by
+   * {@linkplain IdentifiedBucketConfiguration#name()} and then by ID, each as the document that was put. See
+   * {@linkplain com.robothy.s3.core.service.BucketStoredConfigurationService}.
+   */
+  private Map<String, NavigableMap<String, String>> identifiedConfigurations = new ConcurrentHashMap<>();
 
   /**
    * The object lock configuration of the bucket; {@code null} if the bucket doesn't have Object Lock enabled. Once

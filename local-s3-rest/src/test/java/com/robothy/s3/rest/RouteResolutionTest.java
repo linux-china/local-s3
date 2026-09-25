@@ -35,12 +35,16 @@ class RouteResolutionTest {
   @Test
   void theIdOfAConfigurationTellsGetFromList() throws Exception {
     HttpResponse<String> list = get("/bucket?analytics");
-    assertEquals(501, list.statusCode());
-    assertTrue(list.body().contains("'ListBucketAnalyticsConfigurations'"), list.body());
+    assertEquals(200, list.statusCode(), list.body());
+    assertTrue(list.body().contains("<ListBucketAnalyticsConfigurationResult"), list.body());
 
     HttpResponse<String> get = get("/bucket?analytics&id=report");
-    assertEquals(501, get.statusCode());
-    assertTrue(get.body().contains("'GetBucketAnalyticsConfiguration'"), get.body());
+    assertEquals(404, get.statusCode(), get.body());
+    assertTrue(get.body().contains("<Code>NoSuchConfiguration</Code>"), get.body());
+
+    HttpResponse<String> tiering = get("/bucket?intelligent-tiering&id=archive");
+    assertEquals(501, tiering.statusCode());
+    assertTrue(tiering.body().contains("'GetBucketIntelligentTieringConfiguration'"), tiering.body());
   }
 
   @Test
