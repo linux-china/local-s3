@@ -617,3 +617,37 @@ class UploadTest {
 The endpoint is an IP address because the AWS SDK addresses buckets by path on an IP address, and by host name, e.g.
 `uploads.localhost`, on anything else, which the service doesn't serve unless configured with
 `withVirtualHostDomains(...)`; so no `spring.cloud.aws.s3.path-style-access-enabled` is needed either.
+
+### Docker Compose with Spring Cloud AWS
+
+An application that runs LocalS3 as a service of its `compose.yaml`, rather than embedding it, gets the same service
+connection from [Spring Boot's Docker Compose support](https://docs.spring.io/spring-boot/reference/features/dev-services.html#features.dev-services.docker-compose):
+`local-s3-testcontainers` registers a `DockerComposeConnectionDetailsFactory` too, so the clients of Spring Cloud AWS
+reach the service with no property of the application.
+
+```yaml
+# compose.yaml
+services:
+  local-s3:
+    image: luofuxiang/local-s3
+    ports:
+      - "29090"
+```
+
+```groovy
+dependencies {
+    implementation("io.awspring.cloud:spring-cloud-aws-starter-s3")
+    developmentOnly("org.springframework.boot:spring-boot-docker-compose")
+    developmentOnly("io.github.robothy:local-s3-testcontainers:<version>")
+}
+```
+
+It matches a service of the image `luofuxiang/local-s3`; a service of another image, e.g. of a private registry, is
+matched by the label `org.springframework.boot.service-connection: luofuxiang/local-s3`. The connection details follow
+the environment of the service:
+
+| `AwsConnectionDetails` | Value |
+|---|---|
+| endpoint | the host port mapped to `LOCAL_S3_PORT` (`29090` by default), with the host resolved to an IP address; `https://` where `LOCAL_S3_TLS_CERT` or `LOCAL_S3_TLS_SELF_SIGNED` is set |
+| region | `us-east-1` |
+| access key, secret key | `LOCAL_S3_ACCESS_KEY_ID` and `LOCAL_S3_SECRET_ACCESS_KEY`, or `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (the image sets `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`); `local-s3` for both when the service accepts unsigned requests |

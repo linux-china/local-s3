@@ -121,6 +121,8 @@ springBootTest = { group = "org.springframework.boot", name = "spring-boot-test"
 # @ServiceConnection of LocalS3Container: the ContainerConnectionDetailsFactory of Spring Boot, and the
 # AwsConnectionDetails of Spring Cloud AWS that it answers with.
 springBootTestcontainers = { group = "org.springframework.boot", name = "spring-boot-testcontainers", version.ref = "springBoot" }
+# The service connection of a LocalS3 service of Docker Compose: the DockerComposeConnectionDetailsFactory of Spring Boot.
+springBootDockerCompose = { group = "org.springframework.boot", name = "spring-boot-docker-compose", version.ref = "springBoot" }
 springCloudAwsAutoconfigure = { group = "io.awspring.cloud", name = "spring-cloud-aws-autoconfigure", version.ref = "springCloudAws" }
 springCloudAwsStarterS3 = { group = "io.awspring.cloud", name = "spring-cloud-aws-starter-s3", version.ref = "springCloudAws" }
 springBoot3Bom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot3" }

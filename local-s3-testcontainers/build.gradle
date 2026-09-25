@@ -16,10 +16,14 @@ dependencies {
     // and Spring Cloud AWS. LocalS3AwsConnectionDetailsFactory is registered in META-INF/spring.factories, and Spring
     // Boot skips it where either is missing.
     compileOnly(libs.springBootTestcontainers)
+    // Optional: the service connection of a LocalS3 service of Docker Compose, which the application brings with
+    // spring-boot-docker-compose; LocalS3DockerComposeConnectionDetailsFactory is registered next to the one above.
+    compileOnly(libs.springBootDockerCompose)
     compileOnly(libs.springCloudAwsAutoconfigure) { transitive = false }
 
     testImplementation(platform(libs.springBootBom))
     testImplementation(libs.springBootTestcontainers)
+    testImplementation(libs.springBootDockerCompose)
     testImplementation(libs.springCloudAwsAutoconfigure)
 }
 

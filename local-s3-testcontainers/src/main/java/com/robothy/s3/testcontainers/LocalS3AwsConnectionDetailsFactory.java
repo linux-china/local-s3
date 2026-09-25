@@ -68,15 +68,28 @@ public class LocalS3AwsConnectionDetailsFactory
    */
   static URI endpoint(LocalS3Container container) {
     URI endpoint = container.getEndpointUri();
-    String host;
+    return endpoint(endpoint.getScheme(), endpoint.getHost(), endpoint.getPort());
+  }
+
+  /**
+   * The endpoint at the host and port, with the host resolved to an IP address, as
+   * {@linkplain #endpoint(LocalS3Container)} explains; also the one of a service of Docker Compose.
+   *
+   * @param scheme {@code http} or {@code https}.
+   * @param host   the host that the service is reached at.
+   * @param port   the port that the service is reached at.
+   * @return the endpoint URI.
+   */
+  static URI endpoint(String scheme, String host, int port) {
+    String address;
     try {
-      InetAddress address = InetAddress.getByName(endpoint.getHost());
-      host = address instanceof Inet6Address ? "[" + address.getHostAddress() + "]" : address.getHostAddress();
+      InetAddress resolved = InetAddress.getByName(host);
+      address = resolved instanceof Inet6Address ? "[" + resolved.getHostAddress() + "]" : resolved.getHostAddress();
     } catch (UnknownHostException e) {
       // A host the JVM can't resolve can't be reached either; the client reports that on its first request.
-      return endpoint;
+      address = host;
     }
-    return URI.create(endpoint.getScheme() + "://" + host + ":" + endpoint.getPort());
+    return URI.create(scheme + "://" + address + ":" + port);
   }
 
   static final class LocalS3AwsConnectionDetails extends ContainerConnectionDetails<LocalS3Container>

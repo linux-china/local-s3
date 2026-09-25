@@ -1,3 +1,5 @@
-# @ServiceConnection of LocalS3Container, for the clients of Spring Cloud AWS
+# @ServiceConnection of LocalS3Container, and the service connection of a LocalS3 service of Docker Compose, for the
+# clients of Spring Cloud AWS
 org.springframework.boot.autoconfigure.service.connection.ConnectionDetailsFactory=\
-com.robothy.s3.testcontainers.LocalS3AwsConnectionDetailsFactory
+com.robothy.s3.testcontainers.LocalS3AwsConnectionDetailsFactory,\
+com.robothy.s3.testcontainers.LocalS3DockerComposeConnectionDetailsFactory
