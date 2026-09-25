@@ -28,7 +28,7 @@ class BucketEncryptionConfigurationsTest {
         BucketEncryptionConfigurations.defaultEncryption(configuration(
             "<SSEAlgorithm>aws:kms</SSEAlgorithm><KMSMasterKeyID> arn:key </KMSMasterKeyID>",
             "<BucketKeyEnabled>true</BucketKeyEnabled>")));
-    assertEquals(new ServerSideEncryption("aws:kms:dsse", null, null, null),
+    assertEquals(new ServerSideEncryption("aws:kms:dsse", ServerSideEncryption.AWS_MANAGED_KMS_KEY_ID, null, null),
         BucketEncryptionConfigurations.defaultEncryption("<ServerSideEncryptionConfiguration><Rule>"
             + "<ApplyServerSideEncryptionByDefault><SSEAlgorithm>aws:kms:dsse</SSEAlgorithm>"
             + "</ApplyServerSideEncryptionByDefault></Rule></ServerSideEncryptionConfiguration>"));

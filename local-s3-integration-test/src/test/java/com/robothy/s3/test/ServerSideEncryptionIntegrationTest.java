@@ -40,6 +40,9 @@ class ServerSideEncryptionIntegrationTest {
 
   private static final String KMS_KEY = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab";
 
+  private static final String AWS_MANAGED_KMS_KEY =
+      com.robothy.s3.core.model.internal.ServerSideEncryption.AWS_MANAGED_KMS_KEY_ID;
+
   private static final String CONTEXT = Base64.getEncoder()
       .encodeToString("{\"department\":\"data\"}".getBytes(StandardCharsets.UTF_8));
 
@@ -92,6 +95,22 @@ class ServerSideEncryptionIntegrationTest {
     assertNull(copyHead.ssekmsKeyId());
     s3.copyObject(b -> b.sourceBucket(BUCKET).sourceKey("kms.txt").destinationBucket(BUCKET).destinationKey("bare.txt"));
     assertNull(s3.headObject(b -> b.bucket(BUCKET).key("bare.txt")).serverSideEncryption());
+  }
+
+  @Test
+  @LocalS3(buckets = BUCKET)
+  void usesTheAwsManagedKeyForSseKmsWithoutAKey(S3Client s3) {
+    PutObjectResponse put = s3.putObject(b -> b.bucket(BUCKET).key("managed.txt")
+        .serverSideEncryption(ServerSideEncryption.AWS_KMS), RequestBody.fromString("secret"));
+    assertEquals(ServerSideEncryption.AWS_KMS, put.serverSideEncryption());
+    assertEquals(AWS_MANAGED_KMS_KEY, put.ssekmsKeyId());
+
+    HeadObjectResponse head = s3.headObject(b -> b.bucket(BUCKET).key("managed.txt"));
+    assertEquals(ServerSideEncryption.AWS_KMS, head.serverSideEncryption());
+    assertEquals(AWS_MANAGED_KMS_KEY, head.ssekmsKeyId());
+    ResponseBytes<GetObjectResponse> get = s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("managed.txt"));
+    assertEquals("secret", get.asUtf8String());
+    assertEquals(AWS_MANAGED_KMS_KEY, get.response().ssekmsKeyId());
   }
 
   @Test

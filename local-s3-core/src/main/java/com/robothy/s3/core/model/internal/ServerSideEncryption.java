@@ -13,7 +13,8 @@ import java.util.Objects;
  * object is answered with the same {@code x-amz-server-side-encryption*} headers as by Amazon S3.
  *
  * @param algorithm the algorithm, one of {@linkplain #AES256}, {@linkplain #AWS_KMS} and {@linkplain #AWS_KMS_DSSE}.
- * @param kmsKeyId the ID of the KMS key, as the request names it; {@code null} if it names none, or the algorithm
+ * @param kmsKeyId the ID of the KMS key, as the request names it; {@linkplain #AWS_MANAGED_KMS_KEY_ID} if a KMS
+ *     algorithm names none, like Amazon S3 uses the AWS managed key {@code aws/s3} then; {@code null} if the algorithm
  *     isn't a KMS one.
  * @param context the base64 encoded encryption context; {@code null} for none, or if the algorithm isn't a KMS one.
  * @param bucketKeyEnabled whether an S3 Bucket Key is used; {@code null} if the request didn't say, or the algorithm
@@ -37,7 +38,14 @@ public record ServerSideEncryption(String algorithm, String kmsKeyId, String con
   public static final String AWS_KMS_DSSE = "aws:kms:dsse";
 
   /**
-   * Validate the components.
+   * The AWS managed key {@code aws/s3} that Amazon S3 encrypts with when a KMS algorithm names no key. LocalS3 has no
+   * account or KMS of its own, so it answers a fixed key of the account that LocalS3 answers elsewhere.
+   */
+  public static final String AWS_MANAGED_KMS_KEY_ID =
+      "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000";
+
+  /**
+   * Validate the components, and name the AWS managed key for a KMS algorithm that names no key.
    *
    * @throws NullPointerException if the algorithm is {@code null}.
    * @throws IllegalArgumentException if the algorithm is unknown, or a KMS component is given for SSE-S3.
@@ -49,6 +57,9 @@ public record ServerSideEncryption(String algorithm, String kmsKeyId, String con
     }
     if (!isKms(algorithm) && (kmsKeyId != null || context != null || bucketKeyEnabled != null)) {
       throw new IllegalArgumentException("A KMS key, context or bucket key is only valid for a KMS algorithm.");
+    }
+    if (isKms(algorithm) && (kmsKeyId == null || kmsKeyId.isBlank())) {
+      kmsKeyId = AWS_MANAGED_KMS_KEY_ID;
     }
   }
 

@@ -54,6 +54,11 @@ class CustomerEncryptionIntegrationTest {
     S3Exception otherKey = assertThrows(S3Exception.class, () -> s3.getObjectAsBytes(b -> b.bucket(BUCKET)
         .key("secret.txt").sseCustomerAlgorithm("AES256").sseCustomerKey(OTHER_KEY).sseCustomerKeyMD5(md5(OTHER_KEY))));
     assertEquals(403, otherKey.statusCode());
+    // A HEAD needs the key as well; its error has no body, only the status.
+    assertEquals(400, assertThrows(S3Exception.class,
+        () -> s3.headObject(b -> b.bucket(BUCKET).key("secret.txt"))).statusCode());
+    assertEquals(403, assertThrows(S3Exception.class, () -> s3.headObject(b -> b.bucket(BUCKET).key("secret.txt")
+        .sseCustomerAlgorithm("AES256").sseCustomerKey(OTHER_KEY).sseCustomerKeyMD5(md5(OTHER_KEY)))).statusCode());
 
     // A copy reads the source with its key, and stores the copy with another one.
     s3.copyObject(b -> b.sourceBucket(BUCKET).sourceKey("secret.txt").destinationBucket(BUCKET).destinationKey("copy.txt")
