@@ -11,6 +11,16 @@ dependencies {
     api(libs.testContainers)
 
     implementation(libs.apacheCommonsCompress)
+
+    // Optional: @ServiceConnection of a LocalS3Container, which the application brings with spring-boot-testcontainers
+    // and Spring Cloud AWS. LocalS3AwsConnectionDetailsFactory is registered in META-INF/spring.factories, and Spring
+    // Boot skips it where either is missing.
+    compileOnly(libs.springBootTestcontainers)
+    compileOnly(libs.springCloudAwsAutoconfigure) { transitive = false }
+
+    testImplementation(platform(libs.springBootBom))
+    testImplementation(libs.springBootTestcontainers)
+    testImplementation(libs.springCloudAwsAutoconfigure)
 }
 
 test {

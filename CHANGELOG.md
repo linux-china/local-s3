@@ -309,6 +309,10 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   `withDataPath(Path)` takes a `@TempDir`, and the `DockerImageName` constructor is public, so an image of a private
   registry declared `asCompatibleSubstituteFor(LocalS3Container.IMAGE_NAME)` runs. See
   [Testcontainers](docs/embedding.md#testcontainers).
++ **`@ServiceConnection` of `LocalS3Container`** for Spring Cloud AWS, as its `LocalStackContainer` has:
+  `@Container @ServiceConnection LocalS3Container` points the `S3Client`, `S3Template` and `S3Presigner` of Spring
+  Cloud AWS at the container, with its credentials, and with no property of the application. See
+  [`@ServiceConnection`](docs/embedding.md#serviceconnection-with-spring-cloud-aws).
 
 ### Changed
 

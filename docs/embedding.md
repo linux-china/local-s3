@@ -578,3 +578,42 @@ new LocalS3Container(DockerImageName.parse("registry.internal/local-s3:2.5.0")
 ```
 
 To wait for the health check rather than the startup log message, see [deployment.md](deployment.md#health-check).
+
+### `@ServiceConnection` with Spring Cloud AWS
+
+In a Spring Boot test, `@ServiceConnection` points the clients that [Spring Cloud AWS](https://awspring.io/)
+auto-configures, e.g. `S3Client`, `S3Template` and `S3Presigner`, at the container, as it does for LocalStack. No
+property of the application is needed: `local-s3-testcontainers` registers a `ConnectionDetailsFactory` that answers
+with the `AwsConnectionDetails` of the container. It takes effect where the test classpath has
+`spring-boot-testcontainers` and a Spring Cloud AWS starter, e.g. `spring-cloud-aws-starter-s3`.
+
+```java
+@SpringBootTest
+@Testcontainers
+class UploadTest {
+
+  @Container
+  @ServiceConnection
+  static LocalS3Container localS3 = new LocalS3Container("latest")
+      .withBuckets("uploads");
+
+  @Autowired
+  S3Template s3Template;
+
+  @Test
+  void uploads() {
+    s3Template.upload("uploads", "hello.txt", new ByteArrayInputStream("Hello".getBytes()));
+  }
+
+}
+```
+
+| `AwsConnectionDetails` | Value |
+|---|---|
+| endpoint | `getEndpoint()` with the host resolved to an IP address, e.g. `http://127.0.0.1:32773` |
+| region | `us-east-1` |
+| access key, secret key | those of `withCredentials(...)`; `local-s3` for both when the container accepts unsigned requests |
+
+The endpoint is an IP address because the AWS SDK addresses buckets by path on an IP address, and by host name, e.g.
+`uploads.localhost`, on anything else, which the service doesn't serve unless configured with
+`withVirtualHostDomains(...)`; so no `spring.cloud.aws.s3.path-style-access-enabled` is needed either.

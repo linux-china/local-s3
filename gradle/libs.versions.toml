@@ -101,6 +101,10 @@ springBootTest = { group = "org.springframework.boot", name = "spring-boot-test"
 # Spring Boot 3: spring-boot-actuator holds the Health API that Boot 4 moved to spring-boot-health, and
 # spring-boot-test-autoconfigure the @PropertyMapping that Boot 4 moved to spring-boot-test. The starter compiles
 # against both layouts and picks one at runtime, so that one artifact serves Boot 3 and Boot 4.
+# @ServiceConnection of LocalS3Container: the ContainerConnectionDetailsFactory of Spring Boot, and the
+# AwsConnectionDetails of Spring Cloud AWS that it answers with.
+springBootTestcontainers = { group = "org.springframework.boot", name = "spring-boot-testcontainers", version.ref = "springBoot" }
+springCloudAwsAutoconfigure = { group = "io.awspring.cloud", name = "spring-cloud-aws-autoconfigure", version.ref = "springCloudAws" }
 springCloudAwsStarterS3 = { group = "io.awspring.cloud", name = "spring-cloud-aws-starter-s3", version.ref = "springCloudAws" }
 springBoot3Bom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot3" }
 springBoot3Actuator = { group = "org.springframework.boot", name = "spring-boot-actuator", version.ref = "springBoot3" }
