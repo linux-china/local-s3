@@ -12,10 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.rest.LocalS3;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
@@ -35,6 +38,7 @@ import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.IcebergGenerics;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.data.parquet.GenericParquetWriter;
+import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.DataWriter;
 import org.apache.iceberg.io.OutputFile;
@@ -320,6 +324,177 @@ class DuckDbIcebergIntegrationTest {
     assertTrue(evolved.findField("score").isOptional(), "A column added to a written table has to be optional.");
     assertEquals(List.of(List.of(1L, 1.5d), List.of(2L, 3.0d)),
         rows(duckdb, "SELECT id, score FROM ice.db.evolving ORDER BY id"));
+  }
+
+  /**
+   * {@code PARTITIONED BY} with the transforms of Iceberg: the partition spec is the one the Iceberg client reads,
+   * every data file carries the partition values of its rows, and a filter on a source column lets the client plan
+   * the files of the matching partitions alone.
+   */
+  @Test
+  void a_table_partitioned_by_duckdb_is_planned_by_partition() throws Exception {
+    execute(duckdb, "CREATE SCHEMA ice.db");
+    execute(duckdb, "CREATE TABLE ice.db.partitioned (id BIGINT, day DATE, name VARCHAR) "
+        + "PARTITIONED BY (bucket(4, id), month(day))");
+    execute(duckdb, "INSERT INTO ice.db.partitioned "
+        + "SELECT range, DATE '2026-01-01' + (range * 20)::INTEGER, 'row-' || range FROM range(20)");
+    assertEquals(12L, single(duckdb, "SELECT count(*) FROM ice.db.partitioned WHERE day >= DATE '2026-06-01'"));
+
+    Table table = catalog.loadTable(TableIdentifier.of(Namespace.of("db"), "partitioned"));
+    assertEquals(List.of("bucket[4]", "month"),
+        table.spec().fields().stream().map(field -> field.transform().toString()).toList());
+    assertEquals(20, ids(table).size());
+
+    int files = 0;
+    try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+      for (FileScanTask task : tasks) {
+        assertEquals(2, task.file().partition().size(), task.file().location());
+        files++;
+      }
+    }
+    int january = 0;
+    try (CloseableIterable<FileScanTask> tasks = table.newScan()
+        .filter(Expressions.lessThan("day", "2026-02-01")).planFiles()) {
+      for (FileScanTask ignored : tasks) {
+        january++;
+      }
+    }
+    // Rows 0 and 1 fall into January, each into a partition of its own id bucket at most.
+    assertTrue(january > 0 && january <= 2 && january < files, january + " of " + files + " files");
+  }
+
+  /**
+   * The statements beyond INSERT, UPDATE and DELETE: {@code MERGE INTO}, {@code TRUNCATE}, and a transaction of
+   * several statements, which becomes visible to the Iceberg client as a whole once committed and not at all once
+   * rolled back.
+   */
+  @Test
+  void merge_truncate_and_transactions_of_duckdb_are_commits_of_the_catalog() throws Exception {
+    execute(duckdb, "CREATE SCHEMA ice.db");
+    execute(duckdb, "CREATE TABLE ice.db.merged (id BIGINT, name VARCHAR, level VARCHAR)");
+    execute(duckdb, "INSERT INTO ice.db.merged VALUES (1, 'row-1', 'info'), (2, 'row-2', 'info')");
+    execute(duckdb, """
+        MERGE INTO ice.db.merged USING (VALUES (2, 'row-2', 'warn'), (3, 'row-3', 'error')) source(id, name, level)
+        ON merged.id = source.id
+        WHEN MATCHED THEN UPDATE SET level = source.level
+        WHEN NOT MATCHED THEN INSERT VALUES (source.id, source.name, source.level)""");
+
+    TableIdentifier identifier = TableIdentifier.of(Namespace.of("db"), "merged");
+    Table table = catalog.loadTable(identifier);
+    assertEquals(List.of(1L, 2L, 3L), ids(table));
+    assertEquals(List.of("warn"), levels(table, 2L));
+    assertEquals(List.of("error"), levels(table, 3L));
+
+    execute(duckdb, "BEGIN");
+    execute(duckdb, "INSERT INTO ice.db.merged VALUES (4, 'row-4', 'info')");
+    execute(duckdb, "DELETE FROM ice.db.merged WHERE id = 1");
+    assertEquals(List.of(1L, 2L, 3L), ids(catalog.loadTable(identifier)),
+        "The statements of an open transaction must not be visible to another client.");
+    execute(duckdb, "COMMIT");
+    assertEquals(List.of(2L, 3L, 4L), ids(catalog.loadTable(identifier)));
+
+    long committed = catalog.loadTable(identifier).currentSnapshot().snapshotId();
+    execute(duckdb, "BEGIN");
+    execute(duckdb, "INSERT INTO ice.db.merged VALUES (5, 'row-5', 'info')");
+    execute(duckdb, "ROLLBACK");
+    assertEquals(committed, catalog.loadTable(identifier).currentSnapshot().snapshotId(),
+        "A transaction rolled back must not commit anything.");
+
+    execute(duckdb, "TRUNCATE ice.db.merged");
+    assertEquals(List.of(), ids(catalog.loadTable(identifier)));
+    assertEquals(0L, single(duckdb, "SELECT count(*) FROM ice.db.merged"));
+  }
+
+  /**
+   * The schema changes beyond {@code ADD COLUMN}: a column renamed keeps its field id, so the files written before
+   * the rename still read under the new name; a column dropped is gone from the schema; and an {@code INT} widened to
+   * a {@code BIGINT} is the type promotion that Iceberg allows.
+   */
+  @Test
+  void columns_renamed_dropped_and_widened_by_duckdb_are_schema_updates() throws Exception {
+    execute(duckdb, "CREATE SCHEMA ice.db");
+    execute(duckdb, "CREATE TABLE ice.db.reshaped (id BIGINT, label VARCHAR, note VARCHAR, amount INTEGER)");
+    execute(duckdb, "INSERT INTO ice.db.reshaped VALUES (1, 'a', 'x', 10), (2, 'b', 'y', 20)");
+    TableIdentifier identifier = TableIdentifier.of(Namespace.of("db"), "reshaped");
+    int labelId = catalog.loadTable(identifier).schema().findField("label").fieldId();
+
+    execute(duckdb, "ALTER TABLE ice.db.reshaped RENAME COLUMN label TO name");
+    execute(duckdb, "ALTER TABLE ice.db.reshaped DROP COLUMN note");
+    execute(duckdb, "ALTER TABLE ice.db.reshaped ALTER COLUMN amount SET DATA TYPE BIGINT");
+    execute(duckdb, "INSERT INTO ice.db.reshaped VALUES (3, 'c', 3000000000)");
+
+    Schema schema = catalog.loadTable(identifier).schema();
+    assertEquals(List.of("id", "name", "amount"), schema.columns().stream().map(Types.NestedField::name).toList());
+    assertEquals(labelId, schema.findField("name").fieldId(), "A rename must keep the field id of the column.");
+    assertEquals(Types.LongType.get(), schema.findField("amount").type());
+
+    List<String> names = new ArrayList<>();
+    try (CloseableIterable<Record> records = IcebergGenerics.read(catalog.loadTable(identifier)).build()) {
+      records.forEach(record -> names.add(record.getField("name") + "=" + record.getField("amount")));
+    }
+    assertEquals(List.of("a=10", "b=20", "c=3000000000"), names.stream().sorted().toList());
+  }
+
+  /**
+   * The lifecycle of tables and namespaces: a table DuckDB renames or drops is renamed or dropped in the catalog, a
+   * {@code CREATE TABLE AS} rolled back leaves no table behind, and an empty namespace dropped is gone. DuckDB 1.5
+   * refuses {@code DROP SCHEMA ... CASCADE} on an Iceberg catalog, so the tables are dropped first.
+   */
+  @Test
+  void tables_and_schemas_renamed_and_dropped_by_duckdb_are_gone_from_the_catalog() throws Exception {
+    execute(duckdb, "CREATE SCHEMA ice.staging");
+    execute(duckdb, "CREATE TABLE ice.staging.draft AS SELECT range AS id FROM range(3)");
+    execute(duckdb, "CREATE TABLE ice.staging.scratch (id BIGINT)");
+
+    execute(duckdb, "ALTER TABLE ice.staging.draft RENAME TO final");
+    assertEquals(List.of("final", "scratch"), catalog.listTables(Namespace.of("staging")).stream()
+        .map(TableIdentifier::name).sorted().toList());
+    assertEquals(List.of(0L, 1L, 2L), ids(catalog.loadTable(TableIdentifier.of(Namespace.of("staging"), "final"))));
+
+    execute(duckdb, "DROP TABLE ice.staging.scratch");
+    assertEquals(List.of(TableIdentifier.of(Namespace.of("staging"), "final")),
+        catalog.listTables(Namespace.of("staging")));
+
+    execute(duckdb, "BEGIN");
+    execute(duckdb, "CREATE TABLE ice.staging.abandoned AS SELECT 1 AS id");
+    execute(duckdb, "ROLLBACK");
+    assertFalse(catalog.tableExists(TableIdentifier.of(Namespace.of("staging"), "abandoned")));
+
+    execute(duckdb, "DROP TABLE ice.staging.final");
+    execute(duckdb, "DROP SCHEMA ice.staging");
+    assertFalse(catalog.namespaceExists(Namespace.of("staging")));
+    assertEquals(List.of(), column(duckdb, "SELECT name FROM (SHOW ALL TABLES) WHERE schema = 'staging'"));
+  }
+
+  /**
+   * The nested and logical types of DuckDB, written through the catalog: lists, structs, maps, timestamps with a time
+   * zone and decimals are Iceberg types that the Iceberg client reads back with the same values.
+   */
+  @Test
+  void nested_types_written_by_duckdb_are_read_by_the_iceberg_client() throws Exception {
+    execute(duckdb, "CREATE SCHEMA ice.db");
+    execute(duckdb, "CREATE TABLE ice.db.typed (id BIGINT, tags VARCHAR[], point STRUCT(x INTEGER, y INTEGER), "
+        + "attributes MAP(VARCHAR, INTEGER), created_at TIMESTAMPTZ, amount DECIMAL(10, 2))");
+    execute(duckdb, "INSERT INTO ice.db.typed VALUES (1, ['a', 'b'], {'x': 1, 'y': 2}, MAP {'k': 7}, "
+        + "TIMESTAMPTZ '2026-01-01 00:00:00+00', 12.34)");
+
+    Table table = catalog.loadTable(TableIdentifier.of(Namespace.of("db"), "typed"));
+    Schema schema = table.schema();
+    assertTrue(schema.findField("tags").type().isListType(), schema.toString());
+    assertTrue(schema.findField("point").type().isStructType(), schema.toString());
+    assertTrue(schema.findField("attributes").type().isMapType(), schema.toString());
+    assertEquals(Types.TimestampType.withZone(), schema.findField("created_at").type());
+    assertEquals(Types.DecimalType.of(10, 2), schema.findField("amount").type());
+
+    try (CloseableIterable<Record> records = IcebergGenerics.read(table).build()) {
+      Record record = records.iterator().next();
+      assertEquals(List.of("a", "b"), record.getField("tags"));
+      Record point = (Record) record.getField("point");
+      assertEquals(List.of(1, 2), List.of(point.getField("x"), point.getField("y")));
+      assertEquals(Map.of("k", 7), record.getField("attributes"));
+      assertEquals(OffsetDateTime.parse("2026-01-01T00:00:00Z"), record.getField("created_at"));
+      assertEquals(new BigDecimal("12.34"), record.getField("amount"));
+    }
   }
 
   /**

@@ -615,6 +615,65 @@ class DuckDbParquetIntegrationTest {
     }
   }
 
+  /**
+   * {@code CREATE SECRET (TYPE s3, PROVIDER credential_chain)}: DuckDB takes the credentials from where the AWS SDK
+   * looks for them rather than from the secret, here a named profile holding the temporary credentials of STS, as
+   * {@code aws configure} or a login tool writes them to {@code ~/.aws/config} and {@code ~/.aws/credentials}. The
+   * chain keeps the session token, which DuckDB sends as {@code x-amz-security-token}.
+   *
+   * <p>The AWS SDK of DuckDB finds the two files through {@code AWS_CONFIG_FILE} and {@code AWS_SHARED_CREDENTIALS_FILE},
+   * which a JVM can't set for itself, so {@code dataToolsTest} points them into the build directory, and the test is
+   * skipped where they aren't set, e.g. in an IDE.
+   */
+  @Test
+  void readsAndWritesWithTheCredentialChainOfAProfileOfStsCredentials() throws Exception {
+    String configFile = System.getenv("AWS_CONFIG_FILE");
+    String credentialsFile = System.getenv("AWS_SHARED_CREDENTIALS_FILE");
+    Assumptions.assumeTrue(configFile != null && credentialsFile != null,
+        "AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE point DuckDB at the profile of the test; dataToolsTest sets them.");
+
+    LocalS3 signed = start(LocalS3.builder().port(-1).buckets(BUCKET).credentials(ACCESS_KEY, SECRET_KEY));
+    try (StsClient sts = StsClient.builder()
+        .endpointOverride(URI.create("http://127.0.0.1:" + signed.getPort()))
+        .region(Region.US_EAST_1)
+        .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
+        .build()) {
+      Credentials vended = sts.assumeRole(request -> request.roleArn("arn:aws:iam::000000000000:role/analyst")
+          .roleSessionName("duckdb-chain").durationSeconds(900)).credentials();
+      // The SDK reads the keys from the credentials file; DuckDB checks the profile against the config file as well.
+      Files.createDirectories(Path.of(configFile).toAbsolutePath().getParent());
+      Files.writeString(Path.of(configFile), """
+          [profile local-s3-sts]
+          region = us-east-1
+          """);
+      Files.createDirectories(Path.of(credentialsFile).toAbsolutePath().getParent());
+      Files.writeString(Path.of(credentialsFile), """
+          [local-s3-sts]
+          aws_access_key_id = %s
+          aws_secret_access_key = %s
+          aws_session_token = %s
+          """.formatted(vended.accessKeyId(), vended.secretAccessKey(), vended.sessionToken()));
+
+      try (Connection chained = DriverManager.getConnection("jdbc:duckdb:")) {
+        loadHttpfs(chained);
+        execute(chained, "CREATE SECRET local_s3 (TYPE s3, PROVIDER credential_chain, CHAIN 'config', "
+            + "PROFILE 'local-s3-sts', ENDPOINT '127.0.0.1:" + signed.getPort() + "', URL_STYLE 'path', USE_SSL false)");
+        assertEquals(List.of(List.of("credential_chain", vended.accessKeyId())), rows(chained,
+            "SELECT provider, regexp_extract(secret_string, 'key_id=([^;]*)', 1) FROM duckdb_secrets() "
+                + "WHERE name = 'local_s3'"));
+        assertTrue(DuckDbParquetIntegrationTest.<String>column(chained, "SELECT secret_string FROM duckdb_secrets() WHERE name = 'local_s3'")
+            .get(0).contains("session_token=redacted"), "The chain must have picked up the session token.");
+
+        execute(chained, "COPY (SELECT i AS id, i % 3 AS part FROM range(0, 30) t(i)) "
+            + "TO 's3://lake/chained' (FORMAT parquet, PARTITION_BY (part))");
+        assertEquals(List.of(List.of(30L, 435L)), rows(chained,
+            "SELECT count(*), sum(id)::BIGINT FROM read_parquet('s3://lake/chained/**/*.parquet')"));
+      }
+    } finally {
+      signed.shutdown();
+    }
+  }
+
   private List<String> keys(String prefix) {
     return s3.listObjectsV2Paginator(request -> request.bucket(BUCKET).prefix(prefix)).contents().stream()
         .map(S3Object::key).sorted().toList();

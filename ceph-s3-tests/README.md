@@ -17,6 +17,9 @@ with an access key of its own, and runs `s3tests/functional/test_s3.py` and `tes
 checkout, the log of LocalS3 and a JUnit report go to `ceph-s3-tests/build`. It leaves out the
 `AWS_*` and `LOCAL_S3_*` variables of the shell, which would otherwise configure LocalS3 or send boto3 elsewhere.
 
+[`data-tools`](data-tools/README.md) runs the Python data tools, PyIceberg, delta-rs, Polars, s3fs and pandas,
+against the same jar, in a uv project of its own.
+
 ## Python environment
 
 [uv](https://docs.astral.sh/uv/) manages it: `pyproject.toml` lists the packages that the tests import, `uv.lock` pins

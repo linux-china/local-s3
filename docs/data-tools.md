@@ -1,8 +1,9 @@
 # Data tools
 
-How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake and Hadoop S3A at LocalS3, e.g. a LocalS3 started with
-`docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as end-to-end tests in
-[`local-s3-integration-test`](../local-s3-integration-test/README.md).
+How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake, Hadoop S3A and the [Python](#python) data tools at LocalS3,
+e.g. a LocalS3 started with `docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as
+end-to-end tests in [`local-s3-integration-test`](../local-s3-integration-test/README.md), and the Python ones in
+[`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md).
 
 A local endpoint has no DNS name for each bucket, so every client uses **path-style** addressing,
 `http://localhost:29090/bucket/key`. The examples below use plain HTTP, which LocalS3 serves by default; a LocalS3
@@ -97,6 +98,27 @@ CREATE SECRET local_s3_session (
     KEY_ID 'ASIA...', SECRET '...', SESSION_TOKEN '...'
 );
 ```
+
+Or leave the credentials out of the SQL with `PROVIDER credential_chain`, which takes them where the AWS SDK looks for
+them, session token included. Only the endpoint settings stay in the secret:
+
+```sql
+-- AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN of the environment
+CREATE SECRET local_s3 (TYPE s3, PROVIDER credential_chain, CHAIN 'env',
+    ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false, REGION 'us-east-1');
+
+-- A named profile of ~/.aws, e.g. the one `aws configure --profile local-s3` writes
+CREATE SECRET local_s3 (TYPE s3, PROVIDER credential_chain, CHAIN 'config', PROFILE 'local-s3',
+    ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false);
+```
+
+With `CHAIN 'config'`, DuckDB wants the profile in both files, as `aws configure` writes them: `[profile local-s3]`
+in `~/.aws/config` (or `AWS_CONFIG_FILE`) and `[local-s3]` with the keys in `~/.aws/credentials` (or
+`AWS_SHARED_CREDENTIALS_FILE`). A profile that is only in `~/.aws/config` fails `CREATE SECRET` with
+`Secret Validation Failure`. Name the chain rather than relying on the default one: the default starts with the
+environment, so an `AWS_ACCESS_KEY_ID` of a real account in the shell would win over the profile.
+`DuckDbParquetIntegrationTest.readsAndWritesWithTheCredentialChainOfAProfileOfStsCredentials` writes such a profile
+with the credentials of `AssumeRole`.
 
 `COPY ... (OVERWRITE)` and `PER_THREAD_OUTPUT` replace the files of a directory by listing it and deleting them, and
 the values of `PARTITION_BY` are escaped by DuckDB itself, e.g. `city=New%20York`; keys with spaces and `+` are
@@ -274,6 +296,33 @@ SELECT * FROM ice.db.events AT (VERSION => 3949531829775254263);
 ```
 
 Time travel takes a **snapshot id**, not an ordinal version; `iceberg_snapshots` is where the ids come from.
+
+Beyond those statements, DuckDB 1.5 does the following on the built-in catalog, and the Iceberg Java client reads what
+each one leaves:
+
+```sql
+-- The partition transforms of Iceberg, e.g. identity, bucket and month.
+CREATE TABLE ice.db.metrics (id BIGINT, day DATE, v DOUBLE) PARTITIONED BY (bucket(4, id), month(day));
+
+MERGE INTO ice.db.events USING updates u ON events.id = u.id
+    WHEN MATCHED THEN UPDATE SET level = u.level
+    WHEN NOT MATCHED THEN INSERT VALUES (u.id, u.name, u.level);
+TRUNCATE ice.db.events;
+
+-- Several statements, visible to other clients once committed and not at all once rolled back.
+BEGIN; INSERT INTO ice.db.events VALUES (4, 'row-4', 'info'); DELETE FROM ice.db.events WHERE id = 1; COMMIT;
+
+ALTER TABLE ice.db.events RENAME COLUMN name TO label;   -- keeps the field id
+ALTER TABLE ice.db.events DROP COLUMN label;
+ALTER TABLE ice.db.metrics ALTER COLUMN id SET DATA TYPE BIGINT;  -- the promotions Iceberg allows, e.g. INT to BIGINT
+ALTER TABLE ice.db.events RENAME TO log;
+DROP TABLE ice.db.log;
+DROP SCHEMA ice.db;
+```
+
+Lists, structs, maps, `TIMESTAMPTZ` and decimals are written as the matching Iceberg types. What DuckDB 1.5 refuses on
+an Iceberg catalog: `DROP SCHEMA ... CASCADE` (drop the tables first), `CREATE VIEW`, and `ADD COLUMN ... DEFAULT` on
+a table of format version 1 or 2.
 
 A table can also be read without the catalog, by the metadata file it currently is — and then DuckDB does need an
 [S3 secret](#duckdb) of its own, because nothing vends one for a location:
@@ -596,6 +645,7 @@ fs.s3a.secret.key=admin
 ```
 
 With Spark and `delta-spark`, the same as `spark.hadoop.fs.s3a.*`, and the table path is `s3a://my-bucket/tables/events`.
+delta-rs, the Delta Lake of Python and Polars, doesn't go through Hadoop; see [delta-rs and Polars](#delta-rs-and-polars).
 
 `DeltaLakeIntegrationTest` drives [delta-kernel-java](https://delta.io/blog/delta-kernel/) — the Delta client without
 Spark — over `LocalS3DeltaFileIO`, a small `FileIO` backed by the AWS SDK rather than by `S3A`, so the test needs
@@ -660,3 +710,97 @@ With Spark, the same as `spark.hadoop.fs.s3a.*`. The magic committer takes
 `hadoop-aws` declares the whole AWS SDK as `software.amazon.awssdk:bundle`, over 500 MB; the test excludes it for the
 modules S3A uses, `s3` and `s3-transfer-manager` (and `sts` for its assumed-role credentials), which an
 application may do as well.
+
+## Python
+
+The Python clients reach S3 each with an HTTP stack of its own: PyIceberg with PyArrow's S3 file system (the AWS SDK
+for C++), delta-rs and Polars with Rust's `object_store`, s3fs and pandas with aiobotocore on aiohttp. None of them
+is the AWS SDK for Java of the other tests, so [`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md)
+runs them against the executable jar with signatures verified:
+
+```shell
+./gradlew :local-s3-standalone:jar
+ceph-s3-tests/data-tools/run.sh
+```
+
+Every one of them also reads the `AWS_*` variables of the environment, so an `AWS_PROFILE` or `AWS_ENDPOINT_URL` of a
+real account in the shell can win over, or add to, what the code below gives it.
+
+### PyIceberg
+
+The URI of the [built-in catalog](#the-built-in-iceberg-rest-catalog) is the whole configuration: the endpoint, the
+path-style addressing and the credentials of the storage are vended by the catalog.
+
+```python
+import pyarrow as pa
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog("local", type="rest", uri="http://localhost:29090/iceberg")
+catalog.create_namespace("db")
+table = catalog.create_table("db.events", schema=pa.schema([("id", pa.int64()), ("name", pa.string())]))
+table.append(pa.table({"id": [1, 2], "name": ["a", "b"]}))
+table.scan(row_filter="id > 1").to_arrow()
+```
+
+`test_pyiceberg.py` covers appends, scans with a filter, time travel, `delete` and `overwrite`, partition pruning,
+schema evolution, renaming and dropping.
+
+### delta-rs and Polars
+
+`write_deltalake` of `deltalake` and `write_delta` of Polars take the options of `object_store`:
+
+```python
+from deltalake import DeltaTable, write_deltalake
+
+storage_options = {
+    "AWS_ENDPOINT_URL": "http://localhost:29090",
+    "AWS_ACCESS_KEY_ID": "admin",
+    "AWS_SECRET_ACCESS_KEY": "admin",
+    "AWS_REGION": "us-east-1",
+    "AWS_ALLOW_HTTP": "true",      # LocalS3 serves plain HTTP unless given a certificate
+    "conditional_put": "etag",     # commit with If-None-Match: *, no lock service needed
+}
+write_deltalake("s3://delta/tables/events", df, storage_options=storage_options)
+write_deltalake("s3://delta/tables/events", more, mode="append", storage_options=storage_options)
+DeltaTable("s3://delta/tables/events", storage_options=storage_options).to_pandas()
+
+import polars as pl
+pl.read_delta("s3://delta/tables/events", storage_options=storage_options)
+df.write_delta("s3://delta/tables/events", mode="append", storage_options=storage_options)
+```
+
+**The commit is a conditional `PUT`.** A Delta commit creates `_delta_log/<version>.json`, which must fail if another
+writer created it first. `conditional_put = etag` makes that create a `PUT` with `If-None-Match: *`, which LocalS3,
+like Amazon S3, answers with `412 Precondition Failed` when the key is taken; delta-rs then rebases a write that
+doesn't conflict, e.g. an append, on the new version and commits again. delta-rs 1.x (the `object_store` 0.12 and
+later under it) does this on S3 by default, so the option only makes it explicit, and nothing else is needed: no
+DynamoDB lock table, which delta-rs no longer supports, and no `AWS_S3_ALLOW_UNSAFE_RENAME=true`, which lets two
+concurrent writers overwrite each other's commit. The 0.x versions refuse to write to S3 without one of those
+options, so keep `conditional_put` for them. `object_store` addresses buckets path-style unless
+`AWS_VIRTUAL_HOSTED_STYLE_REQUEST` is `true`.
+
+`test_delta.py` covers writes, appends, `delete`, `merge`, overwrites and time travel with both libraries, and races
+four writers for one version, with `conditional_put = etag` and without it: all of them keep their rows, and LocalS3
+refused the losers with `412`.
+
+### s3fs and pandas
+
+pandas opens `s3://` paths with fsspec's s3fs, which takes its settings as `storage_options`:
+
+```python
+import pandas as pd
+
+storage_options = {
+    "key": "admin",
+    "secret": "admin",
+    "endpoint_url": "http://localhost:29090",
+    "client_kwargs": {"region_name": "us-east-1"},
+}
+df.to_parquet("s3://demo1/events.parquet", storage_options=storage_options)
+pd.read_parquet("s3://demo1/events.parquet", storage_options=storage_options)
+pd.read_parquet("s3://demo1/dataset", filters=[("part", "==", "p1")], storage_options=storage_options)
+```
+
+botocore addresses buckets path-style against an `endpoint_url`, so nothing more is needed. `test_s3fs_pandas.py` covers Parquet and CSV, partitioned datasets with a filter on the partitions,
+multipart uploads, range reads of row groups, `copy`, `mv`, `find`, `glob` and recursive deletes (`DeleteObjects`),
+with the checksums that botocore adds to uploads by default.

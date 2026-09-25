@@ -85,6 +85,11 @@ def dataToolsTest = tasks.register('dataToolsTest', Test) {
     useJUnitPlatform {
         includeTags 'data-tools'
     }
+    // The AWS files of DuckDB's credential_chain, which DuckDbParquetIntegrationTest writes a profile of STS credentials
+    // into: the AWS SDK of DuckDB finds them through the environment alone, which a test can't set for its own JVM.
+    def awsFiles = layout.buildDirectory.dir('duckdb-aws').get().asFile
+    environment 'AWS_CONFIG_FILE', new File(awsFiles, 'config').absolutePath
+    environment 'AWS_SHARED_CREDENTIALS_FILE', new File(awsFiles, 'credentials').absolutePath
 
     def successfulDuckDbTestClasses = [] as Set
     afterTest { descriptor, result ->
