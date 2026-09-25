@@ -151,7 +151,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   the browser can't write through it. The S3 API is unaffected, and the requests of the console aren't recorded in
   the statistics. See [Console](docs/deployment.md#console).
 + **Connection snippets**, written by the service for the service: `GET /_admin/snippets` answers the configuration
-  that DuckDB, the AWS CLI, boto3, PyIceberg and Spark need to reach it — the host the request addressed, plain HTTP
+  that DuckDB, s5cmd and the AWS CLI (as environment variables, and as a profile), boto3, Polars (`storage_options`),
+  PyIceberg and Spark need to reach it — the host the request addressed, plain HTTP
   or HTTPS, path-style addressing, the credentials and, if it serves one, the `ATTACH` of the Iceberg catalog — and
   `GET /_admin/snippets/duckdb` answers one of them as text, so
   `duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)` opens a DuckDB that reaches LocalS3. With `bucket`

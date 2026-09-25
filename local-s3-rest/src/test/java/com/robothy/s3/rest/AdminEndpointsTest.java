@@ -139,7 +139,7 @@ class AdminEndpointsTest {
       assertFalse(body.has("duckdbQuery"), "No bucket was asked about.");
       List<String> ids = new ArrayList<>();
       body.get("snippets").forEach(snippet -> ids.add(snippet.get("id").asText()));
-      assertEquals(List.of("duckdb", "aws-cli", "boto3", "pyiceberg", "spark"), ids);
+      assertEquals(List.of("duckdb", "env", "aws-cli", "boto3", "polars", "pyiceberg", "spark"), ids);
 
       // One snippet is text, to paste or to pipe into its client.
       HttpResponse<String> duckdb = send(localS3, "GET", "/_admin/snippets/duckdb", null);
@@ -156,6 +156,15 @@ class AdminEndpointsTest {
       assertTrue(sql.contains("SESSION_TOKEN"), sql);
       assertTrue(send(localS3, "GET", "/_admin/snippets/pyiceberg", null).body()
           .contains("uri=\"http://" + host + "/iceberg\""));
+      String env = send(localS3, "GET", "/_admin/snippets/env", null).body();
+      assertTrue(env.contains("export AWS_ENDPOINT_URL='http://" + host + "'"), env);
+      assertTrue(env.contains("export S3_ENDPOINT_URL='http://" + host + "'"), env);
+      assertTrue(env.contains("export AWS_ALLOW_HTTP=true"), env);
+      assertTrue(env.contains("\n# s5cmd ls\n"), env);
+      String polars = send(localS3, "GET", "/_admin/snippets/polars", null).body();
+      assertTrue(polars.contains("\"aws_endpoint_url\": \"http://" + host + "\""), polars);
+      assertTrue(polars.contains("\"aws_allow_http\": \"true\""), polars);
+      assertTrue(polars.contains("\"aws_virtual_hosted_style_request\": \"false\""), polars);
       assertEquals(404, send(localS3, "GET", "/_admin/snippets/unknown", null).statusCode(),
           "An unknown snippet is an object of a bucket named _admin, which doesn't exist.");
     } finally {
@@ -184,6 +193,12 @@ class AdminEndpointsTest {
       assertTrue(boto3.contains("Key=\"a\\\"b.csv\""), boto3);
       String cli = send(localS3, "GET", "/_admin/snippets/aws-cli?bucket=lake&key=it%27s.csv", null).body();
       assertTrue(cli.contains("aws s3 cp 's3://lake/it'\\''s.csv' -"), cli);
+      String env = send(localS3, "GET", "/_admin/snippets/env?bucket=lake&key=events%2F", null).body();
+      assertTrue(env.contains("# s5cmd ls 's3://lake/events/*'"), env);
+      String polars = send(localS3, "GET", "/_admin/snippets/polars?bucket=lake&key=a%22b.csv", null).body();
+      assertTrue(polars.contains("pl.scan_csv(\"s3://lake/a\\\"b.csv\", storage_options=storage_options)"), polars);
+      polars = send(localS3, "GET", "/_admin/snippets/polars?bucket=lake&key=events%2F", null).body();
+      assertTrue(polars.contains("pl.scan_parquet(\"s3://lake/events/**/*.parquet\""), polars);
 
     } finally {
       localS3.shutdown();

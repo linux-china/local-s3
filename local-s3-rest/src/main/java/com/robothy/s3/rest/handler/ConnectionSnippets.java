@@ -14,8 +14,9 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The configuration that a client needs to reach this service, as snippets to paste: a DuckDB script, an AWS CLI
- * profile, a boto3 client, a PyIceberg catalog and the properties of Spark.
+ * The configuration that a client needs to reach this service, as snippets to paste: a DuckDB script, the environment
+ * variables of s5cmd, the AWS CLI and the AWS SDKs, an AWS CLI profile, a boto3 client, the {@code storage_options} of
+ * Polars, a PyIceberg catalog and the properties of Spark.
  *
  * <p>The service knows what a user otherwise has to get right by hand — the port, whether it speaks plain HTTP, its
  * credentials, and whether it serves an Iceberg catalog — and a DuckDB secret that misses {@code USE_SSL false} or
@@ -33,9 +34,13 @@ final class ConnectionSnippets {
 
   static final String DUCKDB = "duckdb";
 
+  static final String ENV = "env";
+
   static final String AWS_CLI = "aws-cli";
 
   static final String BOTO3 = "boto3";
+
+  static final String POLARS = "polars";
 
   static final String PYICEBERG = "pyiceberg";
 
@@ -44,7 +49,7 @@ final class ConnectionSnippets {
   /**
    * The snippets in the order they are answered, which is the order the console shows them in.
    */
-  static final List<String> IDS = List.of(DUCKDB, AWS_CLI, BOTO3, PYICEBERG, SPARK);
+  static final List<String> IDS = List.of(DUCKDB, ENV, AWS_CLI, BOTO3, POLARS, PYICEBERG, SPARK);
 
   /**
    * The key pair that the snippets of a service without credentials name. Any would do; this is the one of the
@@ -170,8 +175,10 @@ final class ConnectionSnippets {
   private Snippet snippet(String id, Target target) {
     return switch (id) {
       case DUCKDB -> new Snippet(DUCKDB, "DuckDB", "sql", duckdb(target));
+      case ENV -> new Snippet(ENV, "Environment", "shell", env(target));
       case AWS_CLI -> new Snippet(AWS_CLI, "AWS CLI", "shell", awsCli(target));
       case BOTO3 -> new Snippet(BOTO3, "boto3", "python", boto3(target));
+      case POLARS -> new Snippet(POLARS, "Polars", "python", polars(target));
       case PYICEBERG -> new Snippet(PYICEBERG, "PyIceberg", "python", pyiceberg(target));
       case SPARK -> new Snippet(SPARK, "Spark", "properties", spark(target));
       default -> throw new IllegalArgumentException("No snippet " + id + ".");
@@ -241,6 +248,40 @@ final class ConnectionSnippets {
     return "SELECT filename, size, last_modified FROM read_blob(" + sqlString(url) + ");";
   }
 
+  /**
+   * The environment variables that s5cmd, the AWS CLI, the AWS SDKs and the clients of object_store, e.g. Polars and
+   * delta-rs, read, for a shell, a {@code .env} file or the environment of an agent.
+   */
+  private String env(Target target) {
+    StringBuilder shell = new StringBuilder();
+    shell.append("# LocalS3 at ").append(target.endpoint)
+        .append(": s5cmd, AWS CLI 2.13 or later, the AWS SDKs and object_store (Polars, delta-rs)\n");
+    shell.append("export AWS_ACCESS_KEY_ID=").append(shellString(accessKeyId())).append('\n');
+    shell.append("export AWS_SECRET_ACCESS_KEY=").append(shellString(secretAccessKey())).append('\n');
+    shell.append("export AWS_REGION=").append(region()).append('\n');
+    shell.append("export AWS_DEFAULT_REGION=").append(region()).append('\n');
+    shell.append("export AWS_ENDPOINT_URL=").append(shellString(target.endpoint)).append('\n');
+    shell.append("# s5cmd reads an endpoint of its own, and addresses it path style.\n");
+    shell.append("export S3_ENDPOINT_URL=").append(shellString(target.endpoint)).append('\n');
+    if (!target.https()) {
+      shell.append("# object_store refuses plain HTTP unless allowed.\n");
+      shell.append("export AWS_ALLOW_HTTP=true\n");
+    } else if (isSelfSigned()) {
+      shell.append("# The certificate is self-signed: save the PEM block that LocalS3 logged on startup, and trust it.\n")
+          .append("export AWS_CA_BUNDLE=local-s3.pem\n");
+    }
+    // The example is a comment, so that the snippet can be sourced, e.g. eval "$(curl -s .../_admin/snippets/env)".
+    shell.append('\n');
+    if (target.bucket == null) {
+      shell.append("# s5cmd ls\n");
+    } else if (target.isObject()) {
+      shell.append("# s5cmd cat ").append(shellString(target.s3Url())).append('\n');
+    } else {
+      shell.append("# s5cmd ls ").append(shellString(target.s3Url() + "*")).append('\n');
+    }
+    return shell.toString();
+  }
+
   private String awsCli(Target target) {
     String profile = " --profile local-s3";
     StringBuilder shell = new StringBuilder();
@@ -293,6 +334,70 @@ final class ConnectionSnippets {
       python.append(")\nprint([item[\"Key\"] for item in listing.get(\"Contents\", [])])\n");
     }
     return python.toString();
+  }
+
+  /**
+   * The {@code storage_options} of Polars, which hands them to object_store.
+   */
+  private String polars(Target target) {
+    StringBuilder python = new StringBuilder();
+    python.append("# LocalS3 at ").append(target.endpoint).append('\n');
+    python.append("import polars as pl\n\n");
+    python.append("storage_options = {\n")
+        .append("    \"aws_endpoint_url\": ").append(pythonString(target.endpoint)).append(",\n")
+        .append("    \"aws_access_key_id\": ").append(pythonString(accessKeyId())).append(",\n")
+        .append("    \"aws_secret_access_key\": ").append(pythonString(secretAccessKey())).append(",\n")
+        .append("    \"aws_region\": ").append(pythonString(region())).append(",\n")
+        .append("    \"aws_virtual_hosted_style_request\": \"false\",\n");
+    if (!target.https()) {
+      python.append("    \"aws_allow_http\": \"true\",\n");
+    }
+    python.append("}\n");
+    if (target.https() && isSelfSigned()) {
+      python.append("# The certificate is self-signed: trust local-s3.pem, the PEM block that LocalS3 logged on startup,\n")
+          .append("# e.g. with SSL_CERT_FILE=local-s3.pem.\n");
+    }
+    python.append('\n');
+    String scan = polarsScan(target);
+    if (scan == null) {
+      python.append("# e.g. pl.scan_parquet(\"s3://bucket/data/**/*.parquet\", storage_options=storage_options).collect()\n");
+    } else {
+      python.append("df = ").append(scan).append("(").append(pythonString(polarsUrl(target)))
+          .append(", storage_options=storage_options).head(10).collect()\n")
+          .append("print(df)\n");
+    }
+    return python.toString();
+  }
+
+  /**
+   * The function of Polars that scans the example, e.g. {@code pl.scan_parquet}; {@code null} for an object Polars
+   * doesn't read by its name.
+   */
+  private static @Nullable String polarsScan(Target target) {
+    if (target.bucket == null) {
+      return null;
+    }
+    if (!target.isObject()) {
+      return "pl.scan_parquet";
+    }
+    String key = target.key.toLowerCase(Locale.ROOT);
+    if (key.endsWith(".parquet")) {
+      return "pl.scan_parquet";
+    }
+    if (key.endsWith(".csv")) {
+      return "pl.scan_csv";
+    }
+    if (key.endsWith(".jsonl") || key.endsWith(".ndjson")) {
+      return "pl.scan_ndjson";
+    }
+    return null;
+  }
+
+  /**
+   * The URL Polars scans: the object, or the Parquet files under a bucket or a prefix.
+   */
+  private static String polarsUrl(Target target) {
+    return target.isObject() ? target.s3Url() : target.s3Url() + "**/*.parquet";
   }
 
   private String pyiceberg(Target target) {
