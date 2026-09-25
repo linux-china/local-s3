@@ -62,6 +62,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpMethod;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -81,6 +82,12 @@ public class LocalS3RouterFactory {
           AdminController.REQUESTS_OPERATION, AdminController.RESET_OPERATION, AdminController.LIFECYCLE_OPERATION,
           AdminController.SNIPPETS_OPERATION, AdminController.SNIPPET_OPERATION),
       ConsoleController.OPERATIONS.stream()).collect(Collectors.toUnmodifiableSet());
+
+  /**
+   * How long the temporary credentials of the credentials route of an Iceberg table are valid for: the default of
+   * {@code AssumeRole}. The {@code S3FileIO} of Iceberg takes new ones five minutes before they expire.
+   */
+  private static final Duration ICEBERG_CREDENTIALS_DURATION = Duration.ofHours(1);
 
   /**
    * The operations that LocalS3 routes but doesn't implement. Each of them answers {@code 501 NotImplemented} with an
@@ -140,7 +147,7 @@ public class LocalS3RouterFactory {
         .kms(new KmsController())
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
         // routes: without one, /iceberg/... stays an ordinary bucket path.
-        .iceberg(icebergController(serviceFactory))
+        .iceberg(icebergController(serviceFactory, sessionCredentialIssuer))
         // Told apart from an S3 request by the service in its credential scope rather than by its path, which it
         // shares with the S3 routes; see S3TablesController.
         .s3Tables(s3TablesController(serviceFactory))
@@ -176,9 +183,12 @@ public class LocalS3RouterFactory {
    * The controller of the Iceberg REST catalog of a service that serves one.
    *
    * @param serviceFactory the services of the service.
+   * @param sessionCredentialIssuer the issuer of the STS endpoint, whose temporary credentials the credentials route of
+   *     a table answers, so that they are verified like the ones of {@code AssumeRole}.
    * @return the controller; {@code null} if the service serves no catalog.
    */
-  private static IcebergCatalogController icebergController(ServiceFactory serviceFactory) {
+  private static IcebergCatalogController icebergController(ServiceFactory serviceFactory,
+                                                            SessionCredentialIssuer sessionCredentialIssuer) {
     if (!serviceFactory.containsInstance(IcebergCatalogService.class)) {
       return null;
     }
@@ -188,7 +198,13 @@ public class LocalS3RouterFactory {
     S3TablesService s3Tables = serviceFactory.containsInstance(S3TablesService.class)
         ? serviceFactory.getInstance(S3TablesService.class) : null;
     return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig,
-        s3Tables);
+        s3Tables, () -> {
+          // The credentials act as the root of the account of LocalS3, like those of its GetSessionToken.
+          SessionCredentialIssuer.SessionCredentials credentials = sessionCredentialIssuer.issue(
+              ICEBERG_CREDENTIALS_DURATION, "arn:aws:iam::" + StsController.ACCOUNT + ":root", StsController.ACCOUNT);
+          return new IcebergClientConfig.SessionCredentials(credentials.accessKeyId(), credentials.secretAccessKey(),
+              credentials.sessionToken(), credentials.session().expiration());
+        });
   }
 
   /**

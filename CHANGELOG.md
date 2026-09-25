@@ -223,7 +223,10 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   that a new Iceberg release is checked by bumping the version and running `dataToolsTest` rather than by a user hitting
   the gap; `IcebergProtocolCoverageTest` asks the Iceberg library which commit updates and requirements exist and checks
   that the catalog knows every one of them. `icebergCatalog(iceberg -> iceberg.uniqueTableLocation(true))` gives every
-  table a location of its own, the `unique-table-location` of the Iceberg catalogs.
+  table a location of its own, the `unique-table-location` of the Iceberg catalogs. The credentials route of a table,
+  `GET .../tables/{table}/credentials`, answers temporary credentials of the STS endpoint, and a service that verifies
+  signatures names it in `client.refresh-credentials-endpoint`, so the `S3FileIO` of Iceberg refreshes its credentials
+  before they expire.
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 
 + **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,

@@ -88,7 +88,7 @@ class IcebergRemoteSigningIntegrationTest {
     }
   }
 
-  private static void writeAndReadBack(RESTCatalog catalog, TableIdentifier identifier) throws IOException {
+  static void writeAndReadBack(RESTCatalog catalog, TableIdentifier identifier) throws IOException {
     catalog.createNamespace(identifier.namespace());
     Table table = catalog.createTable(identifier, SCHEMA, PartitionSpec.unpartitioned(),
         Map.of("format-version", "2"));
@@ -131,12 +131,12 @@ class IcebergRemoteSigningIntegrationTest {
     }
   }
 
-  private static long count(LocalS3 localS3, String operation) {
+  static long count(LocalS3 localS3, String operation) {
     RequestStatistics.OperationStatistics statistics = localS3.statistics().operations().get(operation);
     return statistics == null ? 0 : statistics.count();
   }
 
-  private static LocalS3 start(LocalS3Builder builder) {
+  static LocalS3 start(LocalS3Builder builder) {
     LocalS3 localS3 = builder.netty(netty -> netty.registerShutdownHook(false)).build();
     localS3.start();
     return localS3;

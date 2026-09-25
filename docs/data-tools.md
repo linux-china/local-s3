@@ -424,8 +424,15 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
 + The **empty namespace** is not served, and neither is it by the REST catalog of Iceberg itself: a table lives in a
   namespace of at least one level.
 + `GET /v1/config` answers the routes it serves in `endpoints`, and the ones it doesn't are therefore not called:
-  **scan planning** (`/plan`, `/tasks`) and the **credentials endpoint** of a table (`/credentials`) — a client reads
-  the table itself, and takes the credentials from the `config` of the loaded table instead.
+  **scan planning** (`/plan`, `/tasks`) — a client reads the table itself.
++ The **credentials endpoint** of a table, `GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials`,
+  answers temporary credentials of the [STS endpoint](embedding.md#temporary-credentials-sts), valid for an hour, with
+  a session token and `s3.session-token-expires-at-ms`, for the prefix `s3://`. A service that verifies signatures
+  names the route in the `client.refresh-credentials-endpoint` of every loaded table, so the `S3FileIO` of Iceberg
+  takes its credentials from there and takes new ones five minutes before they expire, as it does against Polaris or
+  AWS; set `client.refresh-credentials-enabled=false` on the client to keep the keys of the `config` instead. A service
+  that takes unsigned requests names no route, since there is nothing to refresh. Like the rest of the catalog, the
+  route doesn't check who asks.
 + **Remote signing** is served for a client whose `S3FileIO` is configured with `s3.remote-signing-enabled=true`
   (e.g. a Spark or Trino set up for a catalog that doesn't vend credentials): the catalog signs each S3 request with
   the **credentials of the service itself**, at the route of the table,

@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,6 +107,12 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   private final S3TablesService s3Tables;
 
   /**
+   * Issues the temporary credentials that the credentials route of a table answers; {@code null} to answer none.
+   */
+  @Nullable
+  private final Supplier<IcebergClientConfig.SessionCredentials> sessionCredentials;
+
+  /**
    * Create the controller.
    *
    * @param catalog the catalog of the service.
@@ -126,9 +133,27 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    */
   public IcebergCatalogController(IcebergCatalogService catalog, IcebergClientConfig clientConfig,
                                   @Nullable S3TablesService s3Tables) {
+    this(catalog, clientConfig, s3Tables, null);
+  }
+
+  /**
+   * Create the controller of a service that also serves table buckets, and vends temporary credentials at the
+   * credentials route of a table.
+   *
+   * @param catalog the catalog that the service serves by default, i.e. the one a client that names no warehouse
+   *     reaches.
+   * @param clientConfig the settings that the catalog hands its clients.
+   * @param s3Tables the table buckets of the service, each of which is a catalog of its own; {@code null} for none.
+   * @param sessionCredentials issues the temporary credentials of the credentials route, e.g. with the STS endpoint
+   *     of the service; {@code null} to answer none.
+   */
+  public IcebergCatalogController(IcebergCatalogService catalog, IcebergClientConfig clientConfig,
+                                  @Nullable S3TablesService s3Tables,
+                                  @Nullable Supplier<IcebergClientConfig.SessionCredentials> sessionCredentials) {
     this.catalog = Objects.requireNonNull(catalog, "catalog");
     this.clientConfig = Objects.requireNonNull(clientConfig, "clientConfig");
     this.s3Tables = s3Tables;
+    this.sessionCredentials = sessionCredentials;
   }
 
   /**
@@ -219,6 +244,13 @@ public final class IcebergCatalogController implements HttpRequestHandler {
         writeStatus(response, 204);
       }
       case "IcebergReportMetrics" -> writeStatus(response, 204);
+      case "IcebergLoadCredentials" -> {
+        // A table that isn't there is a 404 NoSuchTableException, as for a load; the planId of a scan is ignored,
+        // since the credentials are the same for every scan.
+        catalog.loadTable(identifier(path), false);
+        writeCredentials(response, clientConfig.credentialsResponse(
+            sessionCredentials == null ? null : sessionCredentials.get()));
+      }
       case "IcebergRemoteSign", "IcebergSignS3Request" -> writeSigned(response, sign(body(request)));
       case "IcebergListViews" -> writeJson(response, 200, catalog.listTables(namespace(path), true));
       case "IcebergCreateView" -> writeJson(response, 200, catalog.createView(namespace(path), body(request)));
@@ -306,6 +338,9 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       if (size == 5 && "tables".equals(resource) && "sign".equals(path.get(4)) && post) {
         return "IcebergRemoteSign";
       }
+      if (size == 5 && "tables".equals(resource) && "credentials".equals(path.get(4)) && get) {
+        return "IcebergLoadCredentials";
+      }
     }
     // The route of the S3 signer API that preceded the remote signing of the specification.
     if (S3_SIGNER_ROUTE.equals(path) && post) {
@@ -321,7 +356,8 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    */
   private ObjectNode withConfig(HttpRequest request, @Nullable String prefix, IcebergIdentifier table,
                                 ObjectNode loadTableResult) {
-    Map<String, String> config = clientConfig.tableConfig(request, signerEndpoint(prefix, table));
+    Map<String, String> config = clientConfig.tableConfig(request, tableRoute(prefix, table, "sign"),
+        tableRoute(prefix, table, "credentials"));
     if (!config.isEmpty()) {
       loadTableResult.set("config", IcebergJson.fromStringMap(config));
     }
@@ -329,10 +365,11 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   }
 
   /**
-   * The route that a client signs the S3 requests of a table at, relative to the catalog URI, e.g.
-   * {@code v1/sales/namespaces/db/tables/events/sign}: the remote signing of the specification.
+   * A route of a table, relative to the catalog URI, e.g. {@code v1/sales/namespaces/db/tables/events/sign}, the one
+   * that a client signs the S3 requests of the table at, or {@code .../credentials}, the one that it refreshes its
+   * credentials at.
    */
-  private static String signerEndpoint(@Nullable String prefix, IcebergIdentifier table) {
+  private static String tableRoute(@Nullable String prefix, IcebergIdentifier table, String action) {
     StringBuilder endpoint = new StringBuilder("v1/");
     if (prefix != null) {
       endpoint.append(RequestPaths.encode(prefix)).append('/');
@@ -341,7 +378,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
         .append(RequestPaths.encode(String.join(String.valueOf(IcebergIdentifier.SEPARATOR), table.namespace())))
         .append("/tables/")
         .append(RequestPaths.encode(table.name()))
-        .append("/sign")
+        .append('/').append(action)
         .toString();
   }
 
@@ -406,6 +443,14 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   private static void writeSigned(HttpResponse response, ObjectNode signed) {
     response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-cache");
     writeJson(response, 200, signed);
+  }
+
+  /**
+   * Answer the credentials of a table. Temporary credentials expire, so the client is told not to cache them.
+   */
+  private static void writeCredentials(HttpResponse response, ObjectNode credentials) {
+    response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-store");
+    writeJson(response, 200, credentials);
   }
 
   /**

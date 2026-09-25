@@ -4,6 +4,7 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.rest.handler.AwsSignatureV4RequestSigner;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +27,9 @@ import tools.jackson.databind.node.ObjectNode;
  *
  * <p>Against a real deployment the vended credentials would be scoped and temporary, from STS; here they are the
  * credentials of the service itself, which is what a test double should hand out — a test that wants temporary ones
- * gets them from the {@code AssumeRole} of LocalS3 on the same port.
+ * gets them from the {@code AssumeRole} of LocalS3 on the same port. The credentials route of a table,
+ * {@code GET /v1/.../tables/{table}/credentials}, does hand out temporary ones, which the {@code S3FileIO} of Iceberg
+ * refreshes its credentials from; see {@linkplain #credentialsResponse}.
  *
  * <p>The endpoint is the host the request arrived on, so a client in a container that reaches LocalS3 by one name and
  * a client on the host that reaches it by another are each told the name that works for them.
@@ -59,8 +62,8 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * table routes but <em>not</em> the view ones. A catalog that serves views and doesn't say so is a catalog whose
    * views no client will call — {@code catalog.createView(...)} fails with "Server does not support endpoint" before a
    * request is even sent. Every route that {@linkplain IcebergCatalogController} answers is listed here, and nothing
-   * else: the scan planning and the credentials endpoint of the specification aren't served, and a client that is
-   * told so falls back to reading the table itself rather than failing.
+   * else: the scan planning of the specification isn't served, and a client that is told so falls back to reading
+   * the table itself rather than failing.
    */
   private static final List<String> ENDPOINTS = List.of(
       "GET /v1/{prefix}/namespaces",
@@ -77,6 +80,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       "DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}",
       "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics",
       "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/sign",
+      "GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials",
       "POST /v1/{prefix}/namespaces/{namespace}/register",
       "POST /v1/{prefix}/tables/rename",
       "POST /v1/{prefix}/transactions/commit",
@@ -150,7 +154,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @return the settings; empty if the catalog vends none.
    */
   public Map<String, String> tableConfig(HttpRequest request) {
-    return tableConfig(request, null);
+    return tableConfig(request, null, null);
   }
 
   /**
@@ -162,9 +166,13 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @param signerEndpoint the path of the remote signing route of the table, relative to the catalog URI, e.g.
    *     {@code v1/namespaces/db/tables/events/sign}; {@code null} to vend none, which leaves the client to the default
    *     route {@code v1/aws/s3/sign}, which is served as well.
+   * @param credentialsEndpoint the path of the credentials route of the table, relative to the catalog URI, e.g.
+   *     {@code v1/namespaces/db/tables/events/credentials}, which a client refreshes its credentials at; {@code null}
+   *     to name none.
    * @return the settings; empty if the catalog vends none.
    */
-  public Map<String, String> tableConfig(HttpRequest request, @Nullable String signerEndpoint) {
+  public Map<String, String> tableConfig(HttpRequest request, @Nullable String signerEndpoint,
+                                         @Nullable String credentialsEndpoint) {
     if (!vendCredentials) {
       return Map.of();
     }
@@ -179,6 +187,12 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
     if (accessKeyId != null) {
       config.put("s3.access-key-id", accessKeyId);
       config.put("s3.secret-access-key", secretAccessKey);
+      if (credentialsEndpoint != null) {
+        // The S3FileIO of Iceberg then takes temporary credentials from the credentials route of the table, and takes
+        // new ones before they expire, rather than the keys above. A service that takes unsigned requests names no
+        // route, since there is nothing for its clients to refresh.
+        config.put("client.refresh-credentials-endpoint", credentialsEndpoint);
+      }
     }
     if (signerEndpoint != null) {
       // The URI of the catalog, which the endpoint of the signer is relative to.
@@ -186,6 +200,50 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       config.put("s3.signer.endpoint", signerEndpoint);
     }
     return config;
+  }
+
+  /**
+   * The answer of the credentials route of a table, a {@code LoadCredentialsResponse}: the temporary credentials that
+   * the client reaches the files of the table with, which {@code client.refresh-credentials-endpoint} sends it to.
+   *
+   * <p>The credentials reach every bucket of the service, as its own do, so they are vended for the prefix
+   * {@code s3://} rather than the location of the table, which a table whose {@code write.metadata.path} is elsewhere
+   * would outgrow.
+   *
+   * @param credentials the temporary credentials; {@code null} if the catalog vends none, which answers none.
+   * @return the {@code LoadCredentialsResponse}.
+   */
+  public ObjectNode credentialsResponse(@Nullable SessionCredentials credentials) {
+    ObjectNode response = IcebergJson.newObject();
+    ArrayNode storageCredentials = response.putArray("storage-credentials");
+    if (vendCredentials && credentials != null) {
+      ObjectNode storageCredential = storageCredentials.addObject();
+      storageCredential.put("prefix", "s3://");
+      ObjectNode config = storageCredential.putObject("config");
+      config.put("s3.access-key-id", credentials.accessKeyId());
+      config.put("s3.secret-access-key", credentials.secretAccessKey());
+      config.put("s3.session-token", credentials.sessionToken());
+      config.put("s3.session-token-expires-at-ms", String.valueOf(credentials.expiration().toEpochMilli()));
+    }
+    return response;
+  }
+
+  /**
+   * Temporary credentials of LocalS3, as its STS endpoint issues them.
+   *
+   * @param accessKeyId the access key ID.
+   * @param secretAccessKey the secret access key.
+   * @param sessionToken the session token, which a request signed with them carries.
+   * @param expiration when they expire.
+   */
+  public record SessionCredentials(String accessKeyId, String secretAccessKey, String sessionToken,
+                                   Instant expiration) {
+
+    @Override
+    public String toString() {
+      return "SessionCredentials[accessKeyId=" + accessKeyId + ", expiration=" + expiration + "]";
+    }
+
   }
 
   /**

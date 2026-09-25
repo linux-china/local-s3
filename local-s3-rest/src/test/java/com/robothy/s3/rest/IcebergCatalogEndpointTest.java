@@ -8,13 +8,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.iceberg.IcebergJson;
+import com.robothy.s3.rest.handler.AwsSignatureV4RequestSigner;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -222,6 +227,66 @@ class IcebergCatalogEndpointTest {
         assertEquals(200, listed.statusCode(), route + ": " + listed.body());
         assertTrue(listed.body().contains("db/orders/metadata/"), listed.body());
       }
+    }
+  }
+
+  @Test
+  void the_credentials_route_of_a_table_answers_temporary_credentials_that_the_service_accepts() throws Exception {
+    try (LocalS3 localS3 = started(LocalS3.builder().port(-1).icebergCatalog(true)
+        .credentials("an-access-key", "a-secret-key"))) {
+      assertTrue(get(localS3, "/iceberg/v1/config").body()
+          .contains("GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials"));
+
+      post(localS3, "/iceberg/v1/namespaces", """
+          {"namespace":["db"],"properties":{}}""");
+      ObjectNode created = IcebergJson.read(post(localS3, "/iceberg/v1/namespaces/db/tables", """
+          {"name":"orders","schema":%s}""".formatted(SCHEMA)).body());
+      String credentialsEndpoint = created.path("config").path("client.refresh-credentials-endpoint").asString();
+      assertEquals("v1/namespaces/db/tables/orders/credentials", credentialsEndpoint);
+
+      HttpResponse<String> answered = get(localS3, "/iceberg/" + credentialsEndpoint);
+      assertEquals(200, answered.statusCode(), answered.body());
+      assertEquals("no-store", answered.headers().firstValue("Cache-Control").orElse(null));
+      JsonNode storageCredentials = IcebergJson.read(answered.body()).path("storage-credentials");
+      assertEquals(1, storageCredentials.size());
+      assertEquals("s3://", storageCredentials.get(0).path("prefix").asString());
+      JsonNode config = storageCredentials.get(0).path("config");
+      String accessKeyId = config.path("s3.access-key-id").asString();
+      String sessionToken = config.path("s3.session-token").asString();
+      assertTrue(accessKeyId.startsWith("ASIA"), accessKeyId);
+      assertNotEquals("a-secret-key", config.path("s3.secret-access-key").asString());
+      long expiresAt = Long.parseLong(config.path("s3.session-token-expires-at-ms").asString());
+      assertTrue(expiresAt > System.currentTimeMillis() + Duration.ofMinutes(30).toMillis(), "Valid for an hour.");
+
+      // The temporary credentials sign an S3 request that the service verifies.
+      String uri = "http://127.0.0.1:" + localS3.getPort() + "/warehouse?list-type=2&prefix=db%2F";
+      Map<String, List<String>> headers = new LinkedHashMap<>();
+      headers.put("X-Amz-Security-Token", List.of(sessionToken));
+      Map<String, List<String>> signed = new AwsSignatureV4RequestSigner(accessKeyId,
+          config.path("s3.secret-access-key").asString()).sign("us-east-1", "GET", uri, headers);
+      HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(uri)).GET();
+      signed.forEach((name, values) -> {
+        if (!"host".equalsIgnoreCase(name)) {
+          values.forEach(value -> request.header(name, value));
+        }
+      });
+      HttpResponse<String> listed = CLIENT.send(request.build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, listed.statusCode(), listed.body());
+      assertTrue(listed.body().contains("db/orders/metadata/"), listed.body());
+
+      assertEquals("NoSuchTableException",
+          errorType(get(localS3, "/iceberg/v1/namespaces/db/tables/missing/credentials")));
+    }
+  }
+
+  @Test
+  void a_service_that_takes_unsigned_requests_names_no_credentials_route() throws Exception {
+    try (LocalS3 localS3 = started(LocalS3.builder().port(-1).icebergCatalog(true))) {
+      post(localS3, "/iceberg/v1/namespaces", """
+          {"namespace":["db"],"properties":{}}""");
+      ObjectNode created = IcebergJson.read(post(localS3, "/iceberg/v1/namespaces/db/tables", """
+          {"name":"orders","schema":%s}""".formatted(SCHEMA)).body());
+      assertTrue(created.path("config").path("client.refresh-credentials-endpoint").isMissingNode());
     }
   }
 
