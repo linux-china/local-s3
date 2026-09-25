@@ -424,9 +424,15 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
 + The **empty namespace** is not served, and neither is it by the REST catalog of Iceberg itself: a table lives in a
   namespace of at least one level.
 + `GET /v1/config` answers the routes it serves in `endpoints`, and the ones it doesn't are therefore not called:
-  **scan planning** (`/plan`, `/tasks`), **remote signing** (`/sign`) and the **credentials endpoint** of a table
-  (`/credentials`) — a client reads the table itself, and takes the credentials from the `config` of the loaded table
-  instead.
+  **scan planning** (`/plan`, `/tasks`) and the **credentials endpoint** of a table (`/credentials`) — a client reads
+  the table itself, and takes the credentials from the `config` of the loaded table instead.
++ **Remote signing** is served for a client whose `S3FileIO` is configured with `s3.remote-signing-enabled=true`
+  (e.g. a Spark or Trino set up for a catalog that doesn't vend credentials): the catalog signs each S3 request with
+  the **credentials of the service itself**, at the route of the table,
+  `POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/sign`, which a loaded table names in `s3.signer.uri` and
+  `s3.signer.endpoint`, and at `POST /v1/aws/s3/sign`, the default route of a client that was told none. Signing is
+  not access control: like the rest of the catalog, the routes don't check who asks, so anyone who can reach the
+  catalog can have any S3 request of this service signed. The payload is signed as `UNSIGNED-PAYLOAD`.
 + A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
   the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
   compare-and-sets can see part of it.

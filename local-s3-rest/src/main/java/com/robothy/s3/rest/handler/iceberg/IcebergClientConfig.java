@@ -2,6 +2,7 @@ package com.robothy.s3.rest.handler.iceberg;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.iceberg.IcebergJson;
+import com.robothy.s3.rest.handler.AwsSignatureV4RequestSigner;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,8 +59,8 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * table routes but <em>not</em> the view ones. A catalog that serves views and doesn't say so is a catalog whose
    * views no client will call — {@code catalog.createView(...)} fails with "Server does not support endpoint" before a
    * request is even sent. Every route that {@linkplain IcebergCatalogController} answers is listed here, and nothing
-   * else: the scan planning and the remote signing of the specification aren't served, and a client that is told so
-   * falls back to reading the table itself rather than failing.
+   * else: the scan planning and the credentials endpoint of the specification aren't served, and a client that is
+   * told so falls back to reading the table itself rather than failing.
    */
   private static final List<String> ENDPOINTS = List.of(
       "GET /v1/{prefix}/namespaces",
@@ -75,6 +76,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}",
       "DELETE /v1/{prefix}/namespaces/{namespace}/tables/{table}",
       "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/metrics",
+      "POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/sign",
       "POST /v1/{prefix}/namespaces/{namespace}/register",
       "POST /v1/{prefix}/tables/rename",
       "POST /v1/{prefix}/transactions/commit",
@@ -148,6 +150,21 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @return the settings; empty if the catalog vends none.
    */
   public Map<String, String> tableConfig(HttpRequest request) {
+    return tableConfig(request, null);
+  }
+
+  /**
+   * The settings that a {@code LoadTableResult} carries, with where the client signs its S3 requests if it signs them
+   * remotely, i.e. if it is configured with {@code s3.remote-signing-enabled}: the catalog signs them with the
+   * credentials of the service, see {@linkplain #signer()}.
+   *
+   * @param request the request, whose {@code Host} the endpoint is taken from.
+   * @param signerEndpoint the path of the remote signing route of the table, relative to the catalog URI, e.g.
+   *     {@code v1/namespaces/db/tables/events/sign}; {@code null} to vend none, which leaves the client to the default
+   *     route {@code v1/aws/s3/sign}, which is served as well.
+   * @return the settings; empty if the catalog vends none.
+   */
+  public Map<String, String> tableConfig(HttpRequest request, @Nullable String signerEndpoint) {
     if (!vendCredentials) {
       return Map.of();
     }
@@ -163,7 +180,26 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       config.put("s3.access-key-id", accessKeyId);
       config.put("s3.secret-access-key", secretAccessKey);
     }
+    if (signerEndpoint != null) {
+      // The URI of the catalog, which the endpoint of the signer is relative to.
+      config.put("s3.signer.uri", endpoint + "/iceberg");
+      config.put("s3.signer.endpoint", signerEndpoint);
+    }
     return config;
+  }
+
+  /**
+   * The signer of the remote signing of the catalog, which signs the S3 requests of a client with the credentials of
+   * the service — the same credentials that the catalog vends, so a client that signs remotely reaches exactly what a
+   * client that was vended the credentials does.
+   *
+   * @return the signer; {@code null} if the service takes unsigned requests, whose requests are then answered as they
+   *     are.
+   */
+  @Nullable
+  public AwsSignatureV4RequestSigner signer() {
+    return accessKeyId == null || secretAccessKey == null
+        ? null : new AwsSignatureV4RequestSigner(accessKeyId, secretAccessKey);
   }
 
   /**

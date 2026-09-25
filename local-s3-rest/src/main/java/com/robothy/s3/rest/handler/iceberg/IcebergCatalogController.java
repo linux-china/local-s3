@@ -9,6 +9,7 @@ import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.core.s3tables.S3TablesService;
+import com.robothy.s3.rest.handler.AwsSignatureV4RequestSigner;
 import com.robothy.s3.rest.utils.RequestPaths;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.buffer.ByteBuf;
@@ -16,6 +17,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -80,6 +83,12 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * The operation that a request of the catalog whose path names no resource is recorded as.
    */
   static final String UNKNOWN_OPERATION = "IcebergUnknownOperation";
+
+  /**
+   * The segments of the route of the S3 signer API, {@code v1/aws/s3/sign}, which the {@code S3FileIO} of a client
+   * that signs remotely calls when the catalog names no route of its own.
+   */
+  private static final List<String> S3_SIGNER_ROUTE = List.of("aws", "s3", "sign");
 
   private static final String CONTENT_TYPE = "application/json";
 
@@ -183,18 +192,24 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       case "IcebergUpdateNamespaceProperties" -> writeJson(response, 200,
           catalog.updateNamespaceProperties(namespace(path), body(request)));
       case "IcebergListTables" -> writeJson(response, 200, catalog.listTables(namespace(path), false));
-      case "IcebergCreateTable" -> writeJson(response, 200,
-          withConfig(request, catalog.createTable(namespace(path), body(request))));
-      case "IcebergRegisterTable" -> writeJson(response, 200,
-          withConfig(request, catalog.registerTable(namespace(path), body(request), false)));
+      case "IcebergCreateTable" -> {
+        ObjectNode body = body(request);
+        ObjectNode created = catalog.createTable(namespace(path), body);
+        writeJson(response, 200, withConfig(request, parsed.prefix(), namedIn(path, body), created));
+      }
+      case "IcebergRegisterTable" -> {
+        ObjectNode body = body(request);
+        ObjectNode registered = catalog.registerTable(namespace(path), body, false);
+        writeJson(response, 200, withConfig(request, parsed.prefix(), namedIn(path, body), registered));
+      }
       case "IcebergRegisterView" -> writeJson(response, 200,
           catalog.registerTable(namespace(path), body(request), true));
       case "IcebergLoadTable" -> writeJson(response, 200,
-          withConfig(request, catalog.loadTable(identifier(path), false)));
+          withConfig(request, parsed.prefix(), identifier(path), catalog.loadTable(identifier(path), false)));
       case "IcebergTableExists" ->
           writeStatus(response, catalog.tableExists(identifier(path), false) ? 204 : 404);
-      case "IcebergUpdateTable" -> writeJson(response, 200,
-          withConfig(request, catalog.updateTable(identifier(path), body(request), false)));
+      case "IcebergUpdateTable" -> writeJson(response, 200, withConfig(request, parsed.prefix(), identifier(path),
+          catalog.updateTable(identifier(path), body(request), false)));
       case "IcebergDropTable" -> {
         catalog.dropTable(identifier(path), false, purgeRequested(request));
         writeStatus(response, 204);
@@ -204,6 +219,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
         writeStatus(response, 204);
       }
       case "IcebergReportMetrics" -> writeStatus(response, 204);
+      case "IcebergRemoteSign", "IcebergSignS3Request" -> writeSigned(response, sign(body(request)));
       case "IcebergListViews" -> writeJson(response, 200, catalog.listTables(namespace(path), true));
       case "IcebergCreateView" -> writeJson(response, 200, catalog.createView(namespace(path), body(request)));
       case "IcebergLoadView" -> writeJson(response, 200, catalog.loadTable(identifier(path), true));
@@ -287,6 +303,13 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       if (size == 5 && "tables".equals(resource) && "metrics".equals(path.get(4)) && post) {
         return "IcebergReportMetrics";
       }
+      if (size == 5 && "tables".equals(resource) && "sign".equals(path.get(4)) && post) {
+        return "IcebergRemoteSign";
+      }
+    }
+    // The route of the S3 signer API that preceded the remote signing of the specification.
+    if (S3_SIGNER_ROUTE.equals(path) && post) {
+      return "IcebergSignS3Request";
     }
     return UNKNOWN_OPERATION;
   }
@@ -296,12 +319,93 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * credentials to reach it with — to a {@code LoadTableResult}, which is the credential vending of the REST catalog.
    * An engine configured with nothing but the catalog URI can then open the table.
    */
-  private ObjectNode withConfig(HttpRequest request, ObjectNode loadTableResult) {
-    Map<String, String> config = clientConfig.tableConfig(request);
+  private ObjectNode withConfig(HttpRequest request, @Nullable String prefix, IcebergIdentifier table,
+                                ObjectNode loadTableResult) {
+    Map<String, String> config = clientConfig.tableConfig(request, signerEndpoint(prefix, table));
     if (!config.isEmpty()) {
       loadTableResult.set("config", IcebergJson.fromStringMap(config));
     }
     return loadTableResult;
+  }
+
+  /**
+   * The route that a client signs the S3 requests of a table at, relative to the catalog URI, e.g.
+   * {@code v1/sales/namespaces/db/tables/events/sign}: the remote signing of the specification.
+   */
+  private static String signerEndpoint(@Nullable String prefix, IcebergIdentifier table) {
+    StringBuilder endpoint = new StringBuilder("v1/");
+    if (prefix != null) {
+      endpoint.append(RequestPaths.encode(prefix)).append('/');
+    }
+    return endpoint.append("namespaces/")
+        .append(RequestPaths.encode(String.join(String.valueOf(IcebergIdentifier.SEPARATOR), table.namespace())))
+        .append("/tables/")
+        .append(RequestPaths.encode(table.name()))
+        .append("/sign")
+        .toString();
+  }
+
+  /**
+   * The table that a create or a register request names: the namespace of its path, and the {@code name} of its body.
+   */
+  private static IcebergIdentifier namedIn(List<String> path, ObjectNode body) {
+    return IcebergIdentifier.of(namespace(path), body.path("name").asString(""));
+  }
+
+  /**
+   * Sign an S3 request for a client that signs remotely, i.e. whose {@code S3FileIO} is configured with
+   * {@code s3.remote-signing-enabled}: its headers are signed with the credentials of the service, the ones this
+   * catalog would otherwise vend. A service that takes unsigned requests answers the headers as they are.
+   *
+   * <p>It answers the {@code RemoteSignRequest} of the specification and the {@code S3SignRequest} of the S3 signer
+   * API that preceded it alike, which are the same document but for the {@code provider} of the former.
+   */
+  private ObjectNode sign(ObjectNode request) {
+    String provider = request.path("provider").asString("s3");
+    if (!"s3".equalsIgnoreCase(provider)) {
+      throw IcebergCatalogException.badRequest("Remote signing of the provider " + provider
+          + " is not supported, only s3.");
+    }
+    String uri = request.path("uri").asString("");
+    String method = request.path("method").asString("");
+    Map<String, List<String>> headers = new LinkedHashMap<>();
+    JsonNode headersNode = request.path("headers");
+    if (headersNode.isObject()) {
+      for (Map.Entry<String, JsonNode> header : headersNode.properties()) {
+        List<String> values = new ArrayList<>();
+        if (header.getValue().isArray()) {
+          header.getValue().forEach(value -> values.add(value.asString("")));
+        } else if (!header.getValue().isNull()) {
+          values.add(header.getValue().asString(""));
+        }
+        headers.put(header.getKey(), values);
+      }
+    }
+    AwsSignatureV4RequestSigner signer = clientConfig.signer();
+    Map<String, List<String>> signed;
+    try {
+      signed = signer == null ? headers
+          : signer.sign(request.path("region").asString(null), method, uri, headers);
+    } catch (IllegalArgumentException e) {
+      throw IcebergCatalogException.badRequest(e.getMessage());
+    }
+    ObjectNode headersResult = IcebergJson.newObject();
+    signed.forEach((name, values) -> {
+      ArrayNode array = headersResult.putArray(name);
+      values.forEach(array::add);
+    });
+    ObjectNode response = IcebergJson.newObject();
+    response.put("uri", uri);
+    response.set("headers", headersResult);
+    return response;
+  }
+
+  /**
+   * Answer a signed request. A signature carries the time it was made at, so the client is told not to cache it.
+   */
+  private static void writeSigned(HttpResponse response, ObjectNode signed) {
+    response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-cache");
+    writeJson(response, 200, signed);
   }
 
   /**
@@ -342,6 +446,10 @@ public final class IcebergCatalogController implements HttpRequestHandler {
       segments = RequestPaths.decodedSegments(rest);
     } catch (IllegalArgumentException e) {
       throw IcebergCatalogException.badRequest(e.getMessage());
+    }
+    // The S3 signer route, v1/aws/s3/sign, which names no prefix: "aws" is not the prefix of a table bucket here.
+    if (segments.equals(S3_SIGNER_ROUTE)) {
+      return new Parsed(null, segments);
     }
     if (!segments.isEmpty() && !isResource(segments.get(0))) {
       return new Parsed(segments.get(0), segments.subList(1, segments.size()));

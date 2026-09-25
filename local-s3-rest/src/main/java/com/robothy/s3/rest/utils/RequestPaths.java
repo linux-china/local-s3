@@ -101,6 +101,28 @@ public final class RequestPaths {
   }
 
   /**
+   * Encode a value as one path segment, the reverse of {@linkplain #decode}: every byte but an unreserved character
+   * is escaped as {@code %XX}, so a {@code /} of the value stays inside the segment.
+   *
+   * @param value the value.
+   * @return the encoded segment.
+   */
+  public static String encode(String value) {
+    StringBuilder encoded = new StringBuilder(value.length());
+    for (byte item : value.getBytes(StandardCharsets.UTF_8)) {
+      int c = item & 0xff;
+      if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+          || c == '-' || c == '_' || c == '.' || c == '~') {
+        encoded.append((char) c);
+      } else {
+        encoded.append('%').append(Character.toUpperCase(Character.forDigit(c >> 4, 16)))
+            .append(Character.toUpperCase(Character.forDigit(c & 0xf, 16)));
+      }
+    }
+    return encoded.toString();
+  }
+
+  /**
    * Every value of a query parameter of a request, read off the raw URI.
    *
    * <p>A parameter that a client repeats, which is how the AWS SDKs send a list, e.g. the {@code tagKeys} of

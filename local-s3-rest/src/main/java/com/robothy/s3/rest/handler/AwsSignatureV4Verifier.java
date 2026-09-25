@@ -986,7 +986,12 @@ final class AwsSignatureV4Verifier {
     }
   }
 
-  private static String canonicalizeRaw(String value, boolean preserveSlash) {
+  /**
+   * Canonicalize a raw, possibly percent-encoded, part of a URI the way the string to sign carries it, which
+   * {@linkplain AwsSignatureV4RequestSigner} signs the same way, so that the requests it signs are the ones this
+   * verifier accepts.
+   */
+  static String canonicalizeRaw(String value, boolean preserveSlash) {
     StringBuilder result = new StringBuilder();
     for (int index = 0; index < value.length();) {
       char current = value.charAt(index);

@@ -182,6 +182,49 @@ class IcebergCatalogEndpointTest {
     }
   }
 
+  @Test
+  void a_request_signed_remotely_by_the_catalog_is_accepted_by_the_service() throws Exception {
+    try (LocalS3 localS3 = started(LocalS3.builder().port(-1).icebergCatalog(true)
+        .credentials("an-access-key", "a-secret-key"))) {
+      String config = get(localS3, "/iceberg/v1/config").body();
+      assertTrue(config.contains("POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/sign"),
+          "The remote signing route is declared, so a client that signs remotely may call it.");
+
+      // A loaded table names the route that its S3 requests are signed at.
+      post(localS3, "/iceberg/v1/namespaces", """
+          {"namespace":["db"],"properties":{}}""");
+      ObjectNode created = IcebergJson.read(post(localS3, "/iceberg/v1/namespaces/db/tables", """
+          {"name":"orders","schema":%s}""".formatted(SCHEMA)).body());
+      assertEquals("http://127.0.0.1:" + localS3.getPort() + "/iceberg",
+          created.path("config").path("s3.signer.uri").asString());
+      String signerEndpoint = created.path("config").path("s3.signer.endpoint").asString();
+      assertEquals("v1/namespaces/db/tables/orders/sign", signerEndpoint);
+
+      String uri = "http://127.0.0.1:" + localS3.getPort() + "/warehouse?list-type=2&prefix=db%2F";
+      assertEquals(403, CLIENT.send(HttpRequest.newBuilder(URI.create(uri)).GET().build(),
+          HttpResponse.BodyHandlers.ofString()).statusCode(), "An unsigned request is refused.");
+
+      for (String route : new String[] {"/iceberg/" + signerEndpoint, "/iceberg/v1/aws/s3/sign"}) {
+        HttpResponse<String> signed = post(localS3, route, """
+            {"region":"us-east-1","method":"GET","uri":"%s","headers":{"Accept":["*/*"]},"provider":"s3"}"""
+            .formatted(uri));
+        assertEquals(200, signed.statusCode(), signed.body());
+        assertEquals("no-cache", signed.headers().firstValue("Cache-Control").orElse(null));
+        ObjectNode result = IcebergJson.read(signed.body());
+        assertEquals(uri, result.path("uri").asString());
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(uri)).GET();
+        // The JDK client sends the Host header of the URI itself, and refuses to be given one.
+        result.path("headers").properties().stream()
+            .filter(header -> !"host".equalsIgnoreCase(header.getKey()))
+            .forEach(header -> header.getValue().forEach(value -> request.header(header.getKey(), value.asString())));
+        HttpResponse<String> listed = CLIENT.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, listed.statusCode(), route + ": " + listed.body());
+        assertTrue(listed.body().contains("db/orders/metadata/"), listed.body());
+      }
+    }
+  }
+
   private static LocalS3 started(LocalS3Builder builder) {
     LocalS3 localS3 = builder.netty(netty -> netty.registerShutdownHook(false)).build();
     localS3.start();
