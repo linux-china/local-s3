@@ -1063,9 +1063,11 @@ public class LocalS3Builder {
          * directory, and the body of an upload is stored by renaming the file, so that its content isn't written a
          * second time; an {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded,
          * and its chunk signatures verified, while it is written, so the file holds the decoded content. In
-         * {@code IN_MEMORY} mode the file is created in the default temporary directory, and the body is copied into
-         * the memory of the storage from it, so a large upload does touch the disk; raise the threshold to keep
-         * bodies on the heap instead. The file is written on the request executor, not on
+         * {@code IN_MEMORY} mode the large body of a {@code PUT}, i.e. of {@code PutObject} and {@code UploadPart}, is
+         * received into the heap instead, in chunks that the storage takes over, reserved in its budget before the body
+         * is uploaded, so the upload neither touches the disk nor is held twice; the bodies of other requests, and
+         * the ones whose length isn't declared or is larger than 2 GiB, are buffered in files of the default temporary
+         * directory. The file is written on the request executor, not on
          * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
          * read, so neither memory nor the other connections of the event loop are affected. Default value is
          * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all

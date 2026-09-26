@@ -42,6 +42,7 @@ class UploadPartController implements HttpRequestHandler {
         .contentLength(decodedBody.getDecodedContentLength())
         .data(decodedBody.getDecodedBody())
         .dataFile(decodedBody.getBodyFile())
+        .heapData(decodedBody.getHeapContent())
         .etag(RequestUtils.getETag(request).orElse(null))
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .customerEncryption(customerEncryption)

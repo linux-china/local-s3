@@ -57,6 +57,18 @@ public class S3Error {
   @JacksonXmlProperty(localName = "VersionId")
   private String versionId;
 
+  /**
+   * The {@code x-amz-content-sha256} that the client sent, which an {@code XAmzContentSHA256Mismatch} error reports.
+   */
+  @JacksonXmlProperty(localName = "ClientComputedContentSHA256")
+  private String clientComputedContentSha256;
+
+  /**
+   * The SHA-256 of the body that was received, which an {@code XAmzContentSHA256Mismatch} error reports.
+   */
+  @JacksonXmlProperty(localName = "S3ComputedContentSHA256")
+  private String s3ComputedContentSha256;
+
   @JacksonXmlProperty(localName = "RequestId")
   private String requestId;
 

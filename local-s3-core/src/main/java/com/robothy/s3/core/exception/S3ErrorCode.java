@@ -108,6 +108,7 @@ public enum S3ErrorCode {
   UnexpectedContent("UnexpectedContent", 400, "This request does not support content."),
   //UnresolvableGrantByEmailAddress("UnresolvableGrantByEmailAddress", 400, "The email address you provided does not match any account on record."),
   UserKeyMustBeSpecified("UserKeyMustBeSpecified", 400, "The bucket POST must contain the specified field name. If it is specified, check the order of the fields."),
+  XAmzContentSHA256Mismatch("XAmzContentSHA256Mismatch", 400, "The provided 'x-amz-content-sha256' header does not match what was computed."),
   ;
 
 

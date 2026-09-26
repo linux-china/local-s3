@@ -112,7 +112,8 @@ public record LocalS3Config(
       ? Long.MAX_VALUE : Runtime.getRuntime().maxMemory() / 2;
 
   /**
-   * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap.
+   * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap, or, for the
+   * upload of an {@code IN_MEMORY} service, received into the budget of its in-memory storage.
    */
   public static final long DEFAULT_REQUEST_BODY_FILE_THRESHOLD = 4 * 1024 * 1024;
 

@@ -500,13 +500,15 @@ class ConsoleController implements HttpRequestHandler {
   private void putObject(HttpRequest request, HttpResponse response) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
-    // The body of a large upload was buffered in a file, which the storage takes over rather than copying.
+    // The body of a large upload was buffered in a file, or in the heap of an IN_MEMORY service, which the storage
+    // takes over rather than copying.
     DecodedAmzRequestBody body = RequestUtils.getBody(request);
     PutObjectAns stored = objectService.putObject(bucket, key, PutObjectOptions.builder()
         .contentType(uploadContentType(request, key))
         .size(body.getDecodedContentLength())
         .content(body.getDecodedBody())
         .contentFile(body.getBodyFile())
+        .heapContent(body.getHeapContent())
         .build());
     json(response, HttpResponseStatus.OK,
         new ConsoleUpload(key, stored.getSize(), stored.getEtag(), stored.getVersionId()));
@@ -536,6 +538,7 @@ class ConsoleController implements HttpRequestHandler {
           .contentLength(body.getDecodedContentLength())
           .data(body.getDecodedBody())
           .dataFile(body.getBodyFile())
+          .heapData(body.getHeapContent())
           .build());
       json(response, HttpResponseStatus.OK, new ConsolePart(partNumber, part.getEtag()));
     } else if (HttpMethod.POST.equals(method)) {

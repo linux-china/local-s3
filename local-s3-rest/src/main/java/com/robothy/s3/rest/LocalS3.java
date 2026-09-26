@@ -3,6 +3,7 @@ package com.robothy.s3.rest;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.iceberg.IcebergMetadataFiles;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
@@ -33,7 +34,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.LongFunction;
 
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -200,7 +203,8 @@ public class LocalS3 implements AutoCloseable {
         Path requestBodyFileDirectory = prepareRequestBodyFileDirectory();
         this.server = NettyServer.start(config,
                 LocalS3RouterFactory.create(serviceFactory, config.accessKeyId(), config.secretAccessKey()),
-                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics));
+                serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics),
+                heapBodyWriters());
         // The actual port, in case a random one was requested.
         this.port = server.port();
         if (config.tlsEnabled() && config.plainHttpAccepted()) {
@@ -306,6 +310,21 @@ public class LocalS3 implements AutoCloseable {
             statistics.record(request, operation, status, requestId, durationNanos);
             configured.record(request, operation, status, requestId, durationNanos);
         };
+    }
+
+    /**
+     * The writers of the large request bodies that an {@code IN_MEMORY} service receives into the heap, in chunks that
+     * its storage takes over when a body is stored, rather than into a temporary file that is then copied into the
+     * heap. The storage is looked up per request, since a reset replaces it; a body received for a storage that was
+     * replaced meanwhile is copied into the new one.
+     *
+     * @return the writers; {@code null} for a {@code PERSISTENCE} service, which buffers large bodies in files.
+     */
+    private LongFunction<Optional<HeapContent.Writer>> heapBodyWriters() {
+        if (config.mode() == LocalS3Mode.PERSISTENCE) {
+            return null;
+        }
+        return expectedLength -> getS3Manager().objectService().storage().newHeapContentWriter(expectedLength);
     }
 
     /**

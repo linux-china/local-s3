@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.netty;
 
+import com.robothy.s3.core.storage.HeapContent;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import java.io.BufferedInputStream;
@@ -44,8 +45,24 @@ public final class RequestBodies {
   }
 
   /**
+   * The content that a large request body of an {@code IN_MEMORY} service was received into, in the heap rather than in
+   * a file. Like a {@linkplain #file file}, a handler may hand it over to the storage it was received for, which takes it
+   * over instead of copying the body; the body stays readable, and releasing it gives the space of the content back
+   * unless the storage took it over.
+   *
+   * @param body the body of a request.
+   * @return the content of the body; empty if the body wasn't received into the heap, or was read already.
+   */
+  public static Optional<HeapContent> heapContent(ByteBuf body) {
+    return body instanceof HeapBodyByteBuf heap
+        && heap.readerIndex() == 0 && heap.readableBytes() == heap.capacity()
+        ? Optional.of(heap.content())
+        : Optional.empty();
+  }
+
+  /**
    * The trailing headers of an {@code aws-chunked} body that was decoded while it was received, into the file it is
-   * buffered in. Such a body, and its {@linkplain #file file}, hold the decoded content rather than the chunks that
+   * buffered in, or into the heap. Such a body, and its {@linkplain #file file}, hold the decoded content rather than the chunks that
    * were received, and the signatures of its chunks were verified already.
    *
    * @param body the body of a request.
@@ -55,6 +72,9 @@ public final class RequestBodies {
   public static Optional<Map<String, String>> awsChunkedTrailer(ByteBuf body) {
     if (body instanceof FileBodyByteBuf fileBody) {
       return Optional.ofNullable(fileBody.awsChunkedTrailer());
+    }
+    if (body instanceof HeapBodyByteBuf heap) {
+      return Optional.ofNullable(heap.awsChunkedTrailer());
     }
     return body instanceof MappedFileByteBuf mapped ? Optional.ofNullable(mapped.awsChunkedTrailer())
         : Optional.empty();

@@ -58,8 +58,10 @@ class AwsSignatureV4VerifierTest {
 
     assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7, 15);
 
+    // The signature is valid, the body isn't the one it names.
     byte[] tampered = "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8);
-    assertRejected(headers, PUT_OBJECT_PATH, HttpMethod.PUT, tampered, 7, 15);
+    assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch,
+        verify(headers, PUT_OBJECT_PATH, HttpMethod.PUT, tampered, 7, 15).errorCode());
   }
 
   @Test
@@ -170,7 +172,7 @@ class AwsSignatureV4VerifierTest {
   void verifiesThePayloadOfABodyThatIsOnlyInAFile(@TempDir Path directory) throws IOException {
     Map<CharSequence, String> headers = putObjectHeaders();
     assertTrue(verifyFileBody(directory, headers, PUT_OBJECT_PATH, PUT_OBJECT_CONTENT).authenticated());
-    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifyFileBody(directory, headers, PUT_OBJECT_PATH,
+    assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch, verifyFileBody(directory, headers, PUT_OBJECT_PATH,
         "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8)).errorCode());
 
     Map<CharSequence, String> chunked = chunkedHeaders();
@@ -284,7 +286,8 @@ class AwsSignatureV4VerifierTest {
     for (String date : new String[] {"Fri, 24 May 2013 00:00:00 GMT", AMZ_DATE}) {
       Map<CharSequence, String> headers = dateSignedHeaders(date);
       assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7);
-      assertRejected(headers, PUT_OBJECT_PATH, HttpMethod.PUT, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
+      assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch, verify(headers, PUT_OBJECT_PATH, HttpMethod.PUT,
+          "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8)).errorCode());
     }
   }
 
@@ -328,9 +331,13 @@ class AwsSignatureV4VerifierTest {
         "Without the verified head, the whole request is verified again.");
     assertTrue(verifier.verifyBody(request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT)),
         head.verifiedHead()).authenticated());
-    assertEquals(S3ErrorCode.SignatureDoesNotMatch, verifier.verifyBody(
+    VerificationResult mismatch = verifier.verifyBody(
         request(headers, Unpooled.wrappedBuffer("Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8))),
-        head.verifiedHead()).errorCode());
+        head.verifiedHead());
+    assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch, mismatch.errorCode());
+    assertEquals(headers.get("x-amz-content-sha256"), mismatch.clientComputedContentSha256());
+    // The SHA-256 of "Welcome to Amazon S4.", the body that was received.
+    assertEquals("f5ecb1c521e9d365692b272b029cbad27ddc3107b35367da0595a5844165e48d", mismatch.s3ComputedContentSha256());
   }
 
   @Test

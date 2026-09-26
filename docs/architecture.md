@@ -46,9 +46,13 @@ socket ─▶ event loop (Netty)                                  ─▶ executo
   mode that file is created under `.storage/.request-bodies/`, on the file system of the storage, so that storing an
   upload renames the file into place instead of writing the body a second time. An `aws-chunked` body, the default of
   the AWS SDKs over plain HTTP, is decoded while it is written, with its chunk signatures verified chunk by chunk, so
-  its file holds the decoded content and is renamed like any other. In `IN_MEMORY` mode the file is created in the
-  default temporary directory and copied into the memory of the storage, so a large upload does touch the disk, e.g.
-  a small `/tmp` of a CI container; raise `requestBodyFileThreshold` to keep bodies on the heap instead.
+  its file holds the decoded content and is renamed like any other. In `IN_MEMORY` mode the large body of a `PUT`, i.e.
+  of `PutObject` and `UploadPart`, is received into the heap instead, decoded the same way, in chunks that the
+  `InMemoryStorage` takes over when it stores the body (`HeapContent`): the upload neither touches the disk, e.g. a
+  small `/tmp` of a CI container, nor is held twice. Its declared length is reserved in the budget of the storage
+  (`maxInMemoryBytes`) before `100 Continue` is sent, so a body that can't fit is answered `507 InsufficientStorage`
+  before it is uploaded. A body of another method, one whose length isn't declared, or one larger than 2 GiB, is
+  still buffered in a file of the default temporary directory.
 + **Verification before the body.** The signature of a request with a body is verified from its head, before
   `100 Continue` is sent, so a request that fails anyway is never uploaded. A browser form upload is the exception:
   its credentials are fields of the body, so `PostObjectController` verifies them once the body is received.

@@ -43,7 +43,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     CustomerEncryptionAssertions.assertKeyProvided(upload.getCustomerEncryption(), options.getCustomerEncryption());
     RequestChecksum checksum = partChecksum(upload, options.getChecksum());
 
-    StoredContent data = storeContent(options.getData(), options.getDataFile(),
+    StoredContent data = storeContent(options.getData(), options.getDataFile(), options.getHeapData(),
         Objects.isNull(checksum) ? null : checksum.algorithm());
     Long fileId = data.fileId();
     // Like putObject, a failure to deliver the changes of a committed part doesn't delete its data.

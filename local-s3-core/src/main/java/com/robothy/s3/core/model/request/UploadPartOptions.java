@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.request;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
+import com.robothy.s3.core.storage.HeapContent;
 import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -21,6 +22,13 @@ public class UploadPartOptions {
    * caller must not rely on the file afterwards.
    */
   private Path dataFile;
+
+  /**
+   * The {@linkplain #data} received into the heap, e.g. a large request body of an {@code IN_MEMORY} service;
+   * {@code null} if there is none. The storage it was received for takes it over instead of copying it; the caller
+   * still releases it.
+   */
+  private HeapContent heapData;
 
   private String etag;
 

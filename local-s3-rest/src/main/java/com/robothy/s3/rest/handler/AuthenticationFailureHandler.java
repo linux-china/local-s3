@@ -30,6 +30,8 @@ final class AuthenticationFailureHandler implements HttpRequestHandler {
     S3Error error = S3Error.builder()
         .code(result.errorCode().code())
         .message(result.message())
+        .clientComputedContentSha256(result.clientComputedContentSha256())
+        .s3ComputedContentSha256(result.s3ComputedContentSha256())
         .requestId(requestId)
         .hostId(hostId)
         .build();

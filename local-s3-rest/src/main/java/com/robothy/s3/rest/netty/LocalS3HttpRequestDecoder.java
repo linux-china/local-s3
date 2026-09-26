@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.netty;
 
+import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -16,6 +18,7 @@ import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpObject;
@@ -36,8 +39,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Executor;
+import java.util.function.LongFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
@@ -67,6 +72,13 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * storage instead of copying the body (see {@linkplain RequestBodies#file}), and is deleted when the body is released.
  * The files are created in the configured directory, e.g. one on the file system of the storage, which then renames a
  * file into place, or in the default temporary directory.
+ *
+ * <p>A service whose storage keeps its content in the heap, i.e. an {@code IN_MEMORY} one, receives a large body into
+ * the heap instead, in chunks that the storage takes over when the body is stored, see {@linkplain HeapBodyByteBuf}: an
+ * upload is then neither written to the temporary directory, e.g. a small {@code /tmp} of a container, nor held twice.
+ * The declared length of the body is reserved in the budget of the storage before {@code 100 Continue} is sent, so a
+ * body that doesn't fit is answered {@code 507 InsufficientStorage} before it is uploaded. A body whose length isn't
+ * declared, or is larger than a {@code ByteBuf} holds, is buffered in a file as before.
  *
  * <p>An {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded while it is written to
  * its file, and the signatures of its chunks are verified along the way, see {@linkplain AwsChunkedBodyDecoder}; the
@@ -105,6 +117,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    * Runs the operations on the temporary body files.
    */
   private final Executor bodyFileExecutor;
+
+  /**
+   * Creates the writer of a body received into the heap, of the expected length; {@code null}, or an empty answer, to
+   * buffer large bodies in files.
+   */
+  private final LongFunction<Optional<HeapContent.Writer>> heapBodyWriters;
 
   private HttpRequest.HttpRequestBuilder builder;
 
@@ -214,6 +232,31 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper,
                                    RequestHeadVerifier headVerifier, Path bodyFileDirectory,
                                    Executor bodyFileExecutor) {
+    this(maxRequestBodySize, requestBodyFileThreshold, xmlMapper, headVerifier, bodyFileDirectory, bodyFileExecutor,
+        null);
+  }
+
+  /**
+   * Create a decoder.
+   *
+   * @param maxRequestBodySize max request body size in bytes.
+   * @param requestBodyFileThreshold size in bytes above which a request body isn't aggregated on the heap as it is
+   *     received, but buffered in a temporary file, or received into the heap for the storage.
+   * @param xmlMapper used to render the error of rejected requests.
+   * @param headVerifier verifies the head of a request with a body before the body is received.
+   * @param bodyFileDirectory the directory that the temporary body files are created in, which must exist;
+   *     {@code null} for the default temporary directory.
+   * @param bodyFileExecutor runs the operations on the large bodies, e.g. the executor of the requests, so that the
+   *     event loop doesn't wait for the disk; {@code Runnable::run} runs them on the event loop.
+   * @param heapBodyWriters creates the writer of a large body of the given expected length that is received into the
+   *     heap for the storage, e.g. {@linkplain com.robothy.s3.core.storage.Storage#newHeapContentWriter(long)}, and
+   *     throws a {@linkplain LocalS3Exception} if the body doesn't fit; {@code null}, or an empty answer, to buffer
+   *     large bodies in files.
+   */
+  public LocalS3HttpRequestDecoder(long maxRequestBodySize, long requestBodyFileThreshold, XmlMapper xmlMapper,
+                                   RequestHeadVerifier headVerifier, Path bodyFileDirectory,
+                                   Executor bodyFileExecutor,
+                                   LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
     if (maxRequestBodySize <= 0) {
       throw new IllegalArgumentException("maxRequestBodySize must be positive.");
     }
@@ -226,6 +269,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     this.headVerifier = Objects.requireNonNull(headVerifier);
     this.bodyFileDirectory = bodyFileDirectory;
     this.bodyFileExecutor = Objects.requireNonNull(bodyFileExecutor);
+    this.heapBodyWriters = heapBodyWriters;
   }
 
   /**
@@ -430,8 +474,9 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // No component limit: consolidating the components of a large body would copy it over and over.
     body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
     receivedBytes = 0;
-    if (contentLength > requestBodyFileThreshold) {
-      writeBodyToFile(ctx);
+    if (contentLength > requestBodyFileThreshold
+        && !receiveLargeBody(ctx, HttpMethod.PUT.equals(request.method()), contentLength)) {
+      return false;
     }
 
     if (HttpHeaderValues.CONTINUE.contentEqualsIgnoreCase(request.headers().get(HttpHeaderNames.EXPECT))) {
@@ -471,28 +516,64 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   }
 
   /**
+   * Receive a body whose declared length exceeds the threshold into the heap, for a storage that takes it over, or
+   * else into a temporary file. Only the body of a {@code PUT} is received into the heap: it is the content that
+   * {@code PutObject} and {@code UploadPart} store. The large body of another request, e.g. of a browser form upload or
+   * of {@code PutVectors}, is parsed rather than stored as it is, so it would take the space of the storage twice.
+   *
+   * @return {@code false} if the request is rejected, because the storage can't hold the body.
+   */
+  private boolean receiveLargeBody(ChannelHandlerContext ctx, boolean put, long contentLength) {
+    HeapContent.Writer heapWriter = null;
+    if (heapBodyWriters != null && put && contentLength <= RequestBodyFile.MAX_MAPPED_BYTES) {
+      // An aws-chunked body is decoded as it is received, into its decoded length.
+      long expectedLength = chunkSignatures == null ? contentLength : decodedContentLength;
+      try {
+        heapWriter = heapBodyWriters.apply(expectedLength).orElse(null);
+      } catch (LocalS3Exception e) {
+        log.debug("Rejecting a body of {} bytes on connection {}: {}", expectedLength, ctx.channel().id(),
+            e.getMessage());
+        reject(ctx, e.getS3ErrorCode(), e.getMessage());
+        return false;
+      }
+    }
+    writeBodyToFile(ctx, heapWriter);
+    return true;
+  }
+
+  /**
    * Move the body buffered so far to a temporary file, to which the rest of the body is written.
    */
   private void writeBodyToFile(ChannelHandlerContext ctx) {
+    writeBodyToFile(ctx, null);
+  }
+
+  /**
+   * Move the body buffered so far to a temporary file, or to the heap content of {@code heapWriter}, to which the rest
+   * of the body is written.
+   */
+  private void writeBodyToFile(ChannelHandlerContext ctx, HeapContent.Writer heapWriter) {
     AwsChunkedBodyDecoder decoder = chunkSignatures == null ? null
         : new AwsChunkedBodyDecoder(chunkSignatures, decodedContentLength);
-    RequestBodyFile file = new RequestBodyFile(bodyFileExecutor, ctx.executor(), bodyFileDirectory,
-        new RequestBodyFile.Listener() {
-          @Override
-          public void drained() {
-            bodyFileDrained(ctx);
-          }
+    RequestBodyFile.Listener listener = new RequestBodyFile.Listener() {
+      @Override
+      public void drained() {
+        bodyFileDrained(ctx);
+      }
 
-          @Override
-          public void completed(ByteBuf mappedBody) {
-            bodyFileCompleted(ctx, mappedBody);
-          }
+      @Override
+      public void completed(ByteBuf mappedBody) {
+        bodyFileCompleted(ctx, mappedBody);
+      }
 
-          @Override
-          public void failed(Throwable cause) {
-            bodyFileFailed(ctx, cause);
-          }
-        }, decoder);
+      @Override
+      public void failed(Throwable cause) {
+        bodyFileFailed(ctx, cause);
+      }
+    };
+    RequestBodyFile file = heapWriter == null
+        ? new RequestBodyFile(bodyFileExecutor, ctx.executor(), bodyFileDirectory, listener, decoder)
+        : new RequestBodyFile(bodyFileExecutor, ctx.executor(), listener, decoder, heapWriter);
     bodyFile = file;
     CompositeByteBuf buffered = body;
     body = null;

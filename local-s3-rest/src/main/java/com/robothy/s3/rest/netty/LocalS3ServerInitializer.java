@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.netty;
 
 import com.robothy.netty.router.Router;
+import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.s3.rest.LocalS3Config;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
@@ -14,7 +15,9 @@ import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.function.LongFunction;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.dataformat.xml.XmlMapper;
 
@@ -51,6 +54,12 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     private final RequestRecorder requestRecorder;
 
     /**
+     * Creates the writers of the large request bodies that are received into the heap for the storage; {@code null} to
+     * buffer them in files.
+     */
+    private final @Nullable LongFunction<Optional<HeapContent.Writer>> heapBodyWriters;
+
+    /**
      * The context that the connections are encrypted with; {@code null} to serve plain HTTP.
      */
     private final @Nullable SslContext sslContext;
@@ -73,6 +82,31 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     public LocalS3ServerInitializer(LocalS3Config config, Executor executor, Router router, XmlMapper xmlMapper,
                                     @Nullable Path requestBodyFileDirectory, InFlightRequests inFlightRequests,
                                     RequestRecorder requestRecorder) {
+        this(config, executor, router, xmlMapper, requestBodyFileDirectory, inFlightRequests, requestRecorder, null);
+    }
+
+    /**
+     * Create a channel initializer.
+     *
+     * @param config                   the configuration of the service, which limits the requests and connections.
+     * @param executor                 executes request handling and receives the large request bodies, shared by all
+     *                                 connections.
+     * @param router                   routes requests to handlers.
+     * @param xmlMapper                renders S3 errors.
+     * @param requestBodyFileDirectory the directory that temporary request body files are created in, e.g. one on the
+     *                                 file system of the storage, which then renames them into place; {@code null} for
+     *                                 the default temporary directory.
+     * @param inFlightRequests         counts the requests in flight of all connections, which a server that shuts down
+     *                                 waits for.
+     * @param requestRecorder          receives the requests of all connections once their responses are written.
+     * @param heapBodyWriters          creates the writer of a large request body of the given expected length that is
+     *                                 received into the heap for a storage that takes it over, e.g. the one of an
+     *                                 {@code IN_MEMORY} service; {@code null} to buffer large bodies in files.
+     */
+    public LocalS3ServerInitializer(LocalS3Config config, Executor executor, Router router, XmlMapper xmlMapper,
+                                    @Nullable Path requestBodyFileDirectory, InFlightRequests inFlightRequests,
+                                    RequestRecorder requestRecorder,
+                                    @Nullable LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
         this.config = Objects.requireNonNull(config);
         this.executor = Objects.requireNonNull(executor);
         this.router = Objects.requireNonNull(router);
@@ -80,6 +114,7 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         this.requestBodyFileDirectory = requestBodyFileDirectory;
         this.inFlightRequests = Objects.requireNonNull(inFlightRequests);
         this.requestRecorder = Objects.requireNonNull(requestRecorder);
+        this.heapBodyWriters = heapBodyWriters;
         // Created once, as it parses the certificate and key; its engines are created per connection.
         this.sslContext = config.tls() == null ? null : config.tls().newServerSslContext();
     }
@@ -106,7 +141,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
         RequestHeadVerifier headVerifier = router instanceof RequestHeadVerifier verifier ? verifier : RequestHeadVerifier.ACCEPT_ALL;
         ch.pipeline()
                 .addLast("local-s3-request-decoder", new LocalS3HttpRequestDecoder(config.maxRequestBodySize(),
-                        config.requestBodyFileThreshold(), xmlMapper, headVerifier, requestBodyFileDirectory, executor))
+                        config.requestBodyFileThreshold(), xmlMapper, headVerifier, requestBodyFileDirectory, executor,
+                        heapBodyWriters))
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests,
                         requestRecorder));

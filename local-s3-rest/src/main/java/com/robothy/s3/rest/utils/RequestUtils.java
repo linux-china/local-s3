@@ -42,8 +42,10 @@ public class RequestUtils {
     String amzContentSha256 = request.header(AmzHeaderNames.X_AMZ_CONTENT_SHA256).orElse("").trim();
     Optional<Map<String, String>> decodedTrailer = RequestBodies.awsChunkedTrailer(request.getBody());
     if (decodedTrailer.isPresent()) {
-      // An aws-chunked body that was decoded while it was received: its file holds the decoded content.
+      // An aws-chunked body that was decoded while it was received: its file, or its heap content, holds the decoded
+      // content.
       RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
+      RequestBodies.heapContent(request.getBody()).ifPresent(result::setHeapContent);
       result.setDecodedBody(new DecodedAwsChunkedInputStream(RequestBodies.inputStream(request.getBody()),
           decodedTrailer.get()));
       result.setDecodedContentLength(contentLength(request, AmzHeaderNames.X_AMZ_DECODED_CONTENT_LENGTH));
@@ -66,6 +68,7 @@ public class RequestUtils {
       default:
         // Taken before the body is read: the body is only the content of its file while it is unread.
         RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
+        RequestBodies.heapContent(request.getBody()).ifPresent(result::setHeapContent);
         result.setDecodedBody(RequestBodies.inputStream(request.getBody()));
         result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
     }

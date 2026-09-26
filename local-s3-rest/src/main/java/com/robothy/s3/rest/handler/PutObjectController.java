@@ -50,6 +50,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .size(decodedBody.getDecodedContentLength())
         .content(decodedBody.getDecodedBody())
         .contentFile(decodedBody.getBodyFile())
+        .heapContent(decodedBody.getHeapContent())
         .contentMd5(contentMd5(request))
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .tagging(RequestUtils.extractTagging(request).orElse(null))

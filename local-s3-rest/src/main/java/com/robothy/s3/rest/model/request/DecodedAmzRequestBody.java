@@ -1,5 +1,6 @@
 package com.robothy.s3.rest.model.request;
 
+import com.robothy.s3.core.storage.HeapContent;
 import java.io.InputStream;
 import com.robothy.s3.rest.utils.TrailingHeaders;
 import java.nio.file.Path;
@@ -28,6 +29,12 @@ public class DecodedAmzRequestBody {
    * received, so that the file holds the encoded body.
    */
   private Path bodyFile;
+
+  /**
+   * The content that the decoded body was received into, in the heap of an {@code IN_MEMORY} service, which its storage
+   * takes over instead of copying the body; {@code null} if the body wasn't received so.
+   */
+  private HeapContent heapContent;
 
   /**
    * A trailing header of an {@code aws-chunked} body, which is only known once the body is read to its end.

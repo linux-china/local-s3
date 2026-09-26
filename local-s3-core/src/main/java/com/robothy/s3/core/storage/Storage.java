@@ -160,6 +160,47 @@ public interface Storage {
   }
 
   /**
+   * A writer of content that this storage takes over rather than copies when it is stored with
+   * {@linkplain #put(Long, HeapContent)}, e.g. for an {@code IN_MEMORY} service to receive a large request body straight
+   * into the heap instead of a temporary file. The expected length is reserved in the budget of the storage.
+   *
+   * <p>The default implementation answers none: the storage doesn't keep its content in the heap.
+   *
+   * @param expectedLength the number of bytes that the content is expected to have.
+   * @return the writer; empty if this storage doesn't take heap content over.
+   * @throws com.robothy.s3.core.exception.TotalSizeExceedException if the expected length doesn't fit the budget.
+   */
+  default Optional<HeapContent.Writer> newHeapContentWriter(long expectedLength) {
+    return Optional.empty();
+  }
+
+  /**
+   * Put content received into the heap to the storage, with a generated ID.
+   *
+   * @param content the content.
+   * @return the storage generated object ID.
+   * @see #put(Long, HeapContent)
+   */
+  default Long put(HeapContent content) {
+    return put(IdUtils.defaultGenerator().nextId(), content);
+  }
+
+  /**
+   * Put content received into the heap to the storage. The storage whose {@linkplain #newHeapContentWriter writer}
+   * created it takes it over instead of copying it. The caller still {@linkplain HeapContent#release() releases} it,
+   * which then does nothing.
+   *
+   * <p>The default implementation copies the content.
+   *
+   * @param id the object ID.
+   * @param content the content.
+   * @return the object ID.
+   */
+  default Long put(Long id, HeapContent content) {
+    return put(id, content.newInputStream());
+  }
+
+  /**
    * The number of bytes of an object.
    *
    * <p>The default implementation reads the whole object; storages that know the size override it.

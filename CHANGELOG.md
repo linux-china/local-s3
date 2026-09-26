@@ -431,6 +431,15 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ An `IN_MEMORY` service receives the large body of a `PutObject` or `UploadPart` (above `requestBodyFileThreshold`,
+  4 MiB) into the heap, in chunks that its storage takes over, rather than into a file of the temporary directory that
+  it then copied into the heap: an upload no longer touches the disk, e.g. a small `/tmp` of a CI container, nor is
+  held twice. Its declared length is reserved in `maxInMemoryBytes` before `100 Continue`, so a body that can't fit is
+  answered `507 InsufficientStorage` before it is uploaded. Other large bodies, and those without a declared length or
+  larger than 2 GiB, are still buffered in files.
++ A signed request whose body doesn't have the hash of its `x-amz-content-sha256` is answered
+  `400 XAmzContentSHA256Mismatch`, with `<ClientComputedContentSHA256>` and `<S3ComputedContentSHA256>`, like Amazon
+  S3; it was answered `403 SignatureDoesNotMatch`, which sent the developer looking for a wrong key.
 + `PutObject`, `CopyObject`, `POST Object` and `CompleteMultipartUpload` to a bucket whose versioning is suspended
   answer no `x-amz-version-id`, like Amazon S3; they answered `null`. Reading or deleting the null version still
   answers `null`.

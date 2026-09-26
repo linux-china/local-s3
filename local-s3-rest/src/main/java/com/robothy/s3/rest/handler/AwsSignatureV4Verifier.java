@@ -355,7 +355,11 @@ final class AwsSignatureV4Verifier {
     }
     try (PayloadBytes bytes = PayloadBytes.of(body)) {
       if (hashOfBody) {
-        return secureEquals(payloadHash, sha256Hex(bytes)) ? VerificationResult.success() : signatureMismatch();
+        // The signature is valid, but the body isn't the one it was calculated for: Amazon S3 tells this apart from a
+        // signature mismatch, with the two hashes, so that the client isn't sent looking for a wrong key.
+        String computed = sha256Hex(bytes);
+        return secureEquals(payloadHash, computed) ? VerificationResult.success()
+            : VerificationResult.contentSha256Mismatch(payloadHash, computed);
       }
       boolean verified = verifyChunkSignatures(bytes, head.signingKey(), head.amzDate(), head.scope(),
           head.seedSignature(), chunkedWithTrailer, chunkedWithTrailer ? head.trailerHeaderNames() : null);
@@ -1221,13 +1225,35 @@ final class AwsSignatureV4Verifier {
     }
   }
 
-  record VerificationResult(boolean authenticated, S3ErrorCode errorCode, String message) {
+  /**
+   * The result of a verification.
+   *
+   * @param authenticated whether the request is accepted.
+   * @param errorCode the error the request is answered with; {@code null} if it is accepted.
+   * @param message the message of the error.
+   * @param clientComputedContentSha256 the {@code x-amz-content-sha256} of the request, reported by an
+   *     {@code XAmzContentSHA256Mismatch}; otherwise {@code null}.
+   * @param s3ComputedContentSha256 the SHA-256 of the body received, reported by an {@code XAmzContentSHA256Mismatch};
+   *     otherwise {@code null}.
+   */
+  record VerificationResult(boolean authenticated, S3ErrorCode errorCode, String message,
+                            String clientComputedContentSha256, String s3ComputedContentSha256) {
+
+    VerificationResult(boolean authenticated, S3ErrorCode errorCode, String message) {
+      this(authenticated, errorCode, message, null, null);
+    }
+
     static VerificationResult success() {
       return new VerificationResult(true, null, null);
     }
 
     static VerificationResult failure(S3ErrorCode errorCode, String message) {
       return new VerificationResult(false, errorCode, message);
+    }
+
+    static VerificationResult contentSha256Mismatch(String clientComputed, String s3Computed) {
+      return new VerificationResult(false, S3ErrorCode.XAmzContentSHA256Mismatch,
+          S3ErrorCode.XAmzContentSHA256Mismatch.description(), clientComputed, s3Computed);
     }
   }
 

@@ -1,5 +1,6 @@
 package com.robothy.s3.rest;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,6 +10,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -35,6 +37,40 @@ class InMemoryMaxBytesTest {
           HttpResponse.BodyHandlers.ofString());
       assertEquals(204, deleted.statusCode());
       assertEquals(200, put(client, localS3, "b.bin", new byte[1024]).statusCode(), "Deleting frees the space.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  /**
+   * A body larger than the request body file threshold is received into the heap for the storage, rather than into a
+   * temporary file: it is stored as it was received, and one that can't fit is refused before it is uploaded.
+   */
+  @Test
+  void aLargeUploadIsReceivedIntoTheBudgetOfTheStorage() throws Exception {
+    int large = 6 * 1024 * 1024;
+    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("bucket")
+        .storage(storage -> storage.maxInMemoryBytes(2L * large)).build();
+    localS3.start();
+    try {
+      HttpClient client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+      byte[] content = new byte[large];
+      new Random(42).nextBytes(content);
+      assertEquals(200, put(client, localS3, "a.bin", content).statusCode());
+      HttpResponse<byte[]> read = client.send(HttpRequest.newBuilder(uri(localS3, "a.bin")).GET().build(),
+          HttpResponse.BodyHandlers.ofByteArray());
+      assertArrayEquals(content, read.body());
+
+      // The client waits for 100 Continue, which a body that can't fit never gets.
+      HttpResponse<String> rejected = client.send(HttpRequest.newBuilder(uri(localS3, "b.bin"))
+              .expectContinue(true)
+              .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[large + 1])).build(),
+          HttpResponse.BodyHandlers.ofString());
+      assertEquals(507, rejected.statusCode(), rejected.body());
+      assertTrue(rejected.body().contains("<Code>InsufficientStorage</Code>"), rejected.body());
+
+      assertEquals(200, put(client, localS3, "b.bin", content).statusCode(),
+          "The stored content takes its space once, and the refused body none.");
     } finally {
       localS3.shutdown();
     }

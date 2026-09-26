@@ -1,6 +1,7 @@
 package com.robothy.s3.rest;
 
 import com.robothy.netty.router.Router;
+import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.s3.rest.netty.InFlightRequests;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
@@ -17,6 +18,7 @@ import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.internal.PlatformDependent;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -26,6 +28,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.LongFunction;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,13 +85,17 @@ final class NettyServer {
      * @param requestBodyFileDirectory the directory that large request bodies are buffered in; {@code null} for the
      *                                 default temporary directory.
      * @param requestRecorder          receives the requests once their responses are written.
+     * @param heapBodyWriters          creates the writer of a large request body of the given expected length that is
+     *                                 received into the heap for the storage; {@code null} to buffer large bodies in
+     *                                 files.
      * @return the started server.
      */
     static NettyServer start(LocalS3Config config, Router router, XmlMapper xmlMapper,
-                             Path requestBodyFileDirectory, RequestRecorder requestRecorder) {
+                             Path requestBodyFileDirectory, RequestRecorder requestRecorder,
+                             LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
         NettyServer server = new NettyServer(config);
         try {
-            server.bind(config.port(), router, xmlMapper, requestBodyFileDirectory, requestRecorder);
+            server.bind(config.port(), router, xmlMapper, requestBodyFileDirectory, requestRecorder, heapBodyWriters);
         } catch (Throwable e) {
             server.stop();
             throw e;
@@ -97,7 +104,7 @@ final class NettyServer {
     }
 
     private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory,
-                      RequestRecorder requestRecorder) {
+                      RequestRecorder requestRecorder, LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
         this.parentGroup = new MultiThreadIoEventLoopGroup(config.nettyParentEventGroupThreadNum(),
                 new NamingThreadFactory("locals3-parent-event-group", config.daemonThreads()),
                 NioIoHandler.newFactory());
@@ -115,7 +122,7 @@ final class NettyServer {
                     // where SO_REUSEADDR would let a second socket bind a port that is in use.
                     .option(ChannelOption.SO_REUSEADDR, !PlatformDependent.isWindows())
                     .childHandler(new LocalS3ServerInitializer(config, executor, router, xmlMapper,
-                            requestBodyFileDirectory, inFlightRequests, requestRecorder))
+                            requestBodyFileDirectory, inFlightRequests, requestRecorder, heapBodyWriters))
                     .bind(config.bindHost(), port)
                     .sync()
                     .channel();

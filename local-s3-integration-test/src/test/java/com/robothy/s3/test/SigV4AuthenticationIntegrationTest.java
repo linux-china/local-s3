@@ -5,23 +5,31 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.rest.LocalS3;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.HexFormat;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.signer.AwsS3V4Signer;
+import software.amazon.awssdk.auth.signer.AwsSignerExecutionAttribute;
 import software.amazon.awssdk.auth.signer.S3SignerExecutionAttribute;
 import software.amazon.awssdk.core.client.config.SdkAdvancedClientOption;
+import software.amazon.awssdk.core.interceptor.ExecutionAttributes;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -122,6 +130,62 @@ class SigV4AuthenticationIntegrationTest {
     } finally {
       localS3.shutdown();
     }
+  }
+
+  /**
+   * A request whose signature is valid, but whose body isn't the one that its {@code x-amz-content-sha256} names, is
+   * answered like Amazon S3 answers it: {@code 400 XAmzContentSHA256Mismatch} with both hashes, rather than a
+   * {@code SignatureDoesNotMatch} that would send the developer looking for a wrong key.
+   */
+  @Test
+  void shouldRejectBodyThatDoesNotMatchItsContentSha256() throws Exception {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .credentials(ACCESS_KEY_ID, SECRET_ACCESS_KEY)
+        .build();
+    localS3.start();
+
+    try {
+      URI uri = URI.create("http://localhost:" + localS3.getPort() + "/bucket/key");
+      byte[] signed = "Hello".getBytes(StandardCharsets.UTF_8);
+      byte[] sent = "Hellx".getBytes(StandardCharsets.UTF_8);
+      SdkHttpFullRequest request = SdkHttpFullRequest.builder()
+          .method(SdkHttpMethod.PUT)
+          .uri(uri)
+          .putHeader("Content-Length", String.valueOf(signed.length))
+          .contentStreamProvider(() -> new ByteArrayInputStream(signed))
+          .build();
+      ExecutionAttributes attributes = new ExecutionAttributes()
+          .putAttribute(AwsSignerExecutionAttribute.AWS_CREDENTIALS,
+              AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY))
+          .putAttribute(AwsSignerExecutionAttribute.SERVICE_SIGNING_NAME, "s3")
+          .putAttribute(AwsSignerExecutionAttribute.SIGNING_REGION, REGION)
+          .putAttribute(S3SignerExecutionAttribute.ENABLE_PAYLOAD_SIGNING, true);
+      SdkHttpFullRequest signedRequest = AwsS3V4Signer.create().sign(request, attributes);
+
+      HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(sent));
+      signedRequest.headers().forEach((name, values) -> {
+        if (!name.equalsIgnoreCase("Host") && !name.equalsIgnoreCase("Content-Length")) {
+          values.forEach(value -> builder.header(name, value));
+        }
+      });
+      HttpResponse<String> response = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()
+          .send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+      assertEquals(400, response.statusCode(), response.body());
+      assertTrue(response.body().contains("<Code>XAmzContentSHA256Mismatch</Code>"), response.body());
+      assertTrue(response.body().contains("<ClientComputedContentSHA256>"
+          + sha256Hex(signed) + "</ClientComputedContentSHA256>"), response.body());
+      assertTrue(response.body().contains("<S3ComputedContentSHA256>"
+          + sha256Hex(sent) + "</S3ComputedContentSHA256>"), response.body());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  private static String sha256Hex(byte[] content) throws Exception {
+    return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
   }
 
   private static AwsCredentialsProvider credentials(String accessKeyId, String secretAccessKey) {

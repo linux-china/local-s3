@@ -123,6 +123,29 @@ class InMemoryStorage implements Storage {
   }
 
   /**
+   * A writer of content that this storage takes over when it is stored, reserved in its budget.
+   *
+   * @throws TotalSizeExceedException if the expected length doesn't fit the budget.
+   */
+  @Override
+  public Optional<HeapContent.Writer> newHeapContentWriter(long expectedLength) {
+    return Optional.of(new HeapContent.Writer(this, expectedLength, chunkSize));
+  }
+
+  /**
+   * Store content received into the heap: taken over, with the space reserved for it, if it was received for this
+   * storage; otherwise copied.
+   */
+  @Override
+  public Long put(Long id, HeapContent content) {
+    byte[][] chunks = content.takeOver(this);
+    if (chunks == null) {
+      return put(id, content.newInputStream());
+    }
+    return putContent(id, new Content(chunks, content.length()));
+  }
+
+  /**
    * Read the next chunk of a stream. The buffer starts at the size that the stream reports to be available, and
    * grows up to the chunk size while the stream holds more, so that a small object doesn't take a whole chunk.
    *
@@ -247,7 +270,7 @@ class InMemoryStorage implements Storage {
    * @param bytes the number of bytes to reserve.
    * @throws TotalSizeExceedException if the total size would exceed the limit; nothing is reserved then.
    */
-  private void reserve(long bytes) {
+  void reserve(long bytes) {
     while (true) {
       long current = totalSize.get();
       if (bytes > maxTotalSize - current) {
@@ -262,7 +285,7 @@ class InMemoryStorage implements Storage {
   /**
    * Release space that {@linkplain #reserve reserved}, e.g. of content that is deleted or failed to be stored.
    */
-  private void release(long bytes) {
+  void release(long bytes) {
     totalSize.addAndGet(-bytes);
   }
 
@@ -278,7 +301,7 @@ class InMemoryStorage implements Storage {
   /**
    * A stream of a region of the content of an object.
    */
-  private static final class ChunksInputStream extends InputStream {
+  static final class ChunksInputStream extends InputStream {
 
     private final byte[][] chunks;
 

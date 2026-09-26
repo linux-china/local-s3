@@ -49,6 +49,16 @@ class LayeredStorage implements Storage {
   }
 
   @Override
+  public Long put(Long id, HeapContent content) {
+    return this.front.put(id, content);
+  }
+
+  @Override
+  public Optional<HeapContent.Writer> newHeapContentWriter(long expectedLength) {
+    return this.front.newHeapContentWriter(expectedLength);
+  }
+
+  @Override
   public long size(Long id) {
     return front.isExist(id) ? front.size(id) : back.size(id);
   }

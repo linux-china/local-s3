@@ -73,7 +73,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     }
 
     RequestChecksum checksum = options.getChecksum();
-    StoredContent content = storeContent(options.getContent(), options.getContentFile(),
+    StoredContent content = storeContent(options.getContent(), options.getContentFile(), options.getHeapContent(),
         Objects.isNull(checksum) ? null : checksum.algorithm());
     Long fileId = content.fileId();
     return deliverChangesAfter(() -> {
@@ -159,7 +159,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     S3ObjectUtils.MeasuredInputStream appended;
     try {
       InputStream content = Objects.nonNull(options.getContent()) ? options.getContent()
-          : Files.newInputStream(options.getContentFile());
+          : Objects.nonNull(options.getContentFile()) ? Files.newInputStream(options.getContentFile())
+          : options.getHeapContent().newInputStream();
       appended = S3ObjectUtils.measuringStream(Objects.isNull(appendedChecksum) ? content
           : Checksums.checksumStream(content, appendedChecksum));
     } catch (IOException e) {

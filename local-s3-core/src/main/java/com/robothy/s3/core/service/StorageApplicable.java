@@ -1,5 +1,6 @@
 package com.robothy.s3.core.service;
 
+import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.s3.core.storage.Storage;
 import com.robothy.s3.core.util.Checksums;
 import com.robothy.s3.core.util.S3ObjectUtils;
@@ -45,8 +46,24 @@ public interface StorageApplicable {
    * @return the stored content.
    */
   default StoredContent storeContent(InputStream content, Path contentFile, CheckSumAlgorithm checksumAlgorithm) {
+    return storeContent(content, contentFile, null, checksumAlgorithm);
+  }
+
+  /**
+   * Store the content of a request like {@linkplain #storeContent(InputStream, Path, CheckSumAlgorithm)}, which may
+   * have been received into the heap rather than into a file. Like a file, content in the heap is only read to measure
+   * it, and the storage it was received for takes it over instead of copying it.
+   *
+   * @param content the content; may be {@code null} if {@code contentFile} or {@code heapContent} is given.
+   * @param contentFile a file that holds exactly the content; {@code null} if there is none.
+   * @param heapContent the content received into the heap; {@code null} if there is none.
+   * @param checksumAlgorithm the algorithm of the checksum to compute; {@code null} to compute none.
+   * @return the stored content.
+   */
+  default StoredContent storeContent(InputStream content, Path contentFile, HeapContent heapContent,
+                                     CheckSumAlgorithm checksumAlgorithm) {
     Checksums.Calculator calculator = Objects.isNull(checksumAlgorithm) ? null : Checksums.calculator(checksumAlgorithm);
-    if (Objects.isNull(contentFile)) {
+    if (Objects.isNull(contentFile) && Objects.isNull(heapContent)) {
       MeasuredInputStream measured = S3ObjectUtils.measuringStream(checksummed(content, calculator));
       Long fileId = storage().put(measured);
       return new StoredContent(fileId, measured.getSize(), measured.etag(), digest(calculator));
@@ -54,15 +71,17 @@ public interface StorageApplicable {
 
     MeasuredInputStream measured;
     try {
-      InputStream source = Objects.nonNull(content) ? content : Files.newInputStream(contentFile);
+      InputStream source = Objects.nonNull(content) ? content
+          : Objects.nonNull(contentFile) ? Files.newInputStream(contentFile) : heapContent.newInputStream();
       measured = S3ObjectUtils.measuringStream(checksummed(source, calculator));
       try (InputStream in = measured) {
         in.transferTo(OutputStream.nullOutputStream());
       }
     } catch (IOException e) {
-      throw new UncheckedIOException("Failed to read the content in " + contentFile + ".", e);
+      throw new UncheckedIOException("Failed to read the content"
+          + (Objects.nonNull(contentFile) ? " in " + contentFile : "") + ".", e);
     }
-    Long fileId = storage().put(contentFile);
+    Long fileId = Objects.nonNull(contentFile) ? storage().put(contentFile) : storage().put(heapContent);
     return new StoredContent(fileId, measured.getSize(), measured.etag(), digest(calculator));
   }
 

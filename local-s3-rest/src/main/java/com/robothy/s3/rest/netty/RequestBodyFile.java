@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.netty;
 
+import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.storage.HeapContent;
 import io.netty.buffer.ByteBuf;
 import io.netty.util.concurrent.EventExecutor;
 import java.io.IOException;
@@ -39,6 +41,13 @@ import org.slf4j.LoggerFactory;
  * file holds the decoded content, which a storage can take over like the body of any other upload. A body that fails to
  * decode, e.g. whose chunk signatures don't match, fails the file like a write does, with a
  * {@linkplain RequestBodyRejection}.
+ *
+ * <p>A body of an {@code IN_MEMORY} service can be received into the heap instead of a file, see
+ * {@linkplain #RequestBodyFile(Executor, EventExecutor, Listener, AwsChunkedBodyDecoder, HeapContent.Writer)}: its
+ * chunks, decoded or not, are written to a {@linkplain HeapContent} that the in-memory storage takes over, and the body
+ * is handed on as a {@linkplain HeapBodyByteBuf}. Everything else, the queue, its water marks, decoding and the order of
+ * the operations, is the same. A body that doesn't fit the budget of the storage fails with a
+ * {@linkplain RequestBodyRejection} of {@code InsufficientStorage}.
  *
  * <p>The listener is called on the event loop, and not at all once the file is {@linkplain #discard() discarded}.
  */
@@ -107,6 +116,11 @@ final class RequestBodyFile {
    * Decodes the {@code aws-chunked} body as it is written; {@code null} to write the body as it is received.
    */
   private final AwsChunkedBodyDecoder decoder;
+
+  /**
+   * Receives the body into the heap instead of a file; {@code null} to write the body to a file.
+   */
+  private final HeapContent.Writer heapWriter;
 
   // Guarded by this.
 
@@ -182,8 +196,29 @@ final class RequestBodyFile {
     this(executor, eventLoop, directory, listener, maxMappedBytes, null);
   }
 
+  /**
+   * Create a body that is received into the heap rather than a file, for a storage that takes heap content over.
+   *
+   * @param executor runs the operations on the body.
+   * @param eventLoop the event loop of the connection, which the listener is called on.
+   * @param listener receives the events of the body; {@linkplain Listener#completed(ByteBuf)} with a
+   *     {@linkplain HeapBodyByteBuf}.
+   * @param decoder decodes the {@code aws-chunked} body as it is written; {@code null} to write the body as it is
+   *     received.
+   * @param heapWriter the writer of the content, whose expected length is reserved; this body owns it.
+   */
+  RequestBodyFile(Executor executor, EventExecutor eventLoop, Listener listener, AwsChunkedBodyDecoder decoder,
+                  HeapContent.Writer heapWriter) {
+    this(executor, eventLoop, null, listener, MAX_MAPPED_BYTES, decoder, Objects.requireNonNull(heapWriter));
+  }
+
   private RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
                           long maxMappedBytes, AwsChunkedBodyDecoder decoder) {
+    this(executor, eventLoop, directory, listener, maxMappedBytes, decoder, null);
+  }
+
+  private RequestBodyFile(Executor executor, EventExecutor eventLoop, Path directory, Listener listener,
+                          long maxMappedBytes, AwsChunkedBodyDecoder decoder, HeapContent.Writer heapWriter) {
     if (maxMappedBytes < 0 || maxMappedBytes > MAX_MAPPED_BYTES) {
       throw new IllegalArgumentException("maxMappedBytes must be between 0 and " + MAX_MAPPED_BYTES + ".");
     }
@@ -193,6 +228,7 @@ final class RequestBodyFile {
     this.directory = directory;
     this.listener = Objects.requireNonNull(listener);
     this.decoder = decoder;
+    this.heapWriter = heapWriter;
   }
 
   /**
@@ -359,7 +395,7 @@ final class RequestBodyFile {
   }
 
   private void open() throws IOException {
-    if (channel == null) {
+    if (heapWriter == null && channel == null) {
       file = directory == null
           ? Files.createTempFile(LocalS3HttpRequestDecoder.BODY_FILE_PREFIX, ".tmp")
           : Files.createTempFile(directory, LocalS3HttpRequestDecoder.BODY_FILE_PREFIX, ".tmp");
@@ -391,6 +427,10 @@ final class RequestBodyFile {
   }
 
   private void write(ByteBuf[] batch, long batchBytes) throws IOException {
+    if (heapWriter != null) {
+      writeToHeap(batch, batchBytes);
+      return;
+    }
     List<ByteBuffer> buffers = new ArrayList<>(batch.length);
     for (ByteBuf data : batch) {
       Collections.addAll(buffers, data.nioBuffers());
@@ -403,6 +443,20 @@ final class RequestBodyFile {
     writtenBytes += batchBytes;
   }
 
+  private void writeToHeap(ByteBuf[] batch, long batchBytes) {
+    try {
+      for (ByteBuf data : batch) {
+        for (ByteBuffer buffer : data.nioBuffers()) {
+          heapWriter.write(buffer);
+        }
+      }
+    } catch (LocalS3Exception e) {
+      // E.g. more bytes than the request declared, which don't fit the budget of the storage.
+      throw new RequestBodyRejection(e.getS3ErrorCode(), e.getMessage());
+    }
+    writtenBytes += batchBytes;
+  }
+
   /**
    * Map the complete file as the body, or hand it on unmapped if it is too large to be mapped. The body owns the file
    * from then on.
@@ -411,6 +465,15 @@ final class RequestBodyFile {
     ByteBuf body;
     try {
       Map<String, String> trailer = decoder == null ? null : decoder.finish();
+      if (heapWriter != null) {
+        HeapBodyByteBuf heapBody = new HeapBodyByteBuf(heapWriter.finish(), trailer);
+        synchronized (this) {
+          done = true;
+          running = false;
+        }
+        notifyListener(() -> listener.completed(heapBody), heapBody::release);
+        return;
+      }
       open();
       if (writtenBytes > maxMappedBytes) {
         FileBodyByteBuf fileBody = new FileBodyByteBuf(file, writtenBytes);
@@ -454,6 +517,9 @@ final class RequestBodyFile {
   }
 
   private void closeAndDelete() {
+    if (heapWriter != null) {
+      heapWriter.discard();
+    }
     if (channel != null) {
       try {
         channel.close();

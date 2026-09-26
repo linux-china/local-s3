@@ -93,6 +93,17 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
   }
 
   @Override
+  public Long put(Long id, HeapContent content) {
+    recordWrite(id);
+    return delegate.put(id, content);
+  }
+
+  @Override
+  public Optional<HeapContent.Writer> newHeapContentWriter(long expectedLength) {
+    return delegate.newHeapContentWriter(expectedLength);
+  }
+
+  @Override
   public long size(Long id) {
     return delegate.size(id);
   }

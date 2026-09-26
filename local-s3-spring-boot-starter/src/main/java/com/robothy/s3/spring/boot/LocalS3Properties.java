@@ -391,7 +391,8 @@ public class LocalS3Properties {
     private DataSize maxBodySize = DataSize.ofBytes(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE);
 
     /**
-     * Size above which a request body is buffered in a temporary file instead of the heap.
+     * Size above which a request body is buffered in a temporary file instead of the heap. In {@code IN_MEMORY} mode
+     * the large body of an upload is received into the budget of the in-memory storage instead, which takes it over.
      */
     private DataSize bodyFileThreshold = DataSize.ofBytes(LocalS3Config.DEFAULT_REQUEST_BODY_FILE_THRESHOLD);
 
