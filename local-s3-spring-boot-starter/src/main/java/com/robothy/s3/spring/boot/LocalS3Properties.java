@@ -31,7 +31,9 @@ public class LocalS3Properties {
   private String bindHost = "127.0.0.1";
 
   /**
-   * Port that LocalS3 listens on; {@code 0} or {@code -1} for a random free port.
+   * Port that LocalS3 listens on; {@code 0} or {@code -1} for a random free port. Unless it is set, the service of a
+   * {@code @SpringBootTest} listens on a random free port rather than on the default one, so that the contexts that the
+   * test context framework caches side by side don't compete for it; {@code ${local.s3.endpoint}} names it.
    */
   private int port = 29090;
 

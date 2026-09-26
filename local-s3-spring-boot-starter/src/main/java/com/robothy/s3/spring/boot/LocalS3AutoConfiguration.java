@@ -19,10 +19,14 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -48,7 +52,8 @@ import software.amazon.awssdk.transfer.s3.S3TransferManager;
  *   <li>the {@code S3Change}s that the service commits, published to the application context, where
  *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
  *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
- *   service, unless the application defines its own, when the AWS SDK is on the classpath, and likewise an
+ *   service, unless the application defines its own, when the AWS SDK is on the classpath (the {@code S3AsyncClient}
+ *   with {@code netty-nio-client}, {@code aws-crt-client} or {@code aws-crt}), and likewise an
  *   {@linkplain S3VectorsClient}, an {@linkplain S3TablesClient} and an {@linkplain S3TransferManager} when their
  *   modules are.</li>
  * </ul>
@@ -78,16 +83,28 @@ public class LocalS3AutoConfiguration {
    */
   static final String DEFAULT_CLIENT_KEY = "local-s3";
 
+  /**
+   * The property that {@code SpringBootTestContextBootstrapper} sets to {@code true} in the environment of the context of
+   * a {@code @SpringBootTest}, on Spring Boot 3 and 4 alike.
+   */
+  static final String SPRING_BOOT_TEST_PROPERTY =
+      "org.springframework.boot.test.context.SpringBootTestContextBootstrapper";
+
   @Bean
   @ConditionalOnMissingBean
   public LocalS3 localS3(LocalS3Properties properties, ObjectProvider<LocalS3ApplicationEventPublisher> eventPublisher,
                          ObjectProvider<LocalS3BuilderCustomizer> customizers,
                          ObjectProvider<RequestRecorder> requestRecorders,
-                         ObjectProvider<LocalS3Seeder> seeders) {
+                         ObjectProvider<LocalS3Seeder> seeders, Environment environment) {
     LocalS3Builder builder = LocalS3.builder()
         // The application context stops the service; a hook of its own would stop it before the beans that use it.
         .netty(netty -> netty.registerShutdownHook(false));
     apply(properties, builder);
+    if (randomPortForTest(environment)) {
+      log.info("LocalS3 listens on a random free port in a @SpringBootTest, since local-s3.port isn't set; "
+          + "${local.s3.endpoint} names it. Set local-s3.port to listen on a fixed one.");
+      builder.port(0);
+    }
     LocalS3ApplicationEventPublisher events = eventPublisher.getIfAvailable();
     if (events != null) {
       // Published on the thread that made the change, so that a listener of a change made in a transaction takes part
@@ -157,6 +174,18 @@ public class LocalS3AutoConfiguration {
   @Bean
   static LocalS3PropertySource.Registrar localS3PropertySourceRegistrar() {
     return new LocalS3PropertySource.Registrar();
+  }
+
+  /**
+   * Whether the service listens on a random free port rather than the default {@code 29090} of
+   * {@code local-s3.port}: in the context of a {@code @SpringBootTest}, unless the port is configured. The test context
+   * framework caches the contexts of test classes with different configurations side by side, and each of them has a
+   * service of its own, which would compete for a fixed port. The clients of the starter and
+   * {@code ${local.s3.endpoint}} name the port the service is listening on.
+   */
+  static boolean randomPortForTest(Environment environment) {
+    return environment.getProperty(SPRING_BOOT_TEST_PROPERTY, Boolean.class, false)
+        && !Binder.get(environment).bind("local-s3.port", Bindable.of(Integer.class)).isBound();
   }
 
   // Set directly rather than through PropertyMapper: Spring Boot 4 changed the parameter of Source.as() from a
@@ -255,14 +284,9 @@ public class LocalS3AutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnClass(name = "software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient")
-    S3AsyncClient s3AsyncClient(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
-      return S3AsyncClient.builder()
-          .endpointOverride(pointAtLocalS3(S3AsyncClient.class, lifecycle))
-          .region(Region.of(properties.getClients().getRegion()))
-          .credentialsProvider(credentials(lifecycle.getLocalS3()))
-          .forcePathStyle(true)
-          .build();
+    @Conditional(AsyncClientCondition.class)
+    S3AsyncClient s3AsyncClient(LocalS3Lifecycle lifecycle, LocalS3Properties properties, ApplicationContext context) {
+      return asyncClient(S3AsyncClient.class, lifecycle, properties, context.getClassLoader(), false);
     }
 
     @Bean
@@ -287,6 +311,38 @@ public class LocalS3AutoConfiguration {
               + "development and tests only; set local-s3.enabled=false, or local-s3.clients.enabled=false, to leave it "
               + "out.", clientType.getSimpleName(), endpoint);
       return endpoint;
+    }
+
+    /**
+     * An {@linkplain S3AsyncClient} that points at the service. It is built on the asynchronous HTTP client of the AWS
+     * SDK that the application brings, {@code netty-nio-client} or {@code aws-crt-client}, which the SDK picks from the
+     * classpath; without either, on the AWS Common Runtime alone ({@code aws-crt}, e.g. the one that Spring Cloud AWS
+     * builds its {@code S3CrtAsyncClient} on), as an {@code S3CrtAsyncClient}, which uploads and downloads in parts of
+     * its own.
+     *
+     * @param multipart whether an {@code S3AsyncClient} of an HTTP client uploads and downloads in parts, like the one of
+     *     a transfer manager does.
+     */
+    static S3AsyncClient asyncClient(Class<?> clientType, LocalS3Lifecycle lifecycle, LocalS3Properties properties,
+                                     ClassLoader classLoader, boolean multipart) {
+      URI endpoint = pointAtLocalS3(clientType, lifecycle);
+      Region region = Region.of(properties.getClients().getRegion());
+      AwsCredentialsProvider credentials = credentials(lifecycle.getLocalS3());
+      if (AsyncClientCondition.hasAsyncHttpClient(classLoader)) {
+        return S3AsyncClient.builder()
+            .endpointOverride(endpoint)
+            .region(region)
+            .credentialsProvider(credentials)
+            .forcePathStyle(true)
+            .multipartEnabled(multipart)
+            .build();
+      }
+      return S3AsyncClient.crtBuilder()
+          .endpointOverride(endpoint)
+          .region(region)
+          .credentialsProvider(credentials)
+          .forcePathStyle(true)
+          .build();
     }
 
     private static AwsCredentialsProvider credentials(LocalS3 localS3) {
@@ -348,22 +404,17 @@ public class LocalS3AutoConfiguration {
      * too. The configuration closes that client after the transfer manager, which doesn't close a client it was given.
      */
     @Configuration(proxyBeanMethods = false)
-    @ConditionalOnClass(value = S3TransferManager.class,
-        name = "software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient")
+    @ConditionalOnClass(S3TransferManager.class)
+    @Conditional(AsyncClientCondition.class)
     static class TransferManagerConfiguration implements DisposableBean {
 
       private S3AsyncClient transferClient;
 
       @Bean
       @ConditionalOnMissingBean
-      S3TransferManager s3TransferManager(LocalS3Lifecycle lifecycle, LocalS3Properties properties) {
-        transferClient = S3AsyncClient.builder()
-            .endpointOverride(pointAtLocalS3(S3TransferManager.class, lifecycle))
-            .region(Region.of(properties.getClients().getRegion()))
-            .credentialsProvider(credentials(lifecycle.getLocalS3()))
-            .forcePathStyle(true)
-            .multipartEnabled(true)
-            .build();
+      S3TransferManager s3TransferManager(LocalS3Lifecycle lifecycle, LocalS3Properties properties,
+                                          ApplicationContext context) {
+        transferClient = asyncClient(S3TransferManager.class, lifecycle, properties, context.getClassLoader(), true);
         return S3TransferManager.builder().s3Client(transferClient).build();
       }
 

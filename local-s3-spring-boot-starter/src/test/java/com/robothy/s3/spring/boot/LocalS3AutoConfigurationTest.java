@@ -219,6 +219,68 @@ class LocalS3AutoConfigurationTest {
     });
   }
 
+  /**
+   * Without an HTTP client of the AWS SDK, the {@code S3AsyncClient} and the {@code S3TransferManager} are built on the
+   * AWS Common Runtime alone, like the {@code S3CrtAsyncClient} that Spring Cloud AWS defines with {@code aws-crt}.
+   */
+  @Test
+  void buildsTheAsyncClientsOnTheCommonRuntimeWithoutAnHttpClient(@TempDir Path directory) {
+    runner.withPropertyValues("local-s3.buckets=crt")
+        .withClassLoader(new FilteredClassLoader(AsyncClientCondition.NETTY_HTTP_CLIENT,
+            AsyncClientCondition.CRT_HTTP_CLIENT))
+        .run(context -> {
+          S3AsyncClient async = context.getBean(S3AsyncClient.class);
+          assertTrue(isCrtClient(async), async.getClass().getName());
+          async.putObject(request -> request.bucket("crt").key("a.txt"), AsyncRequestBody.fromString("CRT")).join();
+          assertEquals("CRT", async.getObject(request -> request.bucket("crt").key("a.txt"),
+              AsyncResponseTransformer.toBytes()).join().asUtf8String());
+
+          S3TransferManager transferManager = context.getBean(S3TransferManager.class);
+          Path download = directory.resolve("download.txt");
+          transferManager.downloadFile(request -> request.destination(download)
+              .getObjectRequest(get -> get.bucket("crt").key("a.txt"))).completionFuture().join();
+          assertEquals("CRT", Files.readString(download));
+        });
+  }
+
+  /**
+   * {@code aws-crt-client}, the HTTP client of the AWS SDK on the AWS Common Runtime, is enough for the
+   * {@code S3AsyncClient} of the SDK, like {@code netty-nio-client}.
+   */
+  @Test
+  void buildsTheAsyncClientOnTheCrtHttpClientWithoutNetty() {
+    runner.withPropertyValues("local-s3.buckets=crt-http")
+        .withClassLoader(new FilteredClassLoader(AsyncClientCondition.NETTY_HTTP_CLIENT))
+        .run(context -> {
+          S3AsyncClient async = context.getBean(S3AsyncClient.class);
+          assertFalse(isCrtClient(async), async.getClass().getName());
+          async.putObject(request -> request.bucket("crt-http").key("a.txt"), AsyncRequestBody.fromString("HTTP"))
+              .join();
+          assertEquals("HTTP", async.getObject(request -> request.bucket("crt-http").key("a.txt"),
+              AsyncResponseTransformer.toBytes()).join().asUtf8String());
+          assertTrue(context.containsBean("s3TransferManager"));
+        });
+  }
+
+  /**
+   * Whether a client is the {@code S3CrtAsyncClient} of {@code S3AsyncClient.crtBuilder()}, whose type is internal to
+   * the AWS SDK.
+   */
+  private static boolean isCrtClient(S3AsyncClient client) {
+    return client.getClass().getName().startsWith("software.amazon.awssdk.services.s3.internal.crt.");
+  }
+
+  @Test
+  void definesNoAsyncClientWithoutAnAsyncRuntime() {
+    runner.withClassLoader(new FilteredClassLoader(AsyncClientCondition.NETTY_HTTP_CLIENT,
+        AsyncClientCondition.CRT_HTTP_CLIENT, "software.amazon.awssdk.crt.")).run(context -> {
+          assertNull(context.getStartupFailure());
+          assertTrue(context.containsBean("s3Client"));
+          assertFalse(context.containsBean("s3AsyncClient"));
+          assertFalse(context.containsBean("s3TransferManager"));
+        });
+  }
+
   @Test
   void definesTheClientsOfTheOtherApisOnlyWithTheirModules() {
     runner.withClassLoader(new FilteredClassLoader("software.amazon.awssdk.services.s3vectors.",

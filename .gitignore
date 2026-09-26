@@ -121,3 +121,6 @@ gradle-app.setting
 .env
 .envrc
 temp/
+data/
+__pycache__/
+.venv/

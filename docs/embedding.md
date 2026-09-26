@@ -380,6 +380,11 @@ of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-h
 `testAndDevelopmentOnly`, a Maven `test` scope or profile). If the production jar includes it, the application
 starts a local service and its `S3Client` points at it.
 
+In a `@SpringBootTest`, the service listens on a random free port unless `local-s3.port` is set, so that the test
+contexts that Spring caches side by side don't compete for port 29090; the client beans of the starter, and the
+`${local.s3.endpoint}` placeholder, name the port it listens on. `@AutoConfigureLocalS3` also resets the data after each
+test method.
+
 ## JUnit 5
 
 `local-s3-jupiter` provides the annotation `@LocalS3`, which launches S3 services for your tests.

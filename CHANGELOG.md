@@ -431,6 +431,14 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ The service of the Spring Boot starter listens on a random free port in a `@SpringBootTest` unless `local-s3.port` is
+  set, as it does with `@AutoConfigureLocalS3`: the test contexts that Spring caches side by side, e.g. of test classes
+  with different properties, each start a service, and the second one failed to bind port 29090. The client beans and
+  `${local.s3.endpoint}` name the port it listens on. An application keeps port 29090.
++ The `S3AsyncClient` and `S3TransferManager` of the Spring Boot starter are defined with `aws-crt-client` as well as
+  with `netty-nio-client`, and with the AWS Common Runtime alone (`aws-crt`, e.g. for Spring Cloud AWS) as an
+  `S3CrtAsyncClient`; they were only defined with `netty-nio-client`, so an application with `aws-crt` got the
+  `S3CrtAsyncClient` of Spring Cloud AWS, which points at Amazon S3.
 + An `IN_MEMORY` service receives the large body of a `PutObject` or `UploadPart` (above `requestBodyFileThreshold`,
   4 MiB) into the heap, in chunks that its storage takes over, rather than into a file of the temporary directory that
   it then copied into the heap: an upload no longer touches the disk, e.g. a small `/tmp` of a CI container, nor is

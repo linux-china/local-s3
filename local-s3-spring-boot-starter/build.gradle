@@ -53,6 +53,10 @@ dependencies {
     testImplementation(libs.awssdkS3vectors)
     testImplementation(libs.awssdkS3tables)
     testImplementation(libs.awssdkS3TransferManager)
+    // The AWS Common Runtime, which the S3AsyncClient is built on without an HTTP client of the AWS SDK, and the HTTP
+    // client of the AWS SDK on it, which the S3AsyncClient can be built on instead of netty-nio-client.
+    testImplementation(libs.awsCrt)
+    testImplementation(libs.awssdkAwsCrtClient)
     testImplementation(libs.springBootTest)
     // The contexts of ApplicationContextRunner are AssertJ assert providers.
     testImplementation("org.assertj:assertj-core")

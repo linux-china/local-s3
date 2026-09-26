@@ -110,6 +110,8 @@ parquetAvro = { group = "org.apache.parquet", name = "parquet-avro", version.ref
 awssdkS3TransferManager = { group = "software.amazon.awssdk", name = "s3-transfer-manager", version.ref = "awssdkS3" }
 # The AWS Common Runtime, which S3AsyncClient.crtBuilder() builds its client on.
 awsCrt = { group = "software.amazon.awssdk.crt", name = "aws-crt", version.ref = "awsCrt" }
+# The asynchronous HTTP client of the AWS SDK on the AWS Common Runtime, which S3AsyncClient.builder() can be built on.
+awssdkAwsCrtClient = { group = "software.amazon.awssdk", name = "aws-crt-client", version.ref = "awssdkS3" }
 springBootBom = { group = "org.springframework.boot", name = "spring-boot-dependencies", version.ref = "springBoot" }
 springBootAutoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "springBoot" }
 springBootHealth = { group = "org.springframework.boot", name = "spring-boot-health", version.ref = "springBoot" }

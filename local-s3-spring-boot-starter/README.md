@@ -65,7 +65,7 @@ too:
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>s3</artifactId>
 </dependency>
-<!-- S3AsyncClient, optional -->
+<!-- S3AsyncClient, optional: netty-nio-client, or aws-crt-client, or aws-crt for an S3CrtAsyncClient -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>netty-nio-client</artifactId>
@@ -80,12 +80,17 @@ too:
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>s3tables</artifactId>
 </dependency>
-<!-- S3TransferManager, optional, with netty-nio-client -->
+<!-- S3TransferManager, optional, with one of the S3AsyncClient dependencies above -->
 <dependency>
     <groupId>software.amazon.awssdk</groupId>
     <artifactId>s3-transfer-manager</artifactId>
 </dependency>
 ```
+
+The `S3AsyncClient` is built on the asynchronous HTTP client of the AWS SDK that the application brings,
+`netty-nio-client` or `aws-crt-client`. With neither, but with the AWS Common Runtime (`software.amazon.awssdk.crt:aws-crt`),
+e.g. for the `S3CrtAsyncClient` of Spring Cloud AWS, it is an `S3CrtAsyncClient` of `S3AsyncClient.crtBuilder()`, which
+uploads and downloads in parts of its own; the `S3TransferManager` is built on the same.
 
 The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. `netty-nio-client`
 depends on Netty 4.1, while LocalS3 needs Netty 4.2: let the dependency management of Spring Boot (the
@@ -423,3 +428,18 @@ class UploadServiceTest {
 
 `@AutoConfigureLocalS3(port = 29090, mode = LocalS3Mode.PERSISTENCE)` overrides the defaults; a `PERSISTENCE` service is
 never reset.
+
+A plain `@SpringBootTest`, without the annotation, gets the service of the application, with its configuration, but on
+a random free port too unless `local-s3.port` is set, e.g. in `application.yml` or the `properties` of the test: the
+contexts of test classes with different configurations are cached side by side, and each has a service of its own,
+which would otherwise compete for port 29090. The client beans of the starter point at the port the service listens
+on, and anything else reaches it with the [endpoint placeholders](#endpoint-placeholders), rather than a hard-coded
+port:
+
+```yaml
+# src/test/resources/application.yml
+spring.cloud.aws.s3.endpoint: ${local.s3.endpoint}
+```
+
+Set `local-s3.port`, e.g. to `29090`, to keep a fixed port in a test; a test context whose port is taken then fails to
+start. The data isn't reset between the tests of a plain `@SpringBootTest`.
