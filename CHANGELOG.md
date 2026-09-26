@@ -257,7 +257,10 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + **STS temporary credentials**: a stateless STS endpoint on the same port answers `AssumeRole`, `GetSessionToken` and
   `GetCallerIdentity`, like the one of MinIO, and requests signed with the temporary credentials it issues are accepted,
   with their session token in `x-amz-security-token`, a presigned URL or a form upload. The credentials survive restarts
-  and are revoked by changing the secret access key. See [temporary credentials](docs/embedding.md#temporary-credentials-sts).
+  and are revoked by changing the secret access key. The session `Policy` of `AssumeRole` limits its credentials, as
+  IAM evaluates it, so that a catalog that scopes the credentials of a table to its location, e.g. Lakekeeper, finds
+  them scoped; Lakekeeper vending credentials for an Iceberg table is tested end to end. See
+  [temporary credentials](docs/embedding.md#temporary-credentials-sts).
 + **HTTPS**: `tls(certPem, keyPem)` and `LOCAL_S3_TLS_CERT` / `LOCAL_S3_TLS_KEY` serve TLS with a PEM certificate and
   key, e.g. created by [mkcert](https://github.com/FiloSottile/mkcert), so clients that use HTTPS by default, such as
   DuckDB, Hadoop S3A or the `object_store` crate, connect without turning it off. See [HTTPS](docs/deployment.md#https).

@@ -244,17 +244,29 @@ Credentials credentials = sts.assumeRole(b -> b
     .durationSeconds(3600)).credentials();
 ```
 
-+ **Stateless**: nothing is stored. The session token carries the access key ID, the expiration and the identity,
-  authenticated with a key derived from the secret access key, and the temporary secret access key is derived from the
-  token again. The credentials stay valid across restarts, in both modes, as long as the secret access key is the same;
-  changing it revokes all of them.
-+ **No IAM**: `RoleArn`, `RoleSessionName`, `DurationSeconds` and `Policy` are validated like STS validates them
-  (`AssumeRole` 15 minutes to 12 hours, 1 hour at most when chained from temporary credentials; `GetSessionToken` up to
-  36 hours, not from temporary credentials), but temporary credentials can do everything the static key pair can.
-  Any role ARN is accepted; one of the form `arn:aws:iam::<account>:role/<name>` names the account and the role of the
-  assumed-role ARN.
++ **Stateless**: nothing is stored. The session token carries the access key ID, the expiration, the identity and the
+  session policy, authenticated with a key derived from the secret access key, and the temporary secret access key is
+  derived from the token again. The credentials stay valid across restarts, in both modes, as long as the secret access
+  key is the same; changing it revokes all of them.
++ **No IAM**: `RoleArn`, `RoleSessionName` and `DurationSeconds` are validated like STS validates them (`AssumeRole`
+  15 minutes to 12 hours, 1 hour at most when chained from temporary credentials; `GetSessionToken` up to 36 hours, not
+  from temporary credentials). Any role ARN is accepted, and the role can do everything the static key pair can; one of
+  the form `arn:aws:iam::<account>:role/<name>` names the account and the role of the assumed-role ARN.
++ **Session policies**: the `Policy` of `AssumeRole` limits its credentials, as IAM intersects it with the permissions
+  of the role: an S3 request is allowed if a statement allows it and none denies it, and answered with
+  `403 AccessDenied` otherwise. This is how a catalog scopes the credentials of a table to its location, and Lakekeeper
+  checks that it holds. Each operation is authorized as the action that Amazon S3 authorizes it as, e.g. `ListObjectsV2`
+  as `s3:ListBucket` on `arn:aws:s3:::bucket` and `UploadPart` as `s3:PutObject` on `arn:aws:s3:::bucket/key`; a copy
+  needs `s3:GetObject` on its source as well, and each object of `DeleteObjects` that isn't allowed is reported as an
+  `AccessDenied` error of its own. `Action`/`NotAction` and `Resource`/`NotResource` are matched with `*` and `?`, and
+  `Condition` is evaluated for `StringEquals`, `StringNotEquals`, `StringLike` and `StringNotLike` (with or without
+  `IfExists`) on `s3:prefix`, `s3:delimiter`, `s3:max-keys` and `s3:VersionId`; any other condition is ignored, i.e.
+  met. A policy that isn't one is answered with `MalformedPolicyDocument`. The requests of S3 Vectors, S3 Tables, the
+  Iceberg REST catalog, KMS and STS, and browser uploads, aren't limited by it. Credentials without a policy, of
+  `AssumeRole` without one or of `GetSessionToken`, can do everything the static key pair can.
 + **Without `credentials(...)`** the endpoint issues credentials as well, and every request is accepted as before, so a
-  catalog configured with an STS endpoint works with an unauthenticated LocalS3 too.
+  catalog configured with an STS endpoint works with an unauthenticated LocalS3 too. A request that carries a session
+  token of LocalS3 is still limited by its session policy.
 + **Errors**: an STS request is answered with the errors of STS, e.g. `InvalidClientTokenId`; an S3 request signed with a
   forged or foreign token with `400 InvalidToken`, and with an expired one with `400 ExpiredToken`.
 

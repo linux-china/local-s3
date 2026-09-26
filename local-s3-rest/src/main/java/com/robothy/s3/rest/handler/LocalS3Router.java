@@ -130,6 +130,12 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   private StsController stsController;
 
   /**
+   * Authorizes the S3 requests of temporary credentials by their session policy; {@code null} if the router has no
+   * STS endpoint, whose credentials alone carry one.
+   */
+  private SessionPolicyAuthorizer sessionPolicyAuthorizer;
+
+  /**
    * Answers the KMS requests; {@code null} if the router has no KMS endpoint.
    */
   private KmsController kmsController;
@@ -200,6 +206,18 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    */
   LocalS3Router sts(StsController stsController) {
     this.stsController = Objects.requireNonNull(stsController);
+    return this;
+  }
+
+  /**
+   * Authorize the S3 requests signed with temporary credentials by the session policy of the credentials, see
+   * {@linkplain SessionPolicyAuthorizer}, whether or not the router verifies signatures.
+   *
+   * @param authorizer the authorizer.
+   * @return this router.
+   */
+  LocalS3Router sessionPolicies(SessionPolicyAuthorizer authorizer) {
+    this.sessionPolicyAuthorizer = Objects.requireNonNull(authorizer);
     return this;
   }
 
@@ -356,6 +374,13 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       if (!result.authenticated()) {
         return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, new AuthenticationFailureHandler(result));
       }
+    }
+    // Recorded as the operation that was denied, like Amazon S3 reports a 403 of it.
+    if (sessionPolicyAuthorizer != null && handler != null && !authenticatedByForm && website == null
+        && !sessionPolicyAuthorizer.allows(request, handler.operation())) {
+      handler = new OperationHandler(handler.operation(), (req, resp) -> {
+        throw new LocalS3RequestException(S3ErrorCode.AccessDenied);
+      });
     }
     return withCorsHeaders(request, handler);
   }

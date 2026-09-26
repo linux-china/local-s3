@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
@@ -26,6 +28,9 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.DeleteObjectsResponse;
+import software.amazon.awssdk.services.s3.model.DeletedObject;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -48,6 +53,40 @@ class StsIntegrationTest {
 
   private static final String ROLE_ARN = "arn:aws:iam::123456789012:role/lakehouse-reader";
 
+  private static final String ALLOW_ALL = """
+      {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}]}
+      """;
+
+  /**
+   * The session policy that a catalog like Lakekeeper or Apache Polaris scopes the credentials of a table with.
+   */
+  private static final String TABLE_POLICY = """
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "TableAccess",
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject",
+                       "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"],
+            "Resource": ["arn:aws:s3:::warehouse/tables/t1/*"]
+          },
+          {
+            "Sid": "ListBucketForFolder",
+            "Effect": "Allow",
+            "Action": "s3:ListBucket",
+            "Resource": "arn:aws:s3:::warehouse",
+            "Condition": {"StringLike": {"s3:prefix": ["tables/t1/*"]}}
+          },
+          {
+            "Effect": "Allow",
+            "Action": "s3:GetBucketLocation",
+            "Resource": "arn:aws:s3:::warehouse"
+          }
+        ]
+      }
+      """;
+
   private final List<AutoCloseable> resources = new ArrayList<>();
 
   @AfterEach
@@ -62,7 +101,7 @@ class StsIntegrationTest {
     URI endpoint = start(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
     AssumeRoleResponse assumed = sts(endpoint, AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY))
         .assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("polaris").durationSeconds(900)
-            .policy("{\"Version\":\"2012-10-17\",\"Statement\":[]}"));
+            .policy(ALLOW_ALL));
 
     assertEquals("arn:aws:sts::123456789012:assumed-role/lakehouse-reader/polaris",
         assumed.assumedRoleUser().arn());
@@ -206,6 +245,93 @@ class StsIntegrationTest {
     S3Client s3 = s3(endpoint, session(credentials));
     s3.createBucket(b -> b.bucket("bucket"));
     assertEquals(1, s3.listBuckets().buckets().size());
+  }
+
+  /**
+   * Credentials of {@code AssumeRole} with a session policy can do only what the policy allows, as a catalog that
+   * scopes the credentials of a table to its location expects, whether or not LocalS3 verifies signatures.
+   */
+  @ParameterizedTest(name = "verifying signatures: {0}")
+  @ValueSource(booleans = {true, false})
+  void theSessionPolicyLimitsTheCredentials(boolean verifyingSignatures) {
+    URI endpoint = verifyingSignatures ? start(ACCESS_KEY_ID, SECRET_ACCESS_KEY) : start(null, null);
+    AwsBasicCredentials root = AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
+    S3Client admin = s3(endpoint, root);
+    admin.createBucket(b -> b.bucket("warehouse"));
+    admin.putObject(b -> b.bucket("warehouse").key("tables/t2/data.txt"), RequestBody.fromString("t2"));
+    S3Client s3 = s3(endpoint, session(sts(endpoint, root)
+        .assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("table").policy(TABLE_POLICY)).credentials()));
+
+    s3.putObject(b -> b.bucket("warehouse").key("tables/t1/data.txt"), RequestBody.fromString("t1"));
+    assertEquals("t1", s3.getObjectAsBytes(b -> b.bucket("warehouse").key("tables/t1/data.txt")).asUtf8String());
+    assertEquals(List.of("tables/t1/data.txt"), s3.listObjectsV2(b -> b.bucket("warehouse").prefix("tables/t1/"))
+        .contents().stream().map(S3Object::key).toList());
+    s3.copyObject(b -> b.sourceBucket("warehouse").sourceKey("tables/t1/data.txt")
+        .destinationBucket("warehouse").destinationKey("tables/t1/copy.txt"));
+    s3.getBucketLocation(b -> b.bucket("warehouse"));
+
+    assertAccessDenied(() -> s3.putObject(b -> b.bucket("warehouse").key("tables/forbidden-write-test"),
+        RequestBody.fromString("next to the table")));
+    assertAccessDenied(() -> s3.getObject(b -> b.bucket("warehouse").key("tables/t2/data.txt")));
+    assertAccessDenied(() -> s3.listObjectsV2(b -> b.bucket("warehouse")));
+    assertAccessDenied(() -> s3.listObjectsV2(b -> b.bucket("warehouse").prefix("tables/")));
+    assertAccessDenied(() -> s3.copyObject(b -> b.sourceBucket("warehouse").sourceKey("tables/t2/data.txt")
+        .destinationBucket("warehouse").destinationKey("tables/t1/stolen.txt")));
+    assertAccessDenied(() -> s3.createBucket(b -> b.bucket("another")));
+    assertAccessDenied(() -> s3.listBuckets());
+
+    // Each object of a DeleteObjects is authorized on its own, and reported as an error of its own if denied.
+    DeleteObjectsResponse deleted = s3.deleteObjects(b -> b.bucket("warehouse").delete(d -> d.objects(
+        ObjectIdentifier.builder().key("tables/t1/copy.txt").build(),
+        ObjectIdentifier.builder().key("tables/t2/data.txt").build())));
+    assertEquals(List.of("tables/t1/copy.txt"), deleted.deleted().stream().map(DeletedObject::key).toList());
+    assertEquals(List.of("tables/t2/data.txt:AccessDenied"),
+        deleted.errors().stream().map(error -> error.key() + ":" + error.code()).toList());
+    assertEquals(List.of("tables/t1/data.txt", "tables/t2/data.txt"),
+        admin.listObjectsV2(b -> b.bucket("warehouse")).contents().stream().map(S3Object::key).toList());
+  }
+
+  /**
+   * A statement that denies wins over one that allows, and credentials without a session policy, of
+   * {@code AssumeRole} without one or of {@code GetSessionToken}, can do everything the key pair of LocalS3 can.
+   */
+  @Test
+  void aDenyWinsAndCredentialsWithoutAPolicyAreUnlimited() {
+    URI endpoint = start(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
+    StsClient sts = sts(endpoint, AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY));
+    s3(endpoint, session(sts.assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("unlimited")).credentials()))
+        .createBucket(b -> b.bucket("bucket"));
+    s3(endpoint, session(sts.getSessionToken().credentials()))
+        .putObject(b -> b.bucket("bucket").key("key"), RequestBody.fromString("value"));
+
+    S3Client noDelete = s3(endpoint, session(sts.assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("no-delete")
+        .policy("""
+            {"Version": "2012-10-17", "Statement": [
+              {"Effect": "Allow", "Action": "s3:*", "Resource": "*"},
+              {"Effect": "Deny", "Action": "s3:Delete*", "Resource": "arn:aws:s3:::bucket/*"}]}
+            """)).credentials()));
+    noDelete.putObject(b -> b.bucket("bucket").key("other"), RequestBody.fromString("value"));
+    assertAccessDenied(() -> noDelete.deleteObject(b -> b.bucket("bucket").key("key")));
+    assertEquals(2, noDelete.listObjectsV2(b -> b.bucket("bucket")).keyCount());
+  }
+
+  @Test
+  void aMalformedSessionPolicyIsRejected() {
+    URI endpoint = start(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
+    StsClient sts = sts(endpoint, AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY));
+
+    assertStsError("MalformedPolicyDocument", 400,
+        () -> sts.assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("session").policy("not json")));
+    assertStsError("MalformedPolicyDocument", 400, () -> sts.assumeRole(b -> b.roleArn(ROLE_ARN)
+        .roleSessionName("session").policy("{\"Statement\": [{\"Effect\": \"Allow\", \"Resource\": \"*\"}]}")));
+    assertStsError("PackedPolicyTooLarge", 400, () -> sts.assumeRole(b -> b.roleArn(ROLE_ARN)
+        .roleSessionName("session").policy(ALLOW_ALL + " ".repeat(2048))));
+  }
+
+  private static void assertAccessDenied(org.junit.jupiter.api.function.Executable executable) {
+    S3Exception exception = assertThrows(S3Exception.class, executable);
+    assertEquals(403, exception.statusCode());
+    assertEquals("AccessDenied", exception.awsErrorDetails().errorCode());
   }
 
   private static void assertStsError(String code, int status, org.junit.jupiter.api.function.Executable executable) {

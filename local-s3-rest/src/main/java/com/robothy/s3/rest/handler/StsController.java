@@ -137,9 +137,7 @@ final class StsController implements HttpRequestHandler {
       throw validationError("Value '" + roleSessionName + "' at 'roleSessionName' failed to satisfy constraint: "
           + "Member must satisfy regular expression pattern: [\\w+=,.@-]*");
     }
-    optional(parameters, "Policy").filter(policy -> policy.length() > 2048).ifPresent(policy -> {
-      throw new StsException("PackedPolicyTooLarge", 400, "Packed size of consolidated policies exceeds 100%.");
-    });
+    String policy = optional(parameters, "Policy").map(StsController::sessionPolicy).orElse(null);
 
     Caller caller = caller(request);
     Duration duration = duration(parameters, ASSUME_ROLE_DEFAULT_DURATION, ASSUME_ROLE_MAX_DURATION);
@@ -152,7 +150,8 @@ final class StsController implements HttpRequestHandler {
     String assumedRoleArn = "arn:" + role.partition() + ":sts::" + role.account() + ":assumed-role/" + role.name()
         + "/" + roleSessionName;
     String assumedRoleId = SessionCredentialIssuer.uniqueId("AROA", roleArn) + ":" + roleSessionName;
-    SessionCredentialIssuer.SessionCredentials credentials = issuer.issue(duration, assumedRoleArn, assumedRoleId);
+    SessionCredentialIssuer.SessionCredentials credentials =
+        issuer.issue(duration, assumedRoleArn, assumedRoleId, policy);
     return credentialsXml(credentials)
         + "<AssumedRoleUser><AssumedRoleId>" + escape(assumedRoleId) + "</AssumedRoleId>"
         + "<Arn>" + escape(assumedRoleArn) + "</Arn></AssumedRoleUser>"
@@ -191,6 +190,24 @@ final class StsController implements HttpRequestHandler {
     }
     String[] arn = session.arn().split(":", 6);
     return new Caller(true, session.arn(), session.userId(), arn.length == 6 ? arn[4] : ACCOUNT);
+  }
+
+  /**
+   * The session policy of an {@code AssumeRole}, which the credentials carry and are limited by, see
+   * {@linkplain SessionPolicy}.
+   *
+   * @return the compact JSON of the policy.
+   */
+  private static String sessionPolicy(String policy) {
+    if (policy.length() > 2048) {
+      throw new StsException("PackedPolicyTooLarge", 400, "Packed size of consolidated policies exceeds 100%.");
+    }
+    try {
+      SessionPolicy.parse(policy);
+    } catch (IllegalArgumentException e) {
+      throw new StsException("MalformedPolicyDocument", 400, e.getMessage());
+    }
+    return SessionPolicy.compact(policy);
   }
 
   private static Duration duration(Map<String, String> parameters, Duration defaultDuration, Duration maxDuration) {

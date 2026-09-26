@@ -60,6 +60,22 @@ class SessionCredentialIssuerTest {
   }
 
   @Test
+  void theTokenCarriesTheSessionPolicy() {
+    SessionCredentialIssuer issuer = new SessionCredentialIssuer(SECRET_ACCESS_KEY, at(NOW));
+    String policy = "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"s3:GetObject\",\"Resource\":\"*\"}]}";
+    SessionCredentialIssuer.SessionCredentials credentials =
+        issuer.issue(Duration.ofHours(1), ARN, "AROA:session", policy);
+
+    SessionCredentialIssuer.Resolution resolution =
+        issuer.resolve(credentials.accessKeyId(), credentials.sessionToken());
+    assertTrue(resolution.accepted());
+    assertEquals(policy, resolution.session().policy());
+    assertEquals(credentials.secretAccessKey(), resolution.secretAccessKey());
+    SessionCredentialIssuer.SessionCredentials unlimited = issuer.issue(Duration.ofHours(1), ARN, "AROA:session");
+    assertNull(issuer.resolve(unlimited.accessKeyId(), unlimited.sessionToken()).session().policy());
+  }
+
+  @Test
   void rejectsAnExpiredForgedOrForeignToken() {
     SessionCredentialIssuer issuer = new SessionCredentialIssuer(SECRET_ACCESS_KEY, at(NOW));
     SessionCredentialIssuer.SessionCredentials credentials = issuer.issue(Duration.ofMinutes(15), ARN, "AROA:session");

@@ -584,11 +584,32 @@ Catalog — it gets temporary credentials for a table with STS `AssumeRole` and 
 port; see [temporary credentials](embedding.md#temporary-credentials-sts). The catalog signs `AssumeRole` with the key
 pair of LocalS3, and any role ARN works, e.g. `arn:aws:iam::000000000000:role/catalog`.
 
+The catalog scopes the credentials of a table to its location with the session `Policy` of `AssumeRole`, which LocalS3
+enforces; see [session policies](embedding.md#temporary-credentials-sts). Lakekeeper checks this when it creates a
+warehouse: credentials scoped to a table must not be able to write next to it.
+
 The names of the settings depend on the catalog and its version; check its documentation. For example, the S3 storage
 configuration of a Polaris catalog sets `endpoint` and `stsEndpoint` to `http://localhost:29090`, `pathStyleAccess` to
 `true` and `roleArn`, and a Lakekeeper storage profile of flavor `s3-compat` sets `endpoint`, `path-style-access`,
-`sts-enabled: true` and `sts-role-arn`. These catalog settings aren't covered by the tests of LocalS3; the STS protocol
-they use is, with the STS client of the AWS SDK.
+`sts-enabled: true` and `sts-role-arn`:
+
+```json
+{
+  "warehouse-name": "lakehouse",
+  "storage-profile": {
+    "type": "s3", "flavor": "s3-compat", "bucket": "lakehouse", "region": "us-east-1",
+    "endpoint": "http://localhost:29090", "path-style-access": true,
+    "sts-enabled": true, "sts-role-arn": "arn:aws:iam::000000000000:role/lakekeeper"
+  },
+  "storage-credential": {
+    "type": "s3", "credential-type": "access-key", "access-key-id": "admin", "secret-access-key": "admin"
+  }
+}
+```
+
+`LakekeeperStsIntegrationTest` runs this end to end: Lakekeeper in a container creates the warehouse above on
+LocalS3, and an Iceberg client that asks for `X-Iceberg-Access-Delegation: vended-credentials` writes and reads a table
+with the credentials of `AssumeRole` that Lakekeeper vends. Polaris isn't covered by the tests of LocalS3.
 
 ## Apache Iceberg
 

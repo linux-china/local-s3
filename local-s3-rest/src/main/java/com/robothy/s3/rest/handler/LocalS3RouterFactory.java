@@ -141,10 +141,12 @@ public class LocalS3RouterFactory {
     // The temporary credentials of the STS endpoint are verified with a key derived from the secret access key, so that
     // they remain valid across restarts.
     SessionCredentialIssuer sessionCredentialIssuer = new SessionCredentialIssuer(secretAccessKey, Clock.systemUTC());
+    SessionPolicyAuthorizer sessionPolicyAuthorizer = new SessionPolicyAuthorizer(sessionCredentialIssuer);
     AwsSignatureV4Verifier signatureVerifier = accessKeyId == null ? null
         : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC());
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
         .sts(new StsController(sessionCredentialIssuer))
+        .sessionPolicies(sessionPolicyAuthorizer)
         .kms(new KmsController())
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
         // routes: without one, /iceberg/... stays an ordinary bucket path.
@@ -161,7 +163,7 @@ public class LocalS3RouterFactory {
     SharedControllers shared = SharedControllers.create(serviceFactory);
     serviceRoutes(routes, serviceFactory);
     bucketReadRoutes(routes, serviceFactory, shared, sessionCredentialIssuer);
-    bucketWriteRoutes(routes, serviceFactory, shared, signatureVerifier);
+    bucketWriteRoutes(routes, serviceFactory, shared, signatureVerifier, sessionPolicyAuthorizer);
     objectReadRoutes(routes, serviceFactory, shared);
     objectWriteRoutes(routes, serviceFactory, shared);
     vectorRoutes(routes, serviceFactory);
@@ -388,9 +390,12 @@ public class LocalS3RouterFactory {
    *
    * @param signatureVerifier verifies the policy of a {@code PostObject} form, whose credentials are fields of the form
    *     rather than headers; {@code null} if the service doesn't require signed requests.
+   * @param sessionPolicyAuthorizer authorizes each object of a {@code DeleteObjects} by the session policy of its
+   *     temporary credentials.
    */
   private static void bucketWriteRoutes(Routes routes, ServiceFactory factory, SharedControllers shared,
-                                        AwsSignatureV4Verifier signatureVerifier) {
+                                        AwsSignatureV4Verifier signatureVerifier,
+                                        SessionPolicyAuthorizer sessionPolicyAuthorizer) {
     routes
         .add("CreateBucket", PUT, BUCKET_PATH, new CreateBucketController(factory))
         .add("DeleteBucket", DELETE, BUCKET_PATH, new DeleteBucketController(factory))
@@ -411,7 +416,8 @@ public class LocalS3RouterFactory {
         .add("DeleteBucketReplication", DELETE, BUCKET_PATH, has("replication"), shared.bucketReplication()::delete)
         .add("DeleteBucketTagging", DELETE, BUCKET_PATH, has("tagging"), new DeleteBucketTaggingController(factory))
         .add("DeleteBucketWebsite", DELETE, BUCKET_PATH, has("website"), shared.storedConfiguration().delete(WEBSITE))
-        .add("DeleteObjects", POST, BUCKET_PATH, has("delete"), new DeleteObjectsController(factory))
+        .add("DeleteObjects", POST, BUCKET_PATH, has("delete"),
+            new DeleteObjectsController(factory, sessionPolicyAuthorizer))
         .add("DeletePublicAccessBlock", DELETE, BUCKET_PATH, has("publicAccessBlock"),
             new DeletePublicAccessBlockController(factory))
         .add(PostObjectController.OPERATION, POST, BUCKET_PATH, new PostObjectController(factory, signatureVerifier))

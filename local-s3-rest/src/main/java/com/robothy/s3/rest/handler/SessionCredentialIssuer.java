@@ -19,9 +19,10 @@ import javax.crypto.spec.SecretKeySpec;
  * and authenticated with a key that only LocalS3 has.
  *
  * <p>A session token is {@code base64url(payload) "." base64url(HMAC-SHA256(key, "token\n" payload))}, where the
- * payload is the version of the format, the access key ID, the expiration in epoch seconds, and the ARN and the user
- * ID of the identity that the credentials act as, separated by line feeds. The secret access key is
- * {@code base64(HMAC-SHA256(key, "secret\n" payload))} truncated to 40 characters, which a client signs with and
+ * payload is the version of the format, the access key ID, the expiration in epoch seconds, the ARN and the user ID of
+ * the identity that the credentials act as, and the compact JSON of the session policy, empty for none, separated by
+ * line feeds. The secret access key is {@code base64(HMAC-SHA256(key, "secret\n" payload))} truncated to 40
+ * characters, which a client signs with and
  * LocalS3 derives again from the token of a request. So the credentials are valid across restarts, in memory and
  * persistence mode alike, until they expire, and no token can be forged or bound to another access key ID without
  * the key.
@@ -36,7 +37,7 @@ final class SessionCredentialIssuer {
    */
   static final Duration MIN_DURATION = Duration.ofMinutes(15);
 
-  private static final String VERSION = "1";
+  private static final String VERSION = "2";
 
   private static final String ACCESS_KEY_ID_PREFIX = "ASIA";
 
@@ -76,9 +77,23 @@ final class SessionCredentialIssuer {
    * @return the credentials.
    */
   SessionCredentials issue(Duration duration, String arn, String userId) {
+    return issue(duration, arn, userId, null);
+  }
+
+  /**
+   * Issue temporary credentials that a session policy limits.
+   *
+   * @param duration how long the credentials are valid for.
+   * @param arn the ARN of the identity that the credentials act as.
+   * @param userId the unique ID of that identity.
+   * @param policy the compact JSON of the session policy, see {@linkplain SessionPolicy#compact}; {@code null} for
+   *     none.
+   * @return the credentials.
+   */
+  SessionCredentials issue(Duration duration, String arn, String userId, String policy) {
     String accessKeyId = ACCESS_KEY_ID_PREFIX + randomBase32(16);
     Instant expiration = clock.instant().plus(duration).truncatedTo(ChronoUnit.SECONDS);
-    Session session = new Session(accessKeyId, expiration, arn, userId);
+    Session session = new Session(accessKeyId, expiration, arn, userId, policy);
     String payload = payload(session);
     String sessionToken = base64Url(payload.getBytes(StandardCharsets.UTF_8)) + "."
         + base64Url(hmac(key, "token\n" + payload));
@@ -123,11 +138,13 @@ final class SessionCredentialIssuer {
       if (!MessageDigest.isEqual(hmac(key, "token\n" + payload), mac)) {
         return null;
       }
+      // The policy is the last field, and compact JSON has no line feed of its own.
       String[] fields = payload.split("\n", -1);
-      if (fields.length != 5 || !VERSION.equals(fields[0])) {
+      if (fields.length != 6 || !VERSION.equals(fields[0])) {
         return null;
       }
-      return new Session(fields[1], Instant.ofEpochSecond(Long.parseLong(fields[2])), fields[3], fields[4]);
+      return new Session(fields[1], Instant.ofEpochSecond(Long.parseLong(fields[2])), fields[3], fields[4],
+          fields[5].isEmpty() ? null : fields[5]);
     } catch (IllegalArgumentException e) {
       // Neither base64url nor a number.
       return null;
@@ -140,8 +157,8 @@ final class SessionCredentialIssuer {
   }
 
   private static String payload(Session session) {
-    return String.join("\n", VERSION, session.accessKeyId(),
-        Long.toString(session.expiration().getEpochSecond()), session.arn(), session.userId());
+    return String.join("\n", VERSION, session.accessKeyId(), Long.toString(session.expiration().getEpochSecond()),
+        session.arn(), session.userId(), Objects.requireNonNullElse(session.policy(), ""));
   }
 
   private String randomBase32(int length) {
@@ -194,8 +211,9 @@ final class SessionCredentialIssuer {
    * @param expiration when the credentials expire.
    * @param arn the ARN of the identity that the credentials act as, e.g. an assumed role.
    * @param userId the unique ID of that identity.
+   * @param policy the compact JSON of the session policy that limits the credentials; {@code null} for none.
    */
-  record Session(String accessKeyId, Instant expiration, String arn, String userId) {
+  record Session(String accessKeyId, Instant expiration, String arn, String userId, String policy) {
   }
 
   /**
