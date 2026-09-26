@@ -1,10 +1,11 @@
 # Embedding LocalS3
 
-LocalS3 runs inside a JVM as well as on its own: started from Java code, as a bean of a Spring Boot application, per
-test with a JUnit 5 annotation, or in a container managed by Testcontainers. All artifacts are published to Maven
-Central under the group `io.github.robothy`, and require Java 21.
+LocalS3 runs inside a JVM as well as on its own: started from Java code, by an IDE plugin for as long as the IDE runs,
+as a bean of a Spring Boot application, per test with a JUnit 5 annotation, or in a container managed by
+Testcontainers. All artifacts are published to Maven Central under the group `io.github.robothy`, and require Java 21.
 
 - [Java API](#java-api)
+- [JetBrains IDEs](#jetbrains-ides)
 - [Spring Boot](#spring-boot)
 - [JUnit 5](#junit-5)
 - [Testcontainers](#testcontainers)
@@ -72,7 +73,8 @@ localS3.start();
 ```
 
 The store of a data path is opened while the service runs, and released by `shutdown()`; the services of a JVM that
-share a data path share the one open store. How the path is laid out is described in
+share a data path share the one open store, but not what each of them holds in memory, so only one of them is to run at
+a time, see [One data directory, one service](#one-data-directory-one-service). How the path is laid out is described in
 [architecture.md](architecture.md#persistence-layout); when changes reach the disk, and how a large data path is opened,
 in [deployment.md](deployment.md#data-directory).
 
@@ -367,6 +369,130 @@ the one-liner that turns it on with its defaults: `tls(certPem, keyPem)`, `tls(L
 for one.
 
 A settings object writes through to the builder as it is called, so it must not be kept beyond the call.
+
+## JetBrains IDEs
+
+A plugin of IntelliJ IDEA, PyCharm, DataGrip or another JetBrains IDE can embed LocalS3 as the S3 service of the IDE,
+e.g. the default S3 of DuckDB, started with the IDE and stopped when it exits. It uses the [Java API](#java-api), and
+what follows holds for any application that keeps a service for its whole run. Such a service lives far longer than
+one of a test, shares its JVM with the IDE, and holds data that the user expects to find again, so four things need
+a decision: how many services open the data directory, the persistence policy, the order of the shutdown, and the
+threads.
+
+### One data directory, one service
+
+The projects that are open in an IDE share its JVM, so the service belongs to the application rather than to a
+project: a project-level service would start one per open window. An application-level service that implements
+`Disposable` has the lifecycle that LocalS3 needs:
+
+```java
+@Service(Service.Level.APP)
+public final class LocalS3Service implements Disposable {
+
+  private final LocalS3 localS3 = LocalS3.builder()
+      .port(29090)                                           // fixed, so that the S3 secrets of clients stay valid
+      .storage(storage -> storage.mode(LocalS3Mode.PERSISTENCE)
+          .dataPath(Path.of(PathManager.getSystemPath(), "local-s3").toString())
+          .persistencePolicy(PersistencePolicy.FAST))
+      .netty(netty -> netty.registerShutdownHook(false))     // the IDE stops the service, see below
+      .build();
+
+  public synchronized String endpoint() {
+    if (!localS3.isRunning()) {
+      localS3.start();                                       // on first use, not while the IDE starts
+    }
+    return localS3.endpoint();
+  }
+
+  @Override
+  public void dispose() {
+    localS3.close();
+  }
+}
+```
+
+A data directory is opened when a service starts, not when it is built, and released when it is shut down. While it is
+open, it is held by that one service:
+
++ **Another process** that opens it, e.g. a second IDE with the same setting, or a test run that is given the directory
+  as its data path or as its initial data, fails to start with `MVStoreException: The file is locked`. Give each IDE a
+  directory of its own, e.g. under `PathManager.getSystemPath()`, and point other processes at the endpoint of the
+  service rather than at its directory.
++ **Another service of the same JVM** opens the same store, which is reference-counted, but loads the buckets and
+  objects of the directory into memory for itself when it starts. The two don't see each other's changes: an object
+  one of them puts is `404 NoSuchKey` for the other, an object one of them deletes is `500 InternalError` for the other,
+  since its content is gone, and a change of the settings of a bucket, e.g. its tags, is lost when the other one next
+  writes the bucket. Never run two `PERSISTENCE` services over one directory at the same time: shut one down before
+  the next one starts, e.g. when the user changes a setting. A second service with another persistence policy is
+  rejected with an `IllegalStateException` when it starts.
++ **The port** is taken the same way: a second IDE that embeds LocalS3 on port `29090` gets a `BindException` from
+  `start()`. Make the port a setting of the plugin, and report the failure to the user.
+
+### Persistence policy
+
+Use `PersistencePolicy.FAST`, as the example does, unless the data can't be built again. A `FAST` service commits its
+changes in the background, at most a second after they are made, and everything that is left when it is shut down;
+`DURABLE`, the default of `LocalS3Builder`, commits every change before it answers the request. `FAST` loads the data
+that a user or a tool writes into the IDE's service, e.g. the Parquet files of a DuckDB `COPY`, faster, and keeps
+`buckets.mvstore` far smaller while it runs. What it risks is the changes of the last second when the IDE is killed or
+crashes; an IDE that exits normally shuts the service down and loses nothing. See
+[Persistence policy](deployment.md#persistence-policy) for the numbers.
+
+An `IN_MEMORY` service suits a plugin whose data is scratch, but its objects take up to half the max heap by default,
+i.e. half of the IDE's heap. Give it a limit of its own, e.g. `storage(storage -> storage.maxInMemoryBytes(256L * 1024
+* 1024))`, beyond which uploads are answered `507 InsufficientStorage` rather than taking memory from the IDE.
+
+### Stopping with the IDE
+
+`close()`, i.e. `shutdown()`, stops the service in this order:
+
+1. The listening socket is closed, so no connection is accepted anymore.
+2. The requests in flight get up to 5 seconds to finish and write their responses. Whatever still runs after that is
+   interrupted, and its response cut off.
+3. The data directory is released: what a `FAST` service hasn't committed yet is committed, `buckets.mvstore` is
+   compacted to the size of the metadata it holds, and the file lock is given up, so that another service or process
+   can open the directory.
+
+What follows from that order:
+
++ **Close the service before what it uses.** An executor given to `events(events -> events.executor(...))` is to be
+  shut down after `close()`, and a [change listener](#listen-to-bucket-and-object-changes) that calls into the IDE,
+  e.g. to refresh a view, runs until `close()` has returned. `dispose()` of the service that holds LocalS3 is the place
+  for `close()`, before the disposal of anything its listeners call.
++ **Turn the shutdown hook off.** A started service registers a JVM shutdown hook of its own by default, which stops it
+  when the JVM exits. The IDE runs an orderly shutdown of its own, which disposes the service, and a hook would stop the
+  service in parallel with it, possibly before the parts of the plugin that still use it. With
+  `netty(netty -> netty.registerShutdownHook(false))` the IDE alone stops the service. An IDE that is killed, or
+  crashes, then leaves the directory as a killed process does: a `FAST` service loses at most the last second, a
+  `DURABLE` one nothing, and the file is compacted the next time the service is shut down.
++ **Don't block the UI thread.** `close()` takes up to the 5 seconds of step 2, plus the compaction of step 3. A plugin
+  that stops or restarts the service on an action of the user, e.g. after a change of its port, does that on a
+  background thread.
++ **Restart in order.** A new service over the same directory is started only once the old one is shut down, see
+  [One data directory, one service](#one-data-directory-one-service). An `IN_MEMORY` service keeps its data across
+  such a restart with `newService.takeOverDataOf(oldService)`, called after the old one is shut down and before the new
+  one is started.
+
+### Threads
+
+The event loops of the service, and its request threads if they aren't virtual ones, are daemon threads by default;
+virtual threads always are. A service that is never shut down therefore doesn't keep the JVM alive, and doesn't delay
+the exit of the IDE. Keep that default in an IDE: `netty(netty -> netty.daemonThreads(false))` is for a `main` method
+that starts the service and returns, which only non-daemon threads keep running.
+
+The other side of it is that nothing waits for a daemon thread when the JVM exits: requests still running are dropped
+on the spot, and a service that wasn't shut down leaves its data directory as a killed process does. That is why
+`dispose()` must call `close()`, rather than leave the service to the exit of the JVM.
+
+LocalS3 needs every Netty module on 4.2, which a plugin bundles. A single Netty 4.1 module that the plugin sees next to
+them, e.g. one that the IDE ships, fails at runtime, since Netty 4.2 moved classes between modules;
+`io.netty.util.Version.identify()` lists the versions that the plugin actually runs with.
+
+The IDE inherits the `AWS_*` variables of the shell it was launched from; a plugin that builds its service with
+`fromEnvironment()` doesn't take them for the credentials of the service, see
+[Configure from the environment](#configure-from-the-environment). The [console](#look-at-what-is-in-the-service) at
+`endpoint() + "/_admin/ui"` gives the user a view of what the service holds, e.g. from an action that opens it in the
+browser.
 
 ## Spring Boot
 
