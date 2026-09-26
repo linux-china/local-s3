@@ -129,15 +129,45 @@ The version that an operation reports in `x-amz-version-id` follows from it:
 |---------------------------------------------------------------|-------------------------------------------------|
 | in a bucket that was never versioned                           | none; the header is left out                    |
 | before versioning was enabled or suspended                     | `null`, a value that is sent                    |
+| while versioning was suspended                                 | `null`, a value that is sent                    |
 | while versioning was enabled                                   | the version ID it was given                     |
 
+The write that stores the null version, i.e. a `PutObject`, `CopyObject`, `POST Object` or `CompleteMultipartUpload`
+to a bucket whose versioning is suspended, answers no `x-amz-version-id`, like Amazon S3; reading, tagging or deleting
+that version reports `null`.
+
++ `PutBucketVersioning` takes a `Status` of `Enabled` or `Suspended`, and a `MfaDelete` of `Enabled` or `Disabled`;
+  any other value is `400 MalformedXML`. A configuration without a `Status` leaves the versioning of the bucket as it
+  is, so a bucket that was never versioned stays so. `MfaDelete` is stored and answered back by `GetBucketVersioning`,
+  so that a tool that compares the configuration it applies, e.g. Terraform, sees no change, but no MFA device is ever
+  asked for. Versioning can't be suspended once [Object Lock](#object-lock) is configured (`409 InvalidBucketState`).
++ A bucket holds at most one null version of a key. A write while versioning is suspended, or before it was ever
+  enabled, replaces it and becomes the current version; the versions stored while versioning was enabled are kept.
 + A `DeleteObject` without a version ID adds a delete marker. In a bucket whose versioning is enabled, the marker gets
-  a version ID of its own and the earlier versions are kept; otherwise it replaces the `null` version.
-+ A `DeleteObject` with a version ID removes that version for good. Unlike Amazon S3, it answers `404 NoSuchKey` if the
-  key holds no version at all.
-+ `GetObject`, `HeadObject`, `CopyObject` (through `versionId` of the source) and the tagging and ACL operations
-  address a version with `versionId`; a conditional read of a version is evaluated against that version.
-+ `ListObjectVersions` lists the versions and delete markers of the keys, newest first.
+  a version ID of its own and the earlier versions are kept; otherwise it is the null version, and replaces the
+  earlier one.
++ A `DeleteObject` with a version ID removes that version for good, a delete marker included, which it answers with
+  `x-amz-delete-marker: true`. Like Amazon S3, it is idempotent: it succeeds if the version, or the key, is already
+  gone, so that the retries and the concurrent cleanups of Iceberg, Delta Lake or DuckLake don't fail. Its conditions,
+  e.g. `If-Match`, still fail on a key that holds no version, see [conditional requests](#conditional-requests).
++ `GetObject`, `HeadObject`, `CopyObject` (through `versionId` of the source), `GetObjectAttributes`, `RestoreObject`
+  and the tagging, ACL, retention and legal hold operations address a version with `versionId`; a conditional read of a
+  version is evaluated against that version. A version ID that LocalS3 couldn't have given, i.e. neither `null` nor a
+  number, is `400 InvalidArgument` (`Invalid version id specified`), as is any version ID but `null` for a bucket that
+  was never versioned; a well-formed one that names no version is `404 NoSuchVersion`.
++ A key whose current version is a delete marker holds no object: `GetObject` and `HeadObject` without a version ID
+  answer `404 NoSuchKey`, with `x-amz-delete-marker: true` and the version ID of the marker. Naming the marker with
+  `versionId` answers `405 MethodNotAllowed`, with `x-amz-delete-marker: true` and `Last-Modified`.
+  `ListObjects` and `ListObjectsV2` leave such a key out.
++ `ListObjectVersions` lists the versions and delete markers of the keys, newest first, with `null` for the null
+  version. A `key-marker` alone lists the keys after it; with a `version-id-marker`, the listing goes on with the
+  versions of that key after the version, and a `version-id-marker` of `null` goes on after the null version. The
+  markers needn't name a version that exists, so a client that deletes each page before it asks for the next one, e.g.
+  to empty a bucket, pages through all of them; if the null version that a `null` marker names is gone, every version
+  left of its key is listed, so that none is skipped. An empty marker is no marker. A page is truncated only if
+  something is left after it.
++ Noncurrent versions and delete markers are never removed by themselves: a `NoncurrentVersionExpiration` or
+  `ExpiredObjectDeleteMarker` rule removes them when a test [applies the lifecycle rules](#lifecycle-configuration).
 
 ## Entity tags of multipart uploads
 

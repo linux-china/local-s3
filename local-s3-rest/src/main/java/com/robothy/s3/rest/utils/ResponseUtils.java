@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.utils;
 
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -142,6 +143,23 @@ public class ResponseUtils {
   public static HttpResponse putHeaderIfPresent(HttpResponse response, String name, Object value) {
     if (Objects.nonNull(value)) {
       response.putHeader(name, value);
+    }
+    return response;
+  }
+
+  /**
+   * Put the {@code x-amz-version-id} header of a write that stored a version, e.g. {@code PutObject},
+   * {@code CopyObject}, {@code PostObject} or {@code CompleteMultipartUpload}. Like Amazon S3, a write that stored the
+   * null version, i.e. one to a bucket whose versioning is suspended, answers no version ID, as does a write to a
+   * bucket that was never versioned; reads and deletes of the null version still answer {@code null}.
+   *
+   * @param response the response.
+   * @param versionId the version that the write stored; {@code null} or {@code "null"} for none to answer.
+   * @return the response.
+   */
+  public static HttpResponse putWrittenVersionId(HttpResponse response, String versionId) {
+    if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
+      response.putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, versionId);
     }
     return response;
   }

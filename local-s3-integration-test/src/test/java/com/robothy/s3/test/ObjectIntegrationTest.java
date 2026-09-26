@@ -229,7 +229,9 @@ public class ObjectIntegrationTest {
     assertEquals(0, versionListing3.versions().size());
     assertEquals(1, versionListing3.commonPrefixes().size());
     assertEquals("dir2/", versionListing3.commonPrefixes().get(0).prefix());
-    assertEquals("dir2/key1", versionListing3.nextKeyMarker());
+    // The page ends with the last of the listing, so it isn't truncated and has no markers.
+    assertFalse(versionListing3.isTruncated());
+    assertTrue(StringUtils.isBlank(versionListing3.nextKeyMarker()));
     assertTrue(StringUtils.isBlank(versionListing3.nextVersionIdMarker()));
 
     ListObjectVersionsResponse versionListing4 = s3.listObjectVersions(ListObjectVersionsRequest.builder().bucket(bucket).delimiter("/").maxKeys(2).build());

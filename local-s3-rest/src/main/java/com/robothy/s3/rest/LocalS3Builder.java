@@ -80,6 +80,8 @@ public class LocalS3Builder {
 
     private final List<String> defaultBuckets = new ArrayList<>();
 
+    private final List<String> versionedBuckets = new ArrayList<>();
+
     private final List<S3ChangeListener> changeListeners = new ArrayList<>();
 
     private final List<LocalS3Seeder> seeders = new ArrayList<>();
@@ -190,7 +192,15 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set default buckets
+     * The suffix of a bucket name given to {@linkplain #buckets(String...)} that creates the bucket with versioning
+     * enabled, e.g. {@code audit:versioned}.
+     */
+    public static final String VERSIONED_SUFFIX = ":versioned";
+
+    /**
+     * Set default buckets. A name with the suffix {@value #VERSIONED_SUFFIX}, e.g. {@code audit:versioned}, is a
+     * {@linkplain #versionedBuckets(String...) versioned bucket}, so that {@code AWS_BUCKETS=plain,audit:versioned}
+     * creates both.
      *
      * @param buckets LocalS3 buckets
      * @return builder.
@@ -200,7 +210,31 @@ public class LocalS3Builder {
             for (String bucket : buckets) {
                 // Tolerate lists like "a, b," as split from the AWS_BUCKETS environment variable.
                 if (bucket != null && !bucket.isBlank()) {
-                    this.defaultBuckets.add(bucket.trim());
+                    String name = bucket.trim();
+                    if (name.endsWith(VERSIONED_SUFFIX)) {
+                        versionedBuckets(name.substring(0, name.length() - VERSIONED_SUFFIX.length()));
+                    } else {
+                        this.defaultBuckets.add(name);
+                    }
+                }
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Set default buckets that are created with versioning enabled, like a production bucket that has versioning
+     * enabled, without calling {@code PutBucketVersioning} in every test. An existing bucket, e.g. one loaded from the
+     * data path, gets versioning enabled if its versioning was never configured; a suspended one stays suspended.
+     *
+     * @param buckets LocalS3 buckets with versioning enabled.
+     * @return builder.
+     */
+    public LocalS3Builder versionedBuckets(String... buckets) {
+        if (buckets != null) {
+            for (String bucket : buckets) {
+                if (bucket != null && !bucket.isBlank()) {
+                    this.versionedBuckets.add(bucket.trim());
                 }
             }
         }
@@ -776,7 +810,7 @@ public class LocalS3Builder {
      * @return the configuration.
      */
     public LocalS3Config buildConfig() {
-        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, seeders,
+        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, versionedBuckets, seeders,
                 changeListeners,
                 changeListenerExecutor, initialDataCacheEnabled, maxInMemoryBytes, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,

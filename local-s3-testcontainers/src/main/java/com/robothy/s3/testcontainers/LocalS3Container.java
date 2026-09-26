@@ -102,6 +102,14 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   private boolean tls;
 
   /**
+   * The buckets of {@linkplain #withBuckets(String...)} and {@linkplain #withVersionedBuckets(String...)}, which share
+   * the one variable {@code AWS_BUCKETS}; empty while neither is called.
+   */
+  private String buckets = "";
+
+  private String versionedBuckets = "";
+
+  /**
    * Construct a {@linkplain LocalS3Container} with specified {@linkplain DockerImageName}, e.g. an image of a private
    * registry, declared with {@code asCompatibleSubstituteFor(LocalS3Container.IMAGE_NAME)}.
    *
@@ -237,7 +245,31 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
    * @return this.
    */
   public LocalS3Container withBuckets(String... buckets) {
-    return super.withEnv(BUCKETS, join(buckets, "buckets"));
+    this.buckets = join(buckets, "buckets");
+    return withBucketsEnv();
+  }
+
+  /**
+   * The buckets to create with versioning enabled when the service starts, besides the ones of
+   * {@linkplain #withBuckets(String...)}, like a production bucket that has versioning enabled.
+   *
+   * @param buckets the names of the buckets.
+   * @return this.
+   */
+  public LocalS3Container withVersionedBuckets(String... buckets) {
+    join(buckets, "buckets");
+    List<String> names = new ArrayList<>();
+    for (String bucket : buckets) {
+      names.add(bucket.trim() + ":versioned");
+    }
+    this.versionedBuckets = String.join(",", names);
+    return withBucketsEnv();
+  }
+
+  private LocalS3Container withBucketsEnv() {
+    String all = buckets.isEmpty() || versionedBuckets.isEmpty()
+        ? buckets + versionedBuckets : buckets + "," + versionedBuckets;
+    return super.withEnv(BUCKETS, all);
   }
 
   /**

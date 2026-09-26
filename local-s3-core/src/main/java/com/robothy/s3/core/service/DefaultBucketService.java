@@ -92,14 +92,24 @@ public class DefaultBucketService implements BucketService {
 
   @Override
   public Bucket setVersioningEnabled(String bucketName, boolean versioningEnabled) {
+    return putVersioningConfiguration(bucketName, versioningEnabled, null);
+  }
+
+  @Override
+  public Bucket putVersioningConfiguration(String bucketName, Boolean versioningEnabled, Boolean mfaDeleteEnabled) {
     return changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-      if (!versioningEnabled && bucketMetadata.getObjectLock().isPresent()) {
+      if (Boolean.FALSE.equals(versioningEnabled) && bucketMetadata.getObjectLock().isPresent()) {
         throw new LocalS3RequestException(S3ErrorCode.InvalidBucketState,
             "An Object Lock configuration is present on this bucket, so the versioning state cannot be changed.");
       }
-      bucketMetadata.setVersioningEnabled(versioningEnabled);
+      if (Objects.nonNull(versioningEnabled)) {
+        bucketMetadata.setVersioningEnabled(versioningEnabled);
+      }
+      if (Objects.nonNull(mfaDeleteEnabled)) {
+        bucketMetadata.setMfaDeleteEnabled(mfaDeleteEnabled);
+      }
       return Bucket.fromBucketMetadata(bucketMetadata);
     });
   }

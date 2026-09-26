@@ -99,5 +99,11 @@ class BucketPublicAccessBlockServiceTest {
     public com.robothy.s3.core.model.Bucket setVersioningEnabled(String bucketName, boolean versioningEnabled) {
       return getBucket(bucketName);
     }
+
+    @Override
+    public com.robothy.s3.core.model.Bucket putVersioningConfiguration(String bucketName, Boolean versioningEnabled,
+                                                                       Boolean mfaDeleteEnabled) {
+      return getBucket(bucketName);
+    }
   }
 }

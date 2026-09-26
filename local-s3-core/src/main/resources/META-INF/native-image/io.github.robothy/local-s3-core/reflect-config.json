@@ -42,6 +42,8 @@
       {"name":"setTagging","parameterTypes":["java.util.Collection"] },
       {"name":"setUploads","parameterTypes":["java.util.NavigableMap"] },
       {"name":"setVersioningEnabled","parameterTypes":["java.lang.Boolean"] },
+      {"name":"getMfaDeleteEnabled","parameterTypes":[] },
+      {"name":"setMfaDeleteEnabled","parameterTypes":["java.lang.Boolean"] },
       {"name":"getObjectLock","parameterTypes":[] },
       {"name":"setObjectLock","parameterTypes":["com.robothy.s3.core.model.BucketObjectLockConfiguration"] }
     ]
@@ -203,7 +205,8 @@
   },
   {
     "name":"com.robothy.s3.core.service.BucketVersioningService",
-    "methods":[{"name":"setVersioningEnabled","parameterTypes":["java.lang.String","boolean"] }]
+    "methods":[{"name":"setVersioningEnabled","parameterTypes":["java.lang.String","boolean"] },
+      {"name":"putVersioningConfiguration","parameterTypes":["java.lang.String","java.lang.Boolean","java.lang.Boolean"] }]
   },
   {
     "name":"com.robothy.s3.core.service.CompleteMultipartUploadService",

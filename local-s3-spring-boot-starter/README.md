@@ -132,6 +132,7 @@ which the binding of `LocalS3Properties` ignores.
 local-s3:
   port: 29090            # 0 for a random port
   buckets: [uploads, reports]
+  versioned-buckets: [audit]   # created with versioning enabled, like the production bucket
   mode: in-memory        # or persistence, with data-path
   persistence-policy: fast   # persistence mode; durable commits every change
   seed:

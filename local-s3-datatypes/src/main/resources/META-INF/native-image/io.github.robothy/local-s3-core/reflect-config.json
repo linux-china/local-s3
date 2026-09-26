@@ -80,7 +80,8 @@
     "queryAllDeclaredConstructors":true,
     "methods":[
       {"name":"<init>","parameterTypes":[] },
-      {"name":"setStatus","parameterTypes":["java.lang.String"] }
+      {"name":"setStatus","parameterTypes":["java.lang.String"] },
+      {"name":"setMfaDelete","parameterTypes":["java.lang.String"] }
     ]
   },
   {

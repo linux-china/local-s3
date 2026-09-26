@@ -148,7 +148,7 @@ class PostObjectController implements HttpRequestHandler {
 
     String etag = ResponseUtils.quoteEtag(ans.getEtag());
     ResponseUtils.addCommonHeaders(response);
-    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, ans.getVersionId());
+    ResponseUtils.putWrittenVersionId(response, ans.getVersionId());
     ResponseUtils.addETag(response, ans.getEtag());
     CustomerEncryptionHeaders.addHeaders(response, customerEncryption);
     ServerSideEncryptionHeaders.addHeaders(response, ans.getServerSideEncryption(), true);

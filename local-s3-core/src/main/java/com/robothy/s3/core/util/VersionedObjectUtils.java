@@ -9,6 +9,26 @@ import java.util.Objects;
 public class VersionedObjectUtils {
 
   /**
+   * Get versioned object by version ID, like {@linkplain #getVersionedObjectMetadata(ObjectMetadata, String)}, for an
+   * object of {@code bucketMetadata}. An object of a bucket that was never versioned has the null version only, so any
+   * other version ID is an invalid argument, like {@code GetObject} answers it.
+   *
+   * @param bucketMetadata metadata of the bucket that holds the object.
+   * @param objectMetadata object metadata that contains the versioned object.
+   * @param inputVersionId version ID. May be {@code null}.
+   * @return versioned object metadata of the specified version ID.
+   */
+  public static VersionedObjectMetadata getVersionedObjectMetadata(BucketMetadata bucketMetadata,
+                                                                   ObjectMetadata objectMetadata,
+                                                                   String inputVersionId) {
+    if (Objects.isNull(bucketMetadata.getVersioningEnabled()) && Objects.nonNull(inputVersionId)
+        && !ObjectMetadata.NULL_VERSION.equals(inputVersionId)) {
+      throw VersionedObjectAssertions.invalidVersionId(inputVersionId);
+    }
+    return getVersionedObjectMetadata(objectMetadata, inputVersionId);
+  }
+
+  /**
    * Get versioned object by version ID.
    *
    * @param objectMetadata object metadata that contains the versioned object.

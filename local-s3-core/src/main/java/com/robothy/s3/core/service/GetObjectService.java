@@ -7,7 +7,6 @@ import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.exception.LocalS3Exception;
-import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
@@ -98,7 +97,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
                                                      String bucketName, String key, boolean metadataOnly, GetObjectOptions options) {
     ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
     if (options.getVersionId().isPresent() && !ObjectMetadata.NULL_VERSION.equals(options.getVersionId().get())) {
-      throw new LocalS3InvalidArgumentException("versionId", options.getVersionId().get());
+      throw VersionedObjectAssertions.invalidVersionId(options.getVersionId().get());
     }
 
     VersionedObjectMetadata latestObject = objectMetadata.getLatest();
@@ -139,12 +138,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       if (ObjectMetadata.NULL_VERSION.equals(versionIdOpt.get())) {
         versionedObjectMetadata = VersionedObjectAssertions.assertVirtualVersionExist(objectMetadata);
       } else {
-        // Cannot access an object with virtual version.
-        if (objectMetadata.getVirtualVersion().map(versionIdOpt.get()::equals).orElse(false)) {
-          throw new VersionedObjectNotExistException(key, versionIdOpt.get());
-        }
-        versionedObjectMetadata = VersionedObjectAssertions
-            .assertVersionedObjectExist(objectMetadata, versionIdOpt.get());
+        versionedObjectMetadata = VersionedObjectAssertions.findVersionedObject(objectMetadata, versionIdOpt.get())
+            .orElseThrow(() -> new VersionedObjectNotExistException(key, versionIdOpt.get()));
       }
       returnedVersionId = versionIdOpt.get();
     } else {

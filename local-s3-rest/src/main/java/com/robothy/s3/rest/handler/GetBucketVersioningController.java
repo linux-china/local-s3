@@ -3,6 +3,7 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
+import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.datatypes.VersioningConfiguration;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -29,12 +30,17 @@ class GetBucketVersioningController implements HttpRequestHandler {
   @Override
   public void handle(HttpRequest request, HttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
-    Boolean versioningEnabled = bucketService.getVersioningEnabled(bucketName);
+    Bucket bucket = bucketService.getBucket(bucketName);
+    Boolean versioningEnabled = bucket.getVersioningEnabled();
+    Boolean mfaDeleteEnabled = bucket.getMfaDeleteEnabled();
     VersioningConfiguration.VersioningConfigurationBuilder builder = VersioningConfiguration.builder();
-    if (Objects.isNull(versioningEnabled)) {
-      builder.status(null);
-    } else{
+    if (Objects.nonNull(versioningEnabled)) {
       builder.status(versioningEnabled ? VersioningConfiguration.Enabled : VersioningConfiguration.Suspended);
+    }
+    // Answered back as it was put, so that a tool that compares the configuration it applies, e.g. Terraform, sees no
+    // change; LocalS3 asks for no MFA device either way.
+    if (Objects.nonNull(mfaDeleteEnabled)) {
+      builder.mfaDelete(mfaDeleteEnabled ? VersioningConfiguration.Enabled : VersioningConfiguration.Disabled);
     }
 
     String responseBody = xmlMapper.writeValueAsString(builder.build());

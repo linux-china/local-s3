@@ -215,6 +215,103 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     }
   }
 
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void nullVersionAtTheEndOfAPageIsAnsweredAsNull(BucketService bucketService, ObjectService objectService) {
+    String bucket = "suspended-bucket";
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    String older = put(objectService, bucket, "a").getVersionId();
+    bucketService.setVersioningEnabled(bucket, false);
+    put(objectService, bucket, "a"); // the null version, the latest
+    put(objectService, bucket, "b");
+
+    ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 1, null, null);
+    assertEquals("null", ((ObjectVersion) first.getVersions().get(0)).getVersionId());
+    assertEquals("a", first.getNextKeyMarker().orElseThrow());
+    assertEquals("null", first.getNextVersionIdMarker().orElseThrow());
+
+    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null, "a", 1, null, "null");
+    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).getVersionId());
+    assertEquals(older, second.getNextVersionIdMarker().orElseThrow());
+
+    ListObjectVersionsAns third = objectService.listObjectVersions(bucket, null, "a", 1, null, older);
+    assertEquals(List.of("b"), keys(third));
+    assertTrue(third.getNextKeyMarker().isEmpty(), "the last page isn't truncated");
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void nullVersionMarkerOfADeletedNullVersionSkipsNoVersion(BucketService bucketService, ObjectService objectService) {
+    String bucket = "suspended-bucket";
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    String older = put(objectService, bucket, "a").getVersionId();
+    bucketService.setVersioningEnabled(bucket, false);
+    put(objectService, bucket, "a");
+
+    ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 1, null, null);
+    // A client that empties the bucket deletes the page before it asks for the next one.
+    objectService.deleteObject(bucket, "a", "null");
+
+    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null,
+        first.getNextKeyMarker().orElseThrow(), 1, null, first.getNextVersionIdMarker().orElseThrow());
+    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).getVersionId());
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void keyMarkerWithoutVersionIdMarkerStartsAfterTheKey(BucketService bucketService, ObjectService objectService) {
+    String bucket = "versioned-bucket";
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    put(objectService, bucket, "a");
+    put(objectService, bucket, "a");
+    put(objectService, bucket, "b");
+
+    assertEquals(List.of("b"), keys(objectService.listObjectVersions(bucket, null, "a", 100, null, null)));
+    // An empty marker, which some clients send on their first request, is no marker.
+    assertEquals(List.of("a", "a", "b"), keys(objectService.listObjectVersions(bucket, null, "", 100, null, "")));
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void pageThatEndsWithTheLastVersionIsNotTruncated(BucketService bucketService, ObjectService objectService) {
+    String bucket = "versioned-bucket";
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    put(objectService, bucket, "a");
+    put(objectService, bucket, "a");
+    put(objectService, bucket, "dir/b");
+
+    ListObjectVersionsAns all = objectService.listObjectVersions(bucket, null, null, 3, null, null);
+    assertEquals(3, all.getVersions().size());
+    assertTrue(all.getNextKeyMarker().isEmpty());
+    assertTrue(all.getNextVersionIdMarker().isEmpty());
+
+    ListObjectVersionsAns withPrefix = objectService.listObjectVersions(bucket, "/", null, 3, null, null);
+    assertEquals(2, withPrefix.getVersions().size());
+    assertEquals(List.of("dir/"), withPrefix.getCommonPrefixes());
+    assertTrue(withPrefix.getNextKeyMarker().isEmpty());
+
+    ListObjectVersionsAns truncated = objectService.listObjectVersions(bucket, null, null, 2, null, null);
+    assertEquals("a", truncated.getNextKeyMarker().orElseThrow());
+
+    // The page of the key marker is full, and nothing is left after it.
+    String last = ((ObjectVersion) truncated.getVersions().get(1)).getVersionId();
+    ListObjectVersionsAns rest = objectService.listObjectVersions(bucket, null, "a", 1, null,
+        ((ObjectVersion) truncated.getVersions().get(0)).getVersionId());
+    assertEquals(last, ((ObjectVersion) rest.getVersions().get(0)).getVersionId());
+    assertEquals("a", rest.getNextKeyMarker().orElseThrow(), "dir/b is left");
+  }
+
+  private static PutObjectAns put(ObjectService objectService, String bucket, String key) {
+    return objectService.putObject(bucket, key, PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("Robothy".getBytes()))
+        .size(7)
+        .build());
+  }
+
   private static List<String> keys(ListObjectVersionsAns ans) {
     return ans.getVersions().stream()
         .map(item -> item instanceof ObjectVersion version ? version.getKey() : ((DeleteMarkerEntry) item).getKey())

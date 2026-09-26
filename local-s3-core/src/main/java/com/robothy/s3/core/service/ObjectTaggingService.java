@@ -32,7 +32,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot put object tagging to a delete marker.");
       }
@@ -57,7 +57,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
     return withBucketReadLock(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot get object tagging from a delete marker.");
       }
@@ -81,7 +81,7 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot delete object tagging from a delete marker.");
       }

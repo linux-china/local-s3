@@ -32,5 +32,3 @@ test_s3.py::test_post_object_success_redirect_action  # consistent with AWS: Loc
 test_s3.py::test_post_object_upload_checksum  # consistent with AWS: POST Object denies (403) the form field x-amz-checksum-sha256, which the policy has no condition for; Amazon S3 requires a condition for every field but a few, e.g. file, policy, x-amz-signature
 test_s3.py::test_put_obj_with_tags  # unverified: expects GetObjectTagging to sort the tags by key, as RGW does; Amazon S3 documents no order
 test_s3.py::test_sse_kms_no_key  # consistent with AWS: PutObject with aws:kms and no key ID uses the AWS managed key aws/s3 on Amazon S3; the test expects 400 as RGW has no default key
-test_s3.py::test_versioning_bucket_atomic_upload_return_version_id  # unverified: PutObject to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket
-test_s3.py::test_versioning_bucket_multipart_upload_return_version_id  # unverified: CompleteMultipartUpload to a versioning-suspended bucket answers x-amz-version-id: null; the test expects no version ID, as for an unversioned bucket

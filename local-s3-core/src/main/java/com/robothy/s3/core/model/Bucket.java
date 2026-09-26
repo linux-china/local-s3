@@ -25,6 +25,13 @@ public class Bucket {
    */
   private Boolean versioningEnabled;
 
+  /**
+   * null - MfaDelete never set.
+   * true - enabled
+   * false - disabled
+   */
+  private Boolean mfaDeleteEnabled;
+
   private String region;
 
   private long creationDate;
@@ -53,6 +60,7 @@ public class Bucket {
     return Bucket.builder()
         .name(bucketMetadata.getBucketName())
         .versioningEnabled(bucketMetadata.getVersioningEnabled())
+        .mfaDeleteEnabled(bucketMetadata.getMfaDeleteEnabled())
         .region(bucketMetadata.getRegion())
         .creationDate(bucketMetadata.getCreationDate())
         .build();

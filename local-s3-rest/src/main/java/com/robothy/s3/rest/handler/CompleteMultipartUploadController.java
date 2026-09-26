@@ -88,8 +88,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
         .build();
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result));
-    ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID,
-        completeMultipartUploadAns.getVersionId());
+    ResponseUtils.putWrittenVersionId(response, completeMultipartUploadAns.getVersionId());
     ServerSideEncryptionHeaders.addHeaders(response, completeMultipartUploadAns.getServerSideEncryption(), false);
 
     ResponseUtils.addDateHeader(response);

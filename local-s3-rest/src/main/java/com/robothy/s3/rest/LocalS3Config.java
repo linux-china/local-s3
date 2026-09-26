@@ -26,6 +26,8 @@ import org.jspecify.annotations.Nullable;
  * @param persistencePolicy when the changes of a {@code PERSISTENCE} service reach the disk; ignored by an
  *     {@code IN_MEMORY} service, which writes none.
  * @param buckets the buckets that are created when the service starts, and again when it is reset.
+ * @param versionedBuckets the buckets that are created with versioning enabled when the service starts, and again when
+ *     it is reset; an existing bucket whose versioning was never configured gets it enabled too.
  * @param seeders put the initial buckets and objects into the service when it starts, and again when it is reset;
  *     empty for none.
  * @param changeListeners receive the changes that the services commit; empty for none.
@@ -68,6 +70,7 @@ public record LocalS3Config(
     LocalS3Mode mode,
     PersistencePolicy persistencePolicy,
     List<String> buckets,
+    List<String> versionedBuckets,
     List<LocalS3Seeder> seeders,
     List<S3ChangeListener> changeListeners,
     Executor changeListenerExecutor,
@@ -160,6 +163,7 @@ public record LocalS3Config(
     requireThat(port >= 0 && port <= 65535, "port must be between 0 and 65535.");
     Objects.requireNonNull(mode, "mode");
     buckets = List.copyOf(buckets);
+    versionedBuckets = List.copyOf(versionedBuckets);
     seeders = List.copyOf(seeders);
     changeListeners = List.copyOf(changeListeners);
     Objects.requireNonNull(changeListenerExecutor, "changeListenerExecutor");
@@ -262,7 +266,7 @@ public record LocalS3Config(
   @Override
   public String toString() {
     return "LocalS3Config[bindHost=" + bindHost + ", port=" + port + ", dataPath=" + dataPath + ", mode=" + mode
-        + ", buckets=" + buckets + ", initialDataCacheEnabled=" + initialDataCacheEnabled
+        + ", buckets=" + buckets + ", versionedBuckets=" + versionedBuckets + ", initialDataCacheEnabled=" + initialDataCacheEnabled
         + ", maxInMemoryBytes=" + maxInMemoryBytes
         + ", daemonThreads=" + daemonThreads + ", registerShutdownHook=" + registerShutdownHook
         + ", nettyParentEventGroupThreadNum=" + nettyParentEventGroupThreadNum

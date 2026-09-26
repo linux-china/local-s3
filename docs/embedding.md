@@ -453,6 +453,11 @@ class AppTest {
 }
 ```
 
+`buckets` creates the buckets before the test runs, and `versionedBuckets` creates them with versioning enabled, so a
+test of a bucket that has versioning enabled in production needs no `PutBucketVersioning`:
+`@LocalS3(buckets = "plain", versionedBuckets = "audit")`. `LocalS3.builder().versionedBuckets("audit")` does the same
+for an embedded service.
+
 Example 4: inject the service itself, to use what it offers besides the S3 API: `reset()` between the tests of a shared
 service, `applyLifecycle(Instant)` to expire objects at a later time, or an `S3ChangeListener` to observe the changes
 that the code under test makes. The service shares its simple name with the annotation, so one of the two is written
@@ -594,6 +599,7 @@ variables](deployment.md#configuration) of the same meaning, and anything they d
 | `withInMemoryMaxBytes("512m")` | `LOCAL_S3_IN_MEMORY_MAX_BYTES` |
 | `withCredentials(accessKey, secretKey)` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`; `getAccessKey()` and `getSecretKey()` read them back |
 | `withBuckets("one", "two")` | `AWS_BUCKETS`: the buckets to create on startup |
+| `withVersionedBuckets("audit")` | `AWS_BUCKETS` as `audit:versioned`: the buckets to create with versioning enabled, besides those of `withBuckets` |
 | `withIcebergCatalog(true)` | `LOCAL_S3_ICEBERG_CATALOG`: serve `/iceberg/v1` |
 | `withIcebergWarehouse("s3://warehouse/")` | `LOCAL_S3_ICEBERG_WAREHOUSE` |
 | `withVirtualHostDomains("s3", "s3.local")` | `LOCAL_S3_VIRTUAL_HOST_DOMAINS` |

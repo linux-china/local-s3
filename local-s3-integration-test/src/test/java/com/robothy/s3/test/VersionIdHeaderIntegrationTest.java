@@ -23,6 +23,9 @@ import software.amazon.awssdk.services.s3.model.Tagging;
  *       is the string {@code "null"}, which is a value and is sent;</li>
  *   <li>an object stored while versioning is enabled: its generated version ID.</li>
  * </ul>
+ *
+ * <p>A write to a bucket whose versioning is suspended stores the null version, and answers no version ID, like Amazon
+ * S3; reads and deletes of that version still report {@code "null"}.
  */
 public class VersionIdHeaderIntegrationTest {
 
@@ -74,6 +77,31 @@ public class VersionIdHeaderIntegrationTest {
     assertEquals("null", s3.headObject(b -> b.bucket(bucket).key(KEY)).versionId());
     assertEquals(Optional.of("null"), versionIdHeader(s3.getObjectAcl(b -> b.bucket(bucket).key(KEY))));
     assertEquals("null", s3.getObjectTagging(b -> b.bucket(bucket).key(KEY)).versionId());
+  }
+
+  /**
+   * A write to a suspended bucket stores the null version, and answers no version ID; reading it back reports "null".
+   */
+  @Test
+  @LocalS3
+  void writeToSuspendedBucketAnswersNoVersion(S3Client s3) {
+    String bucket = "suspended-writes";
+    s3.createBucket(b -> b.bucket(bucket));
+    s3.putBucketVersioning(b -> b.bucket(bucket)
+        .versioningConfiguration(c -> c.status(BucketVersioningStatus.SUSPENDED)));
+
+    assertNull(s3.putObject(b -> b.bucket(bucket).key(KEY), RequestBody.fromString("hello")).versionId());
+    assertNull(s3.copyObject(b -> b.sourceBucket(bucket).sourceKey(KEY)
+        .destinationBucket(bucket).destinationKey("copy.txt")).versionId());
+    String uploadId = s3.createMultipartUpload(b -> b.bucket(bucket).key("mpu.txt")).uploadId();
+    String etag = s3.uploadPart(b -> b.bucket(bucket).key("mpu.txt").uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("hello")).eTag();
+    assertNull(s3.completeMultipartUpload(b -> b.bucket(bucket).key("mpu.txt").uploadId(uploadId)
+        .multipartUpload(m -> m.parts(p -> p.partNumber(1).eTag(etag)))).versionId());
+
+    assertEquals("null", s3.headObject(b -> b.bucket(bucket).key(KEY)).versionId());
+    assertEquals("null", s3.headObject(b -> b.bucket(bucket).key("mpu.txt")).versionId());
+    assertEquals("null", s3.deleteObject(b -> b.bucket(bucket).key(KEY)).versionId());
   }
 
   /**

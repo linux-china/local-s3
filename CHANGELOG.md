@@ -113,6 +113,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ **Buckets created with versioning enabled**: `@LocalS3(buckets = "plain", versionedBuckets = "audit")`,
+  `LocalS3.builder().versionedBuckets("audit")`, `local-s3.versioned-buckets=audit`,
+  `LocalS3Container.withVersionedBuckets("audit")`, or the `:versioned` suffix of `AWS_BUCKETS=plain,audit:versioned`
+  (also `buckets("audit:versioned")` and `--buckets`), so that a local bucket matches a production bucket that has
+  versioning enabled without a `PutBucketVersioning` in every test. They are created again on a reset. An existing
+  bucket gets versioning enabled only if its versioning was never configured; a suspended one stays suspended.
 + **A default CORS rule for browsers**, off by default: `LocalS3.builder().defaultCors(cors -> cors.allowedOrigins("*"))`,
   `LOCAL_S3_CORS_ALLOWED_ORIGINS=*` or `local-s3.cors.allowed-origins=http://localhost:5173`. It answers the
   cross-origin requests of a bucket that has **no** CORS configuration of its own, and of the requests that address no
@@ -425,6 +431,23 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ `PutObject`, `CopyObject`, `POST Object` and `CompleteMultipartUpload` to a bucket whose versioning is suspended
+  answer no `x-amz-version-id`, like Amazon S3; they answered `null`. Reading or deleting the null version still
+  answers `null`.
++ `ListObjectVersions` answers `null` as the `NextVersionIdMarker` of a page that ends with the null version, rather
+  than the ID that LocalS3 holds the version by inside; a `null` marker whose null version was deleted since lists every
+  version left of the key, so a client that empties a bucket page by page skips none. A `key-marker` without a
+  `version-id-marker` lists the keys after it, rather than the versions of the key too; an empty marker is no marker;
+  and a page that ends with the last version is no longer truncated.
++ `PutBucketVersioning` answers `400 MalformedXML` for a `Status` other than `Enabled` or `Suspended`, which it used to
+  take for `Suspended`, and a configuration without a `Status` leaves the bucket as it is rather than suspending the
+  versioning of a bucket that was never versioned. The `MfaDelete` of the configuration is stored and answered back by
+  `GetBucketVersioning`; no MFA device is asked for.
++ A version ID that is neither `null` nor a number answers `400 InvalidArgument` (`Invalid version id specified`) rather
+  than `404 NoSuchVersion`, like Amazon S3, and so does any version ID but `null` for the tagging, ACL and restore
+  operations of a bucket that was never versioned, as `GetObject` already did. The ID that LocalS3 holds the null
+  version by names no version for any operation; the tagging, ACL, restore, retention and legal hold operations used
+  to find the version by it. `DeleteObject` still never fails on its version ID.
 + `ListObjectsV2` echoes the `start-after` of the request like Amazon S3 does: also next to a `continuation-token`,
   which the listing continues from instead, and also when it is whitespace alone, e.g. `\n`. With `encoding-type=url`
   it is URL-encoded like the keys.

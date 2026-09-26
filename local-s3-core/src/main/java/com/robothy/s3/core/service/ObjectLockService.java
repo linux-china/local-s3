@@ -171,11 +171,8 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
           .orElseThrow(() -> new VersionedObjectNotExistException(key, versionId));
       resolved = new ResolvedVersion(virtualVersion, VersionedObjectAssertions.assertVirtualVersionExist(objectMetadata));
     } else {
-      if (objectMetadata.getVirtualVersion().map(versionId::equals).orElse(false)) {
-        throw new VersionedObjectNotExistException(key, versionId);
-      }
-      resolved = new ResolvedVersion(versionId,
-          VersionedObjectAssertions.assertVersionedObjectExist(objectMetadata, versionId));
+      resolved = new ResolvedVersion(versionId, VersionedObjectAssertions.findVersionedObject(objectMetadata, versionId)
+          .orElseThrow(() -> new VersionedObjectNotExistException(key, versionId)));
     }
     if (resolved.version().isDeleted()) {
       throw new MethodNotAllowedException("The specified method is not allowed against this resource.");

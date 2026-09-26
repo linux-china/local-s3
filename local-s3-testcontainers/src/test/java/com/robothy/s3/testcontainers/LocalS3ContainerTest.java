@@ -89,6 +89,15 @@ class LocalS3ContainerTest {
   }
 
   @Test
+  void versionedBucketsShareTheBucketsVariable() {
+    try (LocalS3Container container = new LocalS3Container("latest")
+        .withVersionedBuckets("audit")
+        .withBuckets("plain")) {
+      assertEquals("plain,audit:versioned", container.getEnvMap().get("AWS_BUCKETS"));
+    }
+  }
+
+  @Test
   void bindsTheDataPathOfAPath(@TempDir Path directory) {
     try (LocalS3Container container = new LocalS3Container("latest").withDataPath(directory)) {
       assertTrue(container.getBinds().stream()

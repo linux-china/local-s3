@@ -51,7 +51,7 @@ public interface RestoreObjectService extends LocalS3MetadataApplicable {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
       VersionedObjectMetadata versionedObjectMetadata =
-          VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+          VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot restore a delete marker.");
       }

@@ -33,7 +33,7 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot put object ACL to a delete marker.");
       }
@@ -59,7 +59,7 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
     return withBucketReadLock(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       ObjectMetadata objectMetadata = ObjectAssertions.assertObjectExists(bucketMetadata, key);
-      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(objectMetadata, versionId);
+      VersionedObjectMetadata versionedObjectMetadata = VersionedObjectUtils.getVersionedObjectMetadata(bucketMetadata, objectMetadata, versionId);
       if (versionedObjectMetadata.isDeleted()) {
         throw new MethodNotAllowedException("Cannot get object ACL from a delete marker.");
       }

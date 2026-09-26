@@ -184,8 +184,13 @@ public class LocalS3 implements AutoCloseable {
         this.startedAt = Instant.now();
         ServiceFactory serviceFactory = createServiceFactory();
         // create default buckets first
-        if (!config.buckets().isEmpty()) {
-            log.info("Create default buckets:{}", String.join(",", config.buckets()));
+        if (!config.buckets().isEmpty() || !config.versionedBuckets().isEmpty()) {
+            if (!config.buckets().isEmpty()) {
+                log.info("Create default buckets:{}", String.join(",", config.buckets()));
+            }
+            if (!config.versionedBuckets().isEmpty()) {
+                log.info("Create default versioned buckets:{}", String.join(",", config.versionedBuckets()));
+            }
             createBuckets();
         }
         prepareIcebergWarehouse();
@@ -329,13 +334,25 @@ public class LocalS3 implements AutoCloseable {
         BucketService bucketService = this.getS3Manager().bucketService();
         BucketNameValidator bucketNameValidator = new BucketNameValidator();
         for (String bucketName : config.buckets()) {
-            try {
-                bucketService.getBucket(bucketName);
-            } catch (BucketNotExistException e) {
-                // Existing buckets are accepted, like buckets loaded from the data path.
-                bucketNameValidator.validate(bucketName);
-                bucketService.createBucket(bucketName);
+            createBucketIfAbsent(bucketService, bucketNameValidator, bucketName);
+        }
+        for (String bucketName : config.versionedBuckets()) {
+            createBucketIfAbsent(bucketService, bucketNameValidator, bucketName);
+            // Only a bucket whose versioning was never configured: a suspended one stays as its owner left it.
+            if (bucketService.getVersioningEnabled(bucketName) == null) {
+                bucketService.setVersioningEnabled(bucketName, true);
             }
+        }
+    }
+
+    private static void createBucketIfAbsent(BucketService bucketService, BucketNameValidator bucketNameValidator,
+                                             String bucketName) {
+        try {
+            bucketService.getBucket(bucketName);
+        } catch (BucketNotExistException e) {
+            // Existing buckets are accepted, like buckets loaded from the data path.
+            bucketNameValidator.validate(bucketName);
+            bucketService.createBucket(bucketName);
         }
     }
 
@@ -503,7 +520,7 @@ public class LocalS3 implements AutoCloseable {
     /**
      * Replace the data of the service with the data it started with, e.g. between the tests that share a service,
      * which is much quicker than restarting it: the buckets, objects, multipart uploads and vectors are dropped, the
-     * initial data of the data path, if any, is loaded again, and the {@linkplain LocalS3Config#buckets() default buckets} are
+     * initial data of the data path, if any, is loaded again, and the {@linkplain LocalS3Config#buckets() default buckets}, versioned ones included, are
      * created again. The requests recorded for {@code GET /_admin/stats} are forgotten too.
      *
      * <p>The requests in progress are finished first, and the requests that arrive meanwhile wait for the reset. The
@@ -528,7 +545,7 @@ public class LocalS3 implements AutoCloseable {
         if (localS3TablesManager != null) {
             localS3TablesManager.reset();
         }
-        if (!config.buckets().isEmpty()) {
+        if (!config.buckets().isEmpty() || !config.versionedBuckets().isEmpty()) {
             createBuckets();
         }
         prepareIcebergWarehouse();

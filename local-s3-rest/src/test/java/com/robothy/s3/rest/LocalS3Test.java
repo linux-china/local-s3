@@ -341,6 +341,42 @@ class LocalS3Test {
     }
   }
 
+  @Test
+  void createsVersionedDefaultBucketsAgainOnReset() {
+    LocalS3 localS3 = LocalS3.builder()
+        .port(-1)
+        .buckets("plain", " audit:versioned ")
+        .versionedBuckets("history")
+        .build();
+    assertEquals(List.of("plain"), localS3.getConfig().buckets());
+    assertEquals(List.of("audit", "history"), localS3.getConfig().versionedBuckets());
+    localS3.start();
+    try {
+      BucketService bucketService = localS3.getS3Manager().bucketService();
+      assertEquals(3, bucketService.listBuckets().size());
+      assertNull(bucketService.getVersioningEnabled("plain"));
+      assertEquals(Boolean.TRUE, bucketService.getVersioningEnabled("audit"));
+      assertEquals(Boolean.TRUE, bucketService.getVersioningEnabled("history"));
+
+      bucketService.setVersioningEnabled("audit", false);
+      localS3.reset();
+      assertEquals(Boolean.TRUE, localS3.getS3Manager().bucketService().getVersioningEnabled("audit"),
+          "A reset creates the versioned buckets again.");
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
+  void fromEnvironmentReadsVersionedBuckets() {
+    LocalS3Config config = LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.AWS_BUCKETS, "plain,audit:versioned")::get)
+        .buildConfig();
+
+    assertEquals(List.of("plain"), config.buckets());
+    assertEquals(List.of("audit"), config.versionedBuckets());
+  }
+
   /**
    * The S3 buckets and the vector buckets of a {@code PERSISTENCE} service are kept in the one store of its data
    * directory, so both managers hold that store and {@linkplain LocalS3#shutdown()} has to release both holds. A hold

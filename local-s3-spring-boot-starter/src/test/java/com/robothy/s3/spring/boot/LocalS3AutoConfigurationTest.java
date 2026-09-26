@@ -86,6 +86,15 @@ class LocalS3AutoConfigurationTest {
   }
 
   @Test
+  void createsVersionedBuckets() {
+    runner.withPropertyValues("local-s3.buckets=plain", "local-s3.versioned-buckets=audit").run(context -> {
+      var bucketService = context.getBean(LocalS3.class).getS3Manager().bucketService();
+      assertNull(bucketService.getVersioningEnabled("plain"));
+      assertEquals(Boolean.TRUE, bucketService.getVersioningEnabled("audit"));
+    });
+  }
+
+  @Test
   void theApplicationContextStopsTheServiceWithoutAShutdownHook() {
     int[] port = new int[1];
     runner.run(context -> {

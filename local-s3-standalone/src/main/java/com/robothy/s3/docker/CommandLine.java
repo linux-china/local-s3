@@ -88,7 +88,8 @@ final class CommandLine {
             option("--in-memory-max-bytes", LocalS3Environment.LOCAL_S3_IN_MEMORY_MAX_BYTES, "<size>",
                     "IN_MEMORY mode: the max heap the stored content takes, e.g. 512m. Default half the max heap."),
             option("--buckets", List.of("--bucket"), LocalS3Environment.AWS_BUCKETS, "<names>",
-                    "Comma-separated buckets to create on startup; repeat the option to add more."),
+                    "Comma-separated buckets to create on startup; repeat the option to add more. A name"
+                            + " suffixed with :versioned, e.g. audit:versioned, gets versioning enabled."),
             option("--access-key", List.of("--access-key-id"), LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "<key>",
                     "Require requests signed with this access key. Set together with --secret-key."),
             option("--secret-key", List.of("--secret-access-key"), LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY,

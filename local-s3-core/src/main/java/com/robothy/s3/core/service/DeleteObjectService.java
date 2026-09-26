@@ -3,8 +3,8 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
+import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.event.S3Change;
-import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
@@ -74,9 +74,7 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
         ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
       } else if (Objects.nonNull(versionId)) {
         Optional<VersionedObjectMetadata> version = bucketMetadata.getObjectMetadataRef(key).map(ObjectMetadataRef::get)
-            .flatMap(objectMetadata -> ObjectMetadata.NULL_VERSION.equals(versionId)
-                ? objectMetadata.getVirtualVersion().flatMap(objectMetadata::getVersionedObjectMetadata)
-                : objectMetadata.getVersionedObjectMetadata(versionId));
+            .flatMap(objectMetadata -> versionToDelete(objectMetadata, versionId));
         long now = System.currentTimeMillis();
         version.ifPresent(v -> ObjectLockAssertions.assertVersionIsDeletable(v, now, bypassGovernanceRetention));
         ans = deleteWithVersionId(storage(), bucketMetadata, key, versionId);
@@ -92,9 +90,28 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
     });
   }
 
+  /**
+   * The version that a delete with a version ID removes. Unlike a read, a delete never fails on its version ID, not even
+   * a malformed one, which deletes nothing; neither does the ID that the null version is held by inside LocalS3, which
+   * is never answered to a client.
+   *
+   * @param objectMetadata the object that the key holds.
+   * @param versionId the version ID of the request.
+   * @return the version to delete; empty if there is none.
+   */
+  private static Optional<VersionedObjectMetadata> versionToDelete(ObjectMetadata objectMetadata, String versionId) {
+    if (ObjectMetadata.NULL_VERSION.equals(versionId)) {
+      return objectMetadata.getVirtualVersion().flatMap(objectMetadata::getVersionedObjectMetadata);
+    }
+    if (objectMetadata.getVirtualVersion().map(versionId::equals).orElse(false)) {
+      return Optional.empty();
+    }
+    return objectMetadata.getVersionedObjectMetadata(versionId);
+  }
+
   static DeleteObjectAns deleteObjectFromUnVersionedBucket(BucketMetadata bucketMetadata, Storage storage, String key, String versionId) {
     if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
-      throw new LocalS3InvalidArgumentException("versionId", versionId);
+      throw VersionedObjectAssertions.invalidVersionId(versionId);
     }
 
     ObjectMetadata removedObject = bucketMetadata.removeObjectMetadata(key);

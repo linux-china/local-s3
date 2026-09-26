@@ -65,9 +65,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     response.status(HttpResponseStatus.OK)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), 0);
 
-    if (Objects.nonNull(ans.getVersionId())) {
-      response.putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, ans.getVersionId());
-    }
+    ResponseUtils.putWrittenVersionId(response, ans.getVersionId());
 
     ResponseUtils.addETag(response, ans.getEtag());
     ChecksumHeaders.addHeaders(response, ans.getChecksum());

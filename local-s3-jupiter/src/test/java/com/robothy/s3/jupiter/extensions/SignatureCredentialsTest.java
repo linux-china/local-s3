@@ -109,6 +109,11 @@ class SignatureCredentialsTest {
       }
 
       @Override
+      public String[] versionedBuckets() {
+        return defaults.versionedBuckets();
+      }
+
+      @Override
       public Class<? extends com.robothy.s3.jupiter.supplier.DataPathSupplier> dataPathSupplier() {
         return defaults.dataPathSupplier();
       }

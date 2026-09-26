@@ -59,6 +59,12 @@ public class LocalS3Properties {
   private List<String> buckets = new ArrayList<>();
 
   /**
+   * Buckets to create with versioning enabled when LocalS3 starts, e.g. to match production buckets that have
+   * versioning enabled.
+   */
+  private List<String> versionedBuckets = new ArrayList<>();
+
+  /**
    * Whether the initial data of an {@code IN_MEMORY} service is cached across services of the JVM.
    */
   private boolean initialDataCacheEnabled = true;
@@ -149,6 +155,14 @@ public class LocalS3Properties {
 
   public void setBuckets(List<String> buckets) {
     this.buckets = buckets;
+  }
+
+  public List<String> getVersionedBuckets() {
+    return versionedBuckets;
+  }
+
+  public void setVersionedBuckets(List<String> versionedBuckets) {
+    this.versionedBuckets = versionedBuckets;
   }
 
   public boolean isInitialDataCacheEnabled() {

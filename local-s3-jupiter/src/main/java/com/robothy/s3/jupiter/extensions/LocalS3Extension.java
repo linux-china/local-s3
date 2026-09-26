@@ -120,6 +120,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         .port(s3Config.port())
         .mode(s3Config.mode())
         .buckets(s3Config.buckets())
+        .versionedBuckets(s3Config.versionedBuckets())
         .storage(storage -> storage.initialDataCacheEnabled(s3Config.initialDataCacheEnabled()))
         .s3Api(s3 -> s3.compositeMultipartEtags(s3Config.compositeMultipartEtags())
             .virtualHostDomains(s3Config.virtualHostDomains()));

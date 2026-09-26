@@ -105,6 +105,14 @@ public @interface LocalS3 {
   String[] buckets() default {};
 
   /**
+   * Default buckets that are created with versioning enabled, e.g. {@code @LocalS3(buckets = "plain",
+   * versionedBuckets = "audit")}.
+   *
+   * @return default buckets with versioning enabled.
+   */
+  String[] versionedBuckets() default {};
+
+  /**
    * Set the data path supplier class for LocalS3 service. The class implements
    * the {@linkplain DataPathSupplier} interface and must have a no-args constructor.
    * This option is used fot the scenario that the data path is generated dynamically.

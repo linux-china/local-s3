@@ -111,6 +111,13 @@ public class BucketMetadata {
    */
   private Boolean versioningEnabled;
 
+  /**
+   * The {@code MfaDelete} of the versioning configuration of the bucket: {@code null} if it was never set,
+   * {@code true} if enabled, {@code false} if disabled. It is kept to be answered back only: LocalS3 asks for no MFA
+   * device, so a delete never needs one.
+   */
+  private Boolean mfaDeleteEnabled;
+
   private String bucketName;
 
   private Collection<Map<String, String>> tagging;
