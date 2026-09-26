@@ -5,13 +5,13 @@ import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.model.internal.BucketChangeScope;
 import com.robothy.s3.core.service.locks.BucketLock;
+import com.robothy.s3.core.service.locks.ServiceLock;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.StorageTransactions;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -36,11 +36,10 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
   private final Consumer<String> bucketMetadataReloader;
 
   /**
-   * Held for reading by every operation of a bucket, around the lock of the bucket, and for writing by an
-   * {@linkplain #exclusive} operation. Reentrant, so that an operation nested in another one doesn't wait for an
-   * exclusive operation that waits for the outer one.
+   * Held shared by every operation of a bucket, around the lock of the bucket, and exclusively by an
+   * {@linkplain #exclusive} operation.
    */
-  private final ReentrantReadWriteLock serviceLock = new ReentrantReadWriteLock();
+  private final ServiceLock serviceLock = new ServiceLock();
 
   /**
    * The buckets that the current thread is changing, so that a change nested in a change of the same bucket runs
@@ -161,29 +160,18 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   @Override
   public <T> T exclusive(Supplier<T> operation) {
-    if (serviceLock.getReadHoldCount() > 0) {
-      throw new IllegalStateException("An exclusive operation can't run within an operation of a bucket.");
-    }
-    serviceLock.writeLock().lock();
-    try {
-      return operation.get();
-    } finally {
-      serviceLock.writeLock().unlock();
-    }
+    return serviceLock.exclusive(operation);
   }
 
   private <T> T locked(Lock lock, Supplier<T> operation) {
-    serviceLock.readLock().lock();
-    try {
+    return serviceLock.shared(() -> {
       lock.lock();
       try {
         return operation.get();
       } finally {
         lock.unlock();
       }
-    } finally {
-      serviceLock.readLock().unlock();
-    }
+    });
   }
 
   /**
