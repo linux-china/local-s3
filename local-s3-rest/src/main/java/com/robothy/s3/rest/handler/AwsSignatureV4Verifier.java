@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -87,6 +88,8 @@ final class AwsSignatureV4Verifier {
    * trailing header, so that a body that isn't {@code aws-chunked} isn't read into a string whole.
    */
   private static final int MAX_CHUNK_HEADER_LENGTH = 8 * 1024;
+  private static final int MAX_SIGNING_KEY_CACHE_SIZE = 1024;
+  private static final Map<SigningKeyCacheKey, byte[]> SIGNING_KEY_CACHE = new ConcurrentHashMap<>();
 
   private final String accessKeyId;
   private final String secretAccessKey;
@@ -781,10 +784,28 @@ final class AwsSignatureV4Verifier {
    * @return the signing key.
    */
   static byte[] signingKey(String secretAccessKey, String date, String region, String service) {
+    SigningKeyCacheKey cacheKey = new SigningKeyCacheKey(secretAccessKey, date, region, service);
+    byte[] cached = SIGNING_KEY_CACHE.get(cacheKey);
+    if (cached == null) {
+      cached = deriveSigningKey(secretAccessKey, date, region, service);
+      // the scope date rolls over daily, so the cache is simply reset instead of growing without bound
+      if (SIGNING_KEY_CACHE.size() >= MAX_SIGNING_KEY_CACHE_SIZE) {
+        SIGNING_KEY_CACHE.clear();
+      }
+      SIGNING_KEY_CACHE.put(cacheKey, cached);
+    }
+    // callers get their own copy, so that the cached key can never be modified
+    return cached.clone();
+  }
+
+  private static byte[] deriveSigningKey(String secretAccessKey, String date, String region, String service) {
     byte[] dateKey = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), date);
     byte[] regionKey = hmac(dateKey, region);
     byte[] serviceKey = hmac(regionKey, service);
     return hmac(serviceKey, TERMINATOR);
+  }
+
+  private record SigningKeyCacheKey(String secretAccessKey, String date, String region, String service) {
   }
 
   static String stringToSign(String amzDate, String scope, String canonicalRequest) {
