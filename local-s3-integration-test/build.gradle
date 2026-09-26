@@ -153,4 +153,7 @@ tasks.register('realS3Test', Test) {
     useJUnitPlatform {
         includeTags 'real-s3'
     }
+    // The shell of a developer often points AWS_ENDPOINT_URL, or the endpoint_url of a profile, at a LocalS3, which
+    // the clients of the AWS SDK would then talk to instead of Amazon S3.
+    systemProperty 'aws.ignoreConfiguredEndpointUrls', 'true'
 }
