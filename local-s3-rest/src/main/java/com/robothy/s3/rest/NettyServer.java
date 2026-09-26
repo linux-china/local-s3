@@ -13,6 +13,7 @@ import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.internal.PlatformDependent;
@@ -56,6 +57,12 @@ final class NettyServer {
     private MultiThreadIoEventLoopGroup parentGroup;
 
     private MultiThreadIoEventLoopGroup childGroup;
+
+    /**
+     * Writes the streamed responses of TLS connections, which are read from the storage and encrypted chunk by chunk,
+     * so that reading a large file doesn't block the other connections of an event loop; {@code null} without TLS.
+     */
+    private DefaultEventExecutorGroup chunkedWriterGroup;
 
     private ExecutorService executor;
 
@@ -111,6 +118,10 @@ final class NettyServer {
         this.childGroup = new MultiThreadIoEventLoopGroup(config.nettyChildEventGroupThreadNum(),
                 new NamingThreadFactory("locals3-child-event-group", config.daemonThreads()),
                 NioIoHandler.newFactory());
+        if (config.tls() != null) {
+            this.chunkedWriterGroup = new DefaultEventExecutorGroup(childGroup.executorCount(),
+                    new NamingThreadFactory("locals3-chunked-writer-group", config.daemonThreads()));
+        }
         this.executor = createExecutor();
         this.inFlightRequests = new InFlightRequests();
         try {
@@ -122,7 +133,8 @@ final class NettyServer {
                     // where SO_REUSEADDR would let a second socket bind a port that is in use.
                     .option(ChannelOption.SO_REUSEADDR, !PlatformDependent.isWindows())
                     .childHandler(new LocalS3ServerInitializer(config, executor, router, xmlMapper,
-                            requestBodyFileDirectory, inFlightRequests, requestRecorder, heapBodyWriters))
+                            requestBodyFileDirectory, inFlightRequests, requestRecorder, heapBodyWriters,
+                            chunkedWriterGroup))
                     .bind(config.bindHost(), port)
                     .sync()
                     .channel();
@@ -191,7 +203,8 @@ final class NettyServer {
             stopped = shutdownExecutorIfNeeded(deadline);
             awaitResponsesInFlight(deadline);
         } finally {
-            stopped |= shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.parentGroup);
+            stopped |= shutdownEventExecutorsGroupIfNeeded(this.childGroup, this.chunkedWriterGroup,
+                    this.parentGroup);
             ExecutorService executorService = this.executor;
             if (executorService != null && !executorService.isTerminated()) {
                 executorService.shutdownNow();
@@ -201,6 +214,7 @@ final class NettyServer {
             }
             this.serverSocketChannel = null;
             this.childGroup = null;
+            this.chunkedWriterGroup = null;
             this.parentGroup = null;
             this.executor = null;
             this.inFlightRequests = null;
@@ -220,12 +234,13 @@ final class NettyServer {
 
     /**
      * Wait for the responses of the requests that were handled to be written. Not from a thread that handles a request,
-     * whose own response is in flight, nor from an event loop, which the responses are written on.
+     * whose own response is in flight, nor from an event loop or a chunked writer, which the responses are written on.
      */
     private void awaitResponsesInFlight(long deadline) {
         InFlightRequests requests = this.inFlightRequests;
         if (requests == null || executorThreads.contains(Thread.currentThread())
-                || (childGroup != null && isInEventLoop(childGroup))) {
+                || (childGroup != null && isInEventLoop(childGroup))
+                || (chunkedWriterGroup != null && isInEventLoop(chunkedWriterGroup))) {
             return;
         }
         try {

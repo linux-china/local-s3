@@ -31,10 +31,15 @@ import java.util.List;
  * stored in parts, i.e. a {@linkplain CompositeInputStream}, is sent part by part on plaintext connections by a
  * {@linkplain CompositeContentChunkedInput}, which opens one part at a time.
  *
- * <p>The content is written on the event loop of the connection. So that a large response doesn't block the other
- * connections of the loop, file-backed content is never read through the Java heap there: the kernel transfers it.
- * The other streams that storages answer hold their content in memory, which a chunk of is copied at a time, as far as
- * the connection is writable.
+ * <p>On a plaintext connection, the content is written on the event loop of the connection. So that a large response
+ * doesn't block the other connections of the loop, file-backed content is never read through the Java heap there: the
+ * kernel transfers it. The other streams that storages answer hold their content in memory, which a chunk of is copied
+ * at a time, as far as the connection is writable.
+ *
+ * <p>On a TLS connection, file-backed content has to be read into memory to be encrypted. It is read a chunk at a time
+ * by the {@linkplain io.netty.handler.stream.ChunkedWriteHandler} of the connection, which runs on an executor of its
+ * own rather than on the event loop; see {@linkplain LocalS3ServerInitializer}. Only the encryption of the chunks runs
+ * on the event loop.
  */
 public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
 

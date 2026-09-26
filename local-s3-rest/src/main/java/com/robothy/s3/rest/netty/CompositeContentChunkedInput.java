@@ -82,7 +82,8 @@ final class CompositeContentChunkedInput implements ChunkedInput<Object> {
    */
   static CompositeContentChunkedInput of(CompositeInputStream content, ChannelHandlerContext ctx, int chunkSize) {
     ChunkedWriteHandler writer = ctx.pipeline().get(ChunkedWriteHandler.class);
-    Executor executor = ctx.executor();
+    ChannelHandlerContext writerCtx = writer == null ? null : ctx.pipeline().context(writer);
+    Executor executor = writerCtx == null ? ctx.executor() : writerCtx.executor();
     Runnable resume = writer == null ? () -> { } : () -> executor.execute(writer::resumeTransfer);
     return new CompositeContentChunkedInput(content, chunkSize, resume);
   }
