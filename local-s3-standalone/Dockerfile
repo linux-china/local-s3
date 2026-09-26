@@ -22,7 +22,7 @@ VOLUME /data
 EXPOSE 29090
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl --fail --silent --show-error http://localhost:29090/_health || exit 1
+    CMD curl --fail --silent --show-error "http://localhost:${LOCAL_S3_PORT:-29090}/_health" || exit 1
 
 USER locals3
 

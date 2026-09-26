@@ -54,8 +54,7 @@ class LocalS3ExceptionHandler implements ExceptionHandler<LocalS3Exception> {
 
     try {
       response.status(HttpResponseStatus.valueOf(s3ErrorCode.httpStatus()))
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-          .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE);
+          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
       ResponseUtils.addAmzIds(response, requestId, hostId);
       if (e instanceof ObjectNotExistException notExist && notExist.isDeleteMarker()) {
         // A key whose current version is a delete marker, which a client tells apart from one that never existed.

@@ -532,6 +532,9 @@ runs against LocalS3:
   date is midnight UTC after `Days` days, like Amazon S3 rounds it. After that date the header is gone, and the next
   restore answers `202` again.
 + `Days` is required; the `Tier` and the other elements of the `RestoreRequest` are ignored.
++ `ListObjects` and `ListObjectsV2` answer the `RestoreStatus` of an object with a restored copy that hasn't expired,
+  `IsRestoreInProgress` `false` and its `RestoreExpiryDate`, when the request asks for it with
+  `x-amz-optional-object-attributes: RestoreStatus`, like Amazon S3; any other attribute answers `400 InvalidArgument`.
 + An object of any other storage class, including `GLACIER_IR` and `INTELLIGENT_TIERING`, answers
   `403 InvalidObjectState`, and a delete marker `405 MethodNotAllowed`.
 

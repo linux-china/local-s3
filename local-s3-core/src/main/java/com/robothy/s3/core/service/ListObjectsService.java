@@ -10,6 +10,7 @@ import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.core.model.internal.SystemMetadata;
+import com.robothy.s3.datatypes.response.RestoreStatus;
 import com.robothy.s3.datatypes.response.S3Object;
 
 import java.time.Instant;
@@ -151,6 +152,11 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     if (Objects.nonNull(latest.getChecksum())) {
       object.setCheckSumAlgorithm(latest.getChecksum().getAlgorithm());
       object.setChecksumType(latest.getChecksum().getType());
+    }
+    // Answered only if the request asks for it, see x-amz-optional-object-attributes; the controller drops it otherwise.
+    Long restoreExpiryDate = RestoreObjectService.activeRestoreExpiryDate(latest);
+    if (Objects.nonNull(restoreExpiryDate)) {
+      object.setRestoreStatus(new RestoreStatus(false, Instant.ofEpochMilli(restoreExpiryDate)));
     }
     return object;
   }

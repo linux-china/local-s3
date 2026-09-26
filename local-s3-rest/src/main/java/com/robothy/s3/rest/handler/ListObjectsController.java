@@ -42,6 +42,8 @@ class ListObjectsController implements HttpRequestHandler {
 
     ListObjectsAns listObjectsAns = listObjectsService.listObjects(bucket, delimiter, encodingType, marker, maxKeys, prefix);
 
+    OptionalObjectAttributes.apply(request, listObjectsAns.getObjects());
+
     ListBucketResult listBucketResult = ListBucketResult.builder()
         .isTruncated(listObjectsAns.isTruncated())
         .marker(listObjectsAns.getMarker())

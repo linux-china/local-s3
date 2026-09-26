@@ -113,6 +113,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ `ListObjects` and `ListObjectsV2` answer the `RestoreStatus` of restored objects when the request sends
+  `x-amz-optional-object-attributes: RestoreStatus`; see [storage classes and restores](docs/semantics.md#storage-classes-and-restores).
 + **Buckets created with versioning enabled**: `@LocalS3(buckets = "plain", versionedBuckets = "audit")`,
   `LocalS3.builder().versionedBuckets("audit")`, `local-s3.versioned-buckets=audit`,
   `LocalS3Container.withVersionedBuckets("audit")`, or the `:versioned` suffix of `AWS_BUCKETS=plain,audit:versioned`

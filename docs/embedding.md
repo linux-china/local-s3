@@ -496,7 +496,7 @@ browser.
 
 ## Spring Boot
 
-`local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 4 application, configured by `local-s3.*` properties,
+`local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 3/4 application, configured by `local-s3.*` properties,
 and, when the application has the AWS SDK, which is an optional dependency, defines an `S3Client`, an `S3AsyncClient`
 and an `S3Presigner` that point at it. `local-s3.seed.classpath` names a directory tree of the classpath that the
 service starts with, as `<bucket>/<key>`. `local-s3.website.*` configures

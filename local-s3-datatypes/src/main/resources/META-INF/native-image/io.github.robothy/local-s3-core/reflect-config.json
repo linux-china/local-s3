@@ -192,8 +192,19 @@
       {"name":"getKey","parameterTypes":[] },
       {"name":"getLastModified","parameterTypes":[] },
       {"name":"getOwner","parameterTypes":[] },
+      {"name":"getRestoreStatus","parameterTypes":[] },
       {"name":"getSize","parameterTypes":[] },
       {"name":"getStorageClass","parameterTypes":[] }
+    ]
+  },
+  {
+    "name":"com.robothy.s3.datatypes.response.RestoreStatus",
+    "allDeclaredFields":true,
+    "queryAllDeclaredMethods":true,
+    "queryAllDeclaredConstructors":true,
+    "methods":[
+      {"name":"getRestoreExpiryDate","parameterTypes":[] },
+      {"name":"isRestoreInProgress","parameterTypes":[] }
     ]
   },
   {

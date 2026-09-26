@@ -48,6 +48,8 @@ public class AmzHeaderNames {
 
   public static final String X_AMZ_RESTORE = "x-amz-restore";
 
+  public static final String X_AMZ_OPTIONAL_OBJECT_ATTRIBUTES = "x-amz-optional-object-attributes";
+
   public static final String X_AMZ_TAGGING = "x-amz-tagging";
 
   public static final String X_AMZ_TAGGING_COUNT = "x-amz-tagging-count";

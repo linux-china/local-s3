@@ -64,7 +64,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 ## Features
 
-+ **70+ S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
++ **95+ S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
   [Supported and unsupported APIs](docs/apis.md).
 + **Browser form uploads** (`POST Object`) with policy documents and their signatures: expiration, conditions and
   `content-length-range` are checked like Amazon S3 checks them, so a frontend upload flow can be debugged locally.

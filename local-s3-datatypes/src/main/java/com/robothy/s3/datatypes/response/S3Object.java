@@ -58,4 +58,11 @@ public class S3Object {
   @JsonProperty("StorageClass")
   private StorageClass storageClass;
 
+  /**
+   * The restored copy of an archived object; {@code null}, and left out, unless the listing was asked for it with
+   * {@code x-amz-optional-object-attributes: RestoreStatus} and the object has a restored copy that hasn't expired.
+   */
+  @JsonProperty("RestoreStatus")
+  private RestoreStatus restoreStatus;
+
 }
