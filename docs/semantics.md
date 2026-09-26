@@ -9,6 +9,7 @@ Amazon S3 would refuse.
 - [Stored, not applied](#stored-not-applied)
 - [Request validation](#request-validation)
 - [Conditional requests](#conditional-requests)
+- [Range requests](#range-requests)
 - [Versioning](#versioning)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
 - [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
@@ -119,6 +120,23 @@ Every write and delete condition is evaluated under the write lock of the bucket
 the request is atomic: of the requests that race for a key, exactly one wins. Code that builds a lock or an
 optimistic update on that, e.g. the S3 commit protocols of Delta Lake and Iceberg, is exercised rather than silently
 losing its protection. See [architecture.md](architecture.md#bucketguard-the-concurrency-model) for the lock.
+
+## Range requests
+
+`GetObject` and `HeadObject` serve one byte range of the `Range` header, answered `206 Partial Content` with a
+`Content-Range`:
+
+| `Range` | Object of 10 bytes | Empty object |
+|---|---|---|
+| `bytes=0-`, `bytes=8-100`, `bytes=-3`, `bytes=-20` | `206`, clipped to the object, e.g. `bytes 8-9/10` | `416 InvalidRange` |
+| `bytes=10-`, `bytes=100-200`, `bytes=-0` | `416 InvalidRange` | `416 InvalidRange` |
+| `bytes=5-2`, `bytes=0-1,4-5`, `bytes=abc` | `200`, the whole object | `200`, the empty object |
+
+No byte of an empty object can be read, so any range of it is unsatisfiable, `bytes=0-` included: a reader that probes
+an empty object, e.g. a `_SUCCESS` marker, with a range gets `416`, and reads it without one. A header that isn't a
+single valid byte range is ignored, as RFC 9110 allows. `RangeEdgeCaseIntegrationTest` checks these answers, and runs
+the same scenarios against Amazon S3 with `./gradlew :local-s3-integration-test:realS3Test` and the credentials of an
+AWS account.
 
 ## Versioning
 
