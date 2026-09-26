@@ -20,8 +20,10 @@ import org.h2.mvstore.MVStore;
  * <p>A service has a single store, so all of its metadata lives in one file rather than in a file per bucket: the
  * writes of a change go to one place, and a data directory is a directory with one {@value #FILE_NAME} in it.
  *
- * <p>An {@code IN_MEMORY} service opens a store that is never written to a file, and a {@code PERSISTENCE} service
- * opens {@value #FILE_NAME} of its data directory. Both modes then read and write their metadata the same way.
+ * <p>A {@code PERSISTENCE} service opens {@value #FILE_NAME} of its data directory. An {@code IN_MEMORY} service keeps
+ * the metadata of its S3 and vector buckets only in the heap, and reads a store only for its initial data,
+ * {@linkplain #readOnly(Path) read-only}; its Iceberg catalog and S3 Tables use an {@linkplain #inMemory() in-memory}
+ * store, which is never written to a file.
  *
  * <p>MVStore locks the file it opens, so the services of a JVM that use the same data directory, e.g. a persistent
  * service and another one that starts from its directory, share one open store, which is closed once they all

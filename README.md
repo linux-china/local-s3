@@ -64,13 +64,14 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 ## Features
 
-+ **95+ S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
++ **90+ S3 operations**: objects, multipart uploads, versioning, tagging, ACLs, CORS, policies, and paginated listings.
   [Supported and unsupported APIs](docs/apis.md).
 + **Browser form uploads** (`POST Object`) with policy documents and their signatures: expiration, conditions and
   `content-length-range` are checked like Amazon S3 checks them, so a frontend upload flow can be debugged locally.
   [Details](docs/semantics.md#browser-form-uploads-post-object).
-+ **Lifecycle configurations are saved but not applied**: they can be put, read back and deleted, so frameworks that
-  configure one on startup work, but no object ever expires or transitions. [Details](docs/semantics.md#lifecycle-configuration).
++ **Lifecycle configurations are applied on demand**: they can be put, read back and deleted, so frameworks that
+  configure one on startup work, but nothing expires by itself while a test runs and nothing ever transitions. A test applies them when it chooses,
+  as of any date, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle`. [Details](docs/semantics.md#lifecycle-configuration).
 + **A built-in Iceberg REST catalog**, off by default, served under `/iceberg/v1` on the same port: a lakehouse test
   needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
   catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works —

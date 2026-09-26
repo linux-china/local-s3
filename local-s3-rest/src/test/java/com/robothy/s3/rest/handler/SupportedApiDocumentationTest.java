@@ -32,6 +32,27 @@ class SupportedApiDocumentationTest {
 
   private static final Path APIS = Path.of("../docs/apis.md");
 
+  private static final Path README = Path.of("../README.md");
+
+  private static final Path COMPARISON = Path.of("../docs/comparison.md");
+
+  /**
+   * The paragraph of {@code docs/comparison.md} that names the operations answering {@code 501}, up to the next blank
+   * line.
+   */
+  private static final Pattern COMPARISON_NOT_IMPLEMENTED =
+      Pattern.compile("\\*\\*Some operations answer `501`\\.\\*\\*(.*?)\\n\\n", Pattern.DOTALL);
+
+  /**
+   * An operation name in code, e.g. {@code `SelectObjectContent`}.
+   */
+  private static final Pattern OPERATION_IN_CODE = Pattern.compile("`([A-Z][A-Za-z]+)`");
+
+  /**
+   * The count of S3 operations that the features of the README claim, e.g. {@code **95+ S3 operations**}.
+   */
+  private static final Pattern README_OPERATION_COUNT = Pattern.compile("\\*\\*(\\d+)\\+ S3 operations\\*\\*");
+
   /**
    * Routes that aren't Amazon S3 operations, so the documentation describes them in prose instead of listing
    * them by name: the health check of the container, and the CORS preflight of a bucket and an object.
@@ -145,6 +166,40 @@ class SupportedApiDocumentationTest {
   void theListOfUnimplementedOperationsIsSorted() throws IOException {
     List<String> documented = List.copyOf(documented("Known unimplemented Amazon S3 APIs"));
     assertEquals(documented.size(), new TreeSet<>(documented).size(), "The list repeats an operation.");
+  }
+
+  /**
+   * {@code docs/comparison.md} names the operations that answer {@code 501} for readers who compare LocalS3 with other
+   * projects; it drifted from the router once, naming operations that had been implemented since.
+   */
+  @Test
+  void theComparisonNamesTheOperationsThatAnswerNotImplemented() throws IOException {
+    assertTrue(Files.exists(COMPARISON), COMPARISON.toAbsolutePath() + " doesn't exist.");
+    Matcher paragraph = COMPARISON_NOT_IMPLEMENTED.matcher(Files.readString(COMPARISON).replace("\r\n", "\n"));
+    assertTrue(paragraph.find(), COMPARISON + " has no 'Some operations answer `501`.' paragraph.");
+
+    Set<String> named = new TreeSet<>();
+    Matcher operations = OPERATION_IN_CODE.matcher(paragraph.group(1));
+    while (operations.find()) {
+      named.add(operations.group(1));
+    }
+    assertEquals(notImplementedRoutes, named,
+        "The operations that docs/comparison.md says answer 501 and the routes that answer 501 differ.");
+  }
+
+  /**
+   * The README claims a number of S3 operations, which must not exceed the operations implemented, nor fall far behind
+   * them.
+   */
+  @Test
+  void theReadmeClaimsTheNumberOfImplementedOperations() throws IOException {
+    assertTrue(Files.exists(README), README.toAbsolutePath() + " doesn't exist.");
+    Matcher claim = README_OPERATION_COUNT.matcher(Files.readString(README));
+    assertTrue(claim.find(), README + " claims no '**N+ S3 operations**'.");
+    int claimed = Integer.parseInt(claim.group(1));
+    int implemented = documented("Supported Amazon S3 APIs").size();
+    assertTrue(claimed <= implemented && implemented - claimed < 10,
+        "README.md claims " + claimed + "+ S3 operations, and docs/apis.md lists " + implemented + ".");
   }
 
 }

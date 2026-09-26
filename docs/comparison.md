@@ -179,15 +179,17 @@ survives a restart and is the right tool for a local development environment; it
 **It is not all of AWS.** If the test needs SQS beside S3, LocalStack emulates both and LocalS3 emulates one.
 
 **Some configuration is stored rather than acted on.** Bucket lifecycle configurations are
-[saved but never applied](semantics.md#lifecycle-configuration): a framework that configures one on startup works, and
-no object ever expires. Server-side encryption headers and storage classes are accepted and recorded, and nothing is
-encrypted or tiered. Analytics, inventory and metrics configurations are stored and read back, and no report or metric
-is ever produced. Bucket notification configurations are stored, and no notification is delivered — use
+[saved, and applied only on demand](semantics.md#lifecycle-configuration): a framework that configures one on startup
+works, nothing expires by itself, and a test applies them as of any date with `POST /_admin/lifecycle` or
+`LocalS3#applyLifecycle`. Server-side encryption headers and storage classes are accepted and recorded, and nothing is
+encrypted or tiered. Analytics, intelligent-tiering, inventory and metrics configurations are stored and read back, and
+no report or metric is ever produced and no object changes tier. `RestoreObject` completes at once. Bucket notification configurations are stored, and no notification is delivered — use
 [change listeners](embedding.md#listen-to-bucket-and-object-changes) instead, which are told of every committed change.
 
-**Some operations answer `501`.** Intelligent-tiering configurations, `SelectObjectContent`, `RestoreObject`,
-`GetObjectTorrent` and `WriteGetObjectResponse` are routed and answer `501 NotImplemented` with an error naming the
-operation, so a client fails clearly instead of appearing to succeed. The full lists, checked against the router by a test so they can't drift, are in [apis.md](apis.md).
+**Some operations answer `501`.** `GetObjectTorrent`, `SelectObjectContent` and `WriteGetObjectResponse` are
+routed and answer `501 NotImplemented` with an error naming the operation, so a client fails clearly instead of
+appearing to succeed. The full lists, checked against the router by a test so they can't drift, are in
+[apis.md](apis.md); a test also checks the operations named here.
 
 **Its integrations are JVM-side.** The Docker image serves any client in any language, but the parts that make LocalS3
 pleasant — `@LocalS3`, the Spring Boot starter, seeders, change listeners, `getS3Manager()` — are Java. A Python or Go

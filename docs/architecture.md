@@ -124,9 +124,10 @@ A lock per key would add little on top of that, and would complicate the operati
 If the operation or the persistence fails:
 
 + the objects written during the transaction are deleted, and the recorded deletions are discarded;
-+ the in-memory metadata of the bucket is reloaded from the store, dropping what was changed in memory only — unless
-  the failure is a rejection of the request (a `LocalS3Exception`), which the services raise before they change
-  anything.
++ in a `PERSISTENCE` service, the in-memory metadata of the bucket is reloaded from the store, dropping what was changed
+  in memory only — unless the failure is a rejection of the request (a `LocalS3Exception`), which the services raise
+  before they change anything. An `IN_MEMORY` service has no store to reload from (see
+  [Metadata](#metadata-locals3store)), so an operation that fails after it changed the metadata keeps that change.
 
 Deleting only after the metadata is persisted means that persisted metadata never references a deleted object, even if
 the process dies in between; at worst an unreferenced file is left behind.
@@ -161,10 +162,16 @@ A service keeps two kinds of data apart:
 
 ### Metadata: `LocalS3Store`
 
-Both modes keep their metadata in an [H2 MVStore](https://www.h2database.com/html/mvstore.html), one per service,
-wrapped by `LocalS3Store`. An `IN_MEMORY` service opens one that never writes a file; a `PERSISTENCE` service opens
-`buckets.mvstore` in its data directory. The operations therefore behave the same in both modes, including the reload
-of a bucket after a failed change.
+A `PERSISTENCE` service keeps its metadata in an [H2 MVStore](https://www.h2database.com/html/mvstore.html),
+`buckets.mvstore` in its data directory, wrapped by `LocalS3Store`.
+
+An `IN_MEMORY` service keeps the metadata of its S3 buckets and its vector buckets only in the heap: storing a bucket
+writes nothing (`HeapBucketMetadataStore`), so a change costs no serialization. The heap is then the only copy, and there
+is nothing to reload a bucket from after a failed change: an operation that fails after it changed the metadata keeps
+that change. This is a deliberate trade-off of a service for tests; the requests that clients get wrong are rejected
+before anything is changed. With initial data, the metadata is read once from the data directory's `buckets.mvstore`,
+opened read-only, and never written back. The Iceberg REST catalog and S3 Tables of an `IN_MEMORY` service still use an
+in-memory `LocalS3Store`, i.e. an MVStore that never writes a file.
 
 `MVStoreBucketMetadataStore` spreads an S3 bucket over several maps, so that a change writes only what it changed:
 
@@ -220,8 +227,8 @@ How a service combines them:
 
 | Mode | Metadata | Content |
 |---|---|---|
-| `IN_MEMORY` | in-memory `LocalS3Store` | `InMemoryStorage` |
-| `IN_MEMORY` with initial data | in-memory `LocalS3Store`, seeded from the data directory's `buckets.mvstore`, opened read-only | `LayeredStorage` over the read-only directory; with the initial data cache, `CopyOnAccessStorage` over it, shared by the services that start from the same directory |
+| `IN_MEMORY` | heap only | `InMemoryStorage` |
+| `IN_MEMORY` with initial data | heap only, loaded from the data directory's `buckets.mvstore`, opened read-only | `LayeredStorage` over the read-only directory; with the initial data cache, `CopyOnAccessStorage` over it, shared by the services that start from the same directory |
 | `PERSISTENCE` | `buckets.mvstore` | `TransactionalStorage` over `LocalFileSystemStorage` |
 
 Vectors mirror this with `VectorStorage`: `InMemoryVectorStorage`, `FileSystemVectorStorage`, `TransactionalVectorStorage`
