@@ -1,6 +1,8 @@
 package com.robothy.s3.rest;
 
+import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.event.S3ChangeListener;
+import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.netty.RequestRecorder;
@@ -204,6 +206,7 @@ public class LocalS3Builder {
      *
      * @param buckets LocalS3 buckets
      * @return builder.
+     * @throws IllegalArgumentException if a name breaks the bucket naming rules.
      */
     public LocalS3Builder buckets(String... buckets) {
         if (buckets != null) {
@@ -214,7 +217,7 @@ public class LocalS3Builder {
                     if (name.endsWith(VERSIONED_SUFFIX)) {
                         versionedBuckets(name.substring(0, name.length() - VERSIONED_SUFFIX.length()));
                     } else {
-                        this.defaultBuckets.add(name);
+                        this.defaultBuckets.add(validBucketName(name));
                     }
                 }
             }
@@ -229,16 +232,29 @@ public class LocalS3Builder {
      *
      * @param buckets LocalS3 buckets with versioning enabled.
      * @return builder.
+     * @throws IllegalArgumentException if a name breaks the bucket naming rules.
      */
     public LocalS3Builder versionedBuckets(String... buckets) {
         if (buckets != null) {
             for (String bucket : buckets) {
                 if (bucket != null && !bucket.isBlank()) {
-                    this.versionedBuckets.add(bucket.trim());
+                    this.versionedBuckets.add(validBucketName(bucket.trim()));
                 }
             }
         }
         return this;
+    }
+
+    /**
+     * Reject a default bucket name while the service is configured, rather than when it starts: a command line or an
+     * environment with an invalid name is then reported like any other invalid setting.
+     */
+    private static String validBucketName(String name) {
+        try {
+            return BucketAssertions.assertBucketNameFollowsNamingRules(name);
+        } catch (InvalidBucketNameException e) {
+            throw new IllegalArgumentException(e.getMessage(), e);
+        }
     }
 
     /**

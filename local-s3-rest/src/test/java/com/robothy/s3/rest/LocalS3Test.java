@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketNotExistException;
-import com.robothy.s3.core.exception.InvalidBucketNameException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.storage.PersistencePolicy;
@@ -590,7 +589,7 @@ class LocalS3Test {
   void fromEnvironmentReadsTheBucketsAndTheVirtualHostDomains() {
     Map<String, String> variables = Map.of(
         LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "s3, s3.local",
-        LocalS3Environment.AWS_BUCKETS, "a, b,",
+        LocalS3Environment.AWS_BUCKETS, "bucket-a, bucket-b,",
         LocalS3Environment.LOCAL_S3_ACCESS_KEY_ID, "access-key-id",
         LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY, "secret-access-key");
     LocalS3 localS3 = LocalS3.builder().port(-1).fromEnvironment(variables::get).build();
@@ -785,8 +784,8 @@ class LocalS3Test {
 
   @Test
   void validatesBucketNames() throws Exception {
-    assertThrows(InvalidBucketNameException.class,
-        () -> LocalS3.builder().port(-1).buckets("My_Bucket").build().start());
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().buckets("My_Bucket"));
+    assertThrows(IllegalArgumentException.class, () -> LocalS3.builder().buckets("ab:versioned"));
 
     LocalS3 localS3 = LocalS3.builder().port(-1).build();
     localS3.start();

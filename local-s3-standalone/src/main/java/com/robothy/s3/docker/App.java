@@ -7,6 +7,7 @@ import com.robothy.s3.rest.LocalS3Environment;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -71,7 +72,19 @@ public class App {
             hint.add("- HTTPS: " + localS3Config.tls().describe());
         }
         log.info("Starting LocalS3: {}", String.join("\n", hint));
-        localS3.start();
+        try {
+            localS3.start();
+        } catch (Exception e) {
+            // Netty rethrows the BindException of a port that is taken, or of an address the machine doesn't have,
+            // without declaring it; either is fixed by configuring another port or host.
+            if (!(e instanceof BindException)) {
+                throw e;
+            }
+            System.err.println("LocalS3 can't listen on " + localS3Config.bindHost() + ":" + localS3Config.port()
+                    + ": " + e.getMessage() + ". Configure another port or bind host.");
+            System.err.println("Run with --help to see the options.");
+            System.exit(CONFIGURATION_ERROR);
+        }
     }
 
     /**
