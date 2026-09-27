@@ -165,7 +165,11 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
   }
 
   public String getObjectS3Url() {
-    return "s3://" + bucketName + "/" + key;
+    if (key == null) {
+      return "s3://" + bucketName;
+    } else {
+      return "s3://" + bucketName + "/" + key;
+    }
   }
 
   /**
