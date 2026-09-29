@@ -1,5 +1,6 @@
 package com.robothy.s3.core.storage;
 
+import com.robothy.s3.core.exception.DataPathLockedException;
 import com.robothy.s3.core.util.PathUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,7 +13,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.MVStore;
+import org.h2.mvstore.MVStoreException;
 
 /**
  * The key-value store of one LocalS3 service, which holds the metadata of its buckets.
@@ -211,6 +214,7 @@ public final class LocalS3Store implements AutoCloseable {
    * @param readOnly whether the caller only reads the store.
    * @return the store, whose holder the caller now is.
    * @throws IllegalStateException if the caller writes the store and it is open read-only.
+   * @throws DataPathLockedException if another process holds the file open.
    */
   private static LocalS3Store open(Path file, boolean readOnly, PersistencePolicy policy) {
     synchronized (OPEN_FILES) {
@@ -238,7 +242,7 @@ public final class LocalS3Store implements AutoCloseable {
       Instant openedAt = Instant.now();
       // A DURABLE store commits every change itself; a FAST one leaves that to the background thread of MVStore,
       // which commits at most a second after a change, or once a megabyte of them is unsaved.
-      LocalS3Store store = new LocalS3Store(builder.open(), file, policy);
+      LocalS3Store store = new LocalS3Store(openLocking(builder, file), file, policy);
       if (!readOnly && existed) {
         // No holder of this JVM writes the directory, and MVStore's lock of the file keeps other processes out, so no
         // request is storing content that the metadata doesn't reference yet. A new file references nothing.
@@ -252,6 +256,23 @@ public final class LocalS3Store implements AutoCloseable {
       }
       OPEN_FILES.put(file, store);
       return store;
+    }
+  }
+
+  /**
+   * Open the store that {@code builder} describes, which locks its file.
+   *
+   * @throws DataPathLockedException if another process locked the file, so that callers can tell it from the other
+   *     failures without parsing the message of MVStore.
+   */
+  private static MVStore openLocking(MVStore.Builder builder, Path file) {
+    try {
+      return builder.open();
+    } catch (MVStoreException e) {
+      if (e.getErrorCode() == DataUtils.ERROR_FILE_LOCKED) {
+        throw new DataPathLockedException(file.getParent(), e);
+      }
+      throw e;
     }
   }
 

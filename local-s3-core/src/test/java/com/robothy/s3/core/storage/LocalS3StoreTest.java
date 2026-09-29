@@ -7,9 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.exception.DataPathLockedException;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import org.h2.mvstore.MVMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,6 +38,21 @@ class LocalS3StoreTest {
       assertSame(writable, readOnly);
       assertFalse(readOnly.isReadOnly());
     }
+  }
+
+  @Test
+  void openingADataDirectoryLockedByAnotherProcessIsRejected(@TempDir Path dataPath) throws IOException {
+    Path file = dataPath.resolve(LocalS3Store.FILE_NAME);
+    // Holds the lock of the file like the store of another process does.
+    try (FileChannel channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+         FileLock ignored = channel.lock()) {
+      DataPathLockedException e = assertThrows(DataPathLockedException.class,
+          () -> LocalS3Store.persistent(dataPath));
+      assertEquals(dataPath.toAbsolutePath().normalize(), e.getDataPath());
+    }
+
+    // Once the other process has released it, the directory opens again.
+    LocalS3Store.persistent(dataPath).close();
   }
 
   @Test

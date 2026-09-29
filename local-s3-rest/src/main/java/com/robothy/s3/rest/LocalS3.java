@@ -162,6 +162,8 @@ public class LocalS3 implements AutoCloseable {
      * shutdown hook; {@linkplain LocalS3Builder#registerShutdownHook(boolean)} can disable it for host-managed lifecycles.
      *
      * @throws IllegalStateException if the service is already started.
+     * @throws com.robothy.s3.core.exception.DataPathLockedException if the service is in {@code PERSISTENCE} mode and
+     *     another process locked its data directory, e.g. another LocalS3 that uses it.
      */
     public synchronized void start() {
         if (running) {
