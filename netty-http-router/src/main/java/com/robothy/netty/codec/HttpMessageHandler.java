@@ -13,6 +13,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
@@ -75,8 +76,16 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
       if (!hasNoContent(response.getStatus())) {
-        response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
-            String.valueOf(response.getBody().readableBytes()));
+        long contentLength = response.getChunkedBody() == null
+            ? response.getBody().readableBytes() : response.getChunkedBody().length();
+        // A chunked body of unknown length is sent with Transfer-Encoding: chunked.
+        if (contentLength >= 0) {
+          response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(), String.valueOf(contentLength));
+        }
+      }
+      if (HttpMethod.HEAD.equals(request.getMethod()) || hasNoContent(response.getStatus())) {
+        // No content is sent, so the chunked body isn't read, e.g. a file isn't opened for nothing.
+        HttpResponse.closeQuietly(response.detachChunkedBody());
       }
       written = true;
       write(ctx, response, keepAlive);
@@ -97,13 +106,18 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
   }
 
   /**
-   * Write the response. {@linkplain HttpResponseEncoder} hands the body over to netty, which releases it once written;
-   * if the write fails before that, e.g. the channel is closed, release the body here.
+   * Write the response. {@linkplain HttpResponseEncoder} hands the body over to netty, which releases it once written,
+   * and the chunked body to the {@linkplain io.netty.handler.stream.ChunkedWriteHandler}, which closes it; if the write
+   * fails before that, e.g. the channel is closed, release or close the body here.
    */
   private static void write(ChannelHandlerContext ctx, HttpResponse response, boolean keepAlive) {
     ChannelFuture channelFuture = ctx.writeAndFlush(response).addListener(future -> {
       if (!future.isSuccess()) {
         releaseBody(response);
+        // Part of the response may have been sent, e.g. a chunked body failed to be read, so the client can't tell
+        // where the next response would start.
+        log.debug("Failed to write the response, close the connection.", future.cause());
+        ctx.close();
       }
     });
     if (!keepAlive) {
@@ -123,6 +137,8 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
 
   private static void releaseBody(HttpResponse response) {
     releaseBody(response.getBody());
+    // Null once the encoder has taken it over.
+    HttpResponse.closeQuietly(response.detachChunkedBody());
   }
 
   private static void releaseBody(ByteBuf body) {

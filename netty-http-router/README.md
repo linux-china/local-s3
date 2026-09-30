@@ -105,7 +105,25 @@ A request path with a `..` segment or a backslash is not found, so a request can
 > authentication. Don't put secrets under it, and keep in mind that a symbolic link under a root directory is
 > followed, even if it points outside of the root.
 
-### 2.3 Not found handler and exception handlers
+Files under a root directory are streamed in 64 KB chunks rather than read into memory.
+
+### 2.3 Streaming responses
+
+A handler can stream a large body with `HttpResponse#chunkedBody(ChunkedInput)` instead of writing it to memory.
+The response closes the input once it is written, or dropped, e.g. for a `HEAD` request. The `Content-Length` is
+the length of the input unless the handler sets it; an input of unknown length, e.g. a `ChunkedStream`, is sent with
+`Transfer-Encoding: chunked`.
+
+```java
+router.route(HttpMethod.GET, "/export", (request, response) -> response
+    .putHeader("Content-Type", "text/csv")
+    .chunkedBody(new ChunkedStream(openExport())));
+```
+
+A pipeline of your own needs a `ChunkedWriteHandler` between the HTTP codec and the `HttpResponseEncoder`, as
+`HttpServerInitializer` has. Request bodies are still aggregated in memory, up to the max request body size.
+
+### 2.4 Not found handler and exception handlers
 
 You can set a not found handler and exception handlers for a Router.
 

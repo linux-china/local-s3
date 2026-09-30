@@ -14,8 +14,10 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.stream.ChunkedStream;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -199,6 +201,56 @@ class HttpServerInitializerTest {
           .build(), HttpResponse.BodyHandlers.ofString());
       assertEquals(200, response.statusCode());
       assertEquals("true", response.body());
+    } finally {
+      serverChannel.close().sync();
+      group.shutdownGracefully();
+      executor.shutdownGracefully();
+    }
+  }
+
+  @Test
+  void streamChunkedBodies() throws Exception {
+    Path directory = Files.createTempDirectory("static-resource");
+    byte[] file = new byte[3 * 1024 * 1024 + 7];
+    new Random(8).nextBytes(file);
+    Files.write(directory.resolve("large.bin"), file);
+    Router router = Router.router()
+        .staticResource(directory.toString())
+        .route(HttpMethod.GET, "/stream", (request, response) -> response
+            .chunkedBody(new ChunkedStream(new ByteArrayInputStream("streamed".getBytes(StandardCharsets.UTF_8)))));
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    EventLoopGroup group = new NioEventLoopGroup(1);
+    Channel serverChannel = new ServerBootstrap().group(group)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new HttpServerInitializer(executor, router))
+        .bind(0)
+        .sync()
+        .channel();
+    try (Socket socket = new Socket("localhost", ((InetSocketAddress) serverChannel.localAddress()).getPort())) {
+      socket.setSoTimeout(10_000);
+      // Pipelined on one connection, which each response must leave usable for the next one.
+      socket.getOutputStream().write(("GET /large.bin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+          + "HEAD /large.bin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+          + "GET /stream HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+          .getBytes(StandardCharsets.US_ASCII));
+      byte[] responses = socket.getInputStream().readAllBytes();
+
+      String fileHead = "HTTP/1.1 200 OK\r\n";
+      String text = new String(responses, StandardCharsets.ISO_8859_1);
+      int fileBodyStart = text.indexOf("\r\n\r\n") + 4;
+      assertTrue(text.startsWith(fileHead), text.substring(0, 200));
+      assertTrue(text.substring(0, fileBodyStart).contains("content-length: " + file.length));
+      assertTrue(Arrays.equals(file, Arrays.copyOfRange(responses, fileBodyStart, fileBodyStart + file.length)));
+
+      String rest = text.substring(fileBodyStart + file.length);
+      String[] parts = rest.split("\r\n\r\n", 3);
+      // The HEAD response keeps the Content-Length of the file, without the file.
+      assertTrue(parts[0].startsWith(fileHead), rest);
+      assertTrue(parts[0].contains("content-length: " + file.length), rest);
+      // A stream of unknown length is sent in chunks.
+      assertTrue(parts[1].startsWith(fileHead), rest);
+      assertTrue(parts[1].contains("transfer-encoding: chunked"), rest);
+      assertEquals("8\r\nstreamed\r\n0\r\n\r\n", parts[2]);
     } finally {
       serverChannel.close().sync();
       group.shutdownGracefully();

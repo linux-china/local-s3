@@ -10,14 +10,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.stream.ChunkedInput;
+import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -138,7 +145,7 @@ class DefaultRouterTest {
     HttpResponse classpathResponse = new HttpResponse();
     router.match(classpathRequest).handle(classpathRequest, classpathResponse);
     assertEquals("text/html; charset=utf-8", classpathResponse.getHeaders().get("content-type"));
-    classpathResponse.getBody().release();
+    readBody(classpathResponse);
 
     Files.writeString(directory.resolve("data.no-such-extension"), "data");
     router.staticResource(directory.toString());
@@ -146,7 +153,7 @@ class DefaultRouterTest {
     HttpResponse fileResponse = new HttpResponse();
     router.match(fileRequest).handle(fileRequest, fileResponse);
     assertEquals("application/octet-stream", fileResponse.getHeaders().get("content-type"));
-    fileResponse.getBody().release();
+    readBody(fileResponse);
   }
 
   @Test
@@ -188,8 +195,7 @@ class DefaultRouterTest {
       HttpRequest request = getRequest("/a.txt");
       HttpResponse response = new HttpResponse();
       router.match(request).handle(request, response);
-      assertEquals("a", response.getBody().toString(StandardCharsets.UTF_8));
-      response.getBody().release();
+      assertEquals("a", new String(readBody(response), StandardCharsets.UTF_8));
       assertSame(NOT_FOUND, router.match(getRequest("/dir")));
     } finally {
       thread.setContextClassLoader(contextClassLoader);
@@ -207,8 +213,7 @@ class DefaultRouterTest {
     HttpRequest inside = getRequest("/inside.txt");
     HttpResponse response = new HttpResponse();
     router.match(inside).handle(inside, response);
-    assertEquals("inside", response.getBody().toString(StandardCharsets.UTF_8));
-    response.getBody().release();
+    assertEquals("inside", new String(readBody(response), StandardCharsets.UTF_8));
 
     assertSame(NOT_FOUND, router.match(getRequest("/../outside.txt")));
     assertSame(NOT_FOUND, router.match(getRequest("/sub/../../outside.txt")));
@@ -218,7 +223,7 @@ class DefaultRouterTest {
 
   @Test
   void staticResourceContent(@TempDir Path directory) throws Exception {
-    // One file is read into the heap, the other one, over 10 MB, is mapped.
+    // Both files are streamed, the large one in many chunks.
     byte[] small = new byte[64 * 1024];
     byte[] large = new byte[10 * 1024 * 1024 + 1];
     new Random(1).nextBytes(small);
@@ -233,8 +238,54 @@ class DefaultRouterTest {
       router.match(request).handle(request, response);
       byte[] expected = name.equals("small.bin") ? small : large;
       assertEquals(String.valueOf(expected.length), response.getHeaders().get("content-length"));
-      assertArrayEquals(expected, ByteBufUtil.getBytes(response.getBody()));
+      assertNotNull(response.getChunkedBody());
+      assertEquals(0, response.getBody().readableBytes());
+      assertArrayEquals(expected, readBody(response));
+    }
+  }
+
+  @Test
+  void staticFileTruncatedWhileSent(@TempDir Path directory) throws Exception {
+    Path file = directory.resolve("data.bin");
+    Files.write(file, new byte[200 * 1024]);
+    Router router = new DefaultRouter().staticResource(directory.toString());
+    HttpRequest request = getRequest("/data.bin");
+    HttpResponse response = new HttpResponse();
+    router.match(request).handle(request, response);
+
+    try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
+      channel.truncate(70 * 1024);
+    }
+    ChunkedInput<ByteBuf> input = response.detachChunkedBody();
+    try {
+      input.readChunk(ByteBufAllocator.DEFAULT).release();
+      // Without the check, the chunks after the end of the file would be empty, and the end never reached.
+      assertThrows(EOFException.class, () -> input.readChunk(ByteBufAllocator.DEFAULT));
+    } finally {
+      input.close();
       response.getBody().release();
+    }
+  }
+
+  /**
+   * Read the buffered or the chunked body of {@code response}, and release or close it.
+   */
+  private static byte[] readBody(HttpResponse response) throws Exception {
+    ChunkedInput<ByteBuf> input = response.detachChunkedBody();
+    try {
+      if (input == null) {
+        return ByteBufUtil.getBytes(response.getBody());
+      }
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      ByteBuf chunk;
+      while ((chunk = input.readChunk(ByteBufAllocator.DEFAULT)) != null) {
+        out.write(ByteBufUtil.getBytes(chunk));
+        chunk.release();
+      }
+      return out.toByteArray();
+    } finally {
+      response.getBody().release();
+      HttpResponse.closeQuietly(input);
     }
   }
 

@@ -7,6 +7,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpDecoderConfig;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.util.concurrent.EventExecutorGroup;
 
 public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
@@ -81,6 +82,9 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
     // Unlike a separate decoder and encoder, the codec pairs each response with its request, so the response to a HEAD
     // request keeps its Content-Length but not its body, which would be taken for the start of the next response.
     pipeline.addLast("http-server-codec", new HttpServerCodec(decoderConfig()));
+    // Writes the chunked response bodies, e.g. static files, chunk by chunk as the connection accepts them. It runs on
+    // the executor group, so that reading a file doesn't block the event loop.
+    pipeline.addLast(this.executorGroup, "router-chunked-writer", new ChunkedWriteHandler());
     pipeline.addLast(this.executorGroup, "router-http-request-decoder", new com.robothy.netty.codec.HttpRequestDecoder(maxRequestBodySize));
     pipeline.addLast(this.executorGroup, "router-http-response-encoder", new com.robothy.netty.codec.HttpResponseEncoder());
     pipeline.addLast(this.executorGroup, "router-http-message-handler", new HttpMessageHandler(router));

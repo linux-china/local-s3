@@ -4,18 +4,18 @@ import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.utils.MimeTypeUtils;
-import io.netty.buffer.Unpooled;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.stream.ChunkedNioFile;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -124,8 +124,6 @@ abstract class StaticResourceMatcher {
    */
   private static class DirectoryResourceMatcher extends StaticResourceMatcher {
 
-    private static final int MAP_THRESHOLD = 10 * 1024 * 1024; // 10MB
-
     private final Path rootDirectory;
 
     DirectoryResourceMatcher(String directory) {
@@ -152,33 +150,48 @@ abstract class StaticResourceMatcher {
     }
 
     private static void serve(Path absPath, HttpResponse response) throws IOException {
-      try (FileChannel fileChannel = FileChannel.open(absPath, StandardOpenOption.READ)) {
+      FileChannel fileChannel = FileChannel.open(absPath, StandardOpenOption.READ);
+      try {
         long contentLength = fileChannel.size();
         response.status(HttpResponseStatus.OK)
             .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength)
-            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()));
-
-        if (contentLength > Integer.MAX_VALUE) {
-          // The response body is a single ByteBuf, whose capacity is an int.
-          throw new IOException(absPath + " is too large to serve, " + contentLength + " bytes.");
-        }
-        if (contentLength > MAP_THRESHOLD) {
-          MappedByteBuffer byteBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, contentLength);
-          response.write(Unpooled.wrappedBuffer(byteBuffer));
-        } else {
-          ByteBuffer buf = ByteBuffer.allocate((int) contentLength);
-          while (buf.hasRemaining()) {
-            // The file is shorter than its size, e.g. it was truncated while being read.
-            if (fileChannel.read(buf) < 0) {
-              throw new EOFException(absPath + " ended after " + buf.position() + " of " + contentLength + " bytes.");
-            }
-          }
-          buf.flip();
-          response.write(Unpooled.wrappedBuffer(buf));
-        }
+            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()))
+            // Streamed as the connection accepts it, rather than read into memory; the response closes the file.
+            .chunkedBody(new FileChunkedInput(absPath, fileChannel, contentLength));
+      } catch (IOException | RuntimeException e) {
+        fileChannel.close();
+        throw e;
       }
     }
 
+    /**
+     * A {@linkplain ChunkedNioFile} that fails if the file ends before its length, e.g. it was truncated while being
+     * sent: {@linkplain ChunkedNioFile} would return empty chunks without ever reaching the end.
+     */
+    static final class FileChunkedInput extends ChunkedNioFile {
+
+      static final int CHUNK_SIZE = 64 * 1024;
+
+      private final Path path;
+
+      FileChunkedInput(Path path, FileChannel fileChannel, long length) throws IOException {
+        super(fileChannel, 0, length, CHUNK_SIZE);
+        this.path = path;
+      }
+
+      @Override
+      public ByteBuf readChunk(ByteBufAllocator allocator) throws Exception {
+        long expected = Math.min(CHUNK_SIZE, endOffset() - currentOffset());
+        ByteBuf chunk = super.readChunk(allocator);
+        if (chunk != null && chunk.readableBytes() < expected) {
+          long offset = currentOffset();
+          chunk.release();
+          throw new EOFException(path + " ended after " + offset + " of " + endOffset() + " bytes.");
+        }
+        return chunk;
+      }
+
+    }
   }
 
 }
