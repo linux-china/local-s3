@@ -81,27 +81,25 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
     try {
       RouterHttpRequestHandler handler = router.match(request);
       if (null == handler) {
+        // A Router that has no not found handler of its own, e.g. a custom one, answers as the default router does.
         // A client asking for what isn't there, e.g. a browser for /favicon.ico, isn't a failure of the server.
         log.debug("No handler for {} {}", request.getMethod(), request.getUri());
-        response.write("Not found " + request.getPath())
-            .status(HttpResponseStatus.NOT_FOUND)
-            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), TEXT_PLAIN_UTF8);
-      } else {
+        handler = Router.DEFAULT_NOT_FOUND_HANDLER;
+      }
+      try {
+        handler.handle(request, response);
+      } catch (Throwable e) {
+        ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
+        releaseBody(response);
+        response = new RouterHttpResponse();
         try {
-          handler.handle(request, response);
-        } catch (Throwable e) {
-          ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
-          releaseBody(response);
-          response = new RouterHttpResponse();
-          try {
-            exceptionHandler.handle(e, request, response);
-          } catch (Throwable handlerFailure) {
-            // Handled by exceptionCaught(), which logs it along with the exception it failed to handle.
-            handlerFailure.addSuppressed(e);
-            throw handlerFailure;
-          }
-          logFailure(request, response, e);
+          exceptionHandler.handle(e, request, response);
+        } catch (Throwable handlerFailure) {
+          // Handled by exceptionCaught(), which logs it along with the exception it failed to handle.
+          handlerFailure.addSuppressed(e);
+          throw handlerFailure;
         }
+        logFailure(request, response, e);
       }
 
       if (null == response.getStatus()) {

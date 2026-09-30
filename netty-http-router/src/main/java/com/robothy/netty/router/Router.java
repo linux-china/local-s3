@@ -140,7 +140,8 @@ public interface Router {
    * if no route matches. Query parameters in {@linkplain RouterHttpRequest#getParams()} are not changed.
    *
    * @param request HTTP request.
-   * @return a matched handler; or {@code null} if no matched handlers.
+   * @return a matched handler, or the {@linkplain #notFound(RouterHttpRequestHandler) not found handler} if no route
+   *     matches; {@code null} is answered with {@linkplain #DEFAULT_NOT_FOUND_HANDLER}.
    */
   RouterHttpRequestHandler match(RouterHttpRequest request);
 

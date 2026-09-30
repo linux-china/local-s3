@@ -11,6 +11,9 @@ import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpResponse;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.router.AbstractRouter;
+import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -18,6 +21,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -269,6 +273,40 @@ class HttpMessageHandlerTest {
         .filter(event -> event.getLevel().isGreaterOrEqual(Level.WARN)
             || event.getFormattedMessage().contains(" answered "))
         .toList();
+  }
+
+  @Test
+  void noHandlerIsAnsweredByDefaultNotFoundHandler() {
+    // A custom router that matches nothing, unlike the default router that returns its not found handler.
+    Router router = new AbstractRouter() {
+      @Override
+      public Router route(Route rule) {
+        return this;
+      }
+
+      @Override
+      public RouterHttpRequestHandler match(RouterHttpRequest request) {
+        return null;
+      }
+    };
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    channel.writeInbound(request("/missing"));
+
+    RouterHttpResponse response = channel.readOutbound();
+    RouterHttpResponse expected = new RouterHttpResponse();
+    try {
+      Router.DEFAULT_NOT_FOUND_HANDLER.handle(request("/missing"), expected);
+      assertEquals(HttpResponseStatus.NOT_FOUND, response.getStatus());
+      assertEquals(expected.getHeaders().get("content-type"), response.getHeaders().get("content-type"));
+      assertEquals(expected.getBody().toString(StandardCharsets.UTF_8),
+          response.getBody().toString(StandardCharsets.UTF_8));
+    } catch (Exception e) {
+      throw new AssertionError(e);
+    } finally {
+      expected.getBody().release();
+      response.getBody().release();
+      channel.finishAndReleaseAll();
+    }
   }
 
   private static RouterHttpRequest request(String path) {
