@@ -1,10 +1,14 @@
 package com.robothy.s3.core.event;
 
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -23,12 +27,25 @@ import lombok.extern.slf4j.Slf4j;
  * it call the services again.
  *
  * <p>The listeners run on the {@linkplain #executor(Executor) executor}, which delivers on the thread that made the
- * change by default.
+ * change by default: the time a listener takes then adds to the latency of the operation, e.g. of the HTTP request that
+ * made the change. A listener that takes longer than {@linkplain #SLOW_LISTENER_THRESHOLD} on that thread is logged
+ * once, as a hint to set another executor.
  */
 @Slf4j
 public final class S3ChangePublisher {
 
+  /**
+   * How long a listener may run on the thread that made the change before it is logged as slow.
+   */
+  public static final Duration SLOW_LISTENER_THRESHOLD = Duration.ofSeconds(1);
+
   private final List<S3ChangeListener> listeners = new CopyOnWriteArrayList<>();
+
+  /**
+   * The listeners that were logged as slow, which aren't logged again.
+   */
+  private final Set<S3ChangeListener> slowListeners = Collections.synchronizedSet(
+      Collections.newSetFromMap(new IdentityHashMap<>()));
 
   /**
    * Runs the listeners; delivers on the thread that made the change by default.
@@ -51,6 +68,7 @@ public final class S3ChangePublisher {
 
   public void removeListener(S3ChangeListener listener) {
     listeners.remove(listener);
+    slowListeners.remove(listener);
   }
 
   /**
@@ -58,6 +76,7 @@ public final class S3ChangePublisher {
    */
   public void clearListeners() {
     listeners.clear();
+    slowListeners.clear();
   }
 
   /**
@@ -71,7 +90,8 @@ public final class S3ChangePublisher {
 
   /**
    * Set the executor that runs the listeners. With the default direct executor, a listener runs on the thread that
-   * made the change, before the operation returns. Another executor, e.g.
+   * made the change, before the operation returns, so the time it takes adds to the latency of the operation. Another
+   * executor, e.g.
    * {@code Executors.newSingleThreadExecutor()}, runs the listeners apart from the operation, so that a slow listener
    * doesn't hold it up; a single-threaded executor keeps the changes in the order they were committed. The publisher
    * doesn't shut the executor down.
@@ -160,9 +180,10 @@ public final class S3ChangePublisher {
   }
 
   private void deliver(List<S3Change> changes) {
+    Thread changingThread = Thread.currentThread();
     for (S3Change change : changes) {
       try {
-        executor.execute(() -> notifyListeners(change));
+        executor.execute(() -> notifyListeners(change, Thread.currentThread() == changingThread));
       } catch (RejectedExecutionException e) {
         log.error("Dropped {} of {}/{}: the change listener executor rejected it.", change.type(),
             change.bucketName(), Objects.toString(change.key(), ""), e);
@@ -170,8 +191,12 @@ public final class S3ChangePublisher {
     }
   }
 
-  private void notifyListeners(S3Change change) {
+  /**
+   * @param onChangingThread whether the listeners run on the thread that made the change, which they hold up.
+   */
+  private void notifyListeners(S3Change change, boolean onChangingThread) {
     for (S3ChangeListener listener : listeners) {
+      long start = System.nanoTime();
       try {
         listener.onChange(change);
       } catch (VirtualMachineError e) {
@@ -179,7 +204,22 @@ public final class S3ChangePublisher {
       } catch (Throwable e) {
         log.error("Change listener failed to handle {} of {}/{}.", change.type(), change.bucketName(),
             Objects.toString(change.key(), ""), e);
+      } finally {
+        if (onChangingThread) {
+          warnIfSlow(listener, change, System.nanoTime() - start);
+        }
       }
+    }
+  }
+
+  private void warnIfSlow(S3ChangeListener listener, S3Change change, long elapsedNanos) {
+    if (elapsedNanos > SLOW_LISTENER_THRESHOLD.toNanos() && slowListeners.add(listener)) {
+      log.warn("Change listener {} took {} ms to handle {} of {}/{} on the thread that made the change, which held up "
+              + "the operation, e.g. its HTTP request. Deliver the changes on another executor, e.g. "
+              + "LocalS3.builder().events(e -> e.executor(Executors.newSingleThreadExecutor())), or "
+              + "LocalS3Manager#changeListenerExecutor. This is logged once per listener.",
+          listener, Duration.ofNanos(elapsedNanos).toMillis(), change.type(), change.bucketName(),
+          Objects.toString(change.key(), ""));
     }
   }
 

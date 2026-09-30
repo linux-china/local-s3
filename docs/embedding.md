@@ -317,9 +317,12 @@ LocalS3 localS3 = LocalS3.builder()
 localS3.start();
 ```
 
-The listeners run synchronously on the thread that made the change by default. Pass an executor to deliver changes
-asynchronously, so that slow listeners don't hold up request handling; a single-threaded executor keeps the changes in
-order.
+The listeners run synchronously on the thread that made the change by default, after the locks are released but
+before the operation returns: **the time a listener takes adds to the latency of the request that made the change**.
+This suits a listener that must see the change before the client gets its response, e.g. Spring's
+`@TransactionalEventListener`. A listener that takes longer than 1 second on that thread is logged once as a `WARN`,
+naming the listener. Pass an executor to deliver changes asynchronously, so that slow listeners don't hold up request
+handling; a single-threaded executor keeps the changes in order.
 
 ```java
 ExecutorService executor = Executors.newSingleThreadExecutor();

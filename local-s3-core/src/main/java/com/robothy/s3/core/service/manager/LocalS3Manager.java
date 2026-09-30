@@ -147,8 +147,11 @@ public interface LocalS3Manager {
 
   /**
    * Set the executor that runs the {@linkplain #addChangeListener subscribed} change listeners. By default a listener
-   * runs on the thread that made the change, before the operation returns; another executor runs the listeners apart
-   * from the operations, so that a slow listener doesn't hold them up.
+   * runs on the thread that made the change, before the operation returns, so the time it takes adds to the latency of
+   * the operation, e.g. of an HTTP request; a listener that takes longer than
+   * {@linkplain com.robothy.s3.core.event.S3ChangePublisher#SLOW_LISTENER_THRESHOLD a second} is logged once as a
+   * warning. Another executor runs the listeners apart from the operations, so that a slow listener doesn't hold them
+   * up.
    *
    * @param executor runs the change listeners.
    * @see com.robothy.s3.core.event.S3ChangePublisher#executor(Executor)

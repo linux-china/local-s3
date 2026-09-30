@@ -700,6 +700,10 @@ it is made: by a client of the HTTP API, or by the application itself through `l
 so a listener never hears of a change that was rejected or failed, and may call LocalS3 again. A `reset()` doesn't
 fire changes for the data it drops.
 
+By default a listener runs on the thread that made the change, before the operation returns, so the time it takes
+counts toward the latency of the request; a listener that takes longer than 1 second there is logged once as a `WARN`.
+`events(e -> e.executor(...))` delivers the changes on another executor instead.
+
 Every change carries `type()`, `bucketName()` and `operation()`, the S3 operation that made it, e.g. `PutObject`,
 `CopyObject`, `CompleteMultipartUpload`, `DeleteObject`, `DeleteObjects` or `CreateBucket`. `s3EventName()` names the
 change like an
