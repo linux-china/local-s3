@@ -82,6 +82,22 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   @Test
+  void takesTheHostOfAnAbsoluteFormTargetOverTheHostHeader() {
+    DefaultHttpRequest absoluteForm = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+        "http://bucket.localhost:9090/key");
+    absoluteForm.headers().set(HttpHeaderNames.HOST, "other.localhost:9090");
+    channel.writeInbound(absoluteForm, new DefaultLastHttpContent());
+
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    try {
+      assertEquals("bucket.localhost:9090", request.header(HttpHeaderNames.HOST).orElse(null));
+      assertEquals("/key", request.getPath());
+    } finally {
+      request.getBody().release();
+    }
+  }
+
+  @Test
   void keepsSemicolonsInQueryParameterValues() {
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         "/bucket?list-type=2&prefix=a;b"), new DefaultLastHttpContent());

@@ -93,11 +93,16 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
           header.getValue().trim(), (values, value) -> values + "," + value));
       // Parse the URI before allocating the body, a malformed one (e.g. "%zz") must not leave a half-built request.
       // An absolute-form target (e.g. "http://host/a") is converted to its path, "*" and others are not routable.
-      String uri = RequestTargets.toOriginForm(httpRequest.uri());
-      if (uri == null) {
+      RequestTargets.RequestTarget target = RequestTargets.parse(httpRequest.uri());
+      if (target == null) {
         log.warn("Unsupported request target '{}', close the connection.", httpRequest.uri());
         reject(ctx, HttpResponseStatus.BAD_REQUEST, "Bad Request: unsupported request target.");
         return;
+      }
+      String uri = target.originForm();
+      // The authority of an absolute-form target takes the place of the Host header (RFC 9112, section 3.2.2).
+      if (target.authority() != null) {
+        headers.put(HttpHeaderNames.HOST.toString(), target.authority());
       }
       String path;
       Map<String, List<String>> params;

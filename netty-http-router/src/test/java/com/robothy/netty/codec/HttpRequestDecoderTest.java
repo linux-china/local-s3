@@ -150,6 +150,26 @@ class HttpRequestDecoderTest {
   }
 
   @Test
+  void absoluteFormAuthorityReplacesHostHeader() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    DefaultFullHttpRequest absoluteForm =
+        new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "http://bucket.localhost:8080/key");
+    absoluteForm.headers().set(HttpHeaderNames.HOST, "other.localhost:8080");
+    DefaultFullHttpRequest originForm = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/key");
+    originForm.headers().set(HttpHeaderNames.HOST, "other.localhost:8080");
+    channel.writeInbound(absoluteForm, originForm);
+
+    HttpRequest request = channel.readInbound();
+    assertEquals("bucket.localhost:8080", request.header("Host").orElse(null));
+    request.getBody().release();
+    // The Host header of an origin-form target is kept.
+    request = channel.readInbound();
+    assertEquals("other.localhost:8080", request.header("Host").orElse(null));
+    request.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
   void semicolonIsNotParameterSeparator() {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
     channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket?prefix=a;b&c=d"));

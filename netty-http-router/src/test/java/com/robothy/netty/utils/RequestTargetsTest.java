@@ -19,6 +19,25 @@ class RequestTargetsTest {
     assertNull(RequestTargets.toOriginForm("*"));
     assertNull(RequestTargets.toOriginForm("host:443"));
     assertNull(RequestTargets.toOriginForm("ftp://host/a"));
+    assertNull(RequestTargets.toOriginForm("http:///a"));
+  }
+
+  @Test
+  void parse() {
+    assertEquals(new RequestTargets.RequestTarget("/a/b?c=d", null), RequestTargets.parse("/a/b?c=d"));
+    assertEquals(new RequestTargets.RequestTarget("/a/b?c=d", "host:8080"),
+        RequestTargets.parse("http://host:8080/a/b?c=d"));
+    assertEquals(new RequestTargets.RequestTarget("/", "bucket.localhost"), RequestTargets.parse("http://bucket.localhost"));
+    assertEquals(new RequestTargets.RequestTarget("/?list-type=2", "host"),
+        RequestTargets.parse("https://host?list-type=2"));
+    // The user info isn't part of the Host header.
+    assertEquals(new RequestTargets.RequestTarget("/a", "host:9000"), RequestTargets.parse("http://user:p@ss@host:9000/a"));
+    assertEquals(new RequestTargets.RequestTarget("/a", "[::1]:9000"), RequestTargets.parse("http://[::1]:9000/a"));
+
+    // An http(s) URI without a host is invalid.
+    assertNull(RequestTargets.parse("http:///a"));
+    assertNull(RequestTargets.parse("http://user@/a"));
+    assertNull(RequestTargets.parse("*"));
   }
 
 }

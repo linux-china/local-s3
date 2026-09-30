@@ -460,10 +460,16 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     request.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
         header.getValue().trim(), (values, value) -> values + "," + value));
     // An absolute-form target (e.g. "http://host/a") is converted to its path, "*" and others are not routable.
-    String uri = RequestTargets.toOriginForm(request.uri());
-    if (uri == null) {
+    RequestTargets.RequestTarget target = RequestTargets.parse(request.uri());
+    if (target == null) {
       reject(ctx, S3ErrorCode.BadRequest, "The request target is not supported.");
       return false;
+    }
+    String uri = target.originForm();
+    // The authority of an absolute-form target takes the place of the Host header (RFC 9112, section 3.2.2), which
+    // the virtual-hosted-style routing reads the bucket from.
+    if (target.authority() != null) {
+      headers.put(HttpHeaderNames.HOST.toString(), target.authority());
     }
     // Only '&' separates parameters, like S3; netty also splits at ';' by default, so "prefix=a;b" became two.
     QueryStringDecoder queryStringDecoder = QueryStringDecoder.builder().semicolonIsNormalChar(true).build(uri);
