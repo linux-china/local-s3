@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.rest.LocalS3;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -47,6 +48,42 @@ class LocalS3ActuatorTest {
       context.getBean(LocalS3Lifecycle.class).stop();
       assertEquals(Status.DOWN, indicator.health().getStatus());
     });
+  }
+
+  @Test
+  void theEndpointListsTheBucketsWithTheirObjectsAndStorage() {
+    runner.withConfiguration(AutoConfigurations.of(LocalS3EndpointAutoConfiguration.class))
+        .withPropertyValues("management.endpoints.web.exposure.include=locals3", "local-s3.buckets=metrics,empty")
+        .run(context -> {
+          S3Client s3 = context.getBean(S3Client.class);
+          s3.putObject(request -> request.bucket("metrics").key("a.txt"), RequestBody.fromString("Hello"));
+          s3.putObject(request -> request.bucket("metrics").key("b.txt"), RequestBody.fromString("World!"));
+
+          LocalS3Endpoint endpoint = context.getBean(LocalS3Endpoint.class);
+          LocalS3Endpoint.Descriptor descriptor = endpoint.describe();
+          assertTrue(descriptor.running());
+          assertEquals(context.getBean(LocalS3Lifecycle.class).endpoint().toString(), descriptor.endpoint());
+          assertEquals("IN_MEMORY", descriptor.configuration().mode());
+          assertEquals("127.0.0.1", descriptor.configuration().bindHost());
+          assertFalse(descriptor.configuration().signedRequestsRequired());
+          assertEquals(2L, descriptor.totals().buckets());
+          assertEquals(2L, descriptor.totals().objects());
+          assertEquals(11L, descriptor.totals().storageBytes());
+          assertEquals(List.of(new LocalS3Endpoint.Bucket("empty", 0, 0, 0, 0, 0),
+              new LocalS3Endpoint.Bucket("metrics", 2, 2, 0, 11, 0)), descriptor.buckets());
+
+          context.getBean(LocalS3Lifecycle.class).stop();
+          LocalS3Endpoint.Descriptor stopped = endpoint.describe();
+          assertFalse(stopped.running());
+          assertEquals("IN_MEMORY", stopped.configuration().mode());
+          assertTrue(stopped.buckets().isEmpty());
+        });
+  }
+
+  @Test
+  void theEndpointIsOnlyDefinedWhenItIsExposed() {
+    runner.withConfiguration(AutoConfigurations.of(LocalS3EndpointAutoConfiguration.class))
+        .run(context -> assertFalse(context.containsBean("localS3Endpoint")));
   }
 
   @Test

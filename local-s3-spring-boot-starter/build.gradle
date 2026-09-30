@@ -61,6 +61,8 @@ dependencies {
     // The contexts of ApplicationContextRunner are AssertJ assert providers.
     testImplementation("org.assertj:assertj-core")
     testImplementation(libs.springBootHealth)
+    // @ConditionalOnAvailableEndpoint of the locals3 Actuator endpoint.
+    testImplementation("org.springframework.boot:spring-boot-actuator-autoconfigure")
     testImplementation(libs.micrometerCore)
     testImplementation("org.springframework.boot:spring-boot-micrometer-metrics")
     testImplementation("org.springframework:spring-tx")

@@ -51,7 +51,7 @@ class LocalS3SpringBoot3Test {
     LocalS3 localS3;
     try (ConfigurableApplicationContext context = new SpringApplicationBuilder(Application.class)
         .web(WebApplicationType.NONE)
-        .properties("local-s3.port=0", "local-s3.buckets=app")
+        .properties("local-s3.port=0", "local-s3.buckets=app", "management.endpoints.web.exposure.include=locals3")
         .run()) {
       localS3 = context.getBean(LocalS3.class);
       assertTrue(localS3.isRunning());
@@ -72,6 +72,12 @@ class LocalS3SpringBoot3Test {
       assertEquals("IN_MEMORY", details.get("mode"));
       assertEquals(1L, details.get("buckets"));
       assertEquals(1L, details.get("objects"));
+
+      // The Actuator endpoint, whose API Spring Boot 3 and Spring Boot 4 share.
+      LocalS3Endpoint.Descriptor descriptor = context.getBean(LocalS3Endpoint.class).describe();
+      assertEquals(1, descriptor.buckets().size());
+      assertEquals("app", descriptor.buckets().getFirst().name());
+      assertEquals(12L, descriptor.buckets().getFirst().storageBytes());
 
       // Micrometer, whose API Spring Boot 3 and Spring Boot 4 share.
       MeterRegistry registry = new SimpleMeterRegistry();

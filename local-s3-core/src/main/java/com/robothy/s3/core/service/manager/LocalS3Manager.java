@@ -5,6 +5,7 @@ import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import java.nio.file.Path;
+import java.util.SortedMap;
 import java.util.concurrent.Executor;
 
 /**
@@ -167,6 +168,15 @@ public interface LocalS3Manager {
    */
   default ObjectStatistics statistics() {
     return ObjectStatistics.collect(bucketService());
+  }
+
+  /**
+   * Count the data of the service bucket by bucket; the {@code buckets} of each statistics is {@code 1}.
+   *
+   * @return the statistics of the data of each bucket, by bucket name in alphabetical order.
+   */
+  default SortedMap<String, ObjectStatistics> bucketStatistics() {
+    return ObjectStatistics.collectByBucket(bucketService());
   }
 
   /**

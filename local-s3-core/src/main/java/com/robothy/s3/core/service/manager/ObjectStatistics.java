@@ -8,6 +8,8 @@ import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
 import com.robothy.s3.core.service.BucketService;
 import java.util.List;
 import java.util.NavigableMap;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * The amount of Amazon S3 data of a LocalS3 service.
@@ -41,14 +43,43 @@ public record ObjectStatistics(long buckets, long objects, long objectVersions, 
    */
   static ObjectStatistics collect(BucketService bucketService) {
     long[] totals = new long[8];
+    for (ObjectStatistics bucket : collectByBucket(bucketService).values()) {
+      totals[0] += bucket.buckets();
+      totals[1] += bucket.objects();
+      totals[2] += bucket.objectVersions();
+      totals[3] += bucket.deleteMarkers();
+      totals[4] += bucket.objectBytes();
+      totals[5] += bucket.multipartUploads();
+      totals[6] += bucket.loadedObjects();
+      totals[7] += bucket.loadedObjectMetadataBytes();
+    }
+    return of(totals);
+  }
+
+  /**
+   * Count the data of a service bucket by bucket, each under its read lock, like {@linkplain #collect(BucketService)}.
+   *
+   * @param bucketService the bucket service of the LocalS3 service.
+   * @return the statistics of each bucket, whose {@code buckets} is {@code 1}, by bucket name.
+   */
+  static SortedMap<String, ObjectStatistics> collectByBucket(BucketService bucketService) {
+    SortedMap<String, ObjectStatistics> buckets = new TreeMap<>();
     List<String> bucketNames = List.copyOf(bucketService.localS3Metadata().getBucketMetadataMap().keySet());
     for (String bucketName : bucketNames) {
       bucketService.withBucketReadLock(bucketName, () -> {
         // Looked up again under the lock: the bucket may be gone, or the data of the service replaced.
-        bucketService.localS3Metadata().getBucketMetadata(bucketName).ifPresent(bucket -> count(bucket, totals));
+        bucketService.localS3Metadata().getBucketMetadata(bucketName).ifPresent(bucket -> {
+          long[] totals = new long[8];
+          count(bucket, totals);
+          buckets.put(bucketName, of(totals));
+        });
         return null;
       });
     }
+    return buckets;
+  }
+
+  private static ObjectStatistics of(long[] totals) {
     return new ObjectStatistics(totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6],
         totals[7]);
   }

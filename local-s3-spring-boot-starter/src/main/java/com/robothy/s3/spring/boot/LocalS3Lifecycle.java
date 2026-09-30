@@ -1,8 +1,12 @@
 package com.robothy.s3.spring.boot;
 
 import com.robothy.s3.rest.LocalS3;
+import com.robothy.s3.rest.LocalS3Config;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
 /**
@@ -17,6 +21,10 @@ import org.springframework.context.SmartLifecycle;
  *
  * <p>The application context stops the service, so it registers no JVM shutdown hook of its own.
  *
+ * <p>Once started, the service is summed up in one line of the log: where it listens, whether it requires signed
+ * requests, its mode and its data directory, since an application may embed it for longer than a test, e.g. to serve
+ * other processes. A service that answers anonymous requests from other machines is warned about as well.
+ *
  * <p>Under Spring Boot DevTools, an {@code IN_MEMORY} service keeps its data across the restarts of the application:
  * the service of the new context takes over the data of the stopped one, see {@linkplain LocalS3DevToolsRestart}.
  */
@@ -26,6 +34,8 @@ public class LocalS3Lifecycle implements SmartLifecycle {
    * The phase of the service: earlier than the web server, whose phase is {@code DEFAULT_PHASE - 1024}.
    */
   public static final int PHASE = SmartLifecycle.DEFAULT_PHASE - 2048;
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3Lifecycle.class);
 
   private final LocalS3 localS3;
 
@@ -54,6 +64,22 @@ public class LocalS3Lifecycle implements SmartLifecycle {
   public synchronized void start() {
     if (!localS3.isRunning()) {
       localS3.start();
+      logSummary();
+    }
+  }
+
+  private void logSummary() {
+    LocalS3Config config = localS3.getConfig();
+    Path dataPath = localS3.getDataPath();
+    log.info("Embedded LocalS3: endpoint {}, bound to {}, signed requests {}, mode {}, data path {}.",
+        localS3.endpoint(), config.bindHost(), config.authenticationEnabled() ? "required" : "not required",
+        config.mode(), dataPath == null ? "none" : dataPath.toAbsolutePath());
+    if (!config.authenticationEnabled() && config.reachableFromOtherHosts()) {
+      // LocalS3 warns about it too; this names the properties of the starter that close it.
+      log.warn("The embedded LocalS3 listens on {} without credentials: every host that reaches port {} can read, "
+          + "write and delete its data. Set local-s3.credentials.access-key-id and local-s3.credentials.secret-access-key, "
+          + "or local-s3.bind-host=127.0.0.1, unless the service is meant to be open.", config.bindHost(),
+          localS3.getPort());
     }
   }
 

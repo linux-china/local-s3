@@ -134,6 +134,26 @@ class InMemoryLocalS3ManagerTest {
 
 
   /**
+   * The statistics of each bucket add up to the statistics of the service.
+   */
+  @Test
+  void bucketStatisticsCountEachBucket() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
+    BucketService bucketService = manager.bucketService();
+    ObjectService objectService = manager.objectService();
+    bucketService.createBucket("b-bucket");
+    bucketService.createBucket("a-bucket");
+    putObject(objectService, "b-bucket", "a.txt", "Hello");
+    putObject(objectService, "b-bucket", "b.txt", "World!");
+
+    var buckets = manager.bucketStatistics();
+    assertEquals(java.util.List.of("a-bucket", "b-bucket"), java.util.List.copyOf(buckets.keySet()));
+    assertEquals(new ObjectStatistics(1, 0, 0, 0, 0, 0, 0, 0), withoutHeapCounts(buckets.get("a-bucket")));
+    assertEquals(new ObjectStatistics(1, 2, 2, 0, 11, 0, 0, 0), withoutHeapCounts(buckets.get("b-bucket")));
+    assertEquals(new ObjectStatistics(2, 2, 2, 0, 11, 0, 0, 0), withoutHeapCounts(manager.statistics()));
+  }
+
+  /**
    * A reset drops the data of a service without initial data, and the services keep working on the new data.
    */
   @Test

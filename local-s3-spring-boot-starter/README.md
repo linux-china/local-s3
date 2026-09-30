@@ -11,6 +11,11 @@ Spring Boot 4**: see [Spring Boot 3](#spring-boot-3) for what an application on 
 > `local-s3.enabled=false` in the production configuration (see
 > [LocalS3 locally, Amazon S3 in production](#locals3-locally-amazon-s3-in-production)).
 
+Once started, the service logs a one-line summary (`Embedded LocalS3: endpoint ..., bound to ..., signed requests ...,
+mode ..., data path ...`), and warns when it binds an address other than loopback, e.g. `local-s3.bind-host=0.0.0.0`,
+without `local-s3.credentials.*`: every host that reaches the port can then read, write and delete the data. It only
+warns; an application that embeds the service for other processes on purpose may keep it that way.
+
 With Gradle and the Spring Boot plugin, use `developmentOnly`, which `bootRun` sees and `bootJar`/`bootWar` leave
 out. Use `testAndDevelopmentOnly` (Spring Boot 3.2+) to put it on the test classpath too:
 
@@ -107,6 +112,7 @@ own ship with an adapter per layout, of which only the one whose API is on the c
 | Integration                         | Spring Boot 3                     | Spring Boot 4            |
 |-------------------------------------|-----------------------------------|--------------------------|
 | Actuator health (`localS3`)         | `spring-boot-actuator`            | `spring-boot-health`     |
+| Actuator endpoint (`locals3`)       | `spring-boot-actuator`            | `spring-boot-actuator`   |
 | `@AutoConfigureLocalS3` properties  | `spring-boot-test-autoconfigure`  | `spring-boot-test`       |
 
 Spring Boot 3 pins Netty to 4.1, which LocalS3 does not run on, so an application on Spring Boot 3 has to raise it to
@@ -172,6 +178,10 @@ The starter defines:
   e.g. of the default buckets, are published once it is refreshed;
 + with Actuator, a `localS3` health indicator (`management.health.local-s3.enabled`), which checks `/_health` and
   reports the endpoint and the amount of data;
++ with Actuator, a `locals3` endpoint, `GET /actuator/locals3`, which reports the configuration of the service (mode,
+  bind host, data path, whether signed requests are required), its totals and every bucket with its number of objects
+  and storage in bytes. Like any endpoint besides `health`, it has to be exposed:
+  `management.endpoints.web.exposure.include=health,locals3`. Each request counts the data, like `/_admin/stats`;
 + with Micrometer, the timer `local.s3.requests` (tagged with `operation`, `status` and `outcome`) and gauges of the data
   that `/_admin/stats` reports, e.g. `local.s3.objects`, `local.s3.objects.size` and `local.s3.requests.active`.
 
