@@ -27,6 +27,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -43,7 +45,10 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class HttpServerInitializerTest {
 
@@ -133,6 +138,7 @@ class HttpServerInitializerTest {
             .build(), responseInfo -> HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8));
     assertEquals(200, classpathResourceResp.statusCode());
     assertEquals("Hello World", classpathResourceResp.body());
+    assertEquals("11", classpathResourceResp.headers().firstValue("Content-Length").get());
     assertEquals("text/html; charset=utf-8", classpathResourceResp.headers().firstValue("Content-Type").get());
 
     // Test default exception handler for a RuntimeException.
@@ -373,6 +379,57 @@ class HttpServerInitializerTest {
       serverChannel.close().sync();
       group.shutdownGracefully();
       executor.shutdownGracefully();
+    }
+  }
+
+  @Test
+  void classpathResourceInJarIsStreamed(@TempDir Path directory) throws Exception {
+    // Larger than a chunk, so it is sent in several.
+    byte[] content = new byte[200 * 1024 + 7];
+    new Random(1).nextBytes(content);
+    Path jar = directory.resolve("static.jar");
+    try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+      out.putNextEntry(new JarEntry("web/app.wasm"));
+      out.write(content);
+      out.closeEntry();
+    }
+    Router router;
+    Thread thread = Thread.currentThread();
+    ClassLoader previous = thread.getContextClassLoader();
+    try (URLClassLoader classLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, null)) {
+      thread.setContextClassLoader(classLoader);
+      try {
+        router = Router.router().staticResource("classpath:web");
+      } finally {
+        thread.setContextClassLoader(previous);
+      }
+      DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+      EventLoopGroup group = new NioEventLoopGroup(1);
+      Channel serverChannel = new ServerBootstrap().group(group)
+          .channel(NioServerSocketChannel.class)
+          .childHandler(new HttpServerInitializer(executor, router))
+          .bind(0)
+          .sync()
+          .channel();
+      try {
+        String base = "http://localhost:" + ((InetSocketAddress) serverChannel.localAddress()).getPort();
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<byte[]> get = client.send(HttpRequest.newBuilder(new URI(base + "/app.wasm")).GET().build(),
+            HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, get.statusCode());
+        assertEquals(String.valueOf(content.length), get.headers().firstValue("Content-Length").orElse(null));
+        assertTrue(Arrays.equals(content, get.body()));
+
+        HttpResponse<byte[]> head = client.send(HttpRequest.newBuilder(new URI(base + "/app.wasm"))
+            .method("HEAD", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, head.statusCode());
+        assertEquals(String.valueOf(content.length), head.headers().firstValue("Content-Length").orElse(null));
+        assertEquals(0, head.body().length);
+      } finally {
+        serverChannel.close().sync();
+        group.shutdownGracefully();
+        executor.shutdownGracefully();
+      }
     }
   }
 

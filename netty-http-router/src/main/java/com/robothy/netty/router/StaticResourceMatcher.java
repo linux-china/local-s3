@@ -10,12 +10,14 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.stream.ChunkedNioFile;
+import io.netty.handler.stream.ChunkedStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -35,6 +37,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 abstract class StaticResourceMatcher {
+
+  static final int CHUNK_SIZE = 64 * 1024;
 
   abstract HttpRequestHandler match(HttpRequest request);
 
@@ -123,10 +127,52 @@ abstract class StaticResourceMatcher {
       }
       return (req, response) -> {
         response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(resourceName));
-        try (InputStream in = url.openStream()) {
-          response.write(in.readAllBytes());
+        if (HttpMethod.HEAD.equals(req.getMethod())) {
+          long contentLength = contentLength(url);
+          if (contentLength >= 0) {
+            response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength);
+          }
+          return;
+        }
+        URLConnection connection = url.openConnection();
+        InputStream in = connection.getInputStream();
+        try {
+          long contentLength = connection.getContentLengthLong();
+          // Unknown, e.g. of an unusual protocol: the body is sent with Transfer-Encoding: chunked.
+          if (contentLength >= 0) {
+            response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength);
+          }
+          // Streamed as the connection accepts it, rather than read into memory; the response closes the stream.
+          response.chunkedBody(new ChunkedStream(in, CHUNK_SIZE));
+        } catch (RuntimeException e) {
+          in.close();
+          throw e;
         }
       };
+    }
+
+    /**
+     * The length of a resource without reading it, for a {@code HEAD} request.
+     *
+     * @return the length; or {@code -1} if it is unknown.
+     */
+    private static long contentLength(URL url) throws IOException {
+      if ("file".equals(url.getProtocol())) {
+        try {
+          return Files.size(Path.of(url.toURI()));
+        } catch (URISyntaxException | IllegalArgumentException e) {
+          return -1;
+        }
+      }
+      URLConnection connection = url.openConnection();
+      if (connection instanceof JarURLConnection) {
+        // The size of the jar entry; the jar file is shared by the connections, so there is nothing to close.
+        return connection.getContentLengthLong();
+      }
+      // Other connections may open the resource to get its length, which is closed unread.
+      try (InputStream ignored = connection.getInputStream()) {
+        return connection.getContentLengthLong();
+      }
     }
 
     /**
@@ -180,7 +226,16 @@ abstract class StaticResourceMatcher {
       if (!absPath.startsWith(rootDirectory) || !Files.isRegularFile(absPath)) {
         return null;
       }
-      return (req, response) -> serve(absPath, response);
+      return (req, response) -> {
+        if (HttpMethod.HEAD.equals(req.getMethod())) {
+          // Only the headers are sent, so the file isn't opened.
+          response.status(HttpResponseStatus.OK)
+              .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), Files.size(absPath))
+              .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()));
+        } else {
+          serve(absPath, response);
+        }
+      };
     }
 
     private static void serve(Path absPath, HttpResponse response) throws IOException {
@@ -203,8 +258,6 @@ abstract class StaticResourceMatcher {
      * sent: {@linkplain ChunkedNioFile} would return empty chunks without ever reaching the end.
      */
     static final class FileChunkedInput extends ChunkedNioFile {
-
-      static final int CHUNK_SIZE = 64 * 1024;
 
       private final Path path;
 

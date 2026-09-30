@@ -125,7 +125,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         }
       }
       if (head || hasNoContent(response.getStatus())) {
-        // No content is sent, so the chunked body isn't read, e.g. a file isn't opened for nothing.
+        // No content is sent, so a chunked body that a handler set anyway is closed unread.
         HttpResponse.closeQuietly(response.detachChunkedBody());
       }
       written = true;
