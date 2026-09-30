@@ -771,7 +771,8 @@ In a Spring Boot test, `@ServiceConnection` points the clients that [Spring Clou
 auto-configures, e.g. `S3Client`, `S3Template` and `S3Presigner`, at the container, as it does for LocalStack. No
 property of the application is needed: `local-s3-testcontainers` registers a `ConnectionDetailsFactory` that answers
 with the `AwsConnectionDetails` of the container. It takes effect where the test classpath has
-`spring-boot-testcontainers` and a Spring Cloud AWS starter, e.g. `spring-cloud-aws-starter-s3`.
+`spring-boot-testcontainers` and a Spring Cloud AWS starter, e.g. `spring-cloud-aws-starter-s3`: 4.x with Spring Boot 4,
+3.4 with Spring Boot 3.5.
 
 ```java
 @SpringBootTest
@@ -791,6 +792,17 @@ class UploadTest {
     s3Template.upload("uploads", "hello.txt", new ByteArrayInputStream("Hello".getBytes()));
   }
 
+}
+```
+
+The container can be a `@Bean` of a `@TestConfiguration` instead, which Spring starts and stops, and which needs no
+`@Testcontainers`, as in the [quick start](../README.md#quick-start):
+
+```java
+@Bean
+@ServiceConnection
+LocalS3Container localS3() {
+  return new LocalS3Container("latest").withBuckets("uploads");
 }
 ```
 

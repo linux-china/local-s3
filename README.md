@@ -53,6 +53,53 @@ class AppTest {
 }
 ```
 
+**Spring Boot + Testcontainers `@ServiceConnection`**
+
+With Spring Cloud AWS (`spring-cloud-aws-starter-s3`: 4.x for Spring Boot 4, 3.4 for Spring Boot 3.5), its `S3Client`,
+`S3Template` and `S3Presigner` point at the container, with no `spring.cloud.aws.*` property:
+
+```xml
+<dependency>
+    <groupId>io.github.robothy</groupId>
+    <artifactId>local-s3-testcontainers</artifactId>
+    <version>last_version</version>
+    <scope>test</scope>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-testcontainers</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
+```java
+@SpringBootTest
+class UploadTest {
+
+  @TestConfiguration(proxyBeanMethods = false)
+  static class LocalS3Config {
+
+    @Bean
+    @ServiceConnection
+    LocalS3Container localS3() {
+      return new LocalS3Container("latest").withBuckets("uploads");
+    }
+  }
+
+  @Autowired
+  S3Template s3;
+
+  @Test
+  void uploads() {
+    s3.upload("uploads", "hello.txt", new ByteArrayInputStream("Hello".getBytes()));
+  }
+}
+```
+
+See [`@ServiceConnection`](docs/embedding.md#serviceconnection-with-spring-cloud-aws) for the connection details,
+[Docker Compose](docs/embedding.md#docker-compose-with-spring-cloud-aws) for the same service connection in a local
+run, and the [Spring Boot starter](docs/embedding.md#spring-boot) to embed LocalS3 without Docker.
+
 **Java**
 
 ```java
