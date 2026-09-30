@@ -2,6 +2,7 @@ package com.robothy.netty.router;
 
 import com.robothy.netty.http.HttpRequestHandler;
 import io.netty.handler.codec.http.HttpMethod;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -76,6 +77,35 @@ public final class Route {
     return Objects.hash(method, trimPath, headerMatcher, paramMatcher);
   }
 
+  /**
+   * Split the path into non-empty segments; consecutive, leading and trailing slashes are ignored.
+   */
+  static String[] splitPath(String path) {
+    Objects.requireNonNull(path, "The path cannot be null.");
+    if (!path.startsWith("/")) {
+      throw new IllegalArgumentException("The path must start with '/'.");
+    }
+
+    List<String> segments = new ArrayList<>();
+    StringBuilder seg = new StringBuilder();
+    for (int i = 1; i < path.length(); i++) {
+      if (path.charAt(i) == '/') {
+        if (!(seg.length() == 0)) {
+          segments.add(seg.toString());
+          seg = new StringBuilder();
+        }
+      } else {
+        seg.append(path.charAt(i));
+      }
+    }
+
+    if (!(seg.length() == 0)) {
+      segments.add(seg.toString());
+    }
+
+    return segments.toArray(new String[0]);
+  }
+
   public static Builder builder() {
     return new Builder();
   }
@@ -118,7 +148,7 @@ public final class Route {
     }
 
     private String trimPath(String path) {
-      String[] segments = path.split("/");
+      String[] segments = splitPath(path);
       StringBuilder result = new StringBuilder();
       for (String seg : segments) {
         if (seg.startsWith("{") && seg.endsWith("}")) {

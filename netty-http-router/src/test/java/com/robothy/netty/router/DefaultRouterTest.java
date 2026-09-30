@@ -322,6 +322,16 @@ class DefaultRouterTest {
   }
 
   @Test
+  void rejectRoutesThatOnlyDifferInEmptySegments() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/a/b", handler);
+    assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/a//b", handler));
+    assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/a/b/", handler));
+    assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "//a/b", handler));
+  }
+
+  @Test
   void rejectInvalidPathVariables() {
     DefaultRouter router = new DefaultRouter();
     HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);

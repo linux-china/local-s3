@@ -18,7 +18,7 @@ final class DefaultRouter extends AbstractRouter {
 
   @Override
   public Router route(Route route) {
-    String[] segments = splitPath(route.getPath());
+    String[] segments = Route.splitPath(route.getPath());
     Set<String> variableNames = new HashSet<>();
     for (String segment : segments) {
       if (!isPathVariable(segment)) {
@@ -77,7 +77,7 @@ final class DefaultRouter extends AbstractRouter {
     if (request.getPath() == null || !request.getPath().startsWith("/")) {
       return null;
     }
-    String[] segments = splitPath(request.getPath());
+    String[] segments = Route.splitPath(request.getPath());
     TreeNode node = root.exactChildren.get(request.getMethod().name());
     if (node == null) {
       return null;
@@ -93,7 +93,7 @@ final class DefaultRouter extends AbstractRouter {
   }
 
   private Map<String, String> parsePathVariables(String pattern, String[] pathSegments) {
-    String[] patternSegments = splitPath(pattern);
+    String[] patternSegments = Route.splitPath(pattern);
     if (pathSegments.length != patternSegments.length) {
       throw new IllegalArgumentException("'" + String.join("/", pathSegments) + "' should not match '" + pattern + "'.");
     }
@@ -140,32 +140,6 @@ final class DefaultRouter extends AbstractRouter {
       }
     }
     return node.likeChild == null ? null : matchRoute(node.likeChild, segments, idx + 1, request);
-  }
-
-  private String[] splitPath(String path) {
-    Objects.requireNonNull(path, "The path cannot be null.");
-    if (!path.startsWith("/")) {
-      throw new IllegalArgumentException("The path must start with '/'.");
-    }
-
-    List<String> segments = new ArrayList<>();
-    StringBuilder seg = new StringBuilder();
-    for (int i = 1; i < path.length(); i++) {
-      if (path.charAt(i) == '/') {
-        if (!(seg.length() == 0)) {
-          segments.add(seg.toString());
-          seg = new StringBuilder();
-        }
-      } else {
-        seg.append(path.charAt(i));
-      }
-    }
-
-    if (!(seg.length() == 0)) {
-      segments.add(seg.toString());
-    }
-
-    return segments.toArray(new String[0]);
   }
 
   /**
