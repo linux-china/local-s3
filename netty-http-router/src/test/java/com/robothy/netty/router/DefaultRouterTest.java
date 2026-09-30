@@ -1,5 +1,6 @@
 package com.robothy.netty.router;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -7,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.http.HttpMethod;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
@@ -135,6 +138,28 @@ class DefaultRouterTest {
     router.match(fileRequest).handle(fileRequest, fileResponse);
     assertEquals("application/octet-stream", fileResponse.getHeaders().get("content-type"));
     fileResponse.getBody().release();
+  }
+
+  @Test
+  void staticResourceContent(@TempDir Path directory) throws Exception {
+    // One file is read into the heap, the other one, over 10 MB, is mapped.
+    byte[] small = new byte[64 * 1024];
+    byte[] large = new byte[10 * 1024 * 1024 + 1];
+    new Random(1).nextBytes(small);
+    new Random(2).nextBytes(large);
+    Files.write(directory.resolve("small.bin"), small);
+    Files.write(directory.resolve("large.bin"), large);
+    Router router = new DefaultRouter().staticResource(directory.toString());
+
+    for (String name : List.of("small.bin", "large.bin")) {
+      HttpRequest request = getRequest("/" + name);
+      HttpResponse response = new HttpResponse();
+      router.match(request).handle(request, response);
+      byte[] expected = name.equals("small.bin") ? small : large;
+      assertEquals(String.valueOf(expected.length), response.getHeaders().get("content-length"));
+      assertArrayEquals(expected, ByteBufUtil.getBytes(response.getBody()));
+      response.getBody().release();
+    }
   }
 
   @Test

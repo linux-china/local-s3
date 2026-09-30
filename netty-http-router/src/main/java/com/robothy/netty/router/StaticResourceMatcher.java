@@ -7,6 +7,8 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.io.EOFException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.ByteBuffer;
@@ -94,15 +96,20 @@ abstract class StaticResourceMatcher {
               .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength)
               .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()));
 
+          if (contentLength > Integer.MAX_VALUE) {
+            // The response body is a single ByteBuf, whose capacity is an int.
+            throw new IOException(absPath + " is too large to serve, " + contentLength + " bytes.");
+          }
           if (contentLength > MAP_THRESHOLD) {
             MappedByteBuffer byteBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, contentLength);
             response.write(Unpooled.wrappedBuffer(byteBuffer));
           } else {
-            int size = (int) contentLength;
-            ByteBuffer buf = ByteBuffer.allocate(size);
-            int readLen = 0;
-            while( size != (readLen += fileChannel.read(buf, readLen)) ) {
-              buf.compact();
+            ByteBuffer buf = ByteBuffer.allocate((int) contentLength);
+            while (buf.hasRemaining()) {
+              // The file is shorter than its size, e.g. it was truncated while being read.
+              if (fileChannel.read(buf) < 0) {
+                throw new EOFException(absPath + " ended after " + buf.position() + " of " + contentLength + " bytes.");
+              }
             }
             buf.flip();
             response.write(Unpooled.wrappedBuffer(buf));
