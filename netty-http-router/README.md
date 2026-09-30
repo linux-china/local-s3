@@ -73,13 +73,20 @@ Route.builder()
 ### 2.2 Serving static resources
 
 netty-http-router scans static resources in the `/static` directory of the classpath by default.
-You can customize the path via `Router#staticResources()`.
+You can customize the path via `Router#staticResource()`.
 
 ```java
 Router router=Router.router()
     .route(HttpMethod.GET,"/", handler)
     .staticResource("my-static-resources");
 ```
+
+Static resources are served to `GET` requests only, and only regular files are served, not directories. A request
+path with a `..` segment or a backslash is not found, so a request cannot read a file outside of the root.
+
+> **Security note:** every file under the root is readable by anyone who can reach the server, without
+> authentication. Don't put secrets under it, and keep in mind that a symbolic link under a root directory is
+> followed, even if it points outside of the root.
 
 ### 2.3 Not found handler and exception handlers
 

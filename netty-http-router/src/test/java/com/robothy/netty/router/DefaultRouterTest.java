@@ -3,6 +3,8 @@ package com.robothy.netty.router;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
@@ -11,6 +13,9 @@ import com.robothy.netty.http.HttpResponse;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.http.HttpMethod;
 import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -18,11 +23,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 
 class DefaultRouterTest {
+
+  private static final HttpRequestHandler NOT_FOUND = (request, response) -> { };
 
   @Test
   void match() throws Exception {
@@ -138,6 +147,73 @@ class DefaultRouterTest {
     router.match(fileRequest).handle(fileRequest, fileResponse);
     assertEquals("application/octet-stream", fileResponse.getHeaders().get("content-type"));
     fileResponse.getBody().release();
+  }
+
+  @Test
+  void classpathResourcesStayUnderRoot() {
+    Router router = new DefaultRouter().notFound(NOT_FOUND);
+    assertNotSame(NOT_FOUND, router.match(getRequest("/test.html")));
+    // The test classes are on the classpath next to "static", so "static/../com/..." resolves to one of them.
+    assertSame(NOT_FOUND, router.match(getRequest("/../com/robothy/netty/router/DefaultRouterTest.class")));
+    assertSame(NOT_FOUND, router.match(getRequest("/x/../../com/robothy/netty/router/DefaultRouterTest.class")));
+    assertSame(NOT_FOUND, router.match(getRequest("/..\\com/robothy/netty/router/DefaultRouterTest.class")));
+  }
+
+  @Test
+  void classpathResourcesAreRegularFilesServedToGet() {
+    Router router = new DefaultRouter().notFound(NOT_FOUND);
+    // A directory would be answered with a listing of its files.
+    assertSame(NOT_FOUND, router.match(getRequest("/../static")));
+    assertSame(NOT_FOUND, router.match(getRequest("/../com/robothy/netty")));
+    HttpRequest post = HttpRequest.builder().method(HttpMethod.POST).uri("/test.html").path("/test.html").build();
+    assertSame(NOT_FOUND, router.match(post));
+  }
+
+  @Test
+  void classpathResourcesInJar(@TempDir Path directory) throws Exception {
+    Path jar = directory.resolve("static.jar");
+    try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+      out.putNextEntry(new JarEntry("jar-static/"));
+      out.putNextEntry(new JarEntry("jar-static/dir/"));
+      out.putNextEntry(new JarEntry("jar-static/a.txt"));
+      out.write("a".getBytes(StandardCharsets.UTF_8));
+      out.closeEntry();
+    }
+
+    Thread thread = Thread.currentThread();
+    ClassLoader contextClassLoader = thread.getContextClassLoader();
+    try (URLClassLoader classLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, contextClassLoader)) {
+      thread.setContextClassLoader(classLoader);
+      Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:jar-static");
+      HttpRequest request = getRequest("/a.txt");
+      HttpResponse response = new HttpResponse();
+      router.match(request).handle(request, response);
+      assertEquals("a", response.getBody().toString(StandardCharsets.UTF_8));
+      response.getBody().release();
+      assertSame(NOT_FOUND, router.match(getRequest("/dir")));
+    } finally {
+      thread.setContextClassLoader(contextClassLoader);
+    }
+  }
+
+  @Test
+  void directoryResourcesStayUnderRoot(@TempDir Path directory) throws Exception {
+    Path root = Files.createDirectory(directory.resolve("root"));
+    Files.writeString(root.resolve("inside.txt"), "inside");
+    Files.writeString(directory.resolve("outside.txt"), "outside");
+    Files.createDirectory(root.resolve("sub"));
+    Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(root.toString());
+
+    HttpRequest inside = getRequest("/inside.txt");
+    HttpResponse response = new HttpResponse();
+    router.match(inside).handle(inside, response);
+    assertEquals("inside", response.getBody().toString(StandardCharsets.UTF_8));
+    response.getBody().release();
+
+    assertSame(NOT_FOUND, router.match(getRequest("/../outside.txt")));
+    assertSame(NOT_FOUND, router.match(getRequest("/sub/../../outside.txt")));
+    // A directory is not found, instead of failing to be read.
+    assertSame(NOT_FOUND, router.match(getRequest("/sub")));
   }
 
   @Test
