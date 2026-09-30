@@ -10,6 +10,7 @@ import com.robothy.netty.router.Router;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.IOException;
 import java.util.HashMap;
@@ -59,6 +60,50 @@ class HttpMessageHandlerTest {
     }
     response.getBody().release();
     channel.finishAndReleaseAll();
+  }
+
+  @ParameterizedTest
+  @CsvSource(value = {
+      "200, 0",
+      "204, NULL",
+      "304, NULL",
+      "100, NULL",
+  }, nullValues = "NULL")
+  void contentLengthOnlyForResponsesWithContent(int status, String contentLength) {
+    Router router = Router.router().route(HttpMethod.GET, "/status",
+        (request, response) -> response.status(HttpResponseStatus.valueOf(status)));
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    channel.writeInbound(request("/status"));
+
+    HttpResponse response = channel.readOutbound();
+    assertEquals(contentLength, response.getHeaders().get("content-length"));
+    response.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void keepContentLengthSetByHandlerOnNotModified() {
+    // The length of the 200 response that a 304 stands for.
+    Router router = Router.router().route(HttpMethod.GET, "/status", (request, response) -> response
+        .status(HttpResponseStatus.NOT_MODIFIED)
+        .putHeader("Content-Length", 5));
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    channel.writeInbound(request("/status"));
+
+    HttpResponse response = channel.readOutbound();
+    assertEquals("5", response.getHeaders().get("content-length"));
+    response.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  private static HttpRequest request(String path) {
+    return HttpRequest.builder()
+        .method(HttpMethod.GET)
+        .uri(path)
+        .path(path)
+        .httpVersion(HttpVersion.HTTP_1_1)
+        .body(Unpooled.EMPTY_BUFFER)
+        .build();
   }
 
   @Test

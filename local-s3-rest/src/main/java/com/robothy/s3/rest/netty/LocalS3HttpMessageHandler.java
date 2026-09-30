@@ -199,7 +199,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       response = handled.response();
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
-      if (!response.isStreaming()) {
+      if (!response.isStreaming() && !hasNoContent(response.getStatus())) {
         response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
             String.valueOf(response.getBody().readableBytes()));
       }
@@ -277,6 +277,16 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     } catch (RuntimeException e) {
       log.warn("Failed to record {} {}.", request.getMethod(), request.getUri(), e);
     }
+  }
+
+  /**
+   * A 1xx, 204 or 304 response has no content, so its {@code Content-Length} isn't derived from the body: the header
+   * must not be sent with 1xx and 204, which netty strips, and with the 304 of a conditional GetObject it would have
+   * to be the size of the object (RFC 9110, section 8.6), not 0.
+   */
+  static boolean hasNoContent(HttpResponseStatus status) {
+    int code = status.code();
+    return code < 200 || code == HttpResponseStatus.NO_CONTENT.code() || code == HttpResponseStatus.NOT_MODIFIED.code();
   }
 
   private static void releaseBody(HttpRequest request) {

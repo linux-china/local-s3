@@ -74,8 +74,10 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
 
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
-      response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
-          String.valueOf(response.getBody().readableBytes()));
+      if (!hasNoContent(response.getStatus())) {
+        response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
+            String.valueOf(response.getBody().readableBytes()));
+      }
       written = true;
       write(ctx, response, keepAlive);
 
@@ -107,6 +109,16 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     if (!keepAlive) {
       channelFuture.addListener(ChannelFutureListener.CLOSE);
     }
+  }
+
+  /**
+   * A 1xx, 204 or 304 response has no content, so its {@code Content-Length} isn't derived from the body: the header
+   * must not be sent with 1xx and 204, which netty strips, and with 304 it would have to be the length of the 200
+   * response (RFC 9110, section 8.6), not 0.
+   */
+  static boolean hasNoContent(HttpResponseStatus status) {
+    int code = status.code();
+    return code < 200 || code == HttpResponseStatus.NO_CONTENT.code() || code == HttpResponseStatus.NOT_MODIFIED.code();
   }
 
   private static void releaseBody(HttpResponse response) {

@@ -92,6 +92,8 @@ class ConditionalRequestControllerTest {
       // None of the headers that describe content belong in a 304.
       assertFalse(notModified.headers().firstValue("content-type").isPresent());
       assertFalse(notModified.headers().firstValue("accept-ranges").isPresent());
+      // Content-Length of a 304 would have to be the size of the object, not the 0 of the empty body.
+      assertFalse(notModified.headers().firstValue("content-length").isPresent());
     }
 
     // HeadObject answers the same way.
