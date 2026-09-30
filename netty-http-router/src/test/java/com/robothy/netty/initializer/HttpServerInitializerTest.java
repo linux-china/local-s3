@@ -4,10 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.router.Router;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.HttpDecoderConfig;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.logging.LogLevel;
@@ -159,6 +161,49 @@ class HttpServerInitializerTest {
     parentGroup.shutdownGracefully();
     childGroup.shutdownGracefully();
     executor.shutdownGracefully();
+  }
+
+  @Test
+  void decoderConfig() {
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    try {
+      HttpDecoderConfig config = new HttpServerInitializer(executor, Router.router(), 1024, 2048, 4096).decoderConfig();
+      assertEquals(HttpServerInitializer.DEFAULT_MAX_CHUNK_SIZE, config.getMaxChunkSize());
+      assertEquals(2048, config.getMaxInitialLineLength());
+      assertEquals(4096, config.getMaxHeaderSize());
+    } finally {
+      executor.shutdownGracefully();
+    }
+  }
+
+  @Test
+  void uploadLargeBody() throws Exception {
+    byte[] content = new byte[1024 * 1024];
+    new Random(6).nextBytes(content);
+    Router router = Router.router().route(HttpMethod.PUT, "/upload", (request, response) -> response
+        .write(String.valueOf(Arrays.equals(content, ByteBufUtil.getBytes(request.getBody())))));
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    EventLoopGroup group = new NioEventLoopGroup(1);
+    Channel serverChannel = new ServerBootstrap().group(group)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new HttpServerInitializer(executor, router))
+        .bind(0)
+        .sync()
+        .channel();
+    try {
+      int port = ((InetSocketAddress) serverChannel.localAddress()).getPort();
+      HttpResponse<String> response = HttpClient.newHttpClient().send(HttpRequest.newBuilder()
+          .version(HttpClient.Version.HTTP_1_1)
+          .uri(new URI("http://localhost:" + port + "/upload"))
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
+          .build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, response.statusCode());
+      assertEquals("true", response.body());
+    } finally {
+      serverChannel.close().sync();
+      group.shutdownGracefully();
+      executor.shutdownGracefully();
+    }
   }
 
   @Test

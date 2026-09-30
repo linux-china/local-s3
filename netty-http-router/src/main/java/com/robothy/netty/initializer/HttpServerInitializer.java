@@ -22,6 +22,14 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
    */
   public static final int DEFAULT_MAX_HEADER_SIZE = 16 * 1024;
 
+  /**
+   * Max size in bytes of a request body chunk, larger than the 8 KB of Netty's default. Each chunk is a task for the
+   * {@code executorGroup} and a component of the aggregated body, so a 64 MB upload is about 1000 of them rather
+   * than 8000. A larger value doesn't help unless the receive buffer is larger: netty reads at most 64 KB at a time
+   * by default ({@linkplain io.netty.channel.AdaptiveRecvByteBufAllocator#DEFAULT_MAXIMUM}).
+   */
+  public static final int DEFAULT_MAX_CHUNK_SIZE = 64 * 1024;
+
   private final EventExecutorGroup executorGroup;
 
   private final Router router;
@@ -72,12 +80,23 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
     ch.config().setAutoClose(true);
     // Unlike a separate decoder and encoder, the codec pairs each response with its request, so the response to a HEAD
     // request keeps its Content-Length but not its body, which would be taken for the start of the next response.
-    pipeline.addLast("http-server-codec", new HttpServerCodec(new HttpDecoderConfig()
-        .setMaxInitialLineLength(maxInitialLineLength)
-        .setMaxHeaderSize(maxHeaderSize)));
+    pipeline.addLast("http-server-codec", new HttpServerCodec(decoderConfig()));
     pipeline.addLast(this.executorGroup, "router-http-request-decoder", new com.robothy.netty.codec.HttpRequestDecoder(maxRequestBodySize));
     pipeline.addLast(this.executorGroup, "router-http-response-encoder", new com.robothy.netty.codec.HttpResponseEncoder());
     pipeline.addLast(this.executorGroup, "router-http-message-handler", new HttpMessageHandler(router));
+  }
+
+  /**
+   * The config of the HTTP decoder of each connection; override it to tune the decoder further.
+   *
+   * @return a new config with the limits of this initializer and a max chunk size of
+   *     {@linkplain #DEFAULT_MAX_CHUNK_SIZE}.
+   */
+  protected HttpDecoderConfig decoderConfig() {
+    return new HttpDecoderConfig()
+        .setMaxInitialLineLength(maxInitialLineLength)
+        .setMaxHeaderSize(maxHeaderSize)
+        .setMaxChunkSize(DEFAULT_MAX_CHUNK_SIZE);
   }
 
 }
