@@ -73,6 +73,10 @@ final class DefaultRouter extends AbstractRouter {
 
   private HttpRequestHandler matchHandler(HttpRequest request) {
     request.setPathVariables(Map.of());
+    // A request target that is not in the origin-form, e.g. "*", matches no route.
+    if (request.getPath() == null || !request.getPath().startsWith("/")) {
+      return null;
+    }
     String[] segments = splitPath(request.getPath());
     TreeNode node = root.exactChildren.get(request.getMethod().name());
     if (node == null) {

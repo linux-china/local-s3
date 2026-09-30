@@ -138,6 +138,26 @@ class HttpRequestDecoderTest {
   }
 
   @Test
+  void convertAbsoluteFormTarget() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "http://host:8080/a/b?c=d"));
+    HttpRequest request = channel.readInbound();
+    assertEquals("/a/b?c=d", request.getUri());
+    assertEquals("/a/b", request.getPath());
+    assertEquals(List.of("d"), request.getParams().get("c"));
+    request.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void rejectAsteriskFormTarget() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*"));
+    assertRejected(channel, HttpResponseStatus.BAD_REQUEST);
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
   void dropBodyOfMalformedUriRequest() {
     // Hold the writes, so that the connection is still open when the body arrives.
     List<ChannelPromise> pendingWrites = new ArrayList<>();

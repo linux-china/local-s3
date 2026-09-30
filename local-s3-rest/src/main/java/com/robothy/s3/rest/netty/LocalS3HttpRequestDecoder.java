@@ -3,6 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.storage.HeapContent;
 import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.utils.RequestTargets;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
@@ -458,11 +459,17 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     Map<String, String> headers = new HashMap<>();
     request.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
         header.getValue().trim(), (values, value) -> values + "," + value));
-    QueryStringDecoder queryStringDecoder = new QueryStringDecoder(request.uri());
+    // An absolute-form target (e.g. "http://host/a") is converted to its path, "*" and others are not routable.
+    String uri = RequestTargets.toOriginForm(request.uri());
+    if (uri == null) {
+      reject(ctx, S3ErrorCode.BadRequest, "The request target is not supported.");
+      return false;
+    }
+    QueryStringDecoder queryStringDecoder = new QueryStringDecoder(uri);
 
     builder = HttpRequest.builder()
         .method(request.method())
-        .uri(request.uri())
+        .uri(uri)
         .httpVersion(request.protocolVersion())
         .headers(headers)
         .path(queryStringDecoder.path())

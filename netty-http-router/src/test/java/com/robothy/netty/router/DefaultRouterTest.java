@@ -293,6 +293,15 @@ class DefaultRouterTest {
   }
 
   @Test
+  void matchNoRouteForTargetNotInOriginForm() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/{x}", handler);
+    assertEquals(router.notFoundHandler(), router.match(getRequest("*")));
+    assertEquals(router.notFoundHandler(), router.match(getRequest("http://host/a")));
+  }
+
+  @Test
   void pathVariablesAreSeparatedFromQueryParameters() {
     DefaultRouter router = new DefaultRouter();
     HttpRequestHandler userHandler = Mockito.mock(HttpRequestHandler.class);

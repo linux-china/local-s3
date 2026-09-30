@@ -67,6 +67,27 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   @Test
+  void convertsAnAbsoluteFormTargetToItsPath() {
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+        "http://localhost:9090/bucket/key?tagging"), new DefaultLastHttpContent());
+
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    try {
+      assertEquals("/bucket/key?tagging", request.getUri());
+      assertEquals("/bucket/key", request.getPath());
+      assertTrue(request.getParams().containsKey("tagging"));
+    } finally {
+      request.getBody().release();
+    }
+  }
+
+  @Test
+  void rejectsAnAsteriskFormTarget() {
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*"));
+    assertRejected(channel, S3ErrorCode.BadRequest);
+  }
+
+  @Test
   void mapsLargeBodiesFromTemporaryFiles() throws IOException {
     long bodyFiles = countBodyFiles();
     byte[] content = randomBytes(100);

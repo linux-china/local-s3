@@ -1,5 +1,6 @@
 package com.robothy.netty.codec;
 
+import com.robothy.netty.utils.RequestTargets;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
@@ -89,10 +90,17 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       httpRequest.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
           header.getValue().trim(), (values, value) -> values + "," + value));
       // Parse the URI before allocating the body, a malformed one (e.g. "%zz") must not leave a half-built request.
+      // An absolute-form target (e.g. "http://host/a") is converted to its path, "*" and others are not routable.
+      String uri = RequestTargets.toOriginForm(httpRequest.uri());
+      if (uri == null) {
+        log.warn("Unsupported request target '{}', close the connection.", httpRequest.uri());
+        reject(ctx, HttpResponseStatus.BAD_REQUEST, "Bad Request: unsupported request target.");
+        return;
+      }
       String path;
       HashMap<CharSequence, List<String>> params;
       try {
-        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(httpRequest.uri());
+        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(uri);
         path = queryStringDecoder.path();
         params = new HashMap<>(queryStringDecoder.parameters());
       } catch (IllegalArgumentException e) {
@@ -105,7 +113,7 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       this.body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
       this.builder = com.robothy.netty.http.HttpRequest.builder()
           .method(httpRequest.method())
-          .uri(httpRequest.uri())
+          .uri(uri)
           .httpVersion(httpRequest.protocolVersion())
           .headers(headers)
           .body(body)
