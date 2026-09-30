@@ -678,10 +678,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       return pathRules.get(trimmedPath);
     }
 
-    Map<CharSequence, List<String>> params = request.getParams();
     if (bucketNameInPath && path.startsWith(VECTOR_RESOURCE_TAGS_PREFIX)
         && pathRules.containsKey(VECTOR_RESOURCE_TAGS_PATH)) {
-      params.put(VectorResourceRequests.RESOURCE_ARN_PARAMETER, List.of(path.substring("/tags/".length())));
+      request.putParameter(VectorResourceRequests.RESOURCE_ARN_PARAMETER, List.of(path.substring("/tags/".length())));
       return pathRules.get(VECTOR_RESOURCE_TAGS_PATH);
     }
 
@@ -703,7 +702,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       }
     }
 
-    setBucketNameAndObjectKeyToRequestParams(params, bucketName, objectKey);
+    setBucketNameAndObjectKeyToRequestParams(request, bucketName, objectKey);
     boolean isBucketOperation = Objects.isNull(objectKey);
     return getCandidateHandlers(pathRules, isBucketOperation);
   }
@@ -720,10 +719,10 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return path;
   }
 
-  void setBucketNameAndObjectKeyToRequestParams(Map<CharSequence, List<String>> params, String bucketName, String objectKey) {
-    params.put("bucket", List.of(bucketName));
+  void setBucketNameAndObjectKeyToRequestParams(HttpRequest request, String bucketName, String objectKey) {
+    request.putParameter("bucket", List.of(bucketName));
     if (Objects.nonNull(objectKey)) {
-      params.put("key", List.of(objectKey));
+      request.putParameter("key", List.of(objectKey));
     }
   }
 
@@ -761,7 +760,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * The routes that match the request with the highest priority.
    */
   private List<Route> bestRoutes(List<Route> candidates, Map<String, String> headers,
-                                 Map<CharSequence, List<String>> params) {
+                                 Map<String, List<String>> params) {
     List<Route> best = new ArrayList<>();
     int bestPriority = -1;
     for (Route candidate : candidates) {
@@ -783,7 +782,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   private static int calculatePriority(Route route, Map<String, String> headers,
-                                       Map<CharSequence, List<String>> params) {
+                                       Map<String, List<String>> params) {
 
     int priority = 0;
 
@@ -844,7 +843,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         }
         Map<String, String> headers = route.getHeaderMatcher() instanceof HeaderCondition condition
             ? condition.minimalHeaders() : Map.of();
-        Map<CharSequence, List<String>> params = route.getParamMatcher() instanceof ParamCondition condition
+        Map<String, List<String>> params = route.getParamMatcher() instanceof ParamCondition condition
             ? condition.minimalParams() : Map.of();
         int own = calculatePriority(route, headers, params);
         for (int j = 0; j < routes.size(); j++) {

@@ -250,7 +250,7 @@ final class StsController implements HttpRequestHandler {
     Map<String, String> parameters = new HashMap<>();
     request.getParams().forEach((name, values) -> {
       if (!values.isEmpty()) {
-        parameters.put(name.toString(), values.get(0));
+        parameters.put(name, values.get(0));
       }
     });
     String body;

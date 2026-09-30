@@ -15,7 +15,7 @@ class RequestAssertionsTest {
   private static HttpRequest withMaxKeys(String maxKeys) {
     HttpRequest request = HttpRequest.builder().build();
     if (maxKeys != null) {
-      request.getParams().put("max-keys", List.of(maxKeys));
+      request.putParameter("max-keys", List.of(maxKeys));
     }
     return request;
   }

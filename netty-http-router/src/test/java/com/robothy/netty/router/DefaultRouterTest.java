@@ -84,7 +84,7 @@ class DefaultRouterTest {
         .paramMatcher(ps -> ps.containsKey("version"))
         .handler(paramRequestHandler)
         .build());
-    Map<CharSequence, List<String>> parameters = new HashMap<>();
+    Map<String, List<String>> parameters = new HashMap<>();
     parameters.put("version", Collections.emptyList());
     assertEquals(notFoundHandler, router.match(requestBuilder.method(HttpMethod.HEAD).path("/a/content").build()));
     assertEquals(paramRequestHandler, router.match(requestBuilder.params(parameters).build()));
@@ -286,7 +286,7 @@ class DefaultRouterTest {
         .route(HttpMethod.GET, "/{x}", variableHandler);
     // The exact route "/a" has priority when it matches.
     HttpRequest paramRequest = getRequest("/a");
-    paramRequest.getParams().put("z", List.of(""));
+    paramRequest.putParameter("z", List.of(""));
     assertEquals(paramHandler, paramRouter.match(paramRequest));
     // The exact route "/a" does not match the params, backtrack to "/{x}".
     assertEquals(variableHandler, paramRouter.match(getRequest("/a")));
@@ -308,7 +308,7 @@ class DefaultRouterTest {
     router.route(HttpMethod.GET, "/user/{id}", userHandler);
 
     HttpRequest request = getRequest("/user/123");
-    request.getParams().put("id", List.of("x"));
+    request.putParameter("id", List.of("x"));
     assertEquals(userHandler, router.match(request));
     assertEquals("123", request.pathVariable("id").orElseThrow());
     // The query parameter of the same name is not changed.
@@ -352,7 +352,7 @@ class DefaultRouterTest {
         .build();
   }
 
-  private static HttpRequest bucketRequest(Map<CharSequence, List<String>> params, Map<String, String> headers) {
+  private static HttpRequest bucketRequest(Map<String, List<String>> params, Map<String, String> headers) {
     return HttpRequest.builder()
         .method(HttpMethod.GET)
         .uri("/bucket")

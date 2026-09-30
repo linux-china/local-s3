@@ -24,13 +24,13 @@ public final class Route {
 
   private final Function<Map<String, String>, Boolean> headerMatcher;
 
-  private final Function<Map<CharSequence, List<String>>, Boolean> paramMatcher;
+  private final Function<Map<String, List<String>>, Boolean> paramMatcher;
 
   private final String trimPath;
 
   private Route(HttpMethod method, String path, HttpRequestHandler handler,
                 Function<Map<String, String>, Boolean> headerMatcher,
-                Function<Map<CharSequence, List<String>>, Boolean> paramMatcher, String trimPath) {
+                Function<Map<String, List<String>>, Boolean> paramMatcher, String trimPath) {
     this.method = method;
     this.path = path;
     this.handler = handler;
@@ -55,7 +55,7 @@ public final class Route {
    * @deprecated set the matcher with {@link Builder#paramMatcher(Function)} instead.
    */
   @Deprecated(forRemoval = true)
-  public Route paramMatcher(Function<Map<CharSequence, List<String>>, Boolean> paramMatcher) {
+  public Route paramMatcher(Function<Map<String, List<String>>, Boolean> paramMatcher) {
     return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath);
   }
 
@@ -120,7 +120,7 @@ public final class Route {
 
     private Function<Map<String, String>, Boolean> headerMatcher;
 
-    private Function<Map<CharSequence, List<String>>, Boolean> paramMatcher;
+    private Function<Map<String, List<String>>, Boolean> paramMatcher;
 
     public Builder method(HttpMethod method) {
       this.method = method;
@@ -137,7 +137,7 @@ public final class Route {
       return this;
     }
 
-    public Builder paramMatcher(Function<Map<CharSequence, List<String>>, Boolean> paramMatcher) {
+    public Builder paramMatcher(Function<Map<String, List<String>>, Boolean> paramMatcher) {
       this.paramMatcher = paramMatcher;
       return this;
     }

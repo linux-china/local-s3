@@ -261,7 +261,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * differ, see {@linkplain WebsiteContentTypes}.
    */
   private void serve(HttpRequest request, HttpResponse response, String key) throws Exception {
-    request.getParams().put("key", List.of(key));
+    request.putParameter("key", List.of(key));
     if (HttpMethod.HEAD.equals(request.getMethod())) {
       headObject.handle(request, response);
     } else {

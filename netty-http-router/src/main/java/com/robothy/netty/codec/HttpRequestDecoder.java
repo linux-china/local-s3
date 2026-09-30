@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -99,11 +100,11 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
         return;
       }
       String path;
-      HashMap<CharSequence, List<String>> params;
+      Map<String, List<String>> params;
       try {
         QueryStringDecoder queryStringDecoder = new QueryStringDecoder(uri);
         path = queryStringDecoder.path();
-        params = new HashMap<>(queryStringDecoder.parameters());
+        params = queryStringDecoder.parameters();
       } catch (IllegalArgumentException e) {
         log.warn("Invalid request URI '{}', close the connection.", httpRequest.uri(), e);
         reject(ctx, HttpResponseStatus.BAD_REQUEST, "Bad Request: invalid URI: " + e.getMessage());

@@ -19,7 +19,7 @@ import java.util.function.Function;
  * <p>A condition is immutable; {@linkplain #andHas}, {@linkplain #andHasNot} and {@linkplain #andEqualTo} return a new
  * one.
  */
-final class ParamCondition implements Function<Map<CharSequence, List<String>>, Boolean> {
+final class ParamCondition implements Function<Map<String, List<String>>, Boolean> {
 
   private final Set<String> present;
 
@@ -102,7 +102,7 @@ final class ParamCondition implements Function<Map<CharSequence, List<String>>, 
   }
 
   @Override
-  public Boolean apply(Map<CharSequence, List<String>> params) {
+  public Boolean apply(Map<String, List<String>> params) {
     for (String name : present) {
       if (!params.containsKey(name)) {
         return false;
@@ -128,8 +128,8 @@ final class ParamCondition implements Function<Map<CharSequence, List<String>>, 
    *
    * @return the parameters.
    */
-  Map<CharSequence, List<String>> minimalParams() {
-    Map<CharSequence, List<String>> params = new LinkedHashMap<>();
+  Map<String, List<String>> minimalParams() {
+    Map<String, List<String>> params = new LinkedHashMap<>();
     present.forEach(name -> params.put(name, List.of("")));
     values.forEach((name, value) -> params.put(name, List.of(value)));
     return params;

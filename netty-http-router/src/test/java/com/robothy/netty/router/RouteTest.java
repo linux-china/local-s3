@@ -25,7 +25,7 @@ class RouteTest {
     Set<Route> routes = new HashSet<>(Set.of(route));
     int hashCode = route.hashCode();
 
-    Function<Map<CharSequence, List<String>>, Boolean> params = ps -> ps.containsKey("x");
+    Function<Map<String, List<String>>, Boolean> params = ps -> ps.containsKey("x");
     Function<Map<String, String>, Boolean> headers = hs -> hs.containsKey("y");
     Route withParams = route.paramMatcher(params);
     Route withHeaders = route.headerMather(headers);

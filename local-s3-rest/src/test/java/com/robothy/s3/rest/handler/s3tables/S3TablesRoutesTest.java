@@ -176,20 +176,18 @@ class S3TablesRoutesTest {
 
   @Test
   void a_request_signed_for_s3tables_is_one_of_this_api() {
-    HttpRequest signed = new Request(HttpMethod.PUT, "/buckets").toHttpRequest();
-    signed.getHeaders().put("authorization", "AWS4-HMAC-SHA256"
-        + " Credential=a-key/20260101/us-east-1/s3tables/aws4_request,"
-        + " SignedHeaders=host;x-amz-date, Signature=" + "0".repeat(64));
+    HttpRequest signed = new Request(HttpMethod.PUT, "/buckets").toHttpRequest(Map.of("authorization",
+        "AWS4-HMAC-SHA256 Credential=a-key/20260101/us-east-1/s3tables/aws4_request,"
+        + " SignedHeaders=host;x-amz-date, Signature=" + "0".repeat(64)));
     assertTrue(S3TablesController.isS3TablesRequest(signed));
   }
 
   @Test
   void a_request_signed_for_s3_is_not_one_of_this_api() {
     // The same path: PUT /buckets is CreateBucket of a bucket named 'buckets', and it must stay that.
-    HttpRequest signed = new Request(HttpMethod.PUT, "/buckets").toHttpRequest();
-    signed.getHeaders().put("authorization", "AWS4-HMAC-SHA256"
-        + " Credential=a-key/20260101/us-east-1/s3/aws4_request,"
-        + " SignedHeaders=host;x-amz-date, Signature=" + "0".repeat(64));
+    HttpRequest signed = new Request(HttpMethod.PUT, "/buckets").toHttpRequest(Map.of("authorization",
+        "AWS4-HMAC-SHA256 Credential=a-key/20260101/us-east-1/s3/aws4_request,"
+        + " SignedHeaders=host;x-amz-date, Signature=" + "0".repeat(64)));
     assertFalse(S3TablesController.isS3TablesRequest(signed));
   }
 
@@ -245,9 +243,14 @@ class S3TablesRoutesTest {
   private record Request(HttpMethod method, String uri) {
 
     HttpRequest toHttpRequest() {
+      return toHttpRequest(Map.of());
+    }
+
+    HttpRequest toHttpRequest(Map<String, String> headers) {
       int query = uri.indexOf('?');
       return HttpRequest.builder()
           .method(method)
+          .headers(headers)
           .uri(uri)
           .path(query < 0 ? uri : uri.substring(0, query))
           .build();

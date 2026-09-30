@@ -3,6 +3,7 @@ package com.robothy.netty.http;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -14,7 +15,6 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Getter
-@Builder
 public class HttpRequest {
 
   /**
@@ -22,11 +22,11 @@ public class HttpRequest {
    * with a lower-case {@linkplain String}, e.g. {@code HttpHeaderNames.HOST.toString()}, or with
    * {@linkplain #header(CharSequence)}, which accepts any {@linkplain CharSequence} in any case.
    */
-  @Builder.Default
-  private Map<String, String> headers = new HashMap<>();
+  @Getter(lombok.AccessLevel.NONE)
+  private final Map<String, String> headers;
 
-  @Builder.Default
-  private Map<CharSequence, List<String>> params = new HashMap<>();
+  @Getter(lombok.AccessLevel.NONE)
+  private final Map<String, List<String>> params;
 
   /**
    * Path variables of the matched route, e.g. {@code id} of {@code /user/{id}}, set by
@@ -34,8 +34,7 @@ public class HttpRequest {
    * query parameter never overrides a path variable of the same name, or the other way around.
    */
   @Setter
-  @Builder.Default
-  private Map<String, String> pathVariables = Map.of();
+  private Map<String, String> pathVariables;
 
   private String path;
 
@@ -46,6 +45,48 @@ public class HttpRequest {
   private ByteBuf body;
 
   private HttpVersion httpVersion;
+
+  @Builder
+  private HttpRequest(Map<String, String> headers, Map<String, List<String>> params, Map<String, String> pathVariables,
+                      String path, String uri, HttpMethod method, ByteBuf body, HttpVersion httpVersion) {
+    this.headers = headers == null ? new HashMap<>() : new HashMap<>(headers);
+    this.params = params == null ? new HashMap<>() : new HashMap<>(params);
+    this.pathVariables = pathVariables == null ? Map.of() : pathVariables;
+    this.path = path;
+    this.uri = uri;
+    this.method = method;
+    this.body = body;
+    this.httpVersion = httpVersion;
+  }
+
+  /**
+   * Request headers keyed by lower-case names, read-only.
+   *
+   * @return an unmodifiable view of the headers.
+   */
+  public Map<String, String> getHeaders() {
+    return Collections.unmodifiableMap(headers);
+  }
+
+  /**
+   * Query parameters, read-only. Use {@linkplain #putParameter(String, List)} to add a parameter while routing.
+   *
+   * @return an unmodifiable view of the query parameters.
+   */
+  public Map<String, List<String>> getParams() {
+    return Collections.unmodifiableMap(params);
+  }
+
+  /**
+   * Set a parameter, e.g. the bucket name or the object key resolved by a router from the path or the host.
+   *
+   * @param name parameter name.
+   * @param values parameter values.
+   */
+  public void putParameter(String name, List<String> values) {
+    Objects.requireNonNull(name, "The parameter name shouldn't be null.");
+    params.put(name, List.copyOf(values));
+  }
 
   /**
    * Get the header value by name.
@@ -65,10 +106,7 @@ public class HttpRequest {
    * @return the first value of the parameter.
    */
   public Optional<String> parameter(String name) {
-    if (params.containsKey(name) && params.get(name).size() > 0) {
-      return Optional.ofNullable(params.get(name).get(0));
-    }
-    return Optional.empty();
+    return Optional.ofNullable(params.get(name)).filter(values -> !values.isEmpty()).map(values -> values.get(0));
   }
 
   /**

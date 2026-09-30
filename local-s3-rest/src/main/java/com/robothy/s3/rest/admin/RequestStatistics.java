@@ -215,7 +215,7 @@ public final class RequestStatistics implements RequestRecorder {
     }
     // The router puts the bucket and the key into the parameters when it matches the path, which also covers a
     // virtual-hosted request, whose path lacks the bucket; otherwise the path tells them.
-    Map<CharSequence, List<String>> params = request.getParams() == null ? Map.of() : request.getParams();
+    Map<String, List<String>> params = request.getParams() == null ? Map.of() : request.getParams();
     String shape;
     if (params.containsKey("key")) {
       shape = "/{bucket}/{key}";

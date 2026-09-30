@@ -150,7 +150,7 @@ class RequestStatisticsTest {
   }
 
   private static HttpRequest request(HttpMethod method, String path, String... parameters) {
-    Map<CharSequence, List<String>> params = new HashMap<>();
+    Map<String, List<String>> params = new HashMap<>();
     for (String parameter : parameters) {
       params.put(parameter, List.of(""));
     }

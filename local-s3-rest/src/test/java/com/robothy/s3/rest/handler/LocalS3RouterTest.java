@@ -80,8 +80,8 @@ class LocalS3RouterTest {
     assertSame(listBucketsRule, localS3Router.matchPath(rules, HttpRequest.builder().path("/")
         .headers(new HashMap<>(Map.of(HttpHeaderNames.HOST.toString(), "localhost:29090"))).build()));
 
-    HttpRequest bucketOperation3 = HttpRequest.builder().path("/").build();
-    bucketOperation3.getHeaders().put(HttpHeaderNames.HOST.toString(), "images.example.com.s3.us-east-1.amazonaws.com");
+    HttpRequest bucketOperation3 = HttpRequest.builder().path("/")
+        .headers(Map.of(HttpHeaderNames.HOST.toString(), "images.example.com.s3.us-east-1.amazonaws.com")).build();
     assertSame(bucketPathRule, localS3Router.matchPath(rules, bucketOperation3));
     assertEquals("images.example.com", bucketOperation3.parameter("bucket").get());
     assertFalse(bucketOperation3.parameter("key").isPresent());
@@ -260,7 +260,7 @@ class LocalS3RouterTest {
     return builder.build();
   }
 
-  private static HttpRequest request(Map<CharSequence, List<String>> params, Map<String, String> headers) {
+  private static HttpRequest request(Map<String, List<String>> params, Map<String, String> headers) {
     return HttpRequest.builder().method(HttpMethod.GET).path("/a")
         .params(new HashMap<>(params)).headers(new HashMap<>(headers)).build();
   }
