@@ -29,12 +29,7 @@ dependencies {
     api(libs.jacksonDataformatXml)
     api(libs.jacksonDatabind)
 
-    // Types of the public API: the request handlers implement HttpRequestHandler, and the router factory
-    // returns a Router.
-    api(project(":netty-http-router")) {
-        // Only the SpringWebRouter of Router.router() matches paths with spring-web; LocalS3Router has its own matching.
-        exclude(group: "org.springframework", module: "spring-web")
-    }
+    api(project(":netty-http-router"))
 
     implementation(libs.jspecify)
     testImplementation(libs.mockitoCore)
