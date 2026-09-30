@@ -7,6 +7,7 @@ import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -16,6 +17,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.util.Locale;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -167,7 +169,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
         RouterHttpResponse.closeQuietly(response.detachChunkedBody());
       }
       written = true;
-      write(ctx, response, keepAlive);
+      write(ctx, response, keepAlive, "the response to " + request.getMethod() + " " + request.getPath());
 
       if (log.isDebugEnabled()) {
         log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(),
@@ -190,19 +192,37 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
    * Write the response. {@linkplain RouterHttpResponseEncoder} hands the body over to netty, which releases it once written,
    * and the chunked body to the {@linkplain io.netty.handler.stream.ChunkedWriteHandler}, which closes it; if the write
    * fails before that, e.g. the channel is closed, release or close the body here.
+   *
+   * @param description what is written, for the log, e.g. {@code the response to GET /a}.
    */
-  private static void write(ChannelHandlerContext ctx, RouterHttpResponse response, boolean keepAlive) {
+  private static void write(ChannelHandlerContext ctx, RouterHttpResponse response, boolean keepAlive,
+                            String description) {
     ChannelFuture channelFuture = ctx.writeAndFlush(response).addListener(future -> {
       if (!future.isSuccess()) {
         releaseBody(response);
+        logWriteFailure(ctx.channel(), description, future.cause());
         // Part of the response may have been sent, e.g. a chunked body failed to be read, so the client can't tell
         // where the next response would start.
-        log.debug("Failed to write the response, close the connection.", future.cause());
         ctx.close();
       }
     });
     if (!keepAlive) {
       channelFuture.addListener(ChannelFutureListener.CLOSE);
+    }
+  }
+
+  /**
+   * Log a failed write by its cause: a lost connection, e.g. the client went away, is part of the normal flow and only
+   * logged at debug; any other failure, e.g. a handler set an invalid header value or a chunked body failed to be
+   * read, is a warning, as the client only sees the connection closed.
+   */
+  private static void logWriteFailure(Channel channel, String description, Throwable cause) {
+    // Netty closes the channel before it fails the pending writes when the connection is lost, so an active channel
+    // means that the response itself failed.
+    if (cause instanceof ClosedChannelException || !channel.isActive()) {
+      log.debug("Failed to write {}, the connection is closed.", description, cause);
+    } else {
+      log.warn("Failed to write {}, close the connection.", description, cause);
     }
   }
 
@@ -299,7 +319,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), TEXT_PLAIN_UTF8)
         .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
-    write(ctx, response, false);
+    write(ctx, response, false, "the error response on connection " + ctx.channel().id());
   }
 
   @Override

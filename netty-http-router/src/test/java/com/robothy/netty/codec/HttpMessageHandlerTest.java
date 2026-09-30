@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -350,6 +351,60 @@ class HttpMessageHandlerTest {
   }, nullValues = "NULL")
   void sensitiveParamsAreMaskedInLog(String uri, String logged) {
     assertEquals(logged, HttpMessageHandler.uriForLog(uri));
+  }
+
+  @Test
+  void responseFailedToEncodeIsLoggedAtWarn() {
+    // An invalid header value, e.g. of an object key with a line break, fails the encoder.
+    Router router = Router.router().route(HttpMethod.GET, "/bad",
+        (request, response) -> response.putHeader("x-bad", "a\nb").write("body"));
+    List<ILoggingEvent> events = writeFailureLogOf(router, "/bad", channel -> { });
+
+    assertEquals(1, events.size());
+    assertEquals(Level.WARN, events.get(0).getLevel());
+    assertEquals("Failed to write the response to GET /bad, close the connection.",
+        events.get(0).getFormattedMessage());
+  }
+
+  @Test
+  void responseToClosedConnectionIsLoggedAtDebug() {
+    EmbeddedChannel[] channelOf = new EmbeddedChannel[1];
+    // The client went away while the request was being handled.
+    Router router = Router.router().route(HttpMethod.GET, "/gone",
+        (request, response) -> channelOf[0].close());
+    List<ILoggingEvent> events = writeFailureLogOf(router, "/gone", channel -> channelOf[0] = channel);
+
+    assertEquals(1, events.size());
+    assertEquals(Level.DEBUG, events.get(0).getLevel());
+    assertEquals("Failed to write the response to GET /gone, the connection is closed.",
+        events.get(0).getFormattedMessage());
+  }
+
+  /**
+   * Handle a GET of {@code path} whose response fails to be written, and return what was logged about the failure.
+   */
+  private static List<ILoggingEvent> writeFailureLogOf(Router router, String path,
+                                                       Consumer<EmbeddedChannel> setUp) {
+    Logger logger = (Logger) LoggerFactory.getLogger(HttpMessageHandler.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpResponseEncoder(), new HttpMessageHandler(router));
+    try {
+      setUp.accept(channel);
+      channel.writeInbound(request(path));
+      assertNull(channel.readOutbound());
+      assertFalse(channel.isOpen());
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+      channel.finishAndReleaseAll();
+    }
+    return appender.list.stream()
+        .filter(event -> event.getFormattedMessage().startsWith("Failed to write"))
+        .toList();
   }
 
   @Test
