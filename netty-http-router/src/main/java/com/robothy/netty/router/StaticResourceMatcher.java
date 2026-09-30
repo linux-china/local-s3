@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.jar.JarEntry;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Serves the files under a root directory or classpath resource path to {@code GET} and {@code HEAD} requests.
@@ -32,6 +33,7 @@ import java.util.jar.JarEntry;
  * <p>A request path is resolved against the root only if it has no {@code ..} segment and no backslash, so it cannot
  * address a file outside of the root; only regular files are served, not directories.
  */
+@Slf4j
 abstract class StaticResourceMatcher {
 
   abstract HttpRequestHandler match(HttpRequest request);
@@ -83,9 +85,29 @@ abstract class StaticResourceMatcher {
     private final ClassLoader classLoader;
 
     ClasspathResourceMatcher(String path) {
-      this.resourceRoot = path.substring("classpath:".length());
+      this.resourceRoot = trimSlashes(path.substring("classpath:".length()));
       ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
       this.classLoader = contextClassLoader == null ? StaticResourceMatcher.class.getClassLoader() : contextClassLoader;
+      // Not an error: a jar may have no entries for its directories, so the root can't always be found by its name.
+      if (!resourceRoot.isEmpty() && classLoader.getResource(resourceRoot) == null) {
+        log.warn("The static resource root '{}' is not found on the classpath, its resources may be not found.", path);
+      }
+    }
+
+    /**
+     * Resource names of a class loader don't start with '/', e.g. {@code classpath:/static} is the root
+     * {@code static}, and a trailing '/' would double the separator of the resource names.
+     */
+    private static String trimSlashes(String root) {
+      int start = 0;
+      int end = root.length();
+      while (start < end && root.charAt(start) == '/') {
+        start++;
+      }
+      while (end > start && root.charAt(end - 1) == '/') {
+        end--;
+      }
+      return root.substring(start, end);
     }
 
     @Override
@@ -94,7 +116,7 @@ abstract class StaticResourceMatcher {
       if (relativePath == null) {
         return null;
       }
-      String resourceName = resourceRoot + "/" + relativePath;
+      String resourceName = resourceRoot.isEmpty() ? relativePath : resourceRoot + "/" + relativePath;
       URL url = classLoader.getResource(resourceName);
       if (url == null || !isRegularFile(url)) {
         return null;

@@ -91,7 +91,8 @@ Route.builder()
 
 Static resources are **off** by default. Turn them on with `Router#staticResource()`, which takes either a directory,
 which must exist, or a classpath resource path prefixed with `classpath:`. Classpath resources are looked up with the
-context class loader of the thread that calls `staticResource()`.
+context class loader of the thread that calls `staticResource()`. Leading and trailing slashes of a classpath root
+are ignored, so `classpath:/static` and `classpath:static/` are the same as `classpath:static`.
 
 ```java
 Router router = Router.router()

@@ -138,6 +138,19 @@ class DefaultRouterTest {
   }
 
   @Test
+  void classpathStaticResourceRootIsTrimmed() {
+    for (String root : List.of("classpath:static", "classpath:/static", "classpath:static/", "classpath://static//")) {
+      Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(root);
+      assertNotSame(NOT_FOUND, router.match(getRequest("/test.html")), root);
+    }
+    // The classpath root itself.
+    for (String root : List.of("classpath:", "classpath:/")) {
+      Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(root);
+      assertNotSame(NOT_FOUND, router.match(getRequest("/static/test.html")), root);
+    }
+  }
+
+  @Test
   void staticResourceDirectoryMustExist(@TempDir Path directory) throws Exception {
     Router router = new DefaultRouter();
     assertThrows(IllegalArgumentException.class, () -> router.staticResource(directory.resolve("missing").toString()));
