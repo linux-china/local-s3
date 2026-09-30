@@ -164,6 +164,30 @@ class HttpMessageHandlerTest {
     channel.finishAndReleaseAll();
   }
 
+  @ParameterizedTest
+  @CsvSource(value = {
+      // No body and no Content-Length: the length is unknown, not 0.
+      "'', NULL",
+      // A GET route that HEAD falls back to: the length of its body.
+      "hello, 5",
+  }, nullValues = "NULL")
+  void contentLengthOfHeadResponse(String body, String contentLength) {
+    Router router = Router.router().route(HttpMethod.HEAD, "/object", (request, response) -> response.write(body));
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    channel.writeInbound(RouterHttpRequest.builder()
+        .method(HttpMethod.HEAD)
+        .uri("/object")
+        .path("/object")
+        .httpVersion(HttpVersion.HTTP_1_1)
+        .body(Unpooled.EMPTY_BUFFER)
+        .build());
+
+    RouterHttpResponse response = channel.readOutbound();
+    assertEquals(contentLength, response.getHeaders().get("content-length"));
+    response.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
   @Test
   void exceptionAnsweredWithClientErrorIsLoggedAtDebug() {
     Router router = Router.router()

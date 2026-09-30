@@ -118,8 +118,10 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
           // The Content-Length that a handler sets for a HEAD request is the length of the GET response, kept as is.
           long contentLength = response.getChunkedBody() == null
               ? response.getBody().readableBytes() : response.getChunkedBody().length();
-          // A chunked body of unknown length is sent with Transfer-Encoding: chunked.
-          if (contentLength >= 0) {
+          // A chunked body of unknown length is sent with Transfer-Encoding: chunked. A HEAD response without a body
+          // says nothing about the length of the resource, which "Content-Length: 0" would claim to be empty.
+          boolean unknownHeadLength = head && response.getChunkedBody() == null && contentLength == 0;
+          if (contentLength >= 0 && !unknownHeadLength) {
             response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(), String.valueOf(contentLength));
           }
         }
