@@ -47,6 +47,37 @@ class RequestHeaderSizeTest {
     }
   }
 
+  private static String get(LocalS3 localS3, int queryLength) throws Exception {
+    String request = "GET /headers/key?x-token=" + "a".repeat(queryLength) + " HTTP/1.1\r\nHost: localhost\r\n"
+        + "Connection: close\r\n\r\n";
+    try (Socket socket = new Socket("127.0.0.1", localS3.getPort())) {
+      socket.setSoTimeout(10_000);
+      socket.getOutputStream().write(request.getBytes(StandardCharsets.ISO_8859_1));
+      socket.shutdownOutput();
+      ByteArrayOutputStream response = new ByteArrayOutputStream();
+      socket.getInputStream().transferTo(response);
+      return response.toString(StandardCharsets.UTF_8);
+    }
+  }
+
+  @Test
+  void requestLineIsLimitedByTheMaxRequestHeaderSize() throws Exception {
+    LocalS3 localS3 = LocalS3.builder().port(-1).buckets("headers").build();
+    localS3.start();
+    try {
+      // Above the 4 KB of Netty's default, e.g. a presigned URL with a session token.
+      String accepted = get(localS3, 8 * 1024);
+      assertTrue(accepted.startsWith("HTTP/1.1 404 "), accepted);
+      assertTrue(accepted.contains("<Code>NoSuchKey</Code>"), accepted);
+
+      String rejected = get(localS3, LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE + 1);
+      assertTrue(rejected.startsWith("HTTP/1.1 400 "), rejected);
+      assertTrue(rejected.contains("<Code>BadRequest</Code>"), rejected);
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
   @Test
   void maxRequestHeaderSizeIsConfigurable() throws Exception {
     LocalS3 localS3 = LocalS3.builder().port(-1).buckets("headers")

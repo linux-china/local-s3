@@ -175,7 +175,10 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
             ch.pipeline().addLast("ssl", sslContext.newHandler(ch.alloc()));
         }
         ch.pipeline()
+                // The request line gets the same limit as the header section: a presigned URL with a session token,
+                // or a long URL-encoded key, easily exceeds the 4 KB of Netty's default.
                 .addLast("http-request-decoder", new HttpRequestDecoder(new HttpDecoderConfig()
+                        .setMaxInitialLineLength(config.maxRequestHeaderSize())
                         .setMaxHeaderSize(config.maxRequestHeaderSize())))
                 .addLast("http-response-encoder", new HttpResponseEncoder());
         if (sslContext != null && !config.plainHttpAccepted()) {

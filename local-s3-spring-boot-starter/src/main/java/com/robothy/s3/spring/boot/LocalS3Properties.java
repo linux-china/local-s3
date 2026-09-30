@@ -399,7 +399,7 @@ public class LocalS3Properties {
     private DataSize bodyFileThreshold = DataSize.ofBytes(LocalS3Config.DEFAULT_REQUEST_BODY_FILE_THRESHOLD);
 
     /**
-     * Max size of the header section of a request.
+     * Max size of the header section of a request, and max length of its request line.
      */
     private DataSize maxHeaderSize = DataSize.ofBytes(LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE);
 

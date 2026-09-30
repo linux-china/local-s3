@@ -47,7 +47,8 @@ import org.jspecify.annotations.Nullable;
  * @param maxRequestBodySize the max size in bytes of a request body, between 1 and
  *     {@value #DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB, the largest object that Amazon S3 accepts in a single upload.
  * @param requestBodyFileThreshold the size in bytes above which a request body is buffered in a file, not negative.
- * @param maxRequestHeaderSize the max size in bytes of the header section of a request, positive.
+ * @param maxRequestHeaderSize the max size in bytes of the header section of a request, and the max length of its
+ *     request line, positive.
  * @param idleConnectionTimeoutSeconds the seconds after which an idle connection is closed; {@code 0} for never.
  * @param compositeMultipartEtags whether a completed multipart upload gets the entity tag of Amazon S3.
  * @param virtualHostDomains the base domains of virtual-hosted-style requests, besides the default ones.

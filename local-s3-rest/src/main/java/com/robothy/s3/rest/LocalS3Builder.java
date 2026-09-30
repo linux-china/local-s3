@@ -1100,9 +1100,10 @@ public class LocalS3Builder {
         }
 
         /**
-         * Set the max size in bytes of the header section of a request, i.e. of all its header lines. A request
-         * whose headers exceed it is answered with {@code 400 RequestHeaderSectionTooLarge}, and its connection is
-         * closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
+         * Set the max size in bytes of the header section of a request, i.e. of all its header lines, which is also
+         * the max length of its request line. A request whose headers exceed it is answered with
+         * {@code 400 RequestHeaderSectionTooLarge}, one whose request line exceeds it with {@code 400 BadRequest}, and
+         * its connection is closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
          *
          * @param maxRequestHeaderSize max request header size in bytes, positive.
          * @return these settings.
