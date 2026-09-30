@@ -8,6 +8,7 @@ dependencies {
     // Keep every netty module on one version, see local-s3-rest.
     implementation(platform(libs.nettyBom))
 
+    implementation(libs.jspecify)
     // Only the netty modules that the router uses instead of netty-all. They are part of the public API: the
     // handlers take netty's HTTP messages, and HttpServerInitializer is a ChannelInitializer.
     api(libs.nettyCodecHttp)
