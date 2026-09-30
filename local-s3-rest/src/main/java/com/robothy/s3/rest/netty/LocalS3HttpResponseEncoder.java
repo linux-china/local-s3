@@ -50,14 +50,14 @@ public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResp
     InputStream bodyStream = msg instanceof StreamingHttpResponse streaming ? streaming.getBodyStream() : null;
     if (bodyStream == null) {
       FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, msg.getStatus(), msg.getBody());
-      msg.getHeaders().forEach(response.headers()::set);
+      msg.getAllHeaders().forEach(response.headers()::set);
       out.add(response);
       return;
     }
 
     msg.getBody().release();
     DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, msg.getStatus());
-    msg.getHeaders().forEach(response.headers()::set);
+    msg.getAllHeaders().forEach(response.headers()::set);
     if (!response.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) {
       HttpUtil.setTransferEncodingChunked(response, true);
     }

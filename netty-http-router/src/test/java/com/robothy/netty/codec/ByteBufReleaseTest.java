@@ -25,6 +25,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.stream.ChunkedStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -219,6 +220,19 @@ class ByteBufReleaseTest {
     response.release();
     assertEquals(0, unfinished.refCnt());
     assertEquals(0, body.refCnt());
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void headerWithManyValuesIsSentLineByLine() {
+    Router router = Router.router().route(HttpMethod.PUT, "/upload",
+        (request, response) -> response.addHeader("Set-Cookie", "a=1").addHeader("Set-Cookie", "b=2"));
+    EmbeddedChannel channel = channel(router);
+    writeRequest(channel, content("x"));
+
+    FullHttpResponse response = channel.readOutbound();
+    assertEquals(List.of("a=1", "b=2"), response.headers().getAll("set-cookie"));
+    response.release();
     channel.finishAndReleaseAll();
   }
 

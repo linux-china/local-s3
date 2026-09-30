@@ -134,8 +134,8 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
       if (log.isDebugEnabled()) {
         StringBuilder headers = new StringBuilder();
-        response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ")
-          .append(headerValueForLog(name, value)));
+        response.getAllHeaders().forEach((name, values) -> values.forEach(value -> headers.append("\n")
+          .append(name).append(": ").append(headerValueForLog(name, value))));
         log.debug(headers.toString());
       }
     } finally {

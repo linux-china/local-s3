@@ -394,10 +394,11 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * Keep the CORS headers of a failed response in the error response, so that browsers let the page read the error.
    */
   private static void copyCorsHeaders(StreamingHttpResponse from, StreamingHttpResponse to) {
-    from.getHeaders().forEach((name, value) -> {
+    from.getAllHeaders().forEach((name, values) -> {
       String lowerCaseName = name.toLowerCase(Locale.ROOT);
       if (lowerCaseName.startsWith("access-control-") || "vary".equals(lowerCaseName)) {
-        to.putHeader(name, value);
+        to.getHeaders().remove(name);
+        values.forEach(value -> to.addHeader(name, value));
       }
     });
   }

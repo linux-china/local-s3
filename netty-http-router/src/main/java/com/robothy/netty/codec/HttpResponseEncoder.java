@@ -30,7 +30,7 @@ public class HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
     ChunkedInput<ByteBuf> chunkedBody = msg.detachChunkedBody();
     HttpHeaders headers = new DefaultHttpHeaders();
     try {
-      msg.getHeaders().forEach(headers::add);
+      msg.getAllHeaders().forEach(headers::add);
       if (chunkedBody == null) {
         out.add(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, msg.getStatus(), msg.getBody(), headers,
             EmptyHttpHeaders.INSTANCE));
