@@ -40,12 +40,21 @@ public final class RequestTargets {
    * that authority instead of the {@code Host} header of the request (RFC 9112, section 3.2.2).
    *
    * @param target the request target of the request line.
-   * @return the converted target; {@code null} if the target cannot be converted, e.g. the asterisk-form {@code *},
+   * @return the converted target without a fragment, e.g. {@code /a} of {@code /a#b}, which a client doesn't send
+   *     (RFC 9110, section 7.1); {@code null} if the target cannot be converted, e.g. the asterisk-form {@code *},
    *     the authority-form {@code host:port}, or an absolute-form target without a host, e.g. {@code http:///a},
    *     which is invalid (RFC 9110, section 4.2.1).
    */
   public static RequestTarget parse(String target) {
-    if (target == null || target.isEmpty()) {
+    if (target == null) {
+      return null;
+    }
+    // A '#' in a path or a query is percent-encoded, so the first one starts the fragment.
+    int fragmentStart = target.indexOf('#');
+    if (fragmentStart >= 0) {
+      target = target.substring(0, fragmentStart);
+    }
+    if (target.isEmpty()) {
       return null;
     }
     if (target.charAt(0) == '/') {
@@ -63,7 +72,7 @@ public final class RequestTargets {
     }
 
     int authorityEnd = authorityStart;
-    while (authorityEnd < target.length() && "/?#".indexOf(target.charAt(authorityEnd)) < 0) {
+    while (authorityEnd < target.length() && "/?".indexOf(target.charAt(authorityEnd)) < 0) {
       authorityEnd++;
     }
     // The user info, e.g. "user:password@", is not part of the Host header.

@@ -1,6 +1,7 @@
 package com.robothy.netty.http;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.Collections;
@@ -46,10 +47,23 @@ public class RouterHttpRequest {
 
   private HttpVersion httpVersion;
 
+  /**
+   * @param headers request headers, keyed by names in any case, which are converted to lower case. The values of names
+   *                that only differ in case are joined as those of a repeated header, in the iteration order of the map;
+   *                {@code null} values are left out.
+   */
   @Builder
   private RouterHttpRequest(Map<String, String> headers, Map<String, List<String>> params, Map<String, String> pathVariables,
                             String path, String uri, HttpMethod method, ByteBuf body, HttpVersion httpVersion) {
-    this.headers = headers == null ? new HashMap<>() : new HashMap<>(headers);
+    this.headers = new HashMap<>();
+    if (headers != null) {
+      headers.forEach((name, value) -> {
+        Objects.requireNonNull(name, "The header name shouldn't be null.");
+        if (value != null) {
+          this.headers.merge(name.toLowerCase(Locale.ROOT), value, (values, next) -> joinHeaderValues(name, values, next));
+        }
+      });
+    }
     this.params = new HashMap<>();
     if (params != null) {
       params.forEach((name, values) -> this.params.put(name, List.copyOf(values)));
@@ -60,6 +74,14 @@ public class RouterHttpRequest {
     this.method = method;
     this.body = body;
     this.httpVersion = httpVersion;
+  }
+
+  /**
+   * Join the values of a repeated header as {@linkplain com.robothy.netty.codec.RouterHttpRequestDecoder} does: by
+   * commas (RFC 9110, section 5.3), except {@code Cookie}, whose values are joined by "; " (RFC 6265, section 5.4).
+   */
+  private static String joinHeaderValues(String name, String values, String value) {
+    return values + (HttpHeaderNames.COOKIE.contentEqualsIgnoreCase(name) ? "; " : ",") + value;
   }
 
   /**

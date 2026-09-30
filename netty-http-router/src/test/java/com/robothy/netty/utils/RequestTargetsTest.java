@@ -40,4 +40,16 @@ class RequestTargetsTest {
     assertNull(RequestTargets.parse("*"));
   }
 
+  @Test
+  void fragmentIsRemoved() {
+    assertEquals(new RequestTargets.RequestTarget("/", "host"), RequestTargets.parse("http://host#frag"));
+    assertEquals(new RequestTargets.RequestTarget("/?a=1", "host"), RequestTargets.parse("http://host?a=1#frag"));
+    assertEquals(new RequestTargets.RequestTarget("/a/b", "host"), RequestTargets.parse("http://host/a/b#c?d"));
+    assertEquals(new RequestTargets.RequestTarget("/a?b=c", null), RequestTargets.parse("/a?b=c#d"));
+    // A percent-encoded '#' is part of the path.
+    assertEquals(new RequestTargets.RequestTarget("/a%23b", null), RequestTargets.parse("/a%23b"));
+    // Nothing is left of a target that is only a fragment.
+    assertNull(RequestTargets.parse("#frag"));
+  }
+
 }
