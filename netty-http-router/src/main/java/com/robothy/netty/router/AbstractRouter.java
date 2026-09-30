@@ -53,7 +53,7 @@ public abstract class AbstractRouter implements Router {
 
   @Override
   public Router notFound(HttpRequestHandler handler) {
-    this.notFoundHandler = handler;
+    this.notFoundHandler = Objects.requireNonNull(handler, "The not found handler shouldn't be null.");
     return this;
   }
 

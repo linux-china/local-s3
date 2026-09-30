@@ -336,8 +336,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     OperationHandler handler = matchMethod(request.getMethod())
         .map(pathRules -> matchPath(pathRules, request))
         .map(rules -> matchHandler(rules, request))
-        .orElseGet(() -> notFoundHandler() == null ? null
-            : new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
+        .orElseGet(() -> new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
     handler = asListDirectoryBuckets(request, handler);
 
     // A bucket that is served as a static website answers an unsigned read of a browser, which the S3 routes above

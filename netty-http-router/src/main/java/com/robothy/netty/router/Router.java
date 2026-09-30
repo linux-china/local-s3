@@ -3,6 +3,7 @@ package com.robothy.netty.router;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -26,6 +27,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 public interface Router {
 
   HttpRequestHandler DEFAULT_NOT_FOUND_HANDLER = (request, response) -> response.status(HttpResponseStatus.NOT_FOUND)
+      .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
       .write("Netty HTTP Router: 404 Not Found.");
 
   /**
@@ -55,6 +57,7 @@ public interface Router {
   /**
    * Set resource not found handler.
    *
+   * @param handler the handler for requests that match no route; must not be {@code null}.
    * @return this
    */
   Router notFound(HttpRequestHandler handler);

@@ -745,4 +745,17 @@ class DefaultRouterTest {
         () -> router.interfaceExceptionHandler(RuntimeException.class, retryableHandler));
   }
 
+  @Test
+  void notFoundRejectsNull() {
+    assertThrows(NullPointerException.class, () -> Router.router().notFound(null));
+  }
+
+  @Test
+  void defaultNotFoundHandlerSetsContentType() throws Exception {
+    HttpResponse response = new HttpResponse();
+    Router.DEFAULT_NOT_FOUND_HANDLER.handle(null, response);
+    assertEquals(HttpResponseStatus.NOT_FOUND, response.getStatus());
+    assertEquals("text/plain; charset=utf-8", response.getHeaders().get("content-type"));
+  }
+
 }
