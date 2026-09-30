@@ -516,7 +516,10 @@ service starts with, as `<bucket>/<key>`. `local-s3.website.*` configures
 `error-document`. `local-s3.cors.*` configures the [default CORS rule](semantics.md#cors) of the buckets without one
 of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-headers` and `max-age`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
 `testAndDevelopmentOnly`, a Maven `test` scope or profile). If the production jar includes it, the application
-starts a local service and its `S3Client` points at it.
+starts a local service. Its clients still reach the endpoint the application is configured with, e.g.
+`spring.cloud.aws.s3.endpoint` or `AWS_ENDPOINT_URL`: the starter then defines no clients, and logs a warning; see
+[another S3 endpoint](../local-s3-spring-boot-starter/README.md#another-s3-endpoint). Without such an endpoint, its
+`S3Client` points at the local service.
 
 In a `@SpringBootTest`, the service listens on a random free port unless `local-s3.port` is set, so that the test
 contexts that Spring caches side by side don't compete for port 29090; the client beans of the starter, and the

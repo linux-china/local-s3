@@ -160,8 +160,9 @@ The starter defines:
   credentials of the service, and, with their modules, an `S3VectorsClient` (`s3vectors`), an `S3TablesClient`
   (`s3tables`) and an `S3TransferManager` (`s3-transfer-manager` and `netty-nio-client`, over an `S3AsyncClient` of its
   own with multipart transfers enabled). Creating one starts the service, so a bean can use it while it is initialized, even with a
-  random port. The starter backs off from a client that the application defines itself, and from all of them with
-  `local-s3.clients.enabled=false`. It is ordered before the S3 auto-configurations of
+  random port. The starter backs off from a client that the application defines itself, from all of them with
+  `local-s3.clients.enabled=false`, and from all of them, with a warning, when the application is configured with
+  [another S3 endpoint](#another-s3-endpoint). It is ordered before the S3 auto-configurations of
   [Spring Cloud AWS](https://github.com/awspring/spring-cloud-aws) (`spring-cloud-aws-starter-s3`), so these back off
   from the clients of the starter, and `S3Template` uses them. Its `s3VectorsClient`, which it defines whatever the
   application defines, is built with the `S3VectorsClientBuilder` of the starter, so it points at the service too;
@@ -393,6 +394,28 @@ local-s3:
 This setup also works when the production artifact doesn't contain the starter, e.g. with `developmentOnly`.
 `local-s3.enabled: false` in `application.yml` still selects `AmazonS3Configuration`, and the setting has no other
 effect when the starter is absent.
+
+### Another S3 endpoint
+
+A starter on the classpath of an application that is configured for another S3 endpoint, e.g. of a production build
+that includes it by mistake, doesn't take over its clients: the starter defines none of them when one of these
+properties names an endpoint other than the embedded service, and logs a warning that says which:
+
+| Property | Also set as |
+|---|---|
+| `spring.cloud.aws.s3.endpoint` | `SPRING_CLOUD_AWS_S3_ENDPOINT` |
+| `spring.cloud.aws.endpoint` | `SPRING_CLOUD_AWS_ENDPOINT` |
+| `aws.endpoint-url-s3` | `AWS_ENDPOINT_URL_S3`, `-Daws.endpointUrlS3` |
+| `aws.endpoint-url` | `AWS_ENDPOINT_URL`, `-Daws.endpointUrl` |
+
+The clients of the application, e.g. those of Spring Cloud AWS, then reach that endpoint. The embedded service still
+runs; `local-s3.enabled=false` leaves it out. An endpoint is taken for the embedded service, and the starter keeps its
+clients, when it names `${local.s3.endpoint}` or `${local.s3.port}`, also through a placeholder of the application, or
+when it is `localhost`, a loopback address, `local-s3.bind-host` or one of `local-s3.virtual-host-domains` at
+`local-s3.port` (at any port if that is random). The variables of the AWS SDK are taken for the service at any port of
+such a host: they are usually set in a shell for the AWS CLI, e.g. `AWS_ENDPOINT_URL=http://127.0.0.1:29090` for a
+standalone LocalS3, and never name a local endpoint in production. `local-s3.clients.enabled=true` points the clients at
+the embedded service whatever else is configured.
 
 An application that only ever embeds LocalS3 for the processes around it, e.g. DuckDB or a Spark job, needs none of
 this: it doesn't use a client itself, and doesn't have the AWS SDK on the classpath, so the starter defines no client

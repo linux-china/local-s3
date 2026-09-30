@@ -36,12 +36,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.test.context.FilteredClassLoader;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -486,6 +489,59 @@ class LocalS3AutoConfigurationTest {
           S3Template template = context.getBean(S3Template.class);
           template.upload("uploads", "a.txt", new ByteArrayInputStream("Hello".getBytes(StandardCharsets.UTF_8)));
           assertTrue(template.objectExists("uploads", "a.txt"));
+        });
+  }
+
+  /**
+   * A starter on the classpath of an application that is configured for another S3 endpoint, e.g. of a production build
+   * that includes it by mistake, doesn't point the clients of the application at the embedded service.
+   */
+  @Test
+  @ExtendWith(OutputCaptureExtension.class)
+  void theClientsBackOffFromAnotherS3Endpoint(CapturedOutput output) {
+    runner.withPropertyValues("spring.cloud.aws.s3.endpoint=https://s3.eu-west-1.amazonaws.com").run(context -> {
+      assertNull(context.getStartupFailure());
+      assertTrue(context.getBean(LocalS3.class).isRunning(), "The service still runs.");
+      assertFalse(context.containsBean("s3Client"));
+      assertTrue(context.getBeansOfType(S3Client.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3AsyncClient.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3Presigner.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3VectorsClient.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3TablesClient.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3TransferManager.class).isEmpty());
+    });
+    assertTrue(output.getOut().contains("The LocalS3 starter defines no S3 clients: spring.cloud.aws.s3.endpoint is "
+        + "https://s3.eu-west-1.amazonaws.com"), output.getOut());
+  }
+
+  @Test
+  void theClientsPointAtTheServiceWhenTheyAreEnabledExplicitly() {
+    runner.withPropertyValues("spring.cloud.aws.s3.endpoint=https://s3.eu-west-1.amazonaws.com",
+        "local-s3.clients.enabled=true", "local-s3.buckets=forced").run(context -> {
+      assertNull(context.getStartupFailure());
+      assertEquals(List.of("forced"), context.getBean(S3Client.class).listBuckets().buckets().stream()
+          .map(bucket -> bucket.name()).toList());
+    });
+  }
+
+  /**
+   * The client of Spring Cloud AWS then takes the place of the one of the starter, with the endpoint it is configured
+   * with.
+   */
+  @Test
+  void springCloudAwsDefinesTheClientOfAnotherS3Endpoint() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(S3AutoConfiguration.class, AwsAutoConfiguration.class,
+            CredentialsProviderAutoConfiguration.class, RegionProviderAutoConfiguration.class,
+            LocalS3AutoConfiguration.class))
+        .withPropertyValues("local-s3.port=-1", "spring.cloud.aws.region.static=eu-west-1",
+            "spring.cloud.aws.s3.endpoint=https://s3.example.com",
+            "spring.cloud.aws.credentials.access-key=key", "spring.cloud.aws.credentials.secret-key=secret")
+        .run(context -> {
+          assertNull(context.getStartupFailure());
+          S3Client s3 = context.getBean(S3Client.class);
+          assertEquals(URI.create("https://s3.example.com"),
+              s3.serviceClientConfiguration().endpointOverride().orElse(null));
         });
   }
 

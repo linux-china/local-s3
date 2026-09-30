@@ -483,7 +483,9 @@ public class LocalS3Properties {
   public static class Clients {
 
     /**
-     * Whether to define the client beans, unless the application defines its own.
+     * Whether to define the client beans, unless the application defines its own. Unless it is set, they are left out
+     * when the application is configured with another S3 endpoint, e.g. spring.cloud.aws.s3.endpoint or
+     * AWS_ENDPOINT_URL; true defines them anyway.
      */
     private boolean enabled = true;
 

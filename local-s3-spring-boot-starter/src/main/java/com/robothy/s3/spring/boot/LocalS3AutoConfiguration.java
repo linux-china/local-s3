@@ -58,7 +58,9 @@ import software.amazon.awssdk.transfer.s3.S3TransferManager;
  *   modules are.</li>
  * </ul>
  *
- * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3.
+ * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3. The
+ * clients back off by themselves, with a warning, when the application is configured with another S3 endpoint, e.g.
+ * {@code spring.cloud.aws.s3.endpoint} or {@code AWS_ENDPOINT_URL}; see {@linkplain ExternalS3Endpoint}.
  *
  * <p>Ordered before the S3 auto-configurations of Spring Cloud AWS, whose clients are {@code @ConditionalOnMissingBean}
  * too: the clients of the starter are defined first, so Spring Cloud AWS backs off from them, and its
@@ -120,7 +122,24 @@ public class LocalS3AutoConfiguration {
     // them can seed on top of the fixtures of local-s3.seed.classpath.
     seeders.orderedStream().forEach(builder::seeder);
     customizers.orderedStream().forEach(customizer -> customizer.customize(builder));
+    warnIfTheClientsBackOff(environment);
     return builder.build();
+  }
+
+  /**
+   * Warns that the clients of the starter back off from an S3 endpoint that the application is configured with, see
+   * {@linkplain LocalS3ClientsCondition}: once per context, from the bean of the service rather than from the condition,
+   * which is evaluated more than once.
+   */
+  private static void warnIfTheClientsBackOff(Environment environment) {
+    if (environment.getProperty(ExternalS3Endpoint.CLIENTS_ENABLED) != null) {
+      return;
+    }
+    ExternalS3Endpoint.find(environment).ifPresent(external -> log.warn("The LocalS3 starter defines no S3 clients: {} "
+        + "is {}, which isn't the embedded LocalS3, so the clients of the application reach that endpoint. The "
+        + "embedded LocalS3 still runs; the starter is meant for development and tests only, so set "
+        + "local-s3.enabled=false to leave it out, or local-s3.clients.enabled=true to point the clients at it anyway.",
+        external.property(), external.endpoint()));
   }
 
   @Bean
@@ -268,7 +287,7 @@ public class LocalS3AutoConfiguration {
    */
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass(S3Client.class)
-  @ConditionalOnProperty(name = "local-s3.clients.enabled", havingValue = "true", matchIfMissing = true)
+  @Conditional(LocalS3ClientsCondition.class)
   static class ClientsConfiguration {
 
     @Bean

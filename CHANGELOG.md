@@ -372,6 +372,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Changed
 
++ The clients of the Spring Boot starter back off, with a warning, when the application is configured with another S3
+  endpoint, e.g. `spring.cloud.aws.s3.endpoint`, `spring.cloud.aws.endpoint`, `AWS_ENDPOINT_URL_S3` or
+  `AWS_ENDPOINT_URL`, so that a starter included in a production build by mistake doesn't point them at the embedded
+  service. `local-s3.clients.enabled=true` keeps them; see
+  [another S3 endpoint](local-s3-spring-boot-starter/README.md#another-s3-endpoint).
 + An `aws-chunked` upload, which the AWS SDK for Java 2.30+ sends by default for `PutObject` and `UploadPart` over
   plain HTTP (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER`), is decoded while its body is written to the temporary
   file, and its chunk and trailer signatures are verified along the way. In `PERSISTENCE` mode the file of such an
