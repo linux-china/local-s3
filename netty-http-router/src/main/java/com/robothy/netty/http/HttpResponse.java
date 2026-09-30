@@ -16,7 +16,8 @@ public class HttpResponse {
 
   private HttpResponseStatus status;
 
-  private final CompositeByteBuf body = Unpooled.compositeBuffer();
+  // No component limit: consolidating the components of a large body would copy it over and over.
+  private final CompositeByteBuf body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
 
   public HttpResponse write(String content) {
     if (content != null) {

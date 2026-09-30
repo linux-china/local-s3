@@ -88,7 +88,8 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       HashMap<String, String> headers = new HashMap<>();
       httpRequest.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
           header.getValue().trim(), (values, value) -> values + "," + value));
-      this.body = Unpooled.compositeBuffer();
+      // No component limit: consolidating the components of a large body would copy it over and over.
+      this.body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
       QueryStringDecoder queryStringDecoder = new QueryStringDecoder(httpRequest.uri());
 
       this.builder = com.robothy.netty.http.HttpRequest.builder()

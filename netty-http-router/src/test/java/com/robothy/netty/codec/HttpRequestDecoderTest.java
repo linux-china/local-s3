@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
@@ -175,6 +176,25 @@ class HttpRequestDecoderTest {
     assertEquals("hello", request.getBody().toString(StandardCharsets.UTF_8));
     request.getBody().release();
     assertEquals(0, body.refCnt());
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void manyChunksAreNotConsolidated() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload"));
+    int chunks = 100;
+    StringBuilder expected = new StringBuilder();
+    for (int i = 0; i < chunks; i++) {
+      channel.writeInbound(new DefaultHttpContent(content("c" + i + ";")));
+      expected.append("c").append(i).append(';');
+    }
+    channel.writeInbound(new DefaultLastHttpContent());
+    HttpRequest request = channel.readInbound();
+    // Every chunk, and the empty last content, stays a component: consolidating them would copy the body over and over.
+    assertEquals(chunks + 1, ((CompositeByteBuf) request.getBody()).numComponents());
+    assertEquals(expected.toString(), request.getBody().toString(StandardCharsets.UTF_8));
+    request.getBody().release();
     channel.finishAndReleaseAll();
   }
 
