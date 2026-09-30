@@ -4,9 +4,9 @@ A library help to build web applications based on Netty.
 
 ## 1. Getting Started
 
-### 1.3 Hello World
+### 1.1 Hello World
 
-The HelloWord example follows the standard steps of startup a Netty application. You only
+The HelloWorld example follows the standard steps of starting a Netty application. You only
 need to define a `Router` and an executor group that executes HTTP message handlers.
 
 ```java
@@ -20,16 +20,23 @@ class HelloWorld {
     DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(2);
     HttpServerInitializer serverInitializer = new HttpServerInitializer(executor, router);
 
-    EventLoopGroup parentGroup = new NioEventLoopGroup(1);
-    EventLoopGroup childGroup = new NioEventLoopGroup(1);
-    Channel serverSocketChannel = new ServerBootstrap().group(parentGroup, childGroup)
-        .handler(new LoggingHandler(LogLevel.DEBUG))
-        .channel(NioServerSocketChannel.class)
-        .childHandler(serverInitializer)
-        .bind(8686)
-        .sync()
-        .channel();
-    serverSocketChannel.close().sync();
+    EventLoopGroup parentGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+    EventLoopGroup childGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+    try {
+      Channel serverSocketChannel = new ServerBootstrap().group(parentGroup, childGroup)
+          .handler(new LoggingHandler(LogLevel.DEBUG))
+          .channel(NioServerSocketChannel.class)
+          .childHandler(serverInitializer)
+          .bind(8686)
+          .sync()
+          .channel();
+      // Serve until the server channel is closed, e.g. try `curl http://localhost:8686/hello`.
+      serverSocketChannel.closeFuture().sync();
+    } finally {
+      parentGroup.shutdownGracefully();
+      childGroup.shutdownGracefully();
+      executor.shutdownGracefully();
+    }
   }
 }
 ```
@@ -42,17 +49,24 @@ netty-http-router map an HTTP request to a `HttpMessageHandler` according to the
 
 #### Request path pattern
 
-This library uses SpringMVC path pattern to match request paths.
+A route path must start with `/` and is split into segments by `/`; empty segments are ignored, so `/a//b/` is the
+same as `/a/b`. A segment is either a literal, which matches the same text exactly, or a path variable `{name}`, which
+matches any single segment.
 
 + `"/hello"` matches `"/hello"`
-+ `"/user/{id}"` matches `'/user/123'`, `/user/666`, etc.
-+ `/user/{id}/profile` matches `/user/123/profile`, `/user/bob/profie`, etc.
-+ `/user/{id:[0-9]{1,}}/profile` matches `/user/123/profile` and not match `/user/bob/profile`.
++ `"/user/{id}"` matches `/user/123`, `/user/666`, etc.
++ `/user/{id}/profile` matches `/user/123/profile`, `/user/bob/profile`, etc.
++ `"/"` matches `/` and `//`.
+
+A literal segment has priority over a path variable: with both `/user/me` and `/user/{id}` registered, `/user/me`
+is handled by the former. If the literal branch has no matched route, the path variable branch is tried.
+
+Regular expressions (e.g. `{id:[0-9]+}`), wildcards (`*`, `**`) and variables in part of a segment (e.g.
+`/file.{ext}`) are **not** supported: the whole text between the braces is taken as the variable name, and no
+validation is performed on the value. Check the value in the handler instead.
 
 Path variables are read with `request.pathVariable("id")`, query parameters with `request.parameter("id")`;
 they are kept apart, so a query parameter never overrides a path variable of the same name.
-
-You can find more details about the path pattern in the [PathPattern](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/web/util/pattern/PathPattern.html) javadoc.
 
 #### Headers and parameters matcher
 
@@ -60,12 +74,15 @@ netty-http-router allows setting headers and parameters match rules via
 `headerMatcher(header rule)` and `paramMatcher(parameter rule)`. The matching
 priority from high to low is HTTP method, path, headers, and parameters.
 
+Header names in the map passed to the header matcher are **lower-case**, and the values of a repeated header are
+joined by commas.
+
 ```java
 Route.builder()
     .method(HttpMethod.HEAD)
     .path("/a/content")
-    .headerMatcher(headers -> headers.containsKey("X-Authorization"))
-    .paramsMatcher(params -> params.containsKey("user"))
+    .headerMatcher(headers -> headers.containsKey("x-authorization"))
+    .paramMatcher(params -> params.containsKey("user"))
     .handler(paramRequestHandler)
     .build()
 ```
@@ -76,8 +93,8 @@ netty-http-router scans static resources in the `/static` directory of the class
 You can customize the path via `Router#staticResource()`.
 
 ```java
-Router router=Router.router()
-    .route(HttpMethod.GET,"/", handler)
+Router router = Router.router()
+    .route(HttpMethod.GET, "/", handler)
     .staticResource("my-static-resources");
 ```
 
@@ -93,8 +110,8 @@ A request path with a `..` segment or a backslash is not found, so a request can
 You can set a not found handler and exception handlers for a Router.
 
 ```java
-Router router=Router.router()
-    .route(HttpMethod.GET,"/", handler)
+Router router = Router.router()
+    .route(HttpMethod.GET, "/", handler)
     .notFound((request, response) -> response.status(HttpResponseStatus.NOT_FOUND))
     .exceptionHandler(IllegalArgumentException.class, (e, request, response) -> response
       .status(HttpResponseStatus.BAD_REQUEST)

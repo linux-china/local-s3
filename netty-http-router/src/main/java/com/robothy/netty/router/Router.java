@@ -7,10 +7,14 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
- * A Router is a S3RequestHandler container. The route path must starts with a '/'.
+ * A Router is a {@link HttpRequestHandler} container. The route path must start with a '/'.
  *
- * "/", "//", "" matches route("/")
- * "/a" matches route("/a") firstly, then match "/{param}" and pass 'a' as value of `param`.
+ * <ul>
+ *   <li>"/" and "//" match route("/"); a request path that does not start with '/', e.g. "", matches nothing.</li>
+ *   <li>"/a" matches route("/a") firstly, then "/{param}" with 'a' as the value of {@code param}.</li>
+ *   <li>A path variable is the whole segment "{name}"; regular expressions such as "{id:[0-9]+}" are not supported,
+ *   the text between the braces is taken as the variable name as is.</li>
+ * </ul>
  *
  * <p><b>Thread safety:</b> the registration methods ({@link #route(Route)}, {@link #notFound(HttpRequestHandler)},
  * {@link #staticResource(String)}, {@link #exceptionHandler(Class, ExceptionHandler)} and
