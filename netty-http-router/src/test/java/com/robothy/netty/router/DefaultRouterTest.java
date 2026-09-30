@@ -5,13 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.HttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 
 class DefaultRouterTest {
@@ -115,6 +119,24 @@ class DefaultRouterTest {
   }
 
   @Test
+  void staticResourceContentType(@TempDir Path directory) throws Exception {
+    Router router = new DefaultRouter();
+    HttpRequest classpathRequest = getRequest("/test.html");
+    HttpResponse classpathResponse = new HttpResponse();
+    router.match(classpathRequest).handle(classpathRequest, classpathResponse);
+    assertEquals("text/html; charset=utf-8", classpathResponse.getHeaders().get("content-type"));
+    classpathResponse.getBody().release();
+
+    Files.writeString(directory.resolve("data.no-such-extension"), "data");
+    router.staticResource(directory.toString());
+    HttpRequest fileRequest = getRequest("/data.no-such-extension");
+    HttpResponse fileResponse = new HttpResponse();
+    router.match(fileRequest).handle(fileRequest, fileResponse);
+    assertEquals("application/octet-stream", fileResponse.getHeaders().get("content-type"));
+    fileResponse.getBody().release();
+  }
+
+  @Test
   void matchRoutesWithSamePriority() {
     DefaultRouter router = new DefaultRouter();
     HttpRequestHandler aclHandler = Mockito.mock(HttpRequestHandler.class);
@@ -139,6 +161,43 @@ class DefaultRouterTest {
     // Header matchers have higher priority than param matchers.
     assertEquals(xmlHandler, router.match(bucketRequest(Map.of("acl", List.of("")), Map.of("accept", "application/xml"))));
     assertEquals(defaultHandler, router.match(bucketRequest(Map.of(), Map.of())));
+  }
+
+  @Test
+  void matchBacktracksToPathVariable() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler exactHandler = Mockito.mock(HttpRequestHandler.class);
+    HttpRequestHandler variableHandler = Mockito.mock(HttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/a/b/c", exactHandler)
+        .route(HttpMethod.GET, "/{x}/b/d", variableHandler);
+
+    assertEquals(exactHandler, router.match(getRequest("/a/b/c")));
+    // The exact branch "/a/b" has no child "d", backtrack to "/{x}/b/d".
+    HttpRequest request = getRequest("/a/b/d");
+    assertEquals(variableHandler, router.match(request));
+    assertEquals(List.of("a"), request.getParams().get("x"));
+
+    DefaultRouter paramRouter = new DefaultRouter();
+    HttpRequestHandler paramHandler = Mockito.mock(HttpRequestHandler.class);
+    paramRouter.route(Route.builder().method(HttpMethod.GET).path("/a")
+            .paramMatcher(params -> params.containsKey("z")).handler(paramHandler).build())
+        .route(HttpMethod.GET, "/{x}", variableHandler);
+    // The exact route "/a" has priority when it matches.
+    HttpRequest paramRequest = getRequest("/a");
+    paramRequest.getParams().put("z", List.of(""));
+    assertEquals(paramHandler, paramRouter.match(paramRequest));
+    // The exact route "/a" does not match the params, backtrack to "/{x}".
+    assertEquals(variableHandler, paramRouter.match(getRequest("/a")));
+  }
+
+  private static HttpRequest getRequest(String path) {
+    return HttpRequest.builder()
+        .method(HttpMethod.GET)
+        .uri(path)
+        .path(path)
+        .params(new HashMap<>())
+        .headers(new HashMap<>())
+        .build();
   }
 
   private static HttpRequest bucketRequest(Map<CharSequence, List<String>> params, Map<CharSequence, String> headers) {

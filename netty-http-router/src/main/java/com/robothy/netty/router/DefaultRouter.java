@@ -67,29 +67,7 @@ final class DefaultRouter extends AbstractRouter {
       return null;
     }
 
-    int idx = 0;
-    for (; idx < segments.length; idx++) {
-      TreeNode tmp = getNode(node, segments[idx]);
-      if (tmp == null) {
-        break;
-      }
-      node = tmp;
-    }
-
-    if (idx != segments.length) {
-      return null;
-    }
-
-    Route result = null;
-    for (Route route : node.routes) {
-      boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().apply(request.getHeaders()));
-      boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().apply(request.getParams()));
-      if (headerMatched && paramMatched) {
-        result = route;
-        break;
-      }
-    }
-
+    Route result = matchRoute(node, segments, 0, request);
     if (result == null) {
       return null;
     }
@@ -117,8 +95,31 @@ final class DefaultRouter extends AbstractRouter {
     return result;
   }
 
-  TreeNode getNode(TreeNode parent, String segment) {
-    return parent.exactChildren.getOrDefault(segment, parent.likeChild);
+  /**
+   * Find the route matching {@code segments[idx..]} under {@code node} with depth-first search. The exact child is
+   * tried before the path variable child, and the search backtracks to the path variable child if the exact branch
+   * has no matched route.
+   */
+  private Route matchRoute(TreeNode node, String[] segments, int idx, HttpRequest request) {
+    if (idx == segments.length) {
+      for (Route route : node.routes) {
+        boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().apply(request.getHeaders()));
+        boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().apply(request.getParams()));
+        if (headerMatched && paramMatched) {
+          return route;
+        }
+      }
+      return null;
+    }
+
+    TreeNode exactChild = node.exactChildren.get(segments[idx]);
+    if (exactChild != null) {
+      Route route = matchRoute(exactChild, segments, idx + 1, request);
+      if (route != null) {
+        return route;
+      }
+    }
+    return node.likeChild == null ? null : matchRoute(node.likeChild, segments, idx + 1, request);
   }
 
   private String[] splitPath(String path) {

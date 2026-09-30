@@ -57,8 +57,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       response.status(HttpResponseStatus.OK);
     }
 
-    boolean keepAlive = request.getHttpVersion().isKeepAliveDefault() ||
-        HttpHeaderValues.KEEP_ALIVE.contentEquals(request.header(HttpHeaderNames.CONNECTION.toString()).orElse(null));
+    boolean keepAlive = isKeepAlive(request);
     response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
     response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
         String.valueOf(response.getBody().readableBytes()));
@@ -74,6 +73,28 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.debug(headers.toString());
     }
 
+  }
+
+  /**
+   * Same as {@linkplain io.netty.handler.codec.http.HttpUtil#isKeepAlive}: HTTP/1.1 keeps the connection alive unless
+   * the request has {@code Connection: close}; HTTP/1.0 closes the connection unless the request has
+   * {@code Connection: keep-alive}. The header value may be a comma-separated list and is case-insensitive.
+   */
+  static boolean isKeepAlive(HttpRequest request) {
+    String connection = request.header(HttpHeaderNames.CONNECTION.toString()).orElse("");
+    if (request.getHttpVersion().isKeepAliveDefault()) {
+      return !containsToken(connection, HttpHeaderValues.CLOSE.toString());
+    }
+    return containsToken(connection, HttpHeaderValues.KEEP_ALIVE.toString());
+  }
+
+  private static boolean containsToken(String headerValue, String token) {
+    for (String value : headerValue.split(",")) {
+      if (token.equalsIgnoreCase(value.trim())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

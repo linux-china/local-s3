@@ -2,6 +2,7 @@ package com.robothy.netty.router;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.utils.MimeTypeUtils;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
@@ -11,7 +12,6 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -45,9 +45,7 @@ abstract class StaticResourceMatcher {
         String resourceName = resourceName(request);
         URL url = Thread.currentThread().getContextClassLoader().getResource(resourceName);
         Objects.requireNonNull(url, request.getPath() + " not exist.");
-        String urlStr = url.toString();
-        String contentType = Files.probeContentType(Paths.get(urlStr.substring(urlStr.lastIndexOf("/") + 1)));
-        response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), contentType);
+        response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(resourceName));
         try (InputStream in = url.openStream()) {
           response.write(in.readAllBytes());
         }
@@ -94,7 +92,7 @@ abstract class StaticResourceMatcher {
           long contentLength = fileChannel.size();
           response.status(HttpResponseStatus.OK)
               .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength)
-              .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), Files.probeContentType(absPath));
+              .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()));
 
           if (contentLength > MAP_THRESHOLD) {
             MappedByteBuffer byteBuffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, contentLength);

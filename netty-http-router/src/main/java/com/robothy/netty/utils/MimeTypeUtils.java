@@ -1,8 +1,14 @@
 package com.robothy.netty.utils;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 public class MimeTypeUtils {
 
@@ -100,8 +106,48 @@ public class MimeTypeUtils {
     extensionToMimeType = Collections.unmodifiableMap(map);
   }
 
+  public static final String DEFAULT_MIME_TYPE = "application/octet-stream";
+
+  /**
+   * Get the MIME type by the file extension, ignoring case.
+   *
+   * @param extension file extension without the leading dot, e.g. {@code html}.
+   * @return the MIME type; or {@code application/octet-stream} if the extension is unknown.
+   */
   public static String mimeTypeByFileExtension(String extension) {
-    return extensionToMimeType.getOrDefault(extension, "application/octet-stream");
+    if (extension == null) {
+      return DEFAULT_MIME_TYPE;
+    }
+    return extensionToMimeType.getOrDefault(extension.toLowerCase(Locale.ROOT), DEFAULT_MIME_TYPE);
+  }
+
+  /**
+   * Get the MIME type by the file name. Look up the extension in the built-in table first, then fall back to
+   * {@linkplain Files#probeContentType(Path)}, whose result depends on the platform.
+   *
+   * @param fileName file name or path, e.g. {@code static/index.html}.
+   * @return the MIME type, never {@code null}; {@code application/octet-stream} if it is unknown.
+   */
+  public static String mimeTypeByFileName(String fileName) {
+    Objects.requireNonNull(fileName, "The file name shouldn't be null.");
+    String name = fileName.substring(Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\')) + 1);
+    int dot = name.lastIndexOf('.');
+    if (dot >= 0) {
+      String mimeType = extensionToMimeType.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
+      if (mimeType != null) {
+        return mimeType;
+      }
+    }
+
+    try {
+      String probed = Files.probeContentType(Path.of(name));
+      if (probed != null) {
+        return probed;
+      }
+    } catch (IOException | InvalidPathException e) {
+      // Fall back to the default MIME type.
+    }
+    return DEFAULT_MIME_TYPE;
   }
 
 }
