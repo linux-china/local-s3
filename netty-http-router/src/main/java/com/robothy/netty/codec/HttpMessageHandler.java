@@ -81,15 +81,21 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
 
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
+      boolean head = HttpMethod.HEAD.equals(request.getMethod());
       if (!hasNoContent(response.getStatus())) {
-        long contentLength = response.getChunkedBody() == null
-            ? response.getBody().readableBytes() : response.getChunkedBody().length();
-        // A chunked body of unknown length is sent with Transfer-Encoding: chunked.
-        if (contentLength >= 0) {
-          response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(), String.valueOf(contentLength));
+        if (response.getChunkedBody() == null && !head) {
+          correctContentLength(request, response);
+        } else {
+          // The Content-Length that a handler sets for a HEAD request is the length of the GET response, kept as is.
+          long contentLength = response.getChunkedBody() == null
+              ? response.getBody().readableBytes() : response.getChunkedBody().length();
+          // A chunked body of unknown length is sent with Transfer-Encoding: chunked.
+          if (contentLength >= 0) {
+            response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(), String.valueOf(contentLength));
+          }
         }
       }
-      if (HttpMethod.HEAD.equals(request.getMethod()) || hasNoContent(response.getStatus())) {
+      if (head || hasNoContent(response.getStatus())) {
         // No content is sent, so the chunked body isn't read, e.g. a file isn't opened for nothing.
         HttpResponse.closeQuietly(response.detachChunkedBody());
       }
@@ -146,6 +152,21 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.trace("{} {} answered {}.", request.getMethod(), request.getPath(), status, e);
     } else {
       log.debug("{} {} answered {}: {}", request.getMethod(), request.getPath(), status, e.toString());
+    }
+  }
+
+  /**
+   * Set the {@code Content-Length} of a buffered body to its length. One that a handler set to another length, e.g. by
+   * a mistake with a range, would make the client take the rest of the body for the next response, or wait for the
+   * missing bytes, so it is replaced with a warning.
+   */
+  private static void correctContentLength(HttpRequest request, HttpResponse response) {
+    String name = HttpHeaderNames.CONTENT_LENGTH.toString();
+    String actual = String.valueOf(response.getBody().readableBytes());
+    String declared = response.getHeaders().put(name, actual);
+    if (declared != null && !declared.trim().equals(actual)) {
+      log.warn("The Content-Length {} of the response to {} {} is not the body length {}, sent {} instead.",
+          declared, request.getMethod(), request.getPath(), actual, actual);
     }
   }
 

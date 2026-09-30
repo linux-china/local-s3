@@ -104,6 +104,66 @@ class HttpMessageHandlerTest {
     channel.finishAndReleaseAll();
   }
 
+  @ParameterizedTest
+  @CsvSource(value = {
+      "10, 5, true",
+      "3, 5, true",
+      "abc, 5, true",
+      "5, 5, false",
+      "' 5', 5, false",
+      "NULL, 5, false",
+  }, nullValues = "NULL")
+  void contentLengthOfBufferedBodyIsItsLength(String declared, String sent, boolean warned) {
+    Router router = Router.router().route(HttpMethod.GET, "/body", (request, response) -> {
+      response.write("hello");
+      if (declared != null) {
+        response.putHeader("Content-Length", declared);
+      }
+    });
+    Logger logger = (Logger) LoggerFactory.getLogger(HttpMessageHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    try {
+      channel.writeInbound(request("/body"));
+      HttpResponse response = channel.readOutbound();
+      assertEquals(sent, response.getHeaders().get("content-length"));
+      response.getBody().release();
+    } finally {
+      logger.detachAppender(appender);
+      channel.finishAndReleaseAll();
+    }
+    List<ILoggingEvent> warnings = appender.list.stream()
+        .filter(event -> event.getLevel() == Level.WARN)
+        .toList();
+    assertEquals(warned ? 1 : 0, warnings.size());
+    if (warned) {
+      assertEquals("The Content-Length " + declared + " of the response to GET /body is not the body length 5, "
+          + "sent 5 instead.", warnings.get(0).getFormattedMessage());
+    }
+  }
+
+  @Test
+  void keepContentLengthSetByHandlerOnHead() {
+    // The length of the object that a HEAD response describes without its body.
+    Router router = Router.router().route(HttpMethod.HEAD, "/object",
+        (request, response) -> response.putHeader("Content-Length", 1024));
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    channel.writeInbound(HttpRequest.builder()
+        .method(HttpMethod.HEAD)
+        .uri("/object")
+        .path("/object")
+        .httpVersion(HttpVersion.HTTP_1_1)
+        .body(Unpooled.EMPTY_BUFFER)
+        .build());
+
+    HttpResponse response = channel.readOutbound();
+    assertEquals("1024", response.getHeaders().get("content-length"));
+    response.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
   @Test
   void exceptionAnsweredWithClientErrorIsLoggedAtDebug() {
     Router router = Router.router()
