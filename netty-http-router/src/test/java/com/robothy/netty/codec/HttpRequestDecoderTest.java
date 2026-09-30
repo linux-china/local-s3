@@ -130,6 +130,42 @@ class HttpRequestDecoderTest {
   }
 
   @Test
+  void rejectMalformedUri() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket/%zz"));
+    assertRejected(channel, HttpResponseStatus.BAD_REQUEST);
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void dropBodyOfMalformedUriRequest() {
+    // Hold the writes, so that the connection is still open when the body arrives.
+    List<ChannelPromise> pendingWrites = new ArrayList<>();
+    List<Object> written = new ArrayList<>();
+    EmbeddedChannel channel = new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+      @Override
+      public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        written.add(msg);
+        pendingWrites.add(promise);
+      }
+    }, new HttpRequestDecoder());
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/bucket/key?a=%zz"));
+    assertEquals(1, written.size());
+    assertEquals(HttpResponseStatus.BAD_REQUEST, ((FullHttpResponse) written.get(0)).status());
+    written.forEach(ReferenceCountUtil::release);
+
+    // No NPE: the content of the rejected request is dropped, not built into a request.
+    ByteBuf body = content("123");
+    channel.writeInbound(new DefaultLastHttpContent(body));
+    assertEquals(0, body.refCnt());
+    assertNull(channel.readInbound());
+
+    pendingWrites.forEach(ChannelPromise::setSuccess);
+    assertFalse(channel.isOpen());
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
   void rejectMalformedContent() {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload"));

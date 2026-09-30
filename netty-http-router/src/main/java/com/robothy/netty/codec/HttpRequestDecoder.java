@@ -88,18 +88,29 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       HashMap<String, String> headers = new HashMap<>();
       httpRequest.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
           header.getValue().trim(), (values, value) -> values + "," + value));
+      // Parse the URI before allocating the body, a malformed one (e.g. "%zz") must not leave a half-built request.
+      String path;
+      HashMap<CharSequence, List<String>> params;
+      try {
+        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(httpRequest.uri());
+        path = queryStringDecoder.path();
+        params = new HashMap<>(queryStringDecoder.parameters());
+      } catch (IllegalArgumentException e) {
+        log.warn("Invalid request URI '{}', close the connection.", httpRequest.uri(), e);
+        reject(ctx, HttpResponseStatus.BAD_REQUEST, "Bad Request: invalid URI: " + e.getMessage());
+        return;
+      }
+
       // No component limit: consolidating the components of a large body would copy it over and over.
       this.body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
-      QueryStringDecoder queryStringDecoder = new QueryStringDecoder(httpRequest.uri());
-
       this.builder = com.robothy.netty.http.HttpRequest.builder()
           .method(httpRequest.method())
           .uri(httpRequest.uri())
           .httpVersion(httpRequest.protocolVersion())
           .headers(headers)
           .body(body)
-          .path(queryStringDecoder.path())
-          .params(new HashMap<>(queryStringDecoder.parameters()));
+          .path(path)
+          .params(params);
 
       String expect = httpRequest.headers().getAsString(HttpHeaderNames.EXPECT);
       if (HttpHeaderValues.CONTINUE.contentEqualsIgnoreCase(expect)) {
