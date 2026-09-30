@@ -620,6 +620,13 @@ class DefaultRouterTest {
     assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
     assertEquals("/docs/?a=1", redirect.getHeaders().get("location"));
 
+    // Leading slashes are collapsed, "//docs/" would redirect to the host "docs".
+    RouterHttpRequest doubleSlash = RouterHttpRequest.builder().method(HttpMethod.GET).uri("//docs?a=1").path("//docs").build();
+    RouterHttpResponse doubleSlashRedirect = new RouterHttpResponse();
+    router.match(doubleSlash).handle(doubleSlash, doubleSlashRedirect);
+    assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, doubleSlashRedirect.getStatus());
+    assertEquals("/docs/?a=1", doubleSlashRedirect.getHeaders().get("location"));
+
     // A directory without an index is not found.
     assertSame(NOT_FOUND, router.match(getRequest("/docs/empty/")));
 
@@ -683,6 +690,11 @@ class DefaultRouterTest {
       router.match(withoutSlash).handle(withoutSlash, redirect);
       assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
       assertEquals("/docs/", redirect.getHeaders().get("location"));
+
+      RouterHttpRequest tripleSlash = getRequest("///docs");
+      RouterHttpResponse tripleSlashRedirect = new RouterHttpResponse();
+      router.match(tripleSlash).handle(tripleSlash, tripleSlashRedirect);
+      assertEquals("/docs/", tripleSlashRedirect.getHeaders().get("location"));
     } finally {
       thread.setContextClassLoader(contextClassLoader);
     }

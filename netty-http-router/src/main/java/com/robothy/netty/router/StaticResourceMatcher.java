@@ -91,7 +91,8 @@ abstract class StaticResourceMatcher {
 
   /**
    * Redirect the path of a directory that has an {@code index.html} to the path with a trailing '/', keeping the
-   * query, e.g. {@code /docs?a=1} to {@code /docs/?a=1}.
+   * query, e.g. {@code /docs?a=1} to {@code /docs/?a=1}. Leading slashes are collapsed into one, as {@code //docs/}
+   * would be a protocol-relative URL of the host {@code docs}.
    *
    * @return the redirecting handler; or {@code null} if the path already ends with '/', and the index is served.
    */
@@ -101,7 +102,12 @@ abstract class StaticResourceMatcher {
     }
     String uri = request.getUri() == null ? request.getPath() : request.getUri();
     int queryStart = uri.indexOf('?');
-    String location = queryStart < 0 ? uri + "/" : uri.substring(0, queryStart) + "/" + uri.substring(queryStart);
+    String path = queryStart < 0 ? uri : uri.substring(0, queryStart);
+    int pathStart = 0;
+    while (pathStart + 1 < path.length() && path.charAt(pathStart + 1) == '/') {
+      pathStart++;
+    }
+    String location = path.substring(pathStart) + "/" + (queryStart < 0 ? "" : uri.substring(queryStart));
     return (req, response) -> response.status(HttpResponseStatus.MOVED_PERMANENTLY)
         .putHeader(HttpHeaderNames.LOCATION.toString(), location);
   }
