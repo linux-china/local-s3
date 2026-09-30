@@ -21,6 +21,7 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.util.ReferenceCountUtil;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
@@ -193,7 +194,12 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-    log.error("Failed to decode the HTTP request, close the connection.", cause);
+    if (cause instanceof IOException || !ctx.channel().isActive()) {
+      // The client closed or reset the connection, nothing went wrong on this side.
+      log.debug("Closing connection {} after: {}", ctx.channel().id(), cause.toString());
+    } else {
+      log.error("Failed to decode the HTTP request, close the connection.", cause);
+    }
     ctx.close();
   }
 }

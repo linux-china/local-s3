@@ -2,6 +2,7 @@ package com.robothy.netty.codec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
@@ -10,8 +11,10 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -54,6 +57,28 @@ class HttpMessageHandlerTest {
     } else {
       assertFalse(channel.isOpen());
     }
+    response.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void ioExceptionClosesWithoutResponse() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(Router.router()));
+    channel.pipeline().fireExceptionCaught(new IOException("Connection reset"));
+
+    assertNull(channel.readOutbound());
+    assertFalse(channel.isOpen());
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void otherExceptionAnswersInternalServerError() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(Router.router()));
+    channel.pipeline().fireExceptionCaught(new IllegalStateException("boom"));
+
+    HttpResponse response = channel.readOutbound();
+    assertEquals(500, response.getStatus().code());
+    assertFalse(channel.isOpen());
     response.getBody().release();
     channel.finishAndReleaseAll();
   }

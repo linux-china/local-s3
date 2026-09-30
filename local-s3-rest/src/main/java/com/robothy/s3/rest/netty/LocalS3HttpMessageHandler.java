@@ -408,10 +408,14 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       return;
     }
 
-    log.error("Caught exception.", cause);
     if (!ctx.channel().isActive()) {
+      // The connection is already closed; the failure can't be answered, and is most likely a consequence of it.
+      log.debug("Caught exception on closed connection {}: {}", ctx.channel().id(), cause.toString());
+      ctx.close();
       return;
     }
+
+    log.error("Caught exception.", cause);
     releasePendingRequests();
     if (inFlight) {
       // The response of the request in flight is still to come; an error response now would be taken for it.

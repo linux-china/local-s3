@@ -15,6 +15,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.io.IOException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -143,6 +144,12 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+    if (cause instanceof IOException || !ctx.channel().isActive()) {
+      // The client closed or reset the connection; there is nobody left to send an error response to.
+      log.debug("Closing connection {} after: {}", ctx.channel().id(), cause.toString());
+      ctx.close();
+      return;
+    }
     log.error("Caught exception.", cause);
     HttpResponse response = new HttpResponse();
     response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
