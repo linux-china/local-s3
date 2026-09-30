@@ -13,4 +13,7 @@ dependencies {
     api(libs.nettyCodecHttp)
     api(libs.nettyHandler)
     api(libs.nettyTransport)
+
+    // Captures the log events that the tests check.
+    testImplementation(libs.logbackClassic)
 }

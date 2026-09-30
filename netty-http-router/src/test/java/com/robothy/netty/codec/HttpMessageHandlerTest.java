@@ -4,6 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
+import ch.qos.logback.core.read.ListAppender;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.Router;
@@ -14,10 +19,13 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.slf4j.LoggerFactory;
 
 class HttpMessageHandlerTest {
 
@@ -94,6 +102,89 @@ class HttpMessageHandlerTest {
     assertEquals("5", response.getHeaders().get("content-length"));
     response.getBody().release();
     channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void exceptionAnsweredWithClientErrorIsLoggedAtDebug() {
+    Router router = Router.router()
+        .route(HttpMethod.GET, "/missing", (request, response) -> {
+          throw new NoSuchElementException("NoSuchKey");
+        })
+        .exceptionHandler(NoSuchElementException.class,
+            (e, request, response) -> response.status(HttpResponseStatus.NOT_FOUND));
+
+    List<ILoggingEvent> events = logOf(router, "/missing", HttpResponseStatus.NOT_FOUND);
+    assertEquals(1, events.size());
+    assertEquals(Level.DEBUG, events.get(0).getLevel());
+    assertEquals("GET /missing answered 404: java.util.NoSuchElementException: NoSuchKey",
+        events.get(0).getFormattedMessage());
+    assertNull(events.get(0).getThrowableProxy());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void exceptionAnsweredWithServerErrorIsLoggedAtError(boolean catchAllHandler) {
+    Router router = Router.router().route(HttpMethod.GET, "/fail", (request, response) -> {
+      throw new IllegalStateException("boom");
+    });
+    if (catchAllHandler) {
+      // A catch-all handler, like the one of LocalS3 for Exception, still answers with a server error.
+      router.exceptionHandler(Exception.class,
+          (e, request, response) -> response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    List<ILoggingEvent> events = logOf(router, "/fail", HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    assertEquals(1, events.size());
+    assertEquals(Level.ERROR, events.get(0).getLevel());
+    assertEquals("Failed to handle GET /fail, answered 500.", events.get(0).getFormattedMessage());
+    assertEquals("boom", events.get(0).getThrowableProxy().getMessage());
+  }
+
+  @Test
+  void failedExceptionHandlerIsLoggedWithTheExceptionItHandled() {
+    Router router = Router.router()
+        .route(HttpMethod.GET, "/fail", (request, response) -> {
+          throw new IllegalStateException("boom");
+        })
+        .exceptionHandler(IllegalStateException.class, (e, request, response) -> {
+          throw new IllegalArgumentException("handler failed");
+        });
+
+    List<ILoggingEvent> events = logOf(router, "/fail", HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    assertEquals(1, events.size());
+    assertEquals(Level.ERROR, events.get(0).getLevel());
+    IThrowableProxy logged = events.get(0).getThrowableProxy();
+    assertEquals("handler failed", logged.getMessage());
+    assertEquals("boom", logged.getSuppressed()[0].getMessage());
+  }
+
+  /**
+   * Handle a GET of {@code path}, and return what the handler logged at debug or above.
+   */
+  private static List<ILoggingEvent> logOf(Router router, String path, HttpResponseStatus expectedStatus) {
+    Logger logger = (Logger) LoggerFactory.getLogger(HttpMessageHandler.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
+    try {
+      appender.list.clear();
+      channel.writeInbound(request(path));
+      HttpResponse response = channel.readOutbound();
+      assertEquals(expectedStatus, response.getStatus());
+      response.getBody().release();
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+      channel.finishAndReleaseAll();
+    }
+    // The channel, the request and the response are logged at debug too; only the failure is of interest.
+    return appender.list.stream()
+        .filter(event -> event.getLevel().isGreaterOrEqual(Level.WARN)
+            || event.getFormattedMessage().contains(" answered "))
+        .toList();
   }
 
   private static HttpRequest request(String path) {

@@ -52,7 +52,8 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     try {
       HttpRequestHandler handler = router.match(request);
       if (null == handler) {
-        log.warn("No handler for {} {}", request.getMethod(), request.getUri());
+        // A client asking for what isn't there, e.g. a browser for /favicon.ico, isn't a failure of the server.
+        log.debug("No handler for {} {}", request.getMethod(), request.getUri());
         response.write("Not found " + request.getPath())
             .status(HttpResponseStatus.NOT_FOUND)
             .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), TEXT_PLAIN_UTF8);
@@ -60,12 +61,17 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         try {
           handler.handle(request, response);
         } catch (Throwable e) {
-          log.error("Failed to handle {} {}", request.getMethod(), request.getPath(), e);
           ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
           releaseBody(response);
           response = new HttpResponse();
-          // Exceptions from exceptionHandler will be handled by exceptionCaught().
-          exceptionHandler.handle(e, request, response);
+          try {
+            exceptionHandler.handle(e, request, response);
+          } catch (Throwable handlerFailure) {
+            // Handled by exceptionCaught(), which logs it along with the exception it failed to handle.
+            handlerFailure.addSuppressed(e);
+            throw handlerFailure;
+          }
+          logFailure(request, response, e);
         }
       }
 
@@ -122,6 +128,24 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     });
     if (!keepAlive) {
       channelFuture.addListener(ChannelFutureListener.CLOSE);
+    }
+  }
+
+  /**
+   * Log an exception by the response that its handler made of it: a server error, e.g. of the default handler for
+   * {@link Throwable} or of a catch-all handler, is an error with its stack trace; any other status, e.g. a 404 that a
+   * handler made of a "not found" exception, is part of the normal flow and only logged at debug, with the stack
+   * trace at trace.
+   */
+  private static void logFailure(HttpRequest request, HttpResponse response, Throwable e) {
+    // A handler that sets no status answers 200.
+    int status = response.getStatus() == null ? HttpResponseStatus.OK.code() : response.getStatus().code();
+    if (status >= 500) {
+      log.error("Failed to handle {} {}, answered {}.", request.getMethod(), request.getPath(), status, e);
+    } else if (log.isTraceEnabled()) {
+      log.trace("{} {} answered {}.", request.getMethod(), request.getPath(), status, e);
+    } else {
+      log.debug("{} {} answered {}: {}", request.getMethod(), request.getPath(), status, e.toString());
     }
   }
 
