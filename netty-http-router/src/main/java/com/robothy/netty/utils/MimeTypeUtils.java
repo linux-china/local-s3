@@ -1,8 +1,8 @@
 package com.robothy.netty.utils;
 
-import java.io.IOException;
+import org.jspecify.annotations.Nullable;
+
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
@@ -128,26 +128,15 @@ public class MimeTypeUtils {
    * @param fileName file name or path, e.g. {@code static/index.html}.
    * @return the MIME type, never {@code null}; {@code application/octet-stream} if it is unknown.
    */
+  @Nullable
   public static String mimeTypeByFileName(String fileName) {
     Objects.requireNonNull(fileName, "The file name shouldn't be null.");
     String name = fileName.substring(Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\')) + 1);
     int dot = name.lastIndexOf('.');
     if (dot >= 0) {
-      String mimeType = extensionToMimeType.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
-      if (mimeType != null) {
-        return mimeType;
-      }
+        return extensionToMimeType.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
     }
-
-    try {
-      String probed = Files.probeContentType(Path.of(name));
-      if (probed != null) {
-        return probed;
-      }
-    } catch (IOException | InvalidPathException e) {
-      // Fall back to the default MIME type.
-    }
-    return DEFAULT_MIME_TYPE;
+    return null;
   }
 
 }
