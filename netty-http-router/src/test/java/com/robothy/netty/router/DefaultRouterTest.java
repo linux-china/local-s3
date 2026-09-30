@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
@@ -40,17 +40,17 @@ import org.mockito.Mockito;
 
 class DefaultRouterTest {
 
-  private static final HttpRequestHandler NOT_FOUND = (request, response) -> { };
+  private static final RouterHttpRequestHandler NOT_FOUND = (request, response) -> { };
 
   @Test
   void match() throws Exception {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler listHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler listHandler = Mockito.mock(RouterHttpRequestHandler.class);
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "", listHandler));
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/a/{}", listHandler));
     router.route(Route.builder().method(HttpMethod.GET).path("/list").handler(listHandler).build());
-    HttpRequest.HttpRequestBuilder requestBuilder = HttpRequest.builder();
-    HttpRequest listRequest = requestBuilder
+    RouterHttpRequest.RouterHttpRequestBuilder requestBuilder = RouterHttpRequest.builder();
+    RouterHttpRequest listRequest = requestBuilder
         .method(HttpMethod.GET)
         .uri("/list?id=1")
         .path("/list")
@@ -59,34 +59,34 @@ class DefaultRouterTest {
         .build();
     assertEquals(listHandler, router.match(listRequest));
 
-    HttpRequestHandler notFoundHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler notFoundHandler = Mockito.mock(RouterHttpRequestHandler.class);
     assertEquals(DefaultRouter.DEFAULT_NOT_FOUND_HANDLER, router.match(requestBuilder.path("/list/a").build()));
     router.notFound(notFoundHandler);
     assertEquals(notFoundHandler, router.match(requestBuilder.path("/").build()));
     assertEquals(notFoundHandler, router.match(requestBuilder.method(HttpMethod.PUT).path("/list").build()));
     assertEquals(notFoundHandler, router.match(requestBuilder.method(HttpMethod.PUT).path("/list/").build()));
 
-    HttpRequestHandler actionHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler actionHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/{action}", actionHandler);
     assertEquals(notFoundHandler, router.match(requestBuilder.path("/").build()));
-    HttpRequest actionRequest = requestBuilder.method(HttpMethod.GET).path("/read").build();
+    RouterHttpRequest actionRequest = requestBuilder.method(HttpMethod.GET).path("/read").build();
     assertEquals(actionHandler, router.match(actionRequest));
     assertEquals("read", actionRequest.pathVariable("action").orElseThrow());
     assertEquals(listHandler, router.match(requestBuilder.path("/list").build()));
 
-    HttpRequestHandler emptyPathHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler emptyPathHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.POST, "//", emptyPathHandler);
     assertEquals(emptyPathHandler, router.match(requestBuilder.method(HttpMethod.POST).path("/").build()));
 
-    HttpRequestHandler postContentHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler postAHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler postContentHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler postAHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.POST, "/{id}/content", postContentHandler);
     router.route(HttpMethod.POST, "/a/content", postAHandler);
-    HttpRequest postContentRequest = requestBuilder.method(HttpMethod.POST).path("/123/content").build();
+    RouterHttpRequest postContentRequest = requestBuilder.method(HttpMethod.POST).path("/123/content").build();
     assertEquals(postContentHandler, router.match(postContentRequest));
     assertEquals(postAHandler, router.match(requestBuilder.path("/a/content").build()));
 
-    HttpRequestHandler paramRequestHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler paramRequestHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(Route.builder()
         .method(HttpMethod.HEAD)
         .path("/a/content")
@@ -98,7 +98,7 @@ class DefaultRouterTest {
     assertEquals(notFoundHandler, router.match(requestBuilder.method(HttpMethod.HEAD).path("/a/content").build()));
     assertEquals(paramRequestHandler, router.match(requestBuilder.params(parameters).build()));
 
-    HttpRequestHandler headerRequestHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler headerRequestHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(Route.builder().method(HttpMethod.HEAD).path("/a/content")
             .headerMatcher(hs -> hs.containsKey("hello"))
             .handler(headerRequestHandler)
@@ -109,7 +109,7 @@ class DefaultRouterTest {
     // The header matcher has higher priority.
     assertEquals(headerRequestHandler, router.match(requestBuilder.headers(headers).build()));
 
-    HttpRequestHandler headerParamHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler headerParamHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(Route.builder()
             .method(HttpMethod.HEAD)
             .path("/a/content")
@@ -133,7 +133,7 @@ class DefaultRouterTest {
     /* Static resources in directory */
     router.staticResource("src");
     assertNotSame(NOT_FOUND, router.match(getRequest("/test/java/com/robothy/netty/router/DefaultRouterTest.java")));
-    assertSame(NOT_FOUND, router.match(HttpRequest.builder()
+    assertSame(NOT_FOUND, router.match(RouterHttpRequest.builder()
         .method(HttpMethod.POST)
         .path("/test/java/com/robothy/netty/router/DefaultRouterTest.java").build()));
   }
@@ -168,7 +168,7 @@ class DefaultRouterTest {
       }
 
       @Override
-      public HttpRequestHandler match(HttpRequest request) {
+      public RouterHttpRequestHandler match(RouterHttpRequest request) {
         return notFoundHandler();
       }
     };
@@ -178,16 +178,16 @@ class DefaultRouterTest {
   @Test
   void staticResourceContentType(@TempDir Path directory) throws Exception {
     Router router = new DefaultRouter().staticResource("classpath:static");
-    HttpRequest classpathRequest = getRequest("/test.html");
-    HttpResponse classpathResponse = new HttpResponse();
+    RouterHttpRequest classpathRequest = getRequest("/test.html");
+    RouterHttpResponse classpathResponse = new RouterHttpResponse();
     router.match(classpathRequest).handle(classpathRequest, classpathResponse);
     assertEquals("text/html; charset=utf-8", classpathResponse.getHeaders().get("content-type"));
     readBody(classpathResponse);
 
     Files.writeString(directory.resolve("data.no-such-extension"), "data");
     router.staticResource(directory.toString());
-    HttpRequest fileRequest = getRequest("/data.no-such-extension");
-    HttpResponse fileResponse = new HttpResponse();
+    RouterHttpRequest fileRequest = getRequest("/data.no-such-extension");
+    RouterHttpResponse fileResponse = new RouterHttpResponse();
     router.match(fileRequest).handle(fileRequest, fileResponse);
     assertEquals("application/octet-stream", fileResponse.getHeaders().get("content-type"));
     readBody(fileResponse);
@@ -209,7 +209,7 @@ class DefaultRouterTest {
     // A directory would be answered with a listing of its files.
     assertSame(NOT_FOUND, router.match(getRequest("/../static")));
     assertSame(NOT_FOUND, router.match(getRequest("/../com/robothy/netty")));
-    HttpRequest post = HttpRequest.builder().method(HttpMethod.POST).uri("/test.html").path("/test.html").build();
+    RouterHttpRequest post = RouterHttpRequest.builder().method(HttpMethod.POST).uri("/test.html").path("/test.html").build();
     assertSame(NOT_FOUND, router.match(post));
   }
 
@@ -231,8 +231,8 @@ class DefaultRouterTest {
       Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:jar-static");
       // The class loader is the one of the thread that set the root, not of the thread that serves the request.
       thread.setContextClassLoader(contextClassLoader);
-      HttpRequest request = getRequest("/a.txt");
-      HttpResponse response = new HttpResponse();
+      RouterHttpRequest request = getRequest("/a.txt");
+      RouterHttpResponse response = new RouterHttpResponse();
       router.match(request).handle(request, response);
       assertEquals("a", new String(readBody(response), StandardCharsets.UTF_8));
       assertSame(NOT_FOUND, router.match(getRequest("/dir")));
@@ -249,8 +249,8 @@ class DefaultRouterTest {
     Files.createDirectory(root.resolve("sub"));
     Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(root.toString());
 
-    HttpRequest inside = getRequest("/inside.txt");
-    HttpResponse response = new HttpResponse();
+    RouterHttpRequest inside = getRequest("/inside.txt");
+    RouterHttpResponse response = new RouterHttpResponse();
     router.match(inside).handle(inside, response);
     assertEquals("inside", new String(readBody(response), StandardCharsets.UTF_8));
 
@@ -272,8 +272,8 @@ class DefaultRouterTest {
     Router router = new DefaultRouter().staticResource(directory.toString());
 
     for (String name : List.of("small.bin", "large.bin")) {
-      HttpRequest request = getRequest("/" + name);
-      HttpResponse response = new HttpResponse();
+      RouterHttpRequest request = getRequest("/" + name);
+      RouterHttpResponse response = new RouterHttpResponse();
       router.match(request).handle(request, response);
       byte[] expected = name.equals("small.bin") ? small : large;
       assertEquals(String.valueOf(expected.length), response.getHeaders().get("content-length"));
@@ -288,8 +288,8 @@ class DefaultRouterTest {
     Path file = directory.resolve("data.bin");
     Files.write(file, new byte[200 * 1024]);
     Router router = new DefaultRouter().staticResource(directory.toString());
-    HttpRequest request = getRequest("/data.bin");
-    HttpResponse response = new HttpResponse();
+    RouterHttpRequest request = getRequest("/data.bin");
+    RouterHttpResponse response = new RouterHttpResponse();
     router.match(request).handle(request, response);
 
     try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
@@ -309,7 +309,7 @@ class DefaultRouterTest {
   /**
    * Read the buffered or the chunked body of {@code response}, and release or close it.
    */
-  private static byte[] readBody(HttpResponse response) throws Exception {
+  private static byte[] readBody(RouterHttpResponse response) throws Exception {
     ChunkedInput<ByteBuf> input = response.detachChunkedBody();
     try {
       if (input == null) {
@@ -324,18 +324,18 @@ class DefaultRouterTest {
       return out.toByteArray();
     } finally {
       response.getBody().release();
-      HttpResponse.closeQuietly(input);
+      RouterHttpResponse.closeQuietly(input);
     }
   }
 
   @Test
   void matchRoutesWithSamePriority() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler aclHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler taggingHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler jsonHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler xmlHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler defaultHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler aclHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler taggingHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler jsonHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler xmlHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler defaultHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/{bucket}", defaultHandler)
         .route(Route.builder().method(HttpMethod.GET).path("/{bucket}")
             .paramMatcher(params -> params.containsKey("acl")).handler(aclHandler).build())
@@ -358,24 +358,24 @@ class DefaultRouterTest {
   @Test
   void matchBacktracksToPathVariable() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler exactHandler = Mockito.mock(HttpRequestHandler.class);
-    HttpRequestHandler variableHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler exactHandler = Mockito.mock(RouterHttpRequestHandler.class);
+    RouterHttpRequestHandler variableHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/a/b/c", exactHandler)
         .route(HttpMethod.GET, "/{x}/b/d", variableHandler);
 
     assertEquals(exactHandler, router.match(getRequest("/a/b/c")));
     // The exact branch "/a/b" has no child "d", backtrack to "/{x}/b/d".
-    HttpRequest request = getRequest("/a/b/d");
+    RouterHttpRequest request = getRequest("/a/b/d");
     assertEquals(variableHandler, router.match(request));
     assertEquals(Map.of("x", "a"), request.getPathVariables());
 
     DefaultRouter paramRouter = new DefaultRouter();
-    HttpRequestHandler paramHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler paramHandler = Mockito.mock(RouterHttpRequestHandler.class);
     paramRouter.route(Route.builder().method(HttpMethod.GET).path("/a")
             .paramMatcher(params -> params.containsKey("z")).handler(paramHandler).build())
         .route(HttpMethod.GET, "/{x}", variableHandler);
     // The exact route "/a" has priority when it matches.
-    HttpRequest paramRequest = getRequest("/a");
+    RouterHttpRequest paramRequest = getRequest("/a");
     paramRequest.putParameter("z", List.of(""));
     assertEquals(paramHandler, paramRouter.match(paramRequest));
     // The exact route "/a" does not match the params, backtrack to "/{x}".
@@ -385,7 +385,7 @@ class DefaultRouterTest {
   @Test
   void matchNoRouteForTargetNotInOriginForm() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler handler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/{x}", handler);
     assertEquals(router.notFoundHandler(), router.match(getRequest("*")));
     assertEquals(router.notFoundHandler(), router.match(getRequest("http://host/a")));
@@ -394,10 +394,10 @@ class DefaultRouterTest {
   @Test
   void pathVariablesAreSeparatedFromQueryParameters() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler userHandler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler userHandler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/user/{id}", userHandler);
 
-    HttpRequest request = getRequest("/user/123");
+    RouterHttpRequest request = getRequest("/user/123");
     request.putParameter("id", List.of("x"));
     assertEquals(userHandler, router.match(request));
     assertEquals("123", request.pathVariable("id").orElseThrow());
@@ -405,7 +405,7 @@ class DefaultRouterTest {
     assertEquals(Map.of("id", List.of("x")), request.getParams());
 
     // No path variables are left from a previous match if no route matches.
-    HttpRequest notFoundRequest = getRequest("/order/123");
+    RouterHttpRequest notFoundRequest = getRequest("/order/123");
     notFoundRequest.setPathVariables(Map.of("id", "stale"));
     assertEquals(DefaultRouter.DEFAULT_NOT_FOUND_HANDLER, router.match(notFoundRequest));
     assertTrue(notFoundRequest.getPathVariables().isEmpty());
@@ -414,7 +414,7 @@ class DefaultRouterTest {
   @Test
   void rejectRoutesThatOnlyDifferInEmptySegments() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler handler = Mockito.mock(RouterHttpRequestHandler.class);
     router.route(HttpMethod.GET, "/a/b", handler);
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/a//b", handler));
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/a/b/", handler));
@@ -424,7 +424,7 @@ class DefaultRouterTest {
   @Test
   void rejectInvalidPathVariables() {
     DefaultRouter router = new DefaultRouter();
-    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler handler = Mockito.mock(RouterHttpRequestHandler.class);
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/{id}/a/{id}", handler));
     assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/b/{}", handler));
     // The rejected routes are not registered, so they can be registered again once fixed.
@@ -432,8 +432,8 @@ class DefaultRouterTest {
     router.route(HttpMethod.GET, "/b/{name}", handler);
   }
 
-  private static HttpRequest request(HttpMethod method, String path) {
-    return HttpRequest.builder().method(method).uri(path).path(path).build();
+  private static RouterHttpRequest request(HttpMethod method, String path) {
+    return RouterHttpRequest.builder().method(method).uri(path).path(path).build();
   }
 
   @Test
@@ -446,14 +446,14 @@ class DefaultRouterTest {
 
   @Test
   void headFallsBackToGet() {
-    HttpRequestHandler get = (request, response) -> response.write("get");
-    HttpRequestHandler head = (request, response) -> { };
+    RouterHttpRequestHandler get = (request, response) -> response.write("get");
+    RouterHttpRequestHandler head = (request, response) -> { };
     Router router = new DefaultRouter().notFound(NOT_FOUND).headFallbackToGet(true)
         .route(HttpMethod.GET, "/user/{id}", get)
         .route(HttpMethod.GET, "/file", get)
         .route(HttpMethod.HEAD, "/file", head);
 
-    HttpRequest request = request(HttpMethod.HEAD, "/user/1");
+    RouterHttpRequest request = request(HttpMethod.HEAD, "/user/1");
     assertSame(get, router.match(request));
     assertEquals("1", request.pathVariable("id").orElse(null));
     // A HEAD route takes precedence.
@@ -464,14 +464,14 @@ class DefaultRouterTest {
 
   @Test
   void methodNotAllowed(@TempDir Path directory) throws Exception {
-    HttpRequestHandler handler = (request, response) -> { };
+    RouterHttpRequestHandler handler = (request, response) -> { };
     Router router = new DefaultRouter().notFound(NOT_FOUND).methodNotAllowed(true)
         .route(HttpMethod.GET, "/user/{id}", handler)
         .route(HttpMethod.DELETE, "/user/{id}", handler)
         .route(HttpMethod.POST, "/upload", handler);
 
-    HttpRequest post = request(HttpMethod.POST, "/user/1");
-    HttpResponse response = new HttpResponse();
+    RouterHttpRequest post = request(HttpMethod.POST, "/user/1");
+    RouterHttpResponse response = new RouterHttpResponse();
     router.match(post).handle(post, response);
     assertEquals(HttpResponseStatus.METHOD_NOT_ALLOWED, response.getStatus());
     assertEquals("DELETE, GET", response.getHeaders().get("allow"));
@@ -482,7 +482,7 @@ class DefaultRouterTest {
 
     // HEAD is allowed along with GET when it falls back to it.
     router.headFallbackToGet(true);
-    response = new HttpResponse();
+    response = new RouterHttpResponse();
     router.match(post).handle(post, response);
     assertEquals("DELETE, GET, HEAD", response.getHeaders().get("allow"));
     response.getBody().release();
@@ -490,8 +490,8 @@ class DefaultRouterTest {
     // A static resource is served before the request is answered with 405.
     Files.writeString(directory.resolve("upload"), "file");
     router.staticResource(directory.toString());
-    HttpRequest get = getRequest("/upload");
-    response = new HttpResponse();
+    RouterHttpRequest get = getRequest("/upload");
+    response = new RouterHttpResponse();
     router.match(get).handle(get, response);
     assertEquals("file", new String(readBody(response), StandardCharsets.UTF_8));
   }
@@ -505,7 +505,7 @@ class DefaultRouterTest {
       }
 
       @Override
-      public HttpRequestHandler match(HttpRequest request) {
+      public RouterHttpRequestHandler match(RouterHttpRequest request) {
         return notFoundHandler();
       }
     };
@@ -519,8 +519,8 @@ class DefaultRouterTest {
     Files.setLastModifiedTime(file, FileTime.fromMillis(1_700_000_000_123L));
     Router router = new DefaultRouter().staticResource(directory.toString());
 
-    HttpRequest request = getRequest("/app.js");
-    HttpResponse response = new HttpResponse();
+    RouterHttpRequest request = getRequest("/app.js");
+    RouterHttpResponse response = new RouterHttpResponse();
     router.match(request).handle(request, response);
     assertEquals(HttpResponseStatus.OK, response.getStatus());
     String lastModified = response.getHeaders().get("last-modified");
@@ -537,8 +537,8 @@ class DefaultRouterTest {
         Map.of("if-modified-since", lastModified),
         Map.of("if-modified-since", "Wed, 15 Nov 2023 00:00:00 GMT"))) {
       for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.HEAD)) {
-        HttpRequest conditional = request(method, "/app.js", headers);
-        HttpResponse notModified = new HttpResponse();
+        RouterHttpRequest conditional = request(method, "/app.js", headers);
+        RouterHttpResponse notModified = new RouterHttpResponse();
         router.match(conditional).handle(conditional, notModified);
         assertEquals(HttpResponseStatus.NOT_MODIFIED, notModified.getStatus(), headers + " " + method);
         assertEquals(etag, notModified.getHeaders().get("etag"));
@@ -552,8 +552,8 @@ class DefaultRouterTest {
         Map.of("if-none-match", "W/\"other\"", "if-modified-since", lastModified),
         Map.of("if-modified-since", "Tue, 14 Nov 2023 22:13:19 GMT"),
         Map.of("if-modified-since", "not a date"))) {
-      HttpRequest conditional = request(HttpMethod.GET, "/app.js", headers);
-      HttpResponse modified = new HttpResponse();
+      RouterHttpRequest conditional = request(HttpMethod.GET, "/app.js", headers);
+      RouterHttpResponse modified = new RouterHttpResponse();
       router.match(conditional).handle(conditional, modified);
       assertEquals(HttpResponseStatus.OK, modified.getStatus(), headers.toString());
       assertEquals("app", new String(readBody(modified), StandardCharsets.UTF_8));
@@ -561,8 +561,8 @@ class DefaultRouterTest {
 
     // A changed file has another ETag.
     Files.writeString(file, "app2");
-    HttpRequest changed = request(HttpMethod.GET, "/app.js", Map.of("if-none-match", etag));
-    HttpResponse changedResponse = new HttpResponse();
+    RouterHttpRequest changed = request(HttpMethod.GET, "/app.js", Map.of("if-none-match", etag));
+    RouterHttpResponse changedResponse = new RouterHttpResponse();
     router.match(changed).handle(changed, changedResponse);
     assertEquals(HttpResponseStatus.OK, changedResponse.getStatus());
     assertEquals("app2", new String(readBody(changedResponse), StandardCharsets.UTF_8));
@@ -584,15 +584,15 @@ class DefaultRouterTest {
       thread.setContextClassLoader(classLoader);
       Router router = new DefaultRouter().staticResource("classpath:cond-static");
       thread.setContextClassLoader(contextClassLoader);
-      HttpRequest request = getRequest("/a.txt");
-      HttpResponse response = new HttpResponse();
+      RouterHttpRequest request = getRequest("/a.txt");
+      RouterHttpResponse response = new RouterHttpResponse();
       router.match(request).handle(request, response);
       assertEquals("a", new String(readBody(response), StandardCharsets.UTF_8));
       String etag = response.getHeaders().get("etag");
       assertNotNull(response.getHeaders().get("last-modified"));
 
-      HttpRequest conditional = request(HttpMethod.GET, "/a.txt", Map.of("if-none-match", etag));
-      HttpResponse notModified = new HttpResponse();
+      RouterHttpRequest conditional = request(HttpMethod.GET, "/a.txt", Map.of("if-none-match", etag));
+      RouterHttpResponse notModified = new RouterHttpResponse();
       router.match(conditional).handle(conditional, notModified);
       assertEquals(HttpResponseStatus.NOT_MODIFIED, notModified.getStatus());
       assertEquals(null, notModified.getChunkedBody());
@@ -607,14 +607,14 @@ class DefaultRouterTest {
     Files.writeString(directory.resolve("docs/index.html"), "docs");
     Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(directory.toString());
 
-    HttpRequest request = getRequest("/docs/");
-    HttpResponse response = new HttpResponse();
+    RouterHttpRequest request = getRequest("/docs/");
+    RouterHttpResponse response = new RouterHttpResponse();
     router.match(request).handle(request, response);
     assertEquals("docs", new String(readBody(response), StandardCharsets.UTF_8));
     assertEquals("text/html; charset=utf-8", response.getHeaders().get("content-type"));
 
-    HttpRequest withoutSlash = HttpRequest.builder().method(HttpMethod.GET).uri("/docs?a=1").path("/docs").build();
-    HttpResponse redirect = new HttpResponse();
+    RouterHttpRequest withoutSlash = RouterHttpRequest.builder().method(HttpMethod.GET).uri("/docs?a=1").path("/docs").build();
+    RouterHttpResponse redirect = new RouterHttpResponse();
     router.match(withoutSlash).handle(withoutSlash, redirect);
     assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
     assertEquals("/docs/?a=1", redirect.getHeaders().get("location"));
@@ -642,13 +642,13 @@ class DefaultRouterTest {
       thread.setContextClassLoader(classLoader);
       Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:index-static");
       thread.setContextClassLoader(contextClassLoader);
-      HttpRequest request = getRequest("/docs/");
-      HttpResponse response = new HttpResponse();
+      RouterHttpRequest request = getRequest("/docs/");
+      RouterHttpResponse response = new RouterHttpResponse();
       router.match(request).handle(request, response);
       assertEquals("docs", new String(readBody(response), StandardCharsets.UTF_8));
 
-      HttpRequest withoutSlash = getRequest("/docs");
-      HttpResponse redirect = new HttpResponse();
+      RouterHttpRequest withoutSlash = getRequest("/docs");
+      RouterHttpResponse redirect = new RouterHttpResponse();
       router.match(withoutSlash).handle(withoutSlash, redirect);
       assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
       assertEquals("/docs/", redirect.getHeaders().get("location"));
@@ -657,8 +657,8 @@ class DefaultRouterTest {
     }
   }
 
-  private static HttpRequest request(HttpMethod method, String path, Map<String, String> headers) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest request(HttpMethod method, String path, Map<String, String> headers) {
+    return RouterHttpRequest.builder()
         .method(method)
         .uri(path)
         .path(path)
@@ -667,8 +667,8 @@ class DefaultRouterTest {
         .build();
   }
 
-  private static HttpRequest getRequest(String path) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest getRequest(String path) {
+    return RouterHttpRequest.builder()
         .method(HttpMethod.GET)
         .uri(path)
         .path(path)
@@ -677,8 +677,8 @@ class DefaultRouterTest {
         .build();
   }
 
-  private static HttpRequest bucketRequest(Map<String, List<String>> params, Map<String, String> headers) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest bucketRequest(Map<String, List<String>> params, Map<String, String> headers) {
+    return RouterHttpRequest.builder()
         .method(HttpMethod.GET)
         .uri("/bucket")
         .path("/bucket")
@@ -752,7 +752,7 @@ class DefaultRouterTest {
 
   @Test
   void defaultNotFoundHandlerSetsContentType() throws Exception {
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     Router.DEFAULT_NOT_FOUND_HANDLER.handle(null, response);
     assertEquals(HttpResponseStatus.NOT_FOUND, response.getStatus());
     assertEquals("text/plain; charset=utf-8", response.getHeaders().get("content-type"));

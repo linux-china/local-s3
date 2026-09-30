@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.constants.ServiceConstants;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
@@ -15,7 +15,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html">GetBucketLocation</a>
  */
-class GetBucketLocationController implements HttpRequestHandler {
+class GetBucketLocationController implements RouterHttpRequestHandler {
 
   private final XmlMapper xmlMapper;
 
@@ -27,7 +27,7 @@ class GetBucketLocationController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     Bucket bucket = bucketService.getBucket(bucketName);
     String region = bucket.regionOrDefault();

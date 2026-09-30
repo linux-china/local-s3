@@ -2,9 +2,9 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
@@ -34,7 +34,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
 /**
  * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html">GetObjectAttributes</a>.
  */
-class GetObjectAttributesController implements HttpRequestHandler {
+class GetObjectAttributesController implements RouterHttpRequestHandler {
 
   /**
    * The largest page of parts that {@code ObjectParts} is answered with, which is also the page that a
@@ -52,7 +52,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     Set<ObjectAttribute> attributes = parseAttributes(request);
@@ -93,7 +93,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
    * @param object the object that was read.
    * @return the answer to write.
    */
-  private GetObjectAttributesResult result(HttpRequest request, Set<ObjectAttribute> attributes,
+  private GetObjectAttributesResult result(RouterHttpRequest request, Set<ObjectAttribute> attributes,
                                            GetObjectAns object) {
     GetObjectAttributesResult.GetObjectAttributesResultBuilder result = GetObjectAttributesResult.builder();
     if (attributes.contains(ObjectAttribute.ETAG)) {
@@ -124,7 +124,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
    * @return the page of parts; {@code null} if the object wasn't uploaded in parts, which leaves the
    *     element out of the answer.
    */
-  private GetObjectAttributesResult.ObjectParts objectParts(HttpRequest request, GetObjectAns object) {
+  private GetObjectAttributesResult.ObjectParts objectParts(RouterHttpRequest request, GetObjectAns object) {
     List<ObjectPartMetadata> parts = object.getParts();
     if (Objects.isNull(parts) || parts.isEmpty()) {
       return null;
@@ -184,7 +184,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
    * @return the value of the header, or {@code defaultValue}.
    * @throws LocalS3InvalidArgumentException if the header doesn't carry a number, or carries a negative one.
    */
-  private int intHeaderOrDefault(HttpRequest request, String headerName, int defaultValue) {
+  private int intHeaderOrDefault(RouterHttpRequest request, String headerName, int defaultValue) {
     String value = request.header(headerName).orElse(null);
     if (Objects.isNull(value)) {
       return defaultValue;
@@ -202,7 +202,7 @@ class GetObjectAttributesController implements HttpRequestHandler {
     return parsed;
   }
 
-  private Set<ObjectAttribute> parseAttributes(HttpRequest request) {
+  private Set<ObjectAttribute> parseAttributes(RouterHttpRequest request) {
     String headerValue = request.header(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES)
         .orElseThrow(() -> invalidAttributes(null));
     try {

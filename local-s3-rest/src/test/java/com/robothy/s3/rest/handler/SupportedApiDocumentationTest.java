@@ -2,7 +2,7 @@ package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.s3.rest.service.ServiceFactory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -81,7 +81,7 @@ class SupportedApiDocumentationTest {
     LocalS3Router router = (LocalS3Router) LocalS3RouterFactory.create(
         Mockito.mock(ServiceFactory.class, Mockito.RETURNS_MOCKS), null, null);
     router.routesByOperation().forEach((operation, route) -> {
-      HttpRequestHandler handler = route.getHandler();
+      RouterHttpRequestHandler handler = route.getHandler();
       if (handler instanceof NotImplementedOperationController) {
         notImplementedRoutes.add(operation);
       } else if (handler.getClass().getPackageName().endsWith(".handler.s3vectors")) {

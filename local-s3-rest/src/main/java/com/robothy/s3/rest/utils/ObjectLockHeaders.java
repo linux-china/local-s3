@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.ObjectLockMode;
 import com.robothy.s3.core.model.internal.ObjectLock;
@@ -37,7 +37,7 @@ public final class ObjectLockHeaders {
    * @return the settings; {@code null} if the request sends none.
    * @throws LocalS3InvalidArgumentException if a header carries an invalid value.
    */
-  public static ObjectLock fromRequest(HttpRequest request) {
+  public static ObjectLock fromRequest(RouterHttpRequest request) {
     String modeHeader = request.header(AmzHeaderNames.X_AMZ_OBJECT_LOCK_MODE).orElse(null);
     String dateHeader = request.header(AmzHeaderNames.X_AMZ_OBJECT_LOCK_RETAIN_UNTIL_DATE).orElse(null);
     String legalHoldHeader = request.header(AmzHeaderNames.X_AMZ_OBJECT_LOCK_LEGAL_HOLD).orElse(null);
@@ -61,7 +61,7 @@ public final class ObjectLockHeaders {
    * @param response the response.
    * @param lock the settings of the object; {@code null} if it has none.
    */
-  public static void addHeaders(HttpResponse response, ObjectLock lock) {
+  public static void addHeaders(RouterHttpResponse response, ObjectLock lock) {
     if (lock == null) {
       return;
     }

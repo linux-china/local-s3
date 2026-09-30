@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.InvalidCORSRequestException;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -26,7 +26,7 @@ import java.util.Optional;
  * <p>Where no bucket configuration applies, i.e. the bucket has none or the request addresses no bucket, the default
  * CORS rule of the service applies, if it has one; see {@linkplain com.robothy.s3.rest.LocalS3Cors}.
  */
-class CorsPreflightController implements HttpRequestHandler {
+class CorsPreflightController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;
 
@@ -45,7 +45,7 @@ class CorsPreflightController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     answer(request, response, CorsResponseHeaders.bucketName(request));
   }
 
@@ -53,11 +53,11 @@ class CorsPreflightController implements HttpRequestHandler {
    * Answer a preflight request that addresses no bucket, e.g. one of the Iceberg REST catalog, by the default CORS
    * rule of the service.
    */
-  void handleWithoutBucket(HttpRequest request, HttpResponse response) {
+  void handleWithoutBucket(RouterHttpRequest request, RouterHttpResponse response) {
     answer(request, response, null);
   }
 
-  private void answer(HttpRequest request, HttpResponse response, String bucketName) {
+  private void answer(RouterHttpRequest request, RouterHttpResponse response, String bucketName) {
     Optional<String> origin = request.header(HttpHeaderNames.ORIGIN.toString());
     if (origin.isEmpty()) {
       throw new InvalidCORSRequestException(S3ErrorCode.BadRequest,

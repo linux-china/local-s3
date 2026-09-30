@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -35,7 +35,7 @@ public final class CustomerEncryptionHeaders {
    * @throws LocalS3InvalidArgumentException if a header is missing, or the key or its digest is invalid.
    * @throws LocalS3RequestException {@code InvalidEncryptionAlgorithmError} if the algorithm isn't {@code AES256}.
    */
-  public static CustomerEncryption fromRequest(HttpRequest request) {
+  public static CustomerEncryption fromRequest(RouterHttpRequest request) {
     return fromRequest(request, "");
   }
 
@@ -46,14 +46,14 @@ public final class CustomerEncryptionHeaders {
    * @param request the {@code CopyObject} or {@code UploadPartCopy} request.
    * @return the encryption; {@code null} if the request sends none of the headers.
    */
-  public static CustomerEncryption fromCopySourceRequest(HttpRequest request) {
+  public static CustomerEncryption fromCopySourceRequest(RouterHttpRequest request) {
     return fromRequest(request, AmzHeaderNames.X_AMZ_COPY_SOURCE_PREFIX);
   }
 
   /**
    * Read the customer key of a request from the headers whose names start with a prefix instead of {@code x-amz-}.
    */
-  private static CustomerEncryption fromRequest(HttpRequest request, String prefix) {
+  private static CustomerEncryption fromRequest(RouterHttpRequest request, String prefix) {
     return fromValues(name -> request.header(name).orElse(null), prefix);
   }
 
@@ -122,7 +122,7 @@ public final class CustomerEncryptionHeaders {
    * @param response the response.
    * @param encryption the encryption of the object; {@code null} if it has none.
    */
-  public static void addHeaders(HttpResponse response, CustomerEncryption encryption) {
+  public static void addHeaders(RouterHttpResponse response, CustomerEncryption encryption) {
     if (encryption == null) {
       return;
     }

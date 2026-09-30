@@ -2,8 +2,8 @@ package com.robothy.s3.rest.utils;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -11,11 +11,11 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
-class HttpRequestUtilsTest {
+class RouterHttpRequestUtilsTest {
 
   @Test
   void extractRequestBody_withValidRequest_returnsBodyBytes() {
-    HttpRequest request = mock(HttpRequest.class);
+    RouterHttpRequest request = mock(RouterHttpRequest.class);
     ByteBuf bodyBuf = Unpooled.wrappedBuffer("test body".getBytes());
     when(request.getBody()).thenReturn(bodyBuf);
     
@@ -26,7 +26,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void extractRequestBody_withEmptyBody_returnsEmptyArray() {
-    HttpRequest request = mock(HttpRequest.class);
+    RouterHttpRequest request = mock(RouterHttpRequest.class);
     ByteBuf bodyBuf = Unpooled.buffer(0);
     when(request.getBody()).thenReturn(bodyBuf);
     
@@ -37,7 +37,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void extractRequestBody_doesNotModifyReaderIndex() {
-    HttpRequest request = mock(HttpRequest.class);
+    RouterHttpRequest request = mock(RouterHttpRequest.class);
     ByteBuf bodyBuf = Unpooled.wrappedBuffer("test body".getBytes());
     int originalReaderIndex = bodyBuf.readerIndex();
     when(request.getBody()).thenReturn(bodyBuf);
@@ -112,7 +112,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void sendJsonResponse_withValidObject_setsHeadersAndWritesJson() throws Exception {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
     ObjectMapper objectMapper = new ObjectMapper();
     TestRequest testObject = TestRequest.builder().name("test").value(789).build();
     
@@ -128,7 +128,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void sendJsonResponse_setsContentTypeHeader() throws Exception {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
     ObjectMapper objectMapper = new ObjectMapper();
     TestRequest testObject = new TestRequest();
     
@@ -142,7 +142,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void sendEmptyJsonResponse_writesEmptyJsonObject() {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
     
     when(response.putHeader(anyString(), anyString())).thenReturn(response);
     when(response.write(anyString())).thenReturn(response);
@@ -155,7 +155,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void sendEmptyJsonResponse_setsContentTypeHeader() {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
     
     when(response.putHeader(anyString(), anyString())).thenReturn(response);
     when(response.write(anyString())).thenReturn(response);
@@ -188,7 +188,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void sendJsonResponse_withNullObject_handlesCorrectly() throws Exception {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
     ObjectMapper objectMapper = new ObjectMapper();
     
     when(response.putHeader(anyString(), anyString())).thenReturn(response);
@@ -202,7 +202,7 @@ class HttpRequestUtilsTest {
 
   @Test
   void extractRequestBody_withLargeBody_handlesCorrectly() {
-    HttpRequest request = mock(HttpRequest.class);
+    RouterHttpRequest request = mock(RouterHttpRequest.class);
     String largeContent = "x".repeat(10000);
     ByteBuf bodyBuf = Unpooled.wrappedBuffer(largeContent.getBytes());
     when(request.getBody()).thenReturn(bodyBuf);

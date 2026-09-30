@@ -9,8 +9,8 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -49,7 +49,7 @@ class HttpMessageHandlerTest {
     if (connection != null) {
       headers.put("connection", connection);
     }
-    channel.writeInbound(HttpRequest.builder()
+    channel.writeInbound(RouterHttpRequest.builder()
         .method(HttpMethod.GET)
         .uri("/hello")
         .path("/hello")
@@ -59,7 +59,7 @@ class HttpMessageHandlerTest {
         .body(Unpooled.EMPTY_BUFFER)
         .build());
 
-    HttpResponse response = channel.readOutbound();
+    RouterHttpResponse response = channel.readOutbound();
     assertEquals(keepAlive ? "keep-alive" : "close", response.getHeaders().get("connection"));
     if (keepAlive) {
       assertTrue(channel.isOpen());
@@ -83,7 +83,7 @@ class HttpMessageHandlerTest {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
     channel.writeInbound(request("/status"));
 
-    HttpResponse response = channel.readOutbound();
+    RouterHttpResponse response = channel.readOutbound();
     assertEquals(contentLength, response.getHeaders().get("content-length"));
     response.getBody().release();
     channel.finishAndReleaseAll();
@@ -98,7 +98,7 @@ class HttpMessageHandlerTest {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
     channel.writeInbound(request("/status"));
 
-    HttpResponse response = channel.readOutbound();
+    RouterHttpResponse response = channel.readOutbound();
     assertEquals("5", response.getHeaders().get("content-length"));
     response.getBody().release();
     channel.finishAndReleaseAll();
@@ -127,7 +127,7 @@ class HttpMessageHandlerTest {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
     try {
       channel.writeInbound(request("/body"));
-      HttpResponse response = channel.readOutbound();
+      RouterHttpResponse response = channel.readOutbound();
       assertEquals(sent, response.getHeaders().get("content-length"));
       response.getBody().release();
     } finally {
@@ -150,7 +150,7 @@ class HttpMessageHandlerTest {
     Router router = Router.router().route(HttpMethod.HEAD, "/object",
         (request, response) -> response.putHeader("Content-Length", 1024));
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
-    channel.writeInbound(HttpRequest.builder()
+    channel.writeInbound(RouterHttpRequest.builder()
         .method(HttpMethod.HEAD)
         .uri("/object")
         .path("/object")
@@ -158,7 +158,7 @@ class HttpMessageHandlerTest {
         .body(Unpooled.EMPTY_BUFFER)
         .build());
 
-    HttpResponse response = channel.readOutbound();
+    RouterHttpResponse response = channel.readOutbound();
     assertEquals("1024", response.getHeaders().get("content-length"));
     response.getBody().release();
     channel.finishAndReleaseAll();
@@ -232,7 +232,7 @@ class HttpMessageHandlerTest {
     try {
       appender.list.clear();
       channel.writeInbound(request(path));
-      HttpResponse response = channel.readOutbound();
+      RouterHttpResponse response = channel.readOutbound();
       assertEquals(expectedStatus, response.getStatus());
       response.getBody().release();
     } finally {
@@ -247,8 +247,8 @@ class HttpMessageHandlerTest {
         .toList();
   }
 
-  private static HttpRequest request(String path) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest request(String path) {
+    return RouterHttpRequest.builder()
         .method(HttpMethod.GET)
         .uri(path)
         .path(path)
@@ -284,7 +284,7 @@ class HttpMessageHandlerTest {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(Router.router()));
     channel.pipeline().fireExceptionCaught(new IllegalStateException("boom"));
 
-    HttpResponse response = channel.readOutbound();
+    RouterHttpResponse response = channel.readOutbound();
     assertEquals(500, response.getStatus().code());
     assertFalse(channel.isOpen());
     response.getBody().release();

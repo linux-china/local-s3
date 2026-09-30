@@ -1,6 +1,6 @@
 package com.robothy.netty.codec;
 
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -17,16 +17,16 @@ import io.netty.handler.stream.ChunkedInput;
 import java.util.List;
 
 /**
- * Encodes a {@linkplain HttpResponse} to a netty {@linkplain io.netty.handler.codec.http.FullHttpResponse}, which takes
+ * Encodes a {@linkplain RouterHttpResponse} to a netty {@linkplain io.netty.handler.codec.http.FullHttpResponse}, which takes
  * over the response body.
  *
- * <p>A response with a {@linkplain HttpResponse#chunkedBody(ChunkedInput) chunked body} is encoded to its head and a
+ * <p>A response with a {@linkplain RouterHttpResponse#chunkedBody(ChunkedInput) chunked body} is encoded to its head and a
  * {@linkplain HttpChunkedInput} instead, which a {@linkplain io.netty.handler.stream.ChunkedWriteHandler} further on
  * in the pipeline writes chunk by chunk and closes.
  */
-public class HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
+public class RouterHttpResponseEncoder extends MessageToMessageEncoder<RouterHttpResponse> {
   @Override
-  protected void encode(ChannelHandlerContext ctx, HttpResponse msg, List<Object> out) throws Exception {
+  protected void encode(ChannelHandlerContext ctx, RouterHttpResponse msg, List<Object> out) throws Exception {
     ChunkedInput<ByteBuf> chunkedBody = msg.detachChunkedBody();
     HttpHeaders headers = new DefaultHttpHeaders();
     try {
@@ -50,7 +50,7 @@ public class HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
       if (msg.getBody().refCnt() > 0) {
         msg.getBody().release();
       }
-      HttpResponse.closeQuietly(chunkedBody);
+      RouterHttpResponse.closeQuietly(chunkedBody);
       throw e;
     }
   }

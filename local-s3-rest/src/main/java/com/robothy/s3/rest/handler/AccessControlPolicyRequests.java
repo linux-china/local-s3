@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -100,7 +100,7 @@ final class AccessControlPolicyRequests {
    *     {@code bucket-owner-full-control} grant to.
    * @return the ACL.
    */
-  static AccessControlPolicy read(HttpRequest request, XmlMapper xmlMapper, Resource resource,
+  static AccessControlPolicy read(RouterHttpRequest request, XmlMapper xmlMapper, Resource resource,
                                   Supplier<Owner> owner, Supplier<Owner> bucketOwner) {
     Optional<String> cannedAcl = request.header(CANNED_ACL_HEADER).map(String::trim);
     Map<String, String> grantHeaders = new LinkedHashMap<>();
@@ -225,7 +225,7 @@ final class AccessControlPolicyRequests {
     return result;
   }
 
-  private static AccessControlPolicy body(HttpRequest request, XmlMapper xmlMapper) {
+  private static AccessControlPolicy body(RouterHttpRequest request, XmlMapper xmlMapper) {
     try (InputStream in = RequestBodies.inputStream(request.getBody())) {
       AccessControlPolicy acl = xmlMapper.readValue(in, AccessControlPolicy.class);
       if (Objects.isNull(acl)) {

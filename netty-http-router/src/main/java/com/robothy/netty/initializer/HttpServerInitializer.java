@@ -1,6 +1,8 @@
 package com.robothy.netty.initializer;
 
 import com.robothy.netty.codec.HttpMessageHandler;
+import com.robothy.netty.codec.RouterHttpRequestDecoder;
+import com.robothy.netty.codec.RouterHttpResponseEncoder;
 import com.robothy.netty.router.Router;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
@@ -53,7 +55,7 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
   private final int maxHeaderSize;
 
   public HttpServerInitializer(EventExecutorGroup executorGroup, Router router) {
-    this(executorGroup, router, com.robothy.netty.codec.HttpRequestDecoder.DEFAULT_MAX_REQUEST_BODY_SIZE);
+    this(executorGroup, router, RouterHttpRequestDecoder.DEFAULT_MAX_REQUEST_BODY_SIZE);
   }
 
   /**
@@ -102,8 +104,8 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
     // Writes the chunked response bodies, e.g. static files, chunk by chunk as the connection accepts them. It runs on
     // the executor group, so that reading a file doesn't block the event loop.
     pipeline.addLast(this.executorGroup, "router-chunked-writer", new ChunkedWriteHandler());
-    pipeline.addLast(this.executorGroup, "router-http-request-decoder", new com.robothy.netty.codec.HttpRequestDecoder(maxRequestBodySize));
-    pipeline.addLast(this.executorGroup, "router-http-response-encoder", new com.robothy.netty.codec.HttpResponseEncoder());
+    pipeline.addLast(this.executorGroup, "router-http-request-decoder", new RouterHttpRequestDecoder(maxRequestBodySize));
+    pipeline.addLast(this.executorGroup, "router-http-response-encoder", new RouterHttpResponseEncoder());
     pipeline.addLast(this.executorGroup, "router-http-message-handler", new HttpMessageHandler(router));
   }
 

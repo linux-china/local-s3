@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.internal.ServerSideEncryption;
@@ -30,7 +30,7 @@ public final class ServerSideEncryptionHeaders {
    * @return the encryption; {@code null} if the request sends none of the headers.
    * @throws LocalS3InvalidArgumentException if a header is invalid, or doesn't go with the others.
    */
-  public static ServerSideEncryption fromRequest(HttpRequest request, CustomerEncryption customerEncryption) {
+  public static ServerSideEncryption fromRequest(RouterHttpRequest request, CustomerEncryption customerEncryption) {
     return fromValues(name -> request.header(name).orElse(null), customerEncryption);
   }
 
@@ -85,7 +85,7 @@ public final class ServerSideEncryptionHeaders {
    * @param withContext whether to add the encryption context, which Amazon S3 only answers the requests that store
    *     an object with, i.e. {@code PutObject}, {@code CopyObject} and {@code CreateMultipartUpload}.
    */
-  public static void addHeaders(HttpResponse response, ServerSideEncryption encryption, boolean withContext) {
+  public static void addHeaders(RouterHttpResponse response, ServerSideEncryption encryption, boolean withContext) {
     if (encryption == null) {
       return;
     }

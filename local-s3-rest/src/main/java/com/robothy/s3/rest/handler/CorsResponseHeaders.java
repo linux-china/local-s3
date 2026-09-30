@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.LocalS3Config;
@@ -61,7 +61,7 @@ final class CorsResponseHeaders {
    * @param request the request, whose bucket the router has resolved.
    * @param response the response.
    */
-  void apply(HttpRequest request, HttpResponse response) {
+  void apply(RouterHttpRequest request, RouterHttpResponse response) {
     Optional<String> origin = request.header(HttpHeaderNames.ORIGIN.toString());
     if (origin.isEmpty()) {
       return;
@@ -88,7 +88,7 @@ final class CorsResponseHeaders {
    *
    * @return the bucket name; {@code null} if the request doesn't address a bucket.
    */
-  static String bucketName(HttpRequest request) {
+  static String bucketName(RouterHttpRequest request) {
     List<String> bucket = request.getParams().get("bucket");
     return bucket == null || bucket.isEmpty() || bucket.get(0).isBlank() ? null : bucket.get(0);
   }
@@ -101,7 +101,7 @@ final class CorsResponseHeaders {
    * @param origin the {@code Origin} of the request.
    * @param requestHeaders the {@code Access-Control-Request-Headers} of a preflight request.
    */
-  static void addHeaders(HttpResponse response, CORSRule rule, String origin, Collection<String> requestHeaders) {
+  static void addHeaders(RouterHttpResponse response, CORSRule rule, String origin, Collection<String> requestHeaders) {
     String allowOrigin = CorsRules.allowOrigin(rule, origin);
     response.putHeader(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN.toString(), allowOrigin)
         .putHeader(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS.toString(), String.join(", ", rule.getAllowedMethods()))

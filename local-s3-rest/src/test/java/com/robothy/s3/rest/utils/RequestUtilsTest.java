@@ -3,7 +3,7 @@ package com.robothy.s3.rest.utils;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.util.Optional;
@@ -13,7 +13,7 @@ class RequestUtilsTest {
 
   @Test
   void testExtractTagging() {
-    HttpRequest request = requestWithTagging("key1=value1&key2=value2");
+    RouterHttpRequest request = requestWithTagging("key1=value1&key2=value2");
 
     String[][] tagArray = RequestUtils.extractTagging(request).orElseThrow();
 
@@ -22,7 +22,7 @@ class RequestUtilsTest {
 
   @Test
   void testExtractTaggingDecodesComponentsAndPreservesEmptyValues() {
-    HttpRequest request = requestWithTagging(
+    RouterHttpRequest request = requestWithTagging(
         "key%201=hello%20world&key2=&key3=value=with=equals&key4=value%2Bplus");
 
     String[][] tagArray = RequestUtils.extractTagging(request).orElseThrow();
@@ -67,8 +67,8 @@ class RequestUtilsTest {
         () -> RequestUtils.extractTagging(requestWithTagging("key=" + "v".repeat(257))));
   }
 
-  private static HttpRequest requestWithTagging(String tagging) {
-    HttpRequest request = mock(HttpRequest.class);
+  private static RouterHttpRequest requestWithTagging(String tagging) {
+    RouterHttpRequest request = mock(RouterHttpRequest.class);
     when(request.header(AmzHeaderNames.X_AMZ_TAGGING)).thenReturn(Optional.of(tagging));
     return request;
   }

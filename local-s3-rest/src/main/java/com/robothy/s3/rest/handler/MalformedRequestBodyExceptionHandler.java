@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.rest.utils.ErrorResponses;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.exc.StreamReadException;
@@ -17,7 +17,7 @@ import tools.jackson.databind.exc.MismatchedInputException;
 class MalformedRequestBodyExceptionHandler implements com.robothy.netty.router.ExceptionHandler<JacksonException> {
 
   @Override
-  public void handle(JacksonException e, HttpRequest request, HttpResponse response) {
+  public void handle(JacksonException e, RouterHttpRequest request, RouterHttpResponse response) {
     if (e instanceof StreamReadException || e instanceof MismatchedInputException) {
       ErrorResponses.malformedBody(request, response);
     } else {

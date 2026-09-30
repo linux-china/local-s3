@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.util.List;
 import java.util.Locale;
@@ -47,7 +47,7 @@ public final class SigV4Requests {
    *     signature, or one whose credential scope can't be read.
    */
   @Nullable
-  public static String signingService(HttpRequest request) {
+  public static String signingService(RouterHttpRequest request) {
     String fromHeader = request.header(HttpHeaderNames.AUTHORIZATION.toString())
         .filter(authorization -> authorization.startsWith(ALGORITHM_PREFIX))
         .map(SigV4Requests::credentialOf)
@@ -67,7 +67,7 @@ public final class SigV4Requests {
    * @param request the request.
    * @return {@code true} if it is signed.
    */
-  public static boolean isSigned(HttpRequest request) {
+  public static boolean isSigned(RouterHttpRequest request) {
     return request.header(HttpHeaderNames.AUTHORIZATION.toString())
         .map(authorization -> authorization.startsWith(ALGORITHM_PREFIX))
         .orElseGet(() -> !RequestPaths.queryValues(request, "X-Amz-Algorithm").isEmpty());

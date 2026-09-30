@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -145,8 +145,8 @@ class AccessControlPolicyRequestsTest {
         () -> OWNER, () -> BUCKET_OWNER);
   }
 
-  private static HttpRequest request(Map<String, String> headers, String body) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest request(Map<String, String> headers, String body) {
+    return RouterHttpRequest.builder()
         .method(HttpMethod.PUT)
         .uri("/bucket/key?acl")
         .path("/bucket/key")

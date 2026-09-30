@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.NoSuchPublicAccessBlockConfigurationException;
 import com.robothy.s3.core.service.BucketService;
@@ -18,7 +18,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetPublicAccessBlock.html">GetPublicAccessBlock</a>.
  * Gets the PublicAccessBlock configuration for a bucket.
  */
-class GetPublicAccessBlockController implements HttpRequestHandler {
+class GetPublicAccessBlockController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;
 
@@ -29,7 +29,7 @@ class GetPublicAccessBlockController implements HttpRequestHandler {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     Optional<PublicAccessBlockConfiguration> configuration;
     

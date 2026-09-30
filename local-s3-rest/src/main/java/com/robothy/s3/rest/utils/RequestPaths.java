@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.charset.StandardCharsets;
@@ -29,7 +29,7 @@ public final class RequestPaths {
    * @param request the request.
    * @return the raw path; the decoded path of the request if it carries no URI.
    */
-  public static String rawPath(HttpRequest request) {
+  public static String rawPath(RouterHttpRequest request) {
     String uri = request.getUri();
     if (uri == null) {
       return Objects.toString(request.getPath(), "");
@@ -126,14 +126,14 @@ public final class RequestPaths {
    * Every value of a query parameter of a request, read off the raw URI.
    *
    * <p>A parameter that a client repeats, which is how the AWS SDKs send a list, e.g. the {@code tagKeys} of
-   * {@code UntagResource}, reaches the handler as one value through {@link HttpRequest#parameter}; this answers them
+   * {@code UntagResource}, reaches the handler as one value through {@link RouterHttpRequest#parameter}; this answers them
    * all.
    *
    * @param request the request.
    * @param name the name of the parameter.
    * @return the values, in the order they were sent; empty if the request carries none.
    */
-  public static List<String> queryValues(HttpRequest request, String name) {
+  public static List<String> queryValues(RouterHttpRequest request, String name) {
     List<String> values = new ArrayList<>();
     String uri = Objects.toString(request.getUri(), "");
     int start = uri.indexOf('?');

@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.request.RenameObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html">RenameObject</a>, see
  * {@linkplain RenameObjectService}.
  */
-class RenameObjectController implements HttpRequestHandler {
+class RenameObjectController implements RouterHttpRequestHandler {
 
   private final RenameObjectService renameObjectService;
 
@@ -29,7 +29,7 @@ class RenameObjectController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String renameSource = request.header(AmzHeaderNames.X_AMZ_RENAME_SOURCE).orElseThrow(() ->

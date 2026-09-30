@@ -1,8 +1,8 @@
 package com.robothy.netty.router;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.utils.MimeTypeUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -52,7 +52,7 @@ abstract class StaticResourceMatcher {
 
   static final String INDEX = "index.html";
 
-  abstract HttpRequestHandler match(HttpRequest request);
+  abstract RouterHttpRequestHandler match(RouterHttpRequest request);
 
   static StaticResourceMatcher create(String path) {
     Objects.requireNonNull(path, "The static resource path shouldn't be null.");
@@ -70,7 +70,7 @@ abstract class StaticResourceMatcher {
    * @return the relative path; or {@code null} if the request isn't a {@code GET} or {@code HEAD}, or the path has a
    *     {@code ..} segment or a backslash, which could address a file outside of the root.
    */
-  static String relativePath(HttpRequest request) {
+  static String relativePath(RouterHttpRequest request) {
     HttpMethod method = request.getMethod();
     if ((!HttpMethod.GET.equals(method) && !HttpMethod.HEAD.equals(method)) || request.getPath() == null) {
       return null;
@@ -93,7 +93,7 @@ abstract class StaticResourceMatcher {
    *
    * @return the redirecting handler; or {@code null} if the path already ends with '/', and the index is served.
    */
-  static HttpRequestHandler redirectToDirectory(HttpRequest request) {
+  static RouterHttpRequestHandler redirectToDirectory(RouterHttpRequest request) {
     if (request.getPath().endsWith("/")) {
       return null;
     }
@@ -112,7 +112,7 @@ abstract class StaticResourceMatcher {
    * @param length the length of the resource; or {@code -1} if it is unknown.
    * @return {@code true} if the response is a {@code 304}, which has no content.
    */
-  static boolean notModified(HttpRequest request, HttpResponse response, long lastModified, long length) {
+  static boolean notModified(RouterHttpRequest request, RouterHttpResponse response, long lastModified, long length) {
     response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-cache");
     if (lastModified <= 0) {
       return false;
@@ -193,7 +193,7 @@ abstract class StaticResourceMatcher {
     }
 
     @Override
-    public HttpRequestHandler match(HttpRequest request) {
+    public RouterHttpRequestHandler match(RouterHttpRequest request) {
       String relativePath = relativePath(request);
       if (relativePath == null) {
         return null;
@@ -206,7 +206,7 @@ abstract class StaticResourceMatcher {
         if (resource == null || !isRegularFile(resource)) {
           return null;
         }
-        HttpRequestHandler redirect = redirectToDirectory(request);
+        RouterHttpRequestHandler redirect = redirectToDirectory(request);
         if (redirect != null) {
           return redirect;
         }
@@ -308,7 +308,7 @@ abstract class StaticResourceMatcher {
     }
 
     @Override
-    public HttpRequestHandler match(HttpRequest request) {
+    public RouterHttpRequestHandler match(RouterHttpRequest request) {
       String relativePath = relativePath(request);
       if (relativePath == null) {
         return null;
@@ -324,7 +324,7 @@ abstract class StaticResourceMatcher {
         return null;
       }
       if (Files.isDirectory(absPath) && Files.isRegularFile(absPath.resolve(INDEX))) {
-        HttpRequestHandler redirect = redirectToDirectory(request);
+        RouterHttpRequestHandler redirect = redirectToDirectory(request);
         if (redirect != null) {
           return redirect;
         }
@@ -349,7 +349,7 @@ abstract class StaticResourceMatcher {
       };
     }
 
-    private static void serve(Path absPath, HttpResponse response) throws IOException {
+    private static void serve(Path absPath, RouterHttpResponse response) throws IOException {
       FileChannel fileChannel = FileChannel.open(absPath, StandardOpenOption.READ);
       try {
         long contentLength = fileChannel.size();

@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.datatypes.s3vectors.request.ListVectorBucketsRequest;
 import com.robothy.s3.datatypes.s3vectors.response.ListVectorBucketsResponse;
@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
  * Handles POST requests to list all vector buckets owned by the authenticated sender.
  */
 @Slf4j
-public class ListVectorBucketsController implements HttpRequestHandler {
+public class ListVectorBucketsController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -27,13 +27,13 @@ public class ListVectorBucketsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     ListVectorBucketsRequest listRequest = parseRequest(request);
     ListVectorBucketsResponse listResponse = processRequest(listRequest);
     HttpRequestUtils.sendJsonResponse(response, listResponse, objectMapper);
   }
 
-  private ListVectorBucketsRequest parseRequest(HttpRequest request) throws Exception {
+  private ListVectorBucketsRequest parseRequest(RouterHttpRequest request) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     return HttpRequestUtils.parseRequestOrDefault(bodyBytes, ListVectorBucketsRequest.class, objectMapper);
   }

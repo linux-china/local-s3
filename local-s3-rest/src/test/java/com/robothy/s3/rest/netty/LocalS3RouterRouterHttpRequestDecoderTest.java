@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.utils.RequestUtils;
@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-class LocalS3HttpRequestDecoderTest {
+class LocalS3RouterRouterHttpRequestDecoderTest {
 
   private static final int FILE_THRESHOLD = 16;
 
@@ -71,7 +71,7 @@ class LocalS3HttpRequestDecoderTest {
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         "http://localhost:9090/bucket/key?tagging"), new DefaultLastHttpContent());
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     try {
       assertEquals("/bucket/key?tagging", request.getUri());
       assertEquals("/bucket/key", request.getPath());
@@ -88,7 +88,7 @@ class LocalS3HttpRequestDecoderTest {
     absoluteForm.headers().set(HttpHeaderNames.HOST, "other.localhost:9090");
     channel.writeInbound(absoluteForm, new DefaultLastHttpContent());
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     try {
       assertEquals("bucket.localhost:9090", request.header(HttpHeaderNames.HOST).orElse(null));
       assertEquals("/key", request.getPath());
@@ -102,7 +102,7 @@ class LocalS3HttpRequestDecoderTest {
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         "/bucket?list-type=2&prefix=a;b"), new DefaultLastHttpContent());
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     try {
       assertEquals(List.of("a;b"), request.getParams().get("prefix"));
       assertEquals(List.of("2"), request.getParams().get("list-type"));
@@ -187,7 +187,7 @@ class LocalS3HttpRequestDecoderTest {
     try {
       byte[] content = randomBytes(100);
       configured.writeInbound(request(content.length), last(content, 0, content.length));
-      HttpRequest request = configured.<ReceivedRequest>readInbound().request();
+      RouterHttpRequest request = configured.<ReceivedRequest>readInbound().request();
       ByteBuf body = request.getBody();
       try {
         Path file = RequestBodies.file(body).orElseThrow();
@@ -275,7 +275,7 @@ class LocalS3HttpRequestDecoderTest {
 
       executor.runAll();
       async.runPendingTasks();
-      HttpRequest decoded = async.<ReceivedRequest>readInbound().request();
+      RouterHttpRequest decoded = async.<ReceivedRequest>readInbound().request();
       try {
         assertInstanceOf(MappedFileByteBuf.class, decoded.getBody());
         assertArrayEquals(content, bytes(decoded.getBody()));
@@ -309,8 +309,8 @@ class LocalS3HttpRequestDecoderTest {
       executor.runAll();
       async.runPendingTasks();
 
-      HttpRequest first = async.<ReceivedRequest>readInbound().request();
-      HttpRequest next = async.<ReceivedRequest>readInbound().request();
+      RouterHttpRequest first = async.<ReceivedRequest>readInbound().request();
+      RouterHttpRequest next = async.<ReceivedRequest>readInbound().request();
       try {
         assertEquals("/bucket/key", first.getUri());
         assertArrayEquals(large, bytes(first.getBody()));
@@ -348,7 +348,7 @@ class LocalS3HttpRequestDecoderTest {
       async.writeInbound(last(content, size - 1, size));
       executor.runAll();
       async.runPendingTasks();
-      HttpRequest decoded = async.<ReceivedRequest>readInbound().request();
+      RouterHttpRequest decoded = async.<ReceivedRequest>readInbound().request();
       assertEquals(size, decoded.getBody().readableBytes());
       decoded.getBody().release();
     } finally {
@@ -384,7 +384,7 @@ class LocalS3HttpRequestDecoderTest {
     DefaultHttpRequest head = awsChunkedRequest(encoded.length, content.length);
     channel.writeInbound(head, content(encoded, 0, 30), last(encoded, 30, encoded.length));
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertArrayEquals(content, bytes(body));
@@ -409,12 +409,12 @@ class LocalS3HttpRequestDecoderTest {
   void rejectsAnAwsChunkedBodyWhoseChunkSignaturesDontMatch(@TempDir Path directory) throws IOException {
     RequestHeadVerifier verifier = new RequestHeadVerifier() {
       @Override
-      public Outcome verifyHead(HttpRequest head) {
+      public Outcome verifyHead(RouterHttpRequest head) {
         return null;
       }
 
       @Override
-      public ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
+      public ChunkSignatures chunkSignatures(RouterHttpRequest head, Object state) {
         return new ChunkSignatures() {
           @Override
           public boolean verifyChunk(String signature, byte[] sha256) {
@@ -472,7 +472,7 @@ class LocalS3HttpRequestDecoderTest {
     request.headers().add("content-type", "text/plain");
     channel.writeInbound(request, last(new byte[0], 0, 0));
 
-    HttpRequest decoded = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest decoded = channel.<ReceivedRequest>readInbound().request();
     try {
       assertEquals("first,second", decoded.getHeaders().get("x-amz-meta-tag"),
           "The values of a repeated header are joined, whatever case its name is written in.");
@@ -488,7 +488,7 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   private ByteBuf readBody() {
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     return request.getBody();
   }
 
@@ -574,7 +574,7 @@ class LocalS3HttpRequestDecoderTest {
     codec.writeInbound(ascii("GET /bucket/key HTTP/1.1\r\nHost: localhost\r\nx-amz-meta-large: "
         + "a".repeat(300) + "\r\n\r\n"));
 
-    HttpRequest request = codec.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = codec.<ReceivedRequest>readInbound().request();
     assertEquals("a".repeat(300), request.header("x-amz-meta-large").orElse(null));
     request.getBody().release();
     assertFalse(codec.finishAndReleaseAll());

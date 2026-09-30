@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 
 /**
@@ -26,7 +26,7 @@ public interface RequestHeadVerifier {
    * @return why the request is rejected, or what was verified of an accepted one; {@code null} to receive its body
    *     with nothing to keep.
    */
-  Outcome verifyHead(HttpRequest head);
+  Outcome verifyHead(RouterHttpRequest head);
 
   /**
    * Called once the body of a request whose head was accepted is received, with the complete request, before the
@@ -38,7 +38,7 @@ public interface RequestHeadVerifier {
    * @param state the state that {@linkplain #verifyHead} accepted the head with; {@code null} for none.
    * @return the verification of the request, see {@linkplain ReceivedRequest#verification()}; {@code null} for none.
    */
-  default Object requestReceived(HttpRequest head, HttpRequest request, Object state) {
+  default Object requestReceived(RouterHttpRequest head, RouterHttpRequest request, Object state) {
     return state;
   }
 
@@ -53,7 +53,7 @@ public interface RequestHeadVerifier {
    * @return verifies the chunk signatures of the body; {@code null} to buffer the body as it is received, e.g. for a
    *     verifier that verifies it once it is received.
    */
-  default ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
+  default ChunkSignatures chunkSignatures(RouterHttpRequest head, Object state) {
     return ChunkSignatures.UNVERIFIED;
   }
 

@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.service.DeleteObjectsService;
 import com.robothy.s3.core.service.ObjectService;
@@ -37,7 +37,7 @@ class DeleteObjectsController extends ObjectHttpRequestHandler {
     }
 
     @Override
-    public void handle(HttpRequest request, HttpResponse response) throws Exception {
+    public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
         String bucketName = RequestAssertions.assertBucketNameProvided(request);
 
         try (InputStream decodedBody = RequestUtils.getBody(request).getDecodedBody()) {
@@ -63,7 +63,7 @@ class DeleteObjectsController extends ObjectHttpRequestHandler {
      *
      * @return an {@code AccessDenied} error for each of them, which a quiet result reports too.
      */
-    private List<Object> deny(HttpRequest request, String bucketName, DeleteObjectsRequest deleteObjectsRequest) {
+    private List<Object> deny(RouterHttpRequest request, String bucketName, DeleteObjectsRequest deleteObjectsRequest) {
         List<ObjectIdentifier> objects = deleteObjectsRequest.getObjects();
         Optional<SessionPolicy> policy = sessionPolicyAuthorizer == null ? Optional.empty()
                 : sessionPolicyAuthorizer.policy(request);

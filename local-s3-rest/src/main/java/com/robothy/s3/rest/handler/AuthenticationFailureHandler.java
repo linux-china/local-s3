@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.utils.XmlUtils;
@@ -14,7 +14,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Writes an S3-compatible response for a failed authentication attempt.
  */
-final class AuthenticationFailureHandler implements HttpRequestHandler {
+final class AuthenticationFailureHandler implements RouterHttpRequestHandler {
 
   private final AwsSignatureV4Verifier.VerificationResult result;
 
@@ -23,7 +23,7 @@ final class AuthenticationFailureHandler implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
     String hostId = ResponseUtils.nextHostId();

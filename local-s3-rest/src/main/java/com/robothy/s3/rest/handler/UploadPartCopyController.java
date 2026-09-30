@@ -2,9 +2,9 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.model.response.ChecksumElements;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.UploadPartCopyAns;
 import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.model.request.UploadPartCopyOptions;
@@ -30,7 +30,7 @@ import java.time.Instant;
  * SDKs use it to copy an object with a multipart upload, e.g. when it is larger than the threshold of the
  * transfer manager.
  */
-class UploadPartCopyController implements HttpRequestHandler {
+class UploadPartCopyController implements RouterHttpRequestHandler {
 
   private final UploadPartCopyService uploadPartCopyService;
 
@@ -39,7 +39,7 @@ class UploadPartCopyController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);

@@ -6,8 +6,8 @@ import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -27,7 +27,7 @@ public final class HttpRequestUtils {
      * @param request the HTTP request
      * @return the request body as a byte array
      */
-    public static byte[] extractRequestBody(HttpRequest request) {
+    public static byte[] extractRequestBody(RouterHttpRequest request) {
         ByteBuf bodyBuf = request.getBody();
         if (RequestBodies.fileOnly(bodyBuf).isPresent()) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
@@ -105,7 +105,7 @@ public final class HttpRequestUtils {
      * @param objectMapper the JSON object mapper
      * @throws Exception if JSON serialization fails
      */
-    public static void sendJsonResponse(HttpResponse response, Object responseObject, 
+    public static void sendJsonResponse(RouterHttpResponse response, Object responseObject,
                                         ObjectMapper objectMapper) throws Exception {
         response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
         response.write(objectMapper.writeValueAsString(responseObject));
@@ -119,7 +119,7 @@ public final class HttpRequestUtils {
      *
      * @param response the HTTP response
      */
-    public static void sendEmptyJsonResponse(HttpResponse response) {
+    public static void sendEmptyJsonResponse(RouterHttpResponse response) {
         response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
         response.write("{}");
         ResponseUtils.addDateHeader(response);

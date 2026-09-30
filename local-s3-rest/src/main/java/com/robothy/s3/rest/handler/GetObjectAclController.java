@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.GetObjectAclAns;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -19,7 +19,7 @@ class GetObjectAclController extends ObjectHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String versionId = request.parameter("versionId").orElse(null);

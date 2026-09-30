@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.TotalSizeExceedException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -29,9 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Dispatches {@linkplain HttpRequest}s to the {@linkplain Router} and writes the responses.
+ * Dispatches {@linkplain RouterHttpRequest}s to the {@linkplain Router} and writes the responses.
  *
- * <p>Handlers receive a {@linkplain StreamingHttpResponse}, so they can stream large bodies.
+ * <p>Handlers receive a {@linkplain StreamingRouterHttpResponse}, so they can stream large bodies.
  * The request body is released once the handler has returned.
  *
  * <p>The handler sits on the channel's event loop and runs the router on {@code executor}, a pool shared by all
@@ -119,7 +119,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     ReceivedRequest received;
     if (msg instanceof ReceivedRequest decoded) {
       received = decoded;
-    } else if (msg instanceof HttpRequest request) {
+    } else if (msg instanceof RouterHttpRequest request) {
       // Nothing is known about a request that another decoder, or a test, hands on.
       received = new ReceivedRequest(request, null, null);
     } else {
@@ -144,7 +144,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       ReadSuspensions.resume(ctx.channel(), this);
       return;
     }
-    HttpRequest request = received.request();
+    RouterHttpRequest request = received.request();
 
     inFlight = true;
     Runnable end = endOnce();
@@ -178,12 +178,12 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   /**
    * The operation that a request was routed to, and its response.
    */
-  private record Handled(String operation, StreamingHttpResponse response) {
+  private record Handled(String operation, StreamingRouterHttpResponse response) {
   }
 
   private void handleOnExecutor(ChannelHandlerContext ctx, ReceivedRequest received, Runnable end, long startNanos) {
-    HttpRequest request = received.request();
-    StreamingHttpResponse response = null;
+    RouterHttpRequest request = received.request();
+    StreamingRouterHttpResponse response = null;
     Throwable failure = null;
     String operation = OperationHandler.UNKNOWN_OPERATION;
     // The operation that the router named, kept if the handler then fails.
@@ -191,7 +191,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     try {
       // Bound to this thread while the request is routed and handled, where the router and the controllers read it.
       Handled handled = received.handle(() -> {
-        HttpRequestHandler handler = router.match(request);
+        RouterHttpRequestHandler handler = router.match(request);
         routed[0] = OperationHandler.operationOf(handler);
         return new Handled(routed[0], handle(request, handler));
       });
@@ -210,7 +210,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       releaseBody(request);
     }
 
-    StreamingHttpResponse result = response;
+    StreamingRouterHttpResponse result = response;
     Throwable cause = failure;
     String matchedOperation = operation;
     Runnable complete = () -> complete(ctx, request, result, cause, end, matchedOperation, startNanos);
@@ -232,7 +232,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   /**
    * Write the response of a handled request on the event loop, and go on with the next request once it is written.
    */
-  private void complete(ChannelHandlerContext ctx, HttpRequest request, StreamingHttpResponse response,
+  private void complete(ChannelHandlerContext ctx, RouterHttpRequest request, StreamingRouterHttpResponse response,
                         Throwable failure, Runnable end, String operation, long startNanos) {
     if (failure != null) {
       if (response != null) {
@@ -271,7 +271,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     });
   }
 
-  private void record(HttpRequest request, String operation, int status, String requestId, long startNanos) {
+  private void record(RouterHttpRequest request, String operation, int status, String requestId, long startNanos) {
     try {
       requestRecorder.record(request, operation, status, requestId, System.nanoTime() - startNanos);
     } catch (RuntimeException e) {
@@ -289,7 +289,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     return code < 200 || code == HttpResponseStatus.NO_CONTENT.code() || code == HttpResponseStatus.NOT_MODIFIED.code();
   }
 
-  private static void releaseBody(HttpRequest request) {
+  private static void releaseBody(RouterHttpRequest request) {
     ByteBuf body = request.getBody();
     if (body != null && body.refCnt() > 0) {
       body.release();
@@ -319,7 +319,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * always closes the connection, otherwise HTTP/1.1 keeps it alive by default and HTTP/1.0 only
    * with {@code Connection: keep-alive}.
    */
-  static boolean isKeepAlive(HttpRequest request) {
+  static boolean isKeepAlive(RouterHttpRequest request) {
     boolean keepAlive = request.getHttpVersion().isKeepAliveDefault();
     String connection = request.header(HttpHeaderNames.CONNECTION.toString()).orElse(null);
     if (connection != null) {
@@ -337,8 +337,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     return keepAlive;
   }
 
-  private StreamingHttpResponse handle(HttpRequest request, HttpRequestHandler handler) {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+  private StreamingRouterHttpResponse handle(RouterHttpRequest request, RouterHttpRequestHandler handler) {
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     if (handler == null) {
       log.warn("No handler for {} {}", request.getMethod(), request.getUri());
       ErrorResponses.notImplemented(request, response);
@@ -346,9 +346,9 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       try {
         handler.handle(request, response);
       } catch (Exception e) {
-        StreamingHttpResponse failed = response;
+        StreamingRouterHttpResponse failed = response;
         failed.discard();
-        response = new StreamingHttpResponse();
+        response = new StreamingRouterHttpResponse();
         copyCorsHeaders(failed, response);
         try {
           router.findExceptionHandler(e.getClass()).handle(e, request, response);
@@ -374,7 +374,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * at {@code WARN} like a request that no route matches. Only a server error, e.g. an unexpected exception that
    * the fallback handler answers with {@code InternalError}, is logged at {@code ERROR} with its stack trace.
    */
-  static void logFailure(HttpRequest request, StreamingHttpResponse response, Exception e) {
+  static void logFailure(RouterHttpRequest request, StreamingRouterHttpResponse response, Exception e) {
     int status = response.getStatus() == null ? HttpResponseStatus.OK.code() : response.getStatus().code();
     if (e instanceof TotalSizeExceedException) {
       // A limit that the configuration sets, not a failure of the service; the message tells how to raise it.
@@ -393,7 +393,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   /**
    * Keep the CORS headers of a failed response in the error response, so that browsers let the page read the error.
    */
-  private static void copyCorsHeaders(StreamingHttpResponse from, StreamingHttpResponse to) {
+  private static void copyCorsHeaders(StreamingRouterHttpResponse from, StreamingRouterHttpResponse to) {
     from.getAllHeaders().forEach((name, values) -> {
       String lowerCaseName = name.toLowerCase(Locale.ROOT);
       if (lowerCaseName.startsWith("access-control-") || "vary".equals(lowerCaseName)) {
@@ -434,7 +434,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       return;
     }
     // The cause is logged above, and not revealed to the client.
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.internalError(null, response);
     response.putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());

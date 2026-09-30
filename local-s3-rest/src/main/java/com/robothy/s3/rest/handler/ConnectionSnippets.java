@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
@@ -119,7 +119,7 @@ final class ConnectionSnippets {
    * @param key the object, or the prefix, of {@code bucket} to query; {@code null} for the whole bucket.
    * @return the snippets.
    */
-  Snippets all(HttpRequest request, @Nullable String bucket, @Nullable String key) {
+  Snippets all(RouterHttpRequest request, @Nullable String bucket, @Nullable String key) {
     Target target = new Target(endpoint(request), bucket, key);
     return new Snippets(target.endpoint, region(), icebergCatalog().isPresent(),
         target.bucket == null ? null : duckdbQuery(target),
@@ -132,7 +132,7 @@ final class ConnectionSnippets {
    * @param id the name of the snippet, one of {@linkplain #IDS}.
    * @return the snippet; empty if there is none of that name.
    */
-  Optional<Snippet> one(String id, HttpRequest request, @Nullable String bucket, @Nullable String key) {
+  Optional<Snippet> one(String id, RouterHttpRequest request, @Nullable String bucket, @Nullable String key) {
     return IDS.contains(id) ? Optional.of(snippet(id, new Target(endpoint(request), bucket, key))) : Optional.empty();
   }
 
@@ -441,7 +441,7 @@ final class ConnectionSnippets {
    * unless the service serves HTTPS alone. Plain HTTP works for every client, whereas HTTPS asks the client to trust
    * the certificate first.
    */
-  private String endpoint(HttpRequest request) {
+  private String endpoint(RouterHttpRequest request) {
     String host = request.header(HttpHeaderNames.HOST.toString())
         .map(String::trim)
         .filter(value -> HOST.matcher(value).matches())

@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import java.util.Objects;
 
 /**
@@ -12,7 +12,7 @@ import java.util.Objects;
  * @param operation the name of the operation.
  * @param handler the handler of the operation.
  */
-public record OperationHandler(String operation, HttpRequestHandler handler) implements HttpRequestHandler {
+public record OperationHandler(String operation, RouterHttpRequestHandler handler) implements RouterHttpRequestHandler {
 
   /**
    * The operation of a request that no router named.
@@ -30,7 +30,7 @@ public record OperationHandler(String operation, HttpRequestHandler handler) imp
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     handler.handle(request, response);
   }
 
@@ -40,7 +40,7 @@ public record OperationHandler(String operation, HttpRequestHandler handler) imp
    * @param handler the handler; may be {@code null}.
    * @return the name of its operation; {@linkplain #UNKNOWN_OPERATION} if it isn't an {@linkplain OperationHandler}.
    */
-  static String operationOf(HttpRequestHandler handler) {
+  static String operationOf(RouterHttpRequestHandler handler) {
     return handler instanceof OperationHandler named ? named.operation() : UNKNOWN_OPERATION;
   }
 

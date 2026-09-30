@@ -3,7 +3,7 @@ package com.robothy.s3.rest.utils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import java.time.format.DateTimeFormatter;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,7 @@ class ResponseUtilsTest {
 
   @Test
   void addETagQuotesTheEntityTag() {
-    HttpResponse response = mock(HttpResponse.class);
+    RouterHttpResponse response = mock(RouterHttpResponse.class);
 
     ResponseUtils.addETag(response, "etag");
 

@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.assertions.vectors.VectorIndexAssertions;
 import com.robothy.s3.core.model.internal.s3vectors.IndexIdentifier;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
  * Handles POST requests to list vectors with optional pagination and data/metadata inclusion.
  */
 @Slf4j
-public class ListVectorsController implements HttpRequestHandler {
+public class ListVectorsController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -29,13 +29,13 @@ public class ListVectorsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     ListVectorsRequest listRequest = parseRequest(request);
     ListVectorsResponse listResponse = processRequest(listRequest);
     HttpRequestUtils.sendJsonResponse(response, listResponse, objectMapper);
   }
 
-  private ListVectorsRequest parseRequest(HttpRequest request) throws Exception {
+  private ListVectorsRequest parseRequest(RouterHttpRequest request) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     return HttpRequestUtils.parseRequiredRequest(bodyBytes, ListVectorsRequest.class, objectMapper);
   }

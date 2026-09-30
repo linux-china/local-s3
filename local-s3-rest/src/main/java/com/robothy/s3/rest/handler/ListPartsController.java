@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.rest.model.response.ChecksumElements;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.ListPartsAns;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Owner;
@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ListPartsController implements HttpRequestHandler {
+public class ListPartsController implements RouterHttpRequestHandler {
 
   private static final String MAX_PARTS = "max-parts";
 
@@ -30,7 +30,7 @@ public class ListPartsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String objectKey = RequestAssertions.assertObjectKeyProvided(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);

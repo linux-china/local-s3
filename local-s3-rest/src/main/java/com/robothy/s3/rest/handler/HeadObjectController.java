@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.rest.utils.ChecksumHeaders;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.service.GetObjectService;
@@ -24,7 +24,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html">HeadObject</a>
  */
-class HeadObjectController implements HttpRequestHandler {
+class HeadObjectController implements RouterHttpRequestHandler {
 
   private final GetObjectService objectService;
 
@@ -34,7 +34,7 @@ class HeadObjectController implements HttpRequestHandler {
 
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     RequestAssertions.assertNoServerSideEncryptionForRead(request);

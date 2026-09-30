@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.rest.utils.ErrorResponses;
 
 /**
@@ -11,7 +11,7 @@ import com.robothy.s3.rest.utils.ErrorResponses;
 class ExceptionHandler implements com.robothy.netty.router.ExceptionHandler<Exception> {
 
   @Override
-  public void handle(Exception e, HttpRequest request, HttpResponse response) {
+  public void handle(Exception e, RouterHttpRequest request, RouterHttpResponse response) {
     ErrorResponses.internalError(request, response);
   }
 

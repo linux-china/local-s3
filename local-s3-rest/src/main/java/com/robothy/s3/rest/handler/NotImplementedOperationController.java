@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.datatypes.response.S3Error;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -17,7 +17,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * README lists them, so that a user can tell before choosing LocalS3 whether it covers what their tests
  * need.
  */
-class NotImplementedOperationController implements HttpRequestHandler {
+class NotImplementedOperationController implements RouterHttpRequestHandler {
 
   private final XmlMapper xmlMapper;
 
@@ -29,7 +29,7 @@ class NotImplementedOperationController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
 
     String msg = "LocalS3 doesn't support operation '" + operation + "'. "
         + "If you need this feature, please submit an issue at "

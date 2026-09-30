@@ -2,9 +2,9 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.UploadPartAns;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.service.ObjectService;
@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html">UploadPart</a>
  */
 @Slf4j
-class UploadPartController implements HttpRequestHandler {
+class UploadPartController implements RouterHttpRequestHandler {
 
   private final UploadPartService uploadPartService;
 
@@ -31,7 +31,7 @@ class UploadPartController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);

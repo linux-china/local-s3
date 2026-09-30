@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.router.AbstractRouter;
 import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
@@ -310,7 +310,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * {@code PutObject}, so that the request is recorded by its operation.
    */
   @Override
-  public HttpRequestHandler match(HttpRequest request) {
+  public RouterHttpRequestHandler match(RouterHttpRequest request) {
     // Before everything else: the console is a path of the service, and its own controller guards it.
     if (isConsoleRequest(request)) {
       return new OperationHandler(ConsoleController.operation(request.getMethod(), trimPath(request.getPath())),
@@ -373,7 +373,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * {@code s3express} service that the AWS SDKs sign it for, which a route can't declare. A {@code GET /} of a directory
    * bucket addressed by its host is routed to {@code ListObjects} before, and left as it is.
    */
-  private OperationHandler asListDirectoryBuckets(HttpRequest request, OperationHandler handler) {
+  private OperationHandler asListDirectoryBuckets(RouterHttpRequest request, OperationHandler handler) {
     if (handler == null || !"ListBuckets".equals(handler.operation())
         || !"s3express".equals(SigV4Requests.signingService(request))) {
       return handler;
@@ -389,7 +389,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * The handler of an STS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
    * in the error format of STS rather than the one of Amazon S3.
    */
-  private OperationHandler matchSts(HttpRequest request) {
+  private OperationHandler matchSts(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
@@ -404,7 +404,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * The handler of a KMS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
    * in the JSON error format of KMS rather than the one of Amazon S3.
    */
-  private OperationHandler matchKms(HttpRequest request) {
+  private OperationHandler matchKms(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
@@ -422,7 +422,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * that doesn't is answered as it is. The S3 requests that the engine then makes are verified either way, which is
    * where the credentials of a service actually guard something.
    */
-  private OperationHandler matchIceberg(HttpRequest request) {
+  private OperationHandler matchIceberg(RouterHttpRequest request) {
     if (requiresAuthentication(request) && isAwsSigned(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
@@ -437,7 +437,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * says so, and the signature is then verified for that same service. A rejected signature is answered in the
    * {@code rest-json} error format of the API rather than in the XML of Amazon S3.
    */
-  private OperationHandler matchS3Tables(HttpRequest request) {
+  private OperationHandler matchS3Tables(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
       if (!result.authenticated()) {
@@ -452,7 +452,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * Whether a request carries an AWS Signature Version 4, rather than another kind of credential such as the bearer
    * token of the Iceberg REST protocol.
    */
-  private static boolean isAwsSigned(HttpRequest request) {
+  private static boolean isAwsSigned(RouterHttpRequest request) {
     return request.header(HttpHeaderNames.AUTHORIZATION.toString())
         .map(authorization -> authorization.startsWith("AWS4-"))
         .orElseGet(() -> Objects.toString(request.getUri(), "").contains("X-Amz-Algorithm="));
@@ -465,7 +465,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * verifies what depends on the body: the payload hash and the chunk signatures.
    */
   @Override
-  public RequestHeadVerifier.Outcome verifyHead(HttpRequest head) {
+  public RequestHeadVerifier.Outcome verifyHead(RouterHttpRequest head) {
     // The credentials of a form upload are fields of its body, so it can only be verified once the body is received.
     // An STS or KMS request is small, and verified once it is received, so that a rejection is answered in the error
     // format of that service.
@@ -487,7 +487,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   @Override
-  public Object requestReceived(HttpRequest head, HttpRequest request, Object state) {
+  public Object requestReceived(RouterHttpRequest head, RouterHttpRequest request, Object state) {
     if (!(state instanceof AwsSignatureV4Verifier.VerifiedHead verifiedHead)) {
       return null;
     }
@@ -500,7 +500,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * What {@linkplain #verifyHead} verified of a request before its body was received, which the decoder handed on with
    * the request; {@code null} if nothing was.
    */
-  private static AwsSignatureV4Verifier.VerifiedHead verifiedHead(HttpRequest request) {
+  private static AwsSignatureV4Verifier.VerifiedHead verifiedHead(RouterHttpRequest request) {
     return ReceivedRequest.of(request)
         .map(ReceivedRequest::verification)
         .filter(AwsSignatureV4Verifier.VerifiedHead.class::isInstance)
@@ -514,7 +514,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * received, and verified whole once it is.
    */
   @Override
-  public ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
+  public ChunkSignatures chunkSignatures(RouterHttpRequest head, Object state) {
     if (!requiresAuthentication(head)) {
       return ChunkSignatures.UNVERIFIED;
     }
@@ -522,7 +522,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         ? AwsSignatureV4Verifier.chunkSignatures(verifiedHead) : null;
   }
 
-  private boolean requiresAuthentication(HttpRequest request) {
+  private boolean requiresAuthentication(RouterHttpRequest request) {
     // Neither health checks nor the CORS preflight requests of browsers are signed, and the console is guarded with
     // HTTP Basic authentication instead, which is the only kind of credentials a browser can be asked for.
     return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request)
@@ -537,7 +537,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * <p>A virtual-hosted request is never one: its path is the key of an object of the bucket of its {@code Host},
    * so {@code /_admin/ui} there asks for an object, which is read with a signature like every other object.
    */
-  private boolean isConsoleRequest(HttpRequest request) {
+  private boolean isConsoleRequest(RouterHttpRequest request) {
     if (consoleController == null || !ConsoleController.METHODS.contains(request.getMethod())) {
       return false;
     }
@@ -558,7 +558,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * @return the target of the request; {@code null} if it isn't answered anonymously, and so is verified like every
    *     request.
    */
-  private BucketKey websiteTarget(HttpRequest request) {
+  private BucketKey websiteTarget(RouterHttpRequest request) {
     if (websiteController == null) {
       return null;
     }
@@ -575,7 +575,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * @param request the request.
    * @return the target; {@code null} if the request addresses no bucket, e.g. {@code ListBuckets}.
    */
-  private BucketKey bucketAndKey(HttpRequest request) {
+  private BucketKey bucketAndKey(RouterHttpRequest request) {
     String path = Objects.toString(request.getPath(), "");
     String trimmedPath = trimPath(path);
     Optional<BucketRegion> bucketRegion =
@@ -611,7 +611,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * {@linkplain com.robothy.s3.rest.netty.LocalS3HttpMessageHandler} keeps them if the handler fails. Preflight
    * requests are answered by their own handler.
    */
-  private OperationHandler withCorsHeaders(HttpRequest request, OperationHandler handler) {
+  private OperationHandler withCorsHeaders(RouterHttpRequest request, OperationHandler handler) {
     if (corsResponseHeaders == null || handler == null || isPreflight(request)
         || request.header(HttpHeaderNames.ORIGIN.toString()).isEmpty()) {
       return handler;
@@ -627,7 +627,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * carries neither an {@code Authorization} header nor the signature of a presigned URL, since its credentials are
    * fields of the form.
    */
-  private static boolean isFormUpload(HttpRequest request) {
+  private static boolean isFormUpload(RouterHttpRequest request) {
     return HttpMethod.POST.equals(request.getMethod())
         && request.header(HttpHeaderNames.CONTENT_TYPE.toString())
             .map(contentType -> contentType.trim().toLowerCase(Locale.ROOT).startsWith("multipart/form-data"))
@@ -641,7 +641,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * one of the service itself, e.g. {@code OPTIONS /}, or of the Iceberg REST catalog or the S3 Tables API, whose paths
    * aren't buckets.
    */
-  private boolean isServicePreflight(HttpRequest request) {
+  private boolean isServicePreflight(RouterHttpRequest request) {
     if (servicePreflightController == null || !isPreflight(request)) {
       return false;
     }
@@ -650,11 +650,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         || bucketAndKey(request) == null;
   }
 
-  private static boolean isPreflight(HttpRequest request) {
+  private static boolean isPreflight(RouterHttpRequest request) {
     return HttpMethod.OPTIONS.equals(request.getMethod());
   }
 
-  private boolean isHealthCheck(HttpRequest request) {
+  private boolean isHealthCheck(RouterHttpRequest request) {
     HttpMethod method = request.getMethod();
     return (HttpMethod.GET.equals(method) || HttpMethod.HEAD.equals(method))
         && HEALTH_CHECK_PATH.equals(trimPath(request.getPath()));
@@ -664,7 +664,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return Optional.ofNullable(this.rules.get(method));
   }
 
-  List<Route> matchPath(Map<String, List<Route>> pathRules, HttpRequest request) {
+  List<Route> matchPath(Map<String, List<Route>> pathRules, RouterHttpRequest request) {
     String path = request.getPath();
     String trimmedPath = trimPath(path);
     Optional<BucketRegion> bucketRegion = virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
@@ -718,7 +718,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return path;
   }
 
-  void setBucketNameAndObjectKeyToRequestParams(HttpRequest request, String bucketName, String objectKey) {
+  void setBucketNameAndObjectKeyToRequestParams(RouterHttpRequest request, String bucketName, String objectKey) {
     request.putParameter("bucket", List.of(bucketName));
     if (Objects.nonNull(objectKey)) {
       request.putParameter("key", List.of(objectKey));
@@ -740,7 +740,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    *
    * @return the handler, named by its operation; {@code null} if no route matches.
    */
-  OperationHandler matchHandler(List<Route> candidates, HttpRequest request) {
+  OperationHandler matchHandler(List<Route> candidates, RouterHttpRequest request) {
     List<Route> best = bestRoutes(candidates, request.getHeaders(), request.getParams());
     if (best.isEmpty()) {
       return null;
@@ -776,7 +776,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return best;
   }
 
-  int calculatePriority(Route route, HttpRequest request) {
+  int calculatePriority(Route route, RouterHttpRequest request) {
     return calculatePriority(route, request.getHeaders(), request.getParams());
   }
 

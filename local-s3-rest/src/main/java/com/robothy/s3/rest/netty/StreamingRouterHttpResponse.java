@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import org.jspecify.annotations.NonNull;
@@ -8,12 +8,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * An {@linkplain HttpResponse} whose body can be streamed from an {@linkplain InputStream}
+ * An {@linkplain RouterHttpResponse} whose body can be streamed from an {@linkplain InputStream}
  * instead of being buffered in memory.
  */
-public class StreamingHttpResponse extends HttpResponse {
+public class StreamingRouterHttpResponse extends RouterHttpResponse {
 
-  private static final Logger log = LoggerFactory.getLogger(StreamingHttpResponse.class);
+  private static final Logger log = LoggerFactory.getLogger(StreamingRouterHttpResponse.class);
 
   private InputStream bodyStream;
 
@@ -25,7 +25,7 @@ public class StreamingHttpResponse extends HttpResponse {
    * @param bodyStream the response body.
    * @return this response.
    */
-  public StreamingHttpResponse stream(@NonNull InputStream bodyStream) {
+  public StreamingRouterHttpResponse stream(@NonNull InputStream bodyStream) {
     closeBodyStream();
     this.bodyStream = bodyStream;
     return this;

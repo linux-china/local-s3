@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.service.BucketService;
@@ -19,7 +19,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketVersioning.html">PutBucketVersioning</a>
  */
-class PutBucketVersioningController implements HttpRequestHandler {
+class PutBucketVersioningController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;
 
@@ -31,7 +31,7 @@ class PutBucketVersioningController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     InputStream requestBody = RequestBodies.inputStream(request.getBody());
     VersioningConfiguration versioningConfiguration = xmlMapper.readValue(requestBody, VersioningConfiguration.class);

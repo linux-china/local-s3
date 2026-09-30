@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.util.S3VectorsArnUtils;
 import com.robothy.s3.datatypes.s3vectors.request.CreateIndexRequest;
@@ -17,7 +17,7 @@ import tools.jackson.databind.ObjectMapper;
  * Handles POST requests to create new vector indexes in a vector bucket.
  */
 @Slf4j
-public class CreateIndexController implements HttpRequestHandler {
+public class CreateIndexController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -28,13 +28,13 @@ public class CreateIndexController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     CreateIndexRequest createRequest = parseRequest(request);
     processRequest(createRequest);
     HttpRequestUtils.sendEmptyJsonResponse(response);
   }
 
-  private CreateIndexRequest parseRequest(HttpRequest request) throws Exception {
+  private CreateIndexRequest parseRequest(RouterHttpRequest request) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     return HttpRequestUtils.parseRequiredRequest(bodyBytes, CreateIndexRequest.class, objectMapper);
   }

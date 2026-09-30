@@ -2,8 +2,8 @@ package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.s3.rest.model.response.ChecksumElements;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.CopyObjectAns;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
@@ -41,7 +41,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String destinationBucket = RequestAssertions.assertBucketNameProvided(request);
     String destinationKey = RequestAssertions.assertObjectKeyProvided(request);
     CopyObjectOptions copyObjectOptions = parseCopyOptions(request);
@@ -71,7 +71,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
    * @param request The HTTP request
    * @return CopyObjectOptions instance
    */
-  CopyObjectOptions parseCopyOptions(HttpRequest request) {
+  CopyObjectOptions parseCopyOptions(RouterHttpRequest request) {
     // Parse copy source information (bucket, key, version)
     CopySource copySource = CopySource.of(request);
 
@@ -117,7 +117,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
    * @param request The HTTP request
    * @return TaggingDirective enum value (defaults to COPY)
    */
-  private CopyObjectOptions.TaggingDirective parseTaggingDirective(HttpRequest request) {
+  private CopyObjectOptions.TaggingDirective parseTaggingDirective(RouterHttpRequest request) {
     String taggingDirectiveHeader = request.header(AmzHeaderNames.X_AMZ_TAGGING_DIRECTIVE).orElse(null);
     if (taggingDirectiveHeader == null) {
       return CopyObjectOptions.TaggingDirective.COPY;
@@ -137,7 +137,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
    * @param request The HTTP request
    * @return MetadataDirective enum value (defaults to COPY)
    */
-  private CopyObjectOptions.MetadataDirective parseMetadataDirective(HttpRequest request) {
+  private CopyObjectOptions.MetadataDirective parseMetadataDirective(RouterHttpRequest request) {
     String metadataDirectiveHeader = request.header(AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE).orElse(null);
     if (metadataDirectiveHeader == null) {
       return CopyObjectOptions.MetadataDirective.COPY;
@@ -158,7 +158,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
    * @param metadataDirective The metadata directive
    * @return Map of user metadata key-value pairs
    */
-  private Map<String, String> extractUserMetadata(HttpRequest request, 
+  private Map<String, String> extractUserMetadata(RouterHttpRequest request,
                                                   CopyObjectOptions.MetadataDirective metadataDirective) {
     if (metadataDirective != CopyObjectOptions.MetadataDirective.REPLACE) {
       return Collections.emptyMap();

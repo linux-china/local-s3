@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.datatypes.s3vectors.request.CreateVectorBucketRequest;
 import com.robothy.s3.datatypes.s3vectors.response.CreateVectorBucketResponse;
@@ -15,7 +15,7 @@ import tools.jackson.databind.ObjectMapper;
  * Handle S3 Vectors CreateVectorBucket operation.
  */
 @Slf4j
-public class CreateVectorBucketController implements HttpRequestHandler {
+public class CreateVectorBucketController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -26,13 +26,13 @@ public class CreateVectorBucketController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     CreateVectorBucketRequest createRequest = parseRequest(request);
     CreateVectorBucketResponse createResponse = processRequest(createRequest);
     HttpRequestUtils.sendJsonResponse(response, createResponse, objectMapper);
   }
 
-  private CreateVectorBucketRequest parseRequest(HttpRequest request) throws Exception {
+  private CreateVectorBucketRequest parseRequest(RouterHttpRequest request) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     return HttpRequestUtils.parseRequiredRequest(bodyBytes, CreateVectorBucketRequest.class, objectMapper);
   }

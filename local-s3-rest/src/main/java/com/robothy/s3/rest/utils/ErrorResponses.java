@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.datatypes.response.S3Error;
@@ -33,7 +33,7 @@ public final class ErrorResponses {
    * @param request the request.
    * @param response the response to write the error to.
    */
-  public static void notImplemented(HttpRequest request, HttpResponse response) {
+  public static void notImplemented(RouterHttpRequest request, RouterHttpResponse response) {
     String message = "LocalS3 does not implement " + request.getMethod() + " " + request.getPath() + ".";
     if (isJsonRequest(request)) {
       writeVectorsError(response, LocalS3VectorErrorType.NOT_FOUND, message);
@@ -48,7 +48,7 @@ public final class ErrorResponses {
    * @param request the failed request; {@code null} if it wasn't decoded.
    * @param response the response to write the error to.
    */
-  public static void internalError(HttpRequest request, HttpResponse response) {
+  public static void internalError(RouterHttpRequest request, RouterHttpResponse response) {
     String message = S3ErrorCode.InternalError.description();
     if (isJsonRequest(request)) {
       writeVectorsError(response, LocalS3VectorErrorType.INTERNAL_SERVER_ERROR, message);
@@ -66,7 +66,7 @@ public final class ErrorResponses {
    * @param request the request.
    * @param response the response to write the error to.
    */
-  public static void malformedBody(HttpRequest request, HttpResponse response) {
+  public static void malformedBody(RouterHttpRequest request, RouterHttpResponse response) {
     if (isJsonRequest(request)) {
       writeVectorsError(response, LocalS3VectorErrorType.VALIDATION, "The request body is not valid JSON of the "
           + "operation.");
@@ -75,7 +75,7 @@ public final class ErrorResponses {
     }
   }
 
-  private static void writeS3Error(HttpRequest request, HttpResponse response, S3ErrorCode errorCode,
+  private static void writeS3Error(RouterHttpRequest request, RouterHttpResponse response, S3ErrorCode errorCode,
                                    String message) {
     // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
@@ -94,7 +94,7 @@ public final class ErrorResponses {
     }
   }
 
-  private static void writeVectorsError(HttpResponse response, LocalS3VectorErrorType errorType, String message) {
+  private static void writeVectorsError(RouterHttpResponse response, LocalS3VectorErrorType errorType, String message) {
     response.status(HttpResponseStatus.valueOf(errorType.getStatus()))
         .putHeader(AmzHeaderNames.X_AMZN_ERRORTYPE, errorType.getCode())
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
@@ -105,7 +105,7 @@ public final class ErrorResponses {
     }
   }
 
-  private static boolean isJsonRequest(HttpRequest request) {
+  private static boolean isJsonRequest(RouterHttpRequest request) {
     return request != null && request.header(HttpHeaderNames.CONTENT_TYPE.toString())
         .map(contentType -> contentType.toLowerCase(Locale.ROOT).startsWith("application/json"))
         .orElse(false);

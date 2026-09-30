@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.s3.core.model.IdentifiedBucketConfiguration;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.service.BucketService;
@@ -39,7 +39,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code PUT} of a configuration, which stores the document as it was sent.
    */
-  HttpRequestHandler put(StoredBucketConfiguration type) {
+  RouterHttpRequestHandler put(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       String configuration;
@@ -55,7 +55,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code GET} of a configuration.
    */
-  HttpRequestHandler get(StoredBucketConfiguration type) {
+  RouterHttpRequestHandler get(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       String configuration = configurationService.getBucketConfiguration(bucketName, type);
@@ -69,7 +69,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code DELETE} of a configuration.
    */
-  HttpRequestHandler delete(StoredBucketConfiguration type) {
+  RouterHttpRequestHandler delete(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       configurationService.deleteBucketConfiguration(bucketName, type);
@@ -81,7 +81,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code PUT} of a configuration named by the {@code id} parameter, which stores the document as it was sent.
    */
-  HttpRequestHandler put(IdentifiedBucketConfiguration type) {
+  RouterHttpRequestHandler put(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       String configuration;
@@ -98,7 +98,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code GET} of a configuration named by the {@code id} parameter.
    */
-  HttpRequestHandler get(IdentifiedBucketConfiguration type) {
+  RouterHttpRequestHandler get(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       String configuration = configurationService.getBucketConfiguration(bucketName, type,
@@ -114,7 +114,7 @@ class BucketStoredConfigurationController {
    * The {@code GET} of the configurations of a kind, without the {@code id} parameter. Every configuration is on the
    * one page, so the list is never truncated.
    */
-  HttpRequestHandler list(IdentifiedBucketConfiguration type) {
+  RouterHttpRequestHandler list(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
@@ -134,7 +134,7 @@ class BucketStoredConfigurationController {
   /**
    * The {@code DELETE} of a configuration named by the {@code id} parameter.
    */
-  HttpRequestHandler delete(IdentifiedBucketConfiguration type) {
+  RouterHttpRequestHandler delete(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
       configurationService.deleteBucketConfiguration(bucketName, type, request.parameter("id").orElse(null));

@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.utils.ResponseUtils;
@@ -32,7 +32,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<LocalS3InvalidArgumentException> {
 
   @Override
-  public void handle(LocalS3InvalidArgumentException e, HttpRequest request, HttpResponse response) {
+  public void handle(LocalS3InvalidArgumentException e, RouterHttpRequest request, RouterHttpResponse response) {
     // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
     String hostId = ResponseUtils.nextHostId();

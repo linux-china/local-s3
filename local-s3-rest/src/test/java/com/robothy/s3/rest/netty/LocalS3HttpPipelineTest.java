@@ -14,7 +14,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -73,7 +74,7 @@ class LocalS3HttpPipelineTest {
         new LocalS3HttpMessageHandler(router));
   }
 
-  private static Router router(HttpRequestHandler handler) {
+  private static Router router(RouterHttpRequestHandler handler) {
     Router router = mock(Router.class);
     when(router.match(any())).thenReturn(handler);
     return router;
@@ -185,7 +186,7 @@ class LocalS3HttpPipelineTest {
     new Random(1).nextBytes(data);
     AtomicBoolean closed = new AtomicBoolean();
     EmbeddedChannel channel = channel(router((request, response) ->
-        ((StreamingHttpResponse) response).stream(closeTracking(data, closed))
+        ((StreamingRouterHttpResponse) response).stream(closeTracking(data, closed))
             .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), data.length)));
 
     channel.writeInbound(request(HttpMethod.GET, 0), LastHttpContent.EMPTY_LAST_CONTENT);
@@ -222,7 +223,7 @@ class LocalS3HttpPipelineTest {
     FileRegionInputStream content = assertInstanceOf(
         FileRegionInputStream.class, storage.getInputStream(id, 2, 4));
     EmbeddedChannel channel = channel(router((request, response) ->
-        ((StreamingHttpResponse) response).stream(content)
+        ((StreamingRouterHttpResponse) response).stream(content)
             .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), content.getCount())));
 
     channel.writeInbound(request(HttpMethod.GET, 0), LastHttpContent.EMPTY_LAST_CONTENT);
@@ -303,7 +304,7 @@ class LocalS3HttpPipelineTest {
   void closesAttachedStreamWhenHandlerFails() {
     AtomicBoolean closed = new AtomicBoolean();
     Router router = router((request, response) -> {
-      ((StreamingHttpResponse) response).stream(closeTracking(new byte[8], closed));
+      ((StreamingRouterHttpResponse) response).stream(closeTracking(new byte[8], closed));
       throw new IllegalStateException("boom");
     });
     ExceptionHandler<Throwable> exceptionHandler = (e, request, response) ->
@@ -394,7 +395,7 @@ class LocalS3HttpPipelineTest {
 
   @Test
   void verifiesHeadOfRequestWithBodyBeforeReceivingTheBody() {
-    AtomicReference<com.robothy.netty.http.HttpRequest> verifiedHead = new AtomicReference<>();
+    AtomicReference<RouterHttpRequest> verifiedHead = new AtomicReference<>();
     EmbeddedChannel channel = channel(router((request, response) ->
         response.write(request.getBody().toString(StandardCharsets.UTF_8))), head -> {
           verifiedHead.set(head);

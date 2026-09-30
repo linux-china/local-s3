@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
@@ -48,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * answered by {@code ListObjects}, which is what an unsigned listing of a public bucket asks for, rather than by an
  * error page.
  */
-class StaticWebsiteController implements HttpRequestHandler {
+class StaticWebsiteController implements RouterHttpRequestHandler {
 
   /**
    * The operation that the requests of the website are recorded as, see {@linkplain com.robothy.s3.rest.admin.LocalS3Admin}.
@@ -117,7 +117,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * @param key the object key it addresses; empty for the bucket itself.
    * @return {@code true} if the request is answered without a signature.
    */
-  boolean servesAnonymously(HttpRequest request, String bucket, String key) {
+  boolean servesAnonymously(RouterHttpRequest request, String bucket, String key) {
     return isEligible(request) && isAllowed(bucket, key) && (!key.isEmpty() || hasWebsiteSemantics(bucket, key));
   }
 
@@ -129,7 +129,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * @param key the object key it addresses; empty for the bucket itself.
    * @return {@code true} if this controller answers the request.
    */
-  boolean isWebsiteRequest(HttpRequest request, String bucket, String key) {
+  boolean isWebsiteRequest(RouterHttpRequest request, String bucket, String key) {
     return isEligible(request) && isAllowed(bucket, key) && hasWebsiteSemantics(bucket, key);
   }
 
@@ -137,7 +137,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * Whether a request could be one of a website at all: a read that carries no credentials and names no operation of
    * the S3 API. The bucket isn't consulted yet, so that the check that every request runs stays cheap.
    */
-  private boolean isEligible(HttpRequest request) {
+  private boolean isEligible(RouterHttpRequest request) {
     if (!settings.enabled()) {
       return false;
     }
@@ -157,7 +157,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * Whether a request carries AWS credentials, i.e. an {@code Authorization} header or the signature of a presigned
    * URL. Such a request belongs to an S3 client, and is verified and answered like every signed request.
    */
-  private static boolean isSigned(HttpRequest request) {
+  private static boolean isSigned(RouterHttpRequest request) {
     return request.header(HttpHeaderNames.AUTHORIZATION.toString()).isPresent()
         || Objects.toString(request.getUri(), "").contains("X-Amz-Algorithm=");
   }
@@ -192,7 +192,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    */
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = request.parameter("key").orElse("");
     WebsiteConfiguration configuration = configuration(bucket).orElseGet(WebsiteConfiguration::new);
@@ -238,7 +238,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * Answer a key that the bucket doesn't hold: with the redirect of a routing rule that names the status, with the
    * error document of the bucket, or with a generic error page.
    */
-  private void notFound(HttpRequest request, HttpResponse response, String bucket, String key,
+  private void notFound(RouterHttpRequest request, RouterHttpResponse response, String bucket, String key,
                         WebsiteConfiguration configuration) throws Exception {
     HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
     if (redirectByRule(request, response, configuration, key, status)) {
@@ -260,7 +260,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * entity tag, the ranges and the conditional requests are the ones of the S3 API. Only the content type may
    * differ, see {@linkplain WebsiteContentTypes}.
    */
-  private void serve(HttpRequest request, HttpResponse response, String key) throws Exception {
+  private void serve(RouterHttpRequest request, RouterHttpResponse response, String key) throws Exception {
     request.putParameter("key", List.of(key));
     if (HttpMethod.HEAD.equals(request.getMethod())) {
       headObject.handle(request, response);
@@ -274,7 +274,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    * Give an object that was stored without a content type the one of its extension, so that a browser renders a page
    * instead of downloading it. An object that names its own content type keeps it.
    */
-  private static void applyGuessedContentType(HttpResponse response, String key) {
+  private static void applyGuessedContentType(RouterHttpResponse response, String key) {
     String contentType = response.getHeaders().get(HttpHeaderNames.CONTENT_TYPE.toString());
     if (contentType == null || contentType.startsWith("binary/octet-stream")) {
       WebsiteContentTypes.of(key).ifPresent(
@@ -293,7 +293,7 @@ class StaticWebsiteController implements HttpRequestHandler {
    *     {@code null} while the request hasn't failed, where only the rules that name a key prefix alone apply.
    * @return {@code true} if the request was answered with a redirect.
    */
-  private boolean redirectByRule(HttpRequest request, HttpResponse response, WebsiteConfiguration configuration,
+  private boolean redirectByRule(RouterHttpRequest request, RouterHttpResponse response, WebsiteConfiguration configuration,
                                  String key, HttpResponseStatus status) {
     for (WebsiteConfiguration.RoutingRule rule : configuration.rules()) {
       WebsiteConfiguration.Redirect redirect = rule.getRedirect();
@@ -359,7 +359,7 @@ class StaticWebsiteController implements HttpRequestHandler {
   /**
    * The {@code Location} of a redirect that names a host: the parts a redirect leaves out are the ones of the request.
    */
-  private String location(HttpRequest request, String protocol, String hostName, String key) {
+  private String location(RouterHttpRequest request, String protocol, String hostName, String key) {
     String scheme = isNotBlank(protocol) ? protocol.trim()
         : ConnectionSchemes.of(request).orElse(ConnectionSchemes.HTTP);
     String host = isNotBlank(hostName) ? hostName.trim()
@@ -367,7 +367,7 @@ class StaticWebsiteController implements HttpRequestHandler {
     return scheme + "://" + host + "/" + encodePath(key);
   }
 
-  private static void redirect(HttpResponse response, HttpResponseStatus status, String location) {
+  private static void redirect(RouterHttpResponse response, HttpResponseStatus status, String location) {
     ResponseUtils.addCommonHeaders(response)
         .status(status)
         .putHeader(HttpHeaderNames.LOCATION.toString(), location)
@@ -389,7 +389,7 @@ class StaticWebsiteController implements HttpRequestHandler {
   /**
    * Answer with the generic error page of the website endpoint, which names what failed like the Amazon S3 one does.
    */
-  private static void errorPage(HttpRequest request, HttpResponse response, HttpResponseStatus status, String code,
+  private static void errorPage(RouterHttpRequest request, RouterHttpResponse response, HttpResponseStatus status, String code,
                                 String message, String key) {
     String title = status.code() + " " + status.reasonPhrase();
     String page = "<!DOCTYPE html>\n<html>\n<head><title>" + title + "</title>"

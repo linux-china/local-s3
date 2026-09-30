@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.router.Router;
-import com.robothy.s3.rest.netty.StreamingHttpResponse;
+import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -37,9 +37,9 @@ class LocalS3RouterFactoryExceptionHandlerTest {
    */
   private static final Pattern REQUEST_ID = Pattern.compile("<RequestId>[^<]*</RequestId>");
 
-  private static StreamingHttpResponse handle(Exception exception) {
-    HttpRequest request = HttpRequest.builder().method(HttpMethod.PUT).path("/bucket/key").build();
-    StreamingHttpResponse response = new StreamingHttpResponse();
+  private static StreamingRouterHttpResponse handle(Exception exception) {
+    RouterHttpRequest request = RouterHttpRequest.builder().method(HttpMethod.PUT).path("/bucket/key").build();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ROUTER.findExceptionHandler(exception.getClass()).handle(exception, request, response);
     return response;
   }
@@ -50,7 +50,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
    * a given pair of them about once in a hundred responses, e.g. the {@code 42} below; searching a body with
    * the ID in it therefore fails a build now and then for a leak that never happened.
    */
-  private static String bodyWithoutTheRequestId(StreamingHttpResponse response) {
+  private static String bodyWithoutTheRequestId(StreamingRouterHttpResponse response) {
     String body = response.getBody().toString(StandardCharsets.UTF_8);
     // The ID has to be there to be cut out; without this, a renamed element would silently be searched again.
     assertTrue(REQUEST_ID.matcher(body).find(), body);
@@ -59,7 +59,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
 
   @Test
   void illegalArgumentExceptionIsAnInternalErrorThatDoesNotRevealItsMessage() {
-    StreamingHttpResponse response = handle(new IllegalArgumentException("Object id='42' not exist."));
+    StreamingRouterHttpResponse response = handle(new IllegalArgumentException("Object id='42' not exist."));
 
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
     String body = bodyWithoutTheRequestId(response);
@@ -69,7 +69,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
 
   @Test
   void aBodyThatIsNotWellFormedIsMalformedXml() {
-    StreamingHttpResponse response = handle(readFailure("garbage"));
+    StreamingRouterHttpResponse response = handle(readFailure("garbage"));
 
     assertEquals(HttpResponseStatus.BAD_REQUEST, response.getStatus());
     String body = bodyWithoutTheRequestId(response);
@@ -78,7 +78,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
 
   @Test
   void aBodyThatDoesNotFitTheModelIsMalformedXml() {
-    StreamingHttpResponse response = handle(readFailure("<V><Status>Sideways</Status></V>"));
+    StreamingRouterHttpResponse response = handle(readFailure("<V><Status>Sideways</Status></V>"));
 
     assertEquals(HttpResponseStatus.BAD_REQUEST, response.getStatus());
     assertTrue(bodyWithoutTheRequestId(response).contains("<Code>MalformedXML</Code>"));
@@ -90,7 +90,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
    */
   @Test
   void aJacksonExceptionOfWritingIsAnInternalError() {
-    StreamingHttpResponse response = handle(new StreamWriteException(null, "Can't write it."));
+    StreamingRouterHttpResponse response = handle(new StreamWriteException(null, "Can't write it."));
 
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
     assertTrue(bodyWithoutTheRequestId(response).contains("<Code>InternalError</Code>"));
@@ -110,7 +110,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
 
   @Test
   void numberFormatExceptionIsAnInternalError() {
-    StreamingHttpResponse response = handle(new NumberFormatException("For input string: \"abc\""));
+    StreamingRouterHttpResponse response = handle(new NumberFormatException("For input string: \"abc\""));
 
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
     String body = bodyWithoutTheRequestId(response);

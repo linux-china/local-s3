@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.HashMap;
 import java.util.Optional;
@@ -16,14 +16,14 @@ import org.junit.jupiter.api.Test;
  */
 class ReceivedRequestTest {
 
-  private static HttpRequest request() {
-    return HttpRequest.builder().method(HttpMethod.GET).uri("/").path("/").headers(new HashMap<>())
+  private static RouterHttpRequest request() {
+    return RouterHttpRequest.builder().method(HttpMethod.GET).uri("/").path("/").headers(new HashMap<>())
         .params(new HashMap<>()).build();
   }
 
   @Test
   void isFoundByItsRequestWhileItIsHandled() {
-    HttpRequest request = request();
+    RouterHttpRequest request = request();
     ReceivedRequest received = new ReceivedRequest(request, ConnectionSchemes.HTTPS, "verified");
 
     assertSame(received, received.handle(() -> ReceivedRequest.of(request).orElseThrow()));
@@ -34,7 +34,7 @@ class ReceivedRequestTest {
   @Test
   void isNotFoundByAnotherRequest() {
     ReceivedRequest received = new ReceivedRequest(request(), ConnectionSchemes.HTTP, null);
-    HttpRequest other = request();
+    RouterHttpRequest other = request();
 
     assertTrue(received.handle(() -> ReceivedRequest.of(other)).isEmpty());
     assertTrue(received.handle(() -> ConnectionSchemes.of(other)).isEmpty());
@@ -42,7 +42,7 @@ class ReceivedRequestTest {
 
   @Test
   void isNotFoundOnAnotherThread() throws Exception {
-    HttpRequest request = request();
+    RouterHttpRequest request = request();
     ReceivedRequest received = new ReceivedRequest(request, ConnectionSchemes.HTTP, null);
 
     Optional<?> onAnotherThread = received.handle(() -> {
@@ -60,8 +60,8 @@ class ReceivedRequestTest {
 
   @Test
   void restoresTheRequestItWasHandledWithin() {
-    HttpRequest outer = request();
-    HttpRequest inner = request();
+    RouterHttpRequest outer = request();
+    RouterHttpRequest inner = request();
     ReceivedRequest outerReceived = new ReceivedRequest(outer, null, null);
     ReceivedRequest innerReceived = new ReceivedRequest(inner, null, null);
 
@@ -74,7 +74,7 @@ class ReceivedRequestTest {
 
   @Test
   void isClearedWhenTheHandlingFails() {
-    HttpRequest request = request();
+    RouterHttpRequest request = request();
     ReceivedRequest received = new ReceivedRequest(request, null, null);
 
     assertThrows(IllegalStateException.class, () -> received.handle(() -> {

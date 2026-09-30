@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.NoSuchLifecycleConfigurationException;
 import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.service.BucketLifecycleService;
@@ -35,7 +35,7 @@ class BucketLifecycleController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
    */
-  void put(HttpRequest request, HttpResponse response) throws Exception {
+  void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration;
     try (InputStream in = RequestUtils.getBody(request).getDecodedBody()) {
@@ -54,7 +54,7 @@ class BucketLifecycleController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>
    */
-  void get(HttpRequest request, HttpResponse response) throws Exception {
+  void get(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     BucketLifecycleConfiguration lifecycle = lifecycleService.getBucketLifecycleConfiguration(bucketName)
         .orElseThrow(() -> new NoSuchLifecycleConfigurationException(bucketName));
@@ -69,7 +69,7 @@ class BucketLifecycleController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketLifecycle.html">DeleteBucketLifecycle</a>
    */
-  void delete(HttpRequest request, HttpResponse response) throws Exception {
+  void delete(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     lifecycleService.deleteBucketLifecycle(bucketName);
     ResponseUtils.addCommonHeaders(response)

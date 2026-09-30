@@ -1,8 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
-import com.robothy.s3.core.util.IdUtils;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.LocalS3Constants;
@@ -30,7 +29,7 @@ public class ResponseUtils {
    *
    * @param response the response to add 'date' header.
    */
-  public static void addDateHeader(HttpResponse response) {
+  public static void addDateHeader(RouterHttpResponse response) {
     response.putHeader(HttpHeaderNames.DATE.toString(),
         RFC_1123_DATE_TIME.format(ZonedDateTime.now(ZoneOffset.UTC)));
   }
@@ -88,7 +87,7 @@ public class ResponseUtils {
    *
    * @param response the response to add the headers to.
    */
-  public static void addAmzRequestId(HttpResponse response) {
+  public static void addAmzRequestId(RouterHttpResponse response) {
     addAmzRequestId(response, nextRequestId());
   }
 
@@ -99,7 +98,7 @@ public class ResponseUtils {
    * @param response the response to add the headers to.
    * @param requestId the ID of the request.
    */
-  public static void addAmzRequestId(HttpResponse response, String requestId) {
+  public static void addAmzRequestId(RouterHttpResponse response, String requestId) {
     addAmzIds(response, requestId, nextHostId());
   }
 
@@ -111,7 +110,7 @@ public class ResponseUtils {
    * @param requestId the ID of the request.
    * @param hostId the host ID of the response.
    */
-  public static void addAmzIds(HttpResponse response, String requestId, String hostId) {
+  public static void addAmzIds(RouterHttpResponse response, String requestId, String hostId) {
     response.putHeader(AmzHeaderNames.X_AMZ_REQUEST_ID, requestId);
     response.putHeader(AmzHeaderNames.X_AMZ_ID_2, hostId);
   }
@@ -121,12 +120,12 @@ public class ResponseUtils {
    *
    * @param response the response to add 'server' header.
    */
-  public static void addServerHeader(HttpResponse response) {
+  public static void addServerHeader(RouterHttpResponse response) {
     response.putHeader(HttpHeaderNames.SERVER.toString(), LocalS3Constants.SERVER_NAME);
   }
 
   /**
-   * Add a header, unless its value is {@code null}. {@linkplain HttpResponse#putHeader} renders a
+   * Add a header, unless its value is {@code null}. {@linkplain RouterHttpResponse#putHeader} renders a
    * {@code null} value as the string {@code "null"}, which a client reads as a value rather than as an
    * absent header. A header whose value isn't known is left out instead, like Amazon S3 does, e.g.
    * {@code x-amz-version-id} of an object in a bucket that was never versioned.
@@ -140,7 +139,7 @@ public class ResponseUtils {
    * @param value the value of the header; {@code null} to add no header.
    * @return the response, so that further headers can be chained.
    */
-  public static HttpResponse putHeaderIfPresent(HttpResponse response, String name, Object value) {
+  public static RouterHttpResponse putHeaderIfPresent(RouterHttpResponse response, String name, Object value) {
     if (Objects.nonNull(value)) {
       response.putHeader(name, value);
     }
@@ -157,7 +156,7 @@ public class ResponseUtils {
    * @param versionId the version that the write stored; {@code null} or {@code "null"} for none to answer.
    * @return the response.
    */
-  public static HttpResponse putWrittenVersionId(HttpResponse response, String versionId) {
+  public static RouterHttpResponse putWrittenVersionId(RouterHttpResponse response, String versionId) {
     if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
       response.putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, versionId);
     }
@@ -180,7 +179,7 @@ public class ResponseUtils {
    * @param response the response to add 'ETag' header.
    * @param etag the etag to add
    */
-  public static void addETag(HttpResponse response, String etag) {
+  public static void addETag(RouterHttpResponse response, String etag) {
     if (Objects.nonNull(etag)) {
       response.putHeader(HttpHeaderNames.ETAG.toString(), quoteEtag(etag));
     }
@@ -192,7 +191,7 @@ public class ResponseUtils {
    * @param response HTTP response to set common headers.
    * @return the response parameter.
    */
-  public static HttpResponse addCommonHeaders(HttpResponse response) {
+  public static RouterHttpResponse addCommonHeaders(RouterHttpResponse response) {
     addDateHeader(response);
     addAmzRequestId(response);
     addServerHeader(response);

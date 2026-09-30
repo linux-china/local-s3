@@ -1,13 +1,13 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * A request that {@linkplain LocalS3HttpRequestDecoder} received, with what the connection knows about it and
- * {@linkplain HttpRequest} can't carry, since it carries nothing but what the client sent: the scheme it arrived by and
+ * {@linkplain RouterHttpRequest} can't carry, since it carries nothing but what the client sent: the scheme it arrived by and
  * what {@linkplain RequestHeadVerifier} verified of it before its body was received.
  *
  * <p>The decoder hands it to {@linkplain LocalS3HttpMessageHandler}, which binds it to the thread that routes and
@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  * @param verification what the verifier verified of the head of the request, see
  *     {@linkplain RequestHeadVerifier#requestReceived}; {@code null} if it verified nothing before the body.
  */
-public record ReceivedRequest(HttpRequest request, String scheme, Object verification) {
+public record ReceivedRequest(RouterHttpRequest request, String scheme, Object verification) {
 
   private static final ThreadLocal<ReceivedRequest> CURRENT = new ThreadLocal<>();
 
@@ -32,11 +32,11 @@ public record ReceivedRequest(HttpRequest request, String scheme, Object verific
   /**
    * The received request that the current thread handles, if it is {@code request}.
    *
-   * @param request the request, compared by identity, since {@linkplain HttpRequest} doesn't override {@code equals}.
+   * @param request the request, compared by identity, since {@linkplain RouterHttpRequest} doesn't override {@code equals}.
    * @return the received request; empty if the thread handles another request or none, e.g. a request that a test
    *     built and routed itself.
    */
-  public static Optional<ReceivedRequest> of(HttpRequest request) {
+  public static Optional<ReceivedRequest> of(RouterHttpRequest request) {
     ReceivedRequest current = CURRENT.get();
     return current != null && current.request == request ? Optional.of(current) : Optional.empty();
   }

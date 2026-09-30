@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.rest.utils.ChecksumHeaders;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
@@ -18,7 +18,7 @@ import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
-import com.robothy.s3.rest.netty.StreamingHttpResponse;
+import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -27,7 +27,7 @@ import java.io.InputStream;
 /**
  * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html">GetObject</a>.
  */
-class GetObjectController implements HttpRequestHandler {
+class GetObjectController implements RouterHttpRequestHandler {
 
   private final ObjectService objectService;
 
@@ -36,7 +36,7 @@ class GetObjectController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     RequestAssertions.assertNoServerSideEncryptionForRead(request);
@@ -104,8 +104,8 @@ class GetObjectController implements HttpRequestHandler {
   /**
    * Stream the object content when the response supports it, so that large objects are not buffered in memory.
    */
-  private static void writeContent(HttpResponse response, InputStream content) {
-    if (response instanceof StreamingHttpResponse streamingResponse) {
+  private static void writeContent(RouterHttpResponse response, InputStream content) {
+    if (response instanceof StreamingRouterHttpResponse streamingResponse) {
       streamingResponse.stream(content);
     } else {
       response.write(ByteBufUtils.fromInputStream(content));

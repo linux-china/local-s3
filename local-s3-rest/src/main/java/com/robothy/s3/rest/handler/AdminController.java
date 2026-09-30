@@ -1,7 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
 import com.robothy.s3.rest.LocalS3Config;
@@ -79,11 +80,11 @@ class AdminController {
         ? serviceFactory.getInstance(LocalS3Config.class) : null);
   }
 
-  void stats(HttpRequest request, HttpResponse response) throws Exception {
+  void stats(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     json(response, HttpResponseStatus.OK, admin.statistics());
   }
 
-  void requests(HttpRequest request, HttpResponse response) throws Exception {
+  void requests(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     int limit = Integer.MAX_VALUE;
     String value = request.parameter("limit").orElse(null);
     if (value != null) {
@@ -101,7 +102,7 @@ class AdminController {
     json(response, HttpResponseStatus.OK, Map.of("requests", admin.recentRequests(limit)));
   }
 
-  void reset(HttpRequest request, HttpResponse response) throws Exception {
+  void reset(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     try {
       admin.reset();
     } catch (UnsupportedOperationException e) {
@@ -111,7 +112,7 @@ class AdminController {
     json(response, HttpResponseStatus.OK, Map.of("status", "RESET"));
   }
 
-  void lifecycle(HttpRequest request, HttpResponse response) throws Exception {
+  void lifecycle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String nowParameter = request.parameter("now").orElse(null);
     String daysParameter = request.parameter("days").orElse(null);
     Instant now;
@@ -146,7 +147,7 @@ class AdminController {
     json(response, HttpResponseStatus.OK, Map.of("now", now.toString(), "actions", actions));
   }
 
-  void snippets(HttpRequest request, HttpResponse response) throws Exception {
+  void snippets(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     json(response, HttpResponseStatus.OK, snippets.all(request, request.parameter("bucket").orElse(null),
         request.parameter("key").orElse(null)));
   }
@@ -157,7 +158,7 @@ class AdminController {
    * @param id the name of the snippet, e.g. {@code duckdb}.
    * @return the handler of {@code GET /_admin/snippets/<id>}.
    */
-  com.robothy.netty.http.HttpRequestHandler snippet(String id) {
+  RouterHttpRequestHandler snippet(String id) {
     return (request, response) -> {
       ConnectionSnippets.Snippet snippet = snippets.one(id, request, request.parameter("bucket").orElse(null),
           request.parameter("key").orElse(null)).orElseThrow();
@@ -167,7 +168,7 @@ class AdminController {
     };
   }
 
-  private void json(HttpResponse response, HttpResponseStatus status, Object body) throws Exception {
+  private void json(RouterHttpResponse response, HttpResponseStatus status, Object body) throws Exception {
     response.status(status)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON)
         .write(objectMapper.writeValueAsString(body));

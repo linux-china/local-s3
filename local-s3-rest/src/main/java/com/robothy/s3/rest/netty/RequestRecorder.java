@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 
 /**
  * Receives every request that a connection answered, once its response is written, e.g. to keep statistics of the
@@ -25,6 +25,6 @@ public interface RequestRecorder {
    * @param requestId the {@code x-amz-request-id} of the response; {@code null} if it has none.
    * @param durationNanos the time from when the request was handed to the executor until its response was written.
    */
-  void record(HttpRequest request, String operation, int status, String requestId, long durationNanos);
+  void record(RouterHttpRequest request, String operation, int status, String requestId, long durationNanos);
 
 }

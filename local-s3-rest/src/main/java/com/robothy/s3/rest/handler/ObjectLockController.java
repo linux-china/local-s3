@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -61,7 +61,7 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html">PutObjectLockConfiguration</a>
    */
-  void putConfiguration(HttpRequest request, HttpResponse response) throws Exception {
+  void putConfiguration(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     ObjectLockConfiguration configuration = readBody(request, ObjectLockConfiguration.class);
     if (!ObjectLockConfiguration.ENABLED.equals(configuration.getObjectLockEnabled())) {
@@ -96,7 +96,7 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html">GetObjectLockConfiguration</a>
    */
-  void getConfiguration(HttpRequest request, HttpResponse response) throws Exception {
+  void getConfiguration(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     BucketObjectLockConfiguration configuration = bucketService.getObjectLockConfiguration(bucketName)
         .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.ObjectLockConfigurationNotFoundError));
@@ -113,7 +113,7 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectRetention.html">PutObjectRetention</a>
    */
-  void putRetention(HttpRequest request, HttpResponse response) throws Exception {
+  void putRetention(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     ObjectLockRetention retention = readBody(request, ObjectLockRetention.class);
@@ -129,7 +129,7 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html">GetObjectRetention</a>
    */
-  void getRetention(HttpRequest request, HttpResponse response) throws Exception {
+  void getRetention(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     ObjectLock lock = objectService.getObjectRetention(bucketName, key, request.parameter("versionId").orElse(null));
@@ -139,7 +139,7 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLegalHold.html">PutObjectLegalHold</a>
    */
-  void putLegalHold(HttpRequest request, HttpResponse response) throws Exception {
+  void putLegalHold(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     ObjectLockLegalHold legalHold = readBody(request, ObjectLockLegalHold.class);
@@ -154,14 +154,14 @@ class ObjectLockController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html">GetObjectLegalHold</a>
    */
-  void getLegalHold(HttpRequest request, HttpResponse response) throws Exception {
+  void getLegalHold(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     boolean on = objectService.getObjectLegalHold(bucketName, key, request.parameter("versionId").orElse(null));
     writeXml(response, new ObjectLockLegalHold(ObjectLockHeaders.formatLegalHold(on)));
   }
 
-  private <T> T readBody(HttpRequest request, Class<T> type) throws Exception {
+  private <T> T readBody(RouterHttpRequest request, Class<T> type) throws Exception {
     DecodedAmzRequestBody body = RequestUtils.getBody(request);
     try (InputStream in = body.getDecodedBody()) {
       byte[] bytes = in.readAllBytes();
@@ -174,7 +174,7 @@ class ObjectLockController {
     }
   }
 
-  private void writeXml(HttpResponse response, Object body) {
+  private void writeXml(RouterHttpResponse response, Object body) {
     ResponseUtils.addCommonHeaders(response)
         .status(HttpResponseStatus.OK)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)

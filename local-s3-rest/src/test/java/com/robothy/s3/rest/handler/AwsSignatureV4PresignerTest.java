@@ -3,7 +3,7 @@ package com.robothy.s3.rest.handler;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.handler.AwsSignatureV4Verifier.VerificationResult;
 import io.netty.handler.codec.http.HttpMethod;
@@ -160,7 +160,7 @@ class AwsSignatureV4PresignerTest {
     Map<String, String> headers = new HashMap<>();
     headers.put("host", hostHeader(uri));
     return new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, Clock.fixed(at, ZoneOffset.UTC))
-        .verifyHead(HttpRequest.builder()
+        .verifyHead(RouterHttpRequest.builder()
             .method(method)
             .uri(target)
             .httpVersion(HttpVersion.HTTP_1_1)

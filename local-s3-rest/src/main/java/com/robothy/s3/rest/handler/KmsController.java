@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.utils.ResponseUtils;
@@ -48,7 +48,7 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>The keys are not stored either, so every key ID is valid and a blob survives a restart: an ID is an alias, a key
  * ID or an ARN, and it is answered as the ARN it names, of the account {@linkplain StsController#ACCOUNT}.
  */
-final class KmsController implements HttpRequestHandler {
+final class KmsController implements RouterHttpRequestHandler {
 
   /**
    * The prefix that the {@code X-Amz-Target} header of a KMS request names its action with. KMS was named Trent while
@@ -114,7 +114,7 @@ final class KmsController implements HttpRequestHandler {
    * Whether a request is a KMS request: a {@code POST} to {@code /} whose {@code X-Amz-Target} names an action of KMS,
    * whatever its host. No S3 or STS request carries that header.
    */
-  static boolean isKmsRequest(HttpRequest request) {
+  static boolean isKmsRequest(RouterHttpRequest request) {
     return HttpMethod.POST.equals(request.getMethod())
         && "/".equals(request.getPath())
         && target(request).isPresent();
@@ -123,12 +123,12 @@ final class KmsController implements HttpRequestHandler {
   /**
    * The operation that a KMS request is recorded as: its action, e.g. {@code GenerateDataKey}.
    */
-  static String operation(HttpRequest request) {
+  static String operation(RouterHttpRequest request) {
     return target(request).filter(ACTIONS::contains).orElse(UNKNOWN_ACTION_OPERATION);
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     String requestId = ResponseUtils.nextRequestId();
     try {
       String action = target(request)
@@ -428,7 +428,7 @@ final class KmsController implements HttpRequestHandler {
    * The action of a KMS request, which its {@code X-Amz-Target} header names as
    * {@code TrentService.<action>}; empty if the request carries no such header.
    */
-  private static Optional<String> target(HttpRequest request) {
+  private static Optional<String> target(RouterHttpRequest request) {
     return request.header(AmzHeaderNames.X_AMZ_TARGET)
         .map(String::trim)
         .filter(target -> target.startsWith(TARGET_PREFIX))
@@ -440,7 +440,7 @@ final class KmsController implements HttpRequestHandler {
    * The JSON body of a KMS request; an empty object for a request without one, e.g. a {@code GenerateRandom} of an
    * older SDK.
    */
-  private static ObjectNode body(HttpRequest request) {
+  private static ObjectNode body(RouterHttpRequest request) {
     String body;
     // Read by index, so that the body is left unread for the controller when the router reads the action.
     try (PayloadBytes bytes = PayloadBytes.of(request.getBody())) {
@@ -468,7 +468,7 @@ final class KmsController implements HttpRequestHandler {
    * Answer a KMS request whose signature is rejected with the error of KMS that the rejection corresponds to, in the
    * JSON format that the KMS clients of the AWS SDKs read an error from rather than the {@code <Error>} of Amazon S3.
    */
-  static void writeAuthenticationFailure(HttpResponse response, AwsSignatureV4Verifier.VerificationResult result) {
+  static void writeAuthenticationFailure(RouterHttpResponse response, AwsSignatureV4Verifier.VerificationResult result) {
     S3ErrorCode errorCode = result.errorCode();
     String requestId = ResponseUtils.nextRequestId();
     switch (errorCode) {
@@ -483,7 +483,7 @@ final class KmsController implements HttpRequestHandler {
     }
   }
 
-  private static void writeError(HttpResponse response, String requestId, String code, int status, String message) {
+  private static void writeError(RouterHttpResponse response, String requestId, String code, int status, String message) {
     ObjectNode error = JSON.createObjectNode();
     error.put("__type", code);
     error.put("message", Objects.toString(message, ""));
@@ -491,7 +491,7 @@ final class KmsController implements HttpRequestHandler {
     writeJson(response, HttpResponseStatus.valueOf(status), requestId, error);
   }
 
-  private static void writeJson(HttpResponse response, HttpResponseStatus status, String requestId, ObjectNode body) {
+  private static void writeJson(RouterHttpResponse response, HttpResponseStatus status, String requestId, ObjectNode body) {
     response.status(status)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), CONTENT_TYPE)
         .putHeader("x-amzn-RequestId", requestId)

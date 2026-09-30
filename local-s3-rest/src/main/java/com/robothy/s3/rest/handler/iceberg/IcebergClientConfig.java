@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler.iceberg;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.rest.handler.AwsSignatureV4RequestSigner;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -108,7 +108,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @param warehouse the warehouse location of the catalog.
    * @return the {@code CatalogConfig}.
    */
-  public ObjectNode configResponse(HttpRequest request, String warehouse) {
+  public ObjectNode configResponse(RouterHttpRequest request, String warehouse) {
     return configResponse(request, warehouse, null);
   }
 
@@ -134,7 +134,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    *     is served under none.
    * @return the {@code CatalogConfig}.
    */
-  public ObjectNode configResponse(HttpRequest request, String warehouse, @Nullable String prefix) {
+  public ObjectNode configResponse(RouterHttpRequest request, String warehouse, @Nullable String prefix) {
     ObjectNode overrides = IcebergJson.newObject();
     overrides.put("warehouse", warehouse);
     if (prefix != null) {
@@ -159,7 +159,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * @param request the request, whose {@code Host} the endpoint is taken from.
    * @return the settings; empty if the catalog vends none.
    */
-  public Map<String, String> tableConfig(HttpRequest request) {
+  public Map<String, String> tableConfig(RouterHttpRequest request) {
     return tableConfig(request, null, null);
   }
 
@@ -177,7 +177,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    *     to name none.
    * @return the settings; empty if the catalog vends none.
    */
-  public Map<String, String> tableConfig(HttpRequest request, @Nullable String signerEndpoint,
+  public Map<String, String> tableConfig(RouterHttpRequest request, @Nullable String signerEndpoint,
                                          @Nullable String credentialsEndpoint) {
     if (!vendCredentials) {
       return Map.of();
@@ -274,7 +274,7 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * request doesn't say which of the two it arrived on, so a service with TLS vends its {@code https://} endpoint:
    * that is the one every client of such a service can use.
    */
-  private String endpoint(HttpRequest request) {
+  private String endpoint(RouterHttpRequest request) {
     String host = request.header(HttpHeaderNames.HOST.toString())
         .map(String::trim)
         .filter(value -> !value.isEmpty())

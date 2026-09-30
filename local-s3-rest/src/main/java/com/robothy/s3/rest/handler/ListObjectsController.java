@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.ListObjectsAns;
 import com.robothy.s3.core.service.ListObjectsService;
 import com.robothy.s3.core.service.ObjectService;
@@ -20,7 +20,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html">ListObjects</a>.
  */
-class ListObjectsController implements HttpRequestHandler {
+class ListObjectsController implements RouterHttpRequestHandler {
 
   private final ListObjectsService listObjectsService;
 
@@ -32,7 +32,7 @@ class ListObjectsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String delimiter = RequestAssertions.assertDelimiterIsValid(request).orElse(null);
     String encodingType = RequestAssertions.assertEncodingTypeIsValid(request).orElse(null);

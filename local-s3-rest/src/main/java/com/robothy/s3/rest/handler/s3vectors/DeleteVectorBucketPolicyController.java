@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.core.util.S3VectorsArnUtils;
 import com.robothy.s3.datatypes.s3vectors.request.DeleteVectorBucketPolicyRequest;
@@ -10,7 +10,7 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
 import tools.jackson.databind.ObjectMapper;
 
-public class DeleteVectorBucketPolicyController implements HttpRequestHandler {
+public class DeleteVectorBucketPolicyController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -21,7 +21,7 @@ public class DeleteVectorBucketPolicyController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     DeleteVectorBucketPolicyRequest deleteRequest =
         HttpRequestUtils.parseRequiredRequest(bodyBytes, DeleteVectorBucketPolicyRequest.class, objectMapper);

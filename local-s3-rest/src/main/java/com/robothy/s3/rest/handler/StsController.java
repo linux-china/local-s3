@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.utils.ResponseUtils;
@@ -36,7 +36,7 @@ import java.util.regex.Pattern;
  * <p>LocalS3 has no IAM: the role and the session policies of a request are validated like STS validates them, but
  * don't limit what the credentials may do, which is everything that the credentials of LocalS3 may do.
  */
-final class StsController implements HttpRequestHandler {
+final class StsController implements RouterHttpRequestHandler {
 
   static final String NAMESPACE = "https://sts.amazonaws.com/doc/2011-06-15/";
 
@@ -80,7 +80,7 @@ final class StsController implements HttpRequestHandler {
   /**
    * Whether a request is an STS request: a {@code POST} to {@code /} with a form-urlencoded body, whatever its host.
    */
-  static boolean isStsRequest(HttpRequest request) {
+  static boolean isStsRequest(RouterHttpRequest request) {
     return HttpMethod.POST.equals(request.getMethod())
         && "/".equals(request.getPath())
         && request.header(HttpHeaderNames.CONTENT_TYPE.toString())
@@ -92,7 +92,7 @@ final class StsController implements HttpRequestHandler {
   /**
    * The operation that an STS request is recorded as: its action, e.g. {@code AssumeRole}.
    */
-  static String operation(HttpRequest request) {
+  static String operation(RouterHttpRequest request) {
     try {
       String action = parameters(request).get("Action");
       return ACTIONS.contains(action) ? action : UNKNOWN_ACTION_OPERATION;
@@ -102,7 +102,7 @@ final class StsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     String requestId = ResponseUtils.nextRequestId();
     try {
       Map<String, String> parameters = parameters(request);
@@ -126,7 +126,7 @@ final class StsController implements HttpRequestHandler {
     }
   }
 
-  private String assumeRole(HttpRequest request, Map<String, String> parameters) {
+  private String assumeRole(RouterHttpRequest request, Map<String, String> parameters) {
     String roleArn = required(parameters, "RoleArn");
     if (roleArn.length() < 20 || roleArn.length() > 2048 || !PRINTABLE.matcher(roleArn).matches()) {
       throw validationError("Value '" + roleArn + "' at 'roleArn' failed to satisfy constraint: "
@@ -159,7 +159,7 @@ final class StsController implements HttpRequestHandler {
             .orElse("");
   }
 
-  private String getSessionToken(HttpRequest request, Map<String, String> parameters) {
+  private String getSessionToken(RouterHttpRequest request, Map<String, String> parameters) {
     Caller caller = caller(request);
     if (caller.temporary()) {
       throw new StsException("AccessDenied", 403, "Cannot call GetSessionToken with session credentials");
@@ -168,7 +168,7 @@ final class StsController implements HttpRequestHandler {
     return credentialsXml(issuer.issue(duration, caller.arn(), caller.userId()));
   }
 
-  private String getCallerIdentity(HttpRequest request) {
+  private String getCallerIdentity(RouterHttpRequest request) {
     Caller caller = caller(request);
     return "<Arn>" + escape(caller.arn()) + "</Arn>"
         + "<UserId>" + escape(caller.userId()) + "</UserId>"
@@ -179,7 +179,7 @@ final class StsController implements HttpRequestHandler {
    * The identity that a request is signed as: the session of its temporary credentials, or else the root of the
    * account of LocalS3. The router verified the signature of the request already, if LocalS3 verifies signatures.
    */
-  private Caller caller(HttpRequest request) {
+  private Caller caller(RouterHttpRequest request) {
     String sessionToken = request.header(AmzHeaderNames.X_AMZ_SECURITY_TOKEN)
         .or(() -> Optional.ofNullable(request.getParams().get("X-Amz-Security-Token"))
             .flatMap(values -> values.stream().findFirst()))
@@ -246,7 +246,7 @@ final class StsController implements HttpRequestHandler {
    * The parameters of an STS request: the ones of its query, and the ones of its form-urlencoded body, which take
    * precedence.
    */
-  private static Map<String, String> parameters(HttpRequest request) {
+  private static Map<String, String> parameters(RouterHttpRequest request) {
     Map<String, String> parameters = new HashMap<>();
     request.getParams().forEach((name, values) -> {
       if (!values.isEmpty()) {
@@ -285,7 +285,7 @@ final class StsController implements HttpRequestHandler {
    * Answer an STS request whose signature is rejected with the error of STS that the rejection corresponds to, in the
    * format of STS, which the STS clients of the AWS SDKs read the error from rather than the one of Amazon S3.
    */
-  static void writeAuthenticationFailure(HttpResponse response, AwsSignatureV4Verifier.VerificationResult result) {
+  static void writeAuthenticationFailure(RouterHttpResponse response, AwsSignatureV4Verifier.VerificationResult result) {
     S3ErrorCode errorCode = result.errorCode();
     String requestId = ResponseUtils.nextRequestId();
     switch (errorCode) {
@@ -301,7 +301,7 @@ final class StsController implements HttpRequestHandler {
     }
   }
 
-  private static void writeError(HttpResponse response, String requestId, String code, int status, String message) {
+  private static void writeError(RouterHttpResponse response, String requestId, String code, int status, String message) {
     writeXml(response, HttpResponseStatus.valueOf(status), requestId, "<ErrorResponse xmlns=\"" + NAMESPACE + "\">"
         + "<Error><Type>Sender</Type><Code>" + escape(code) + "</Code>"
         + "<Message>" + escape(Objects.toString(message, "")) + "</Message></Error>"
@@ -309,7 +309,7 @@ final class StsController implements HttpRequestHandler {
         + "</ErrorResponse>");
   }
 
-  private static void writeXml(HttpResponse response, HttpResponseStatus status, String requestId, String xml) {
+  private static void writeXml(RouterHttpResponse response, HttpResponseStatus status, String requestId, String xml) {
     response.status(status)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/xml")
         .putHeader("x-amzn-RequestId", requestId)

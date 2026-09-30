@@ -1,6 +1,6 @@
 package com.robothy.netty.router;
 
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +21,7 @@ public final class Route {
 
   private final String path;
 
-  private final HttpRequestHandler handler;
+  private final RouterHttpRequestHandler handler;
 
   private final Predicate<Map<String, String>> headerMatcher;
 
@@ -41,7 +41,7 @@ public final class Route {
   @Getter(AccessLevel.NONE)
   private final String[] variableNames;
 
-  private Route(HttpMethod method, String path, HttpRequestHandler handler,
+  private Route(HttpMethod method, String path, RouterHttpRequestHandler handler,
                 Predicate<Map<String, String>> headerMatcher,
                 Predicate<Map<String, List<String>>> paramMatcher) {
     this.method = method;
@@ -152,7 +152,7 @@ public final class Route {
 
     private String path;
 
-    private HttpRequestHandler handler;
+    private RouterHttpRequestHandler handler;
 
     private Predicate<Map<String, String>> headerMatcher;
 
@@ -178,7 +178,7 @@ public final class Route {
       return this;
     }
 
-    public Builder handler(HttpRequestHandler handler) {
+    public Builder handler(RouterHttpRequestHandler handler) {
       this.handler = handler;
       return this;
     }

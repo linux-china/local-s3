@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3tables;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.iceberg.IcebergCatalogException;
 import com.robothy.s3.core.iceberg.IcebergJson;
@@ -61,7 +61,7 @@ import tools.jackson.databind.node.ObjectNode;
  * API rather than one per operation: the API is a REST one, addressed by path, and the routes of the S3 router are
  * matched against {@code /bucket/key} shapes that these paths are not.
  */
-public final class S3TablesController implements HttpRequestHandler {
+public final class S3TablesController implements RouterHttpRequestHandler {
 
   private static final Logger log = LoggerFactory.getLogger(S3TablesController.class);
 
@@ -115,7 +115,7 @@ public final class S3TablesController implements HttpRequestHandler {
    * @param request the request.
    * @return {@code true} if it is signed for the {@code s3tables} service.
    */
-  public static boolean isS3TablesRequest(HttpRequest request) {
+  public static boolean isS3TablesRequest(RouterHttpRequest request) {
     return S3TablesArn.SERVICE.equals(SigV4Requests.signingService(request)) || isPathPrefixed(request);
   }
 
@@ -123,7 +123,7 @@ public final class S3TablesController implements HttpRequestHandler {
    * Whether a request is addressed at this API by its path, i.e. under {@value #PATH_PREFIX}, which is how a client
    * that signs nothing reaches it.
    */
-  private static boolean isPathPrefixed(HttpRequest request) {
+  private static boolean isPathPrefixed(RouterHttpRequest request) {
     String path = request.getPath();
     return path != null && (path.equals(PATH_PREFIX) || path.startsWith(PATH_PREFIX + "/"));
   }
@@ -135,7 +135,7 @@ public final class S3TablesController implements HttpRequestHandler {
    * @param request the request.
    * @return the operation.
    */
-  public static String operation(HttpRequest request) {
+  public static String operation(RouterHttpRequest request) {
     try {
       String operation = operationOf(request.getMethod(), segments(request));
       return operation.isEmpty() ? UNKNOWN_OPERATION : OPERATION_PREFIX + operation;
@@ -145,7 +145,7 @@ public final class S3TablesController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     try {
       dispatch(request, response);
     } catch (S3TablesException e) {
@@ -162,7 +162,7 @@ public final class S3TablesController implements HttpRequestHandler {
     }
   }
 
-  private void dispatch(HttpRequest request, HttpResponse response) {
+  private void dispatch(RouterHttpRequest request, RouterHttpResponse response) {
     List<String> path = segments(request);
     switch (operationOf(request.getMethod(), path)) {
       /*
@@ -473,7 +473,7 @@ public final class S3TablesController implements HttpRequestHandler {
    * {@code :} and {@code /}, which a client escapes. The raw path is split before it is decoded so that the {@code /}
    * inside an ARN doesn't become a segment boundary; see {@linkplain RequestPaths}.
    */
-  private static List<String> segments(HttpRequest request) {
+  private static List<String> segments(RouterHttpRequest request) {
     List<String> segments;
     try {
       segments = RequestPaths.decodedSegments(RequestPaths.rawPath(request));
@@ -488,11 +488,11 @@ public final class S3TablesController implements HttpRequestHandler {
     return segments;
   }
 
-  private static String parameter(HttpRequest request, String name) {
+  private static String parameter(RouterHttpRequest request, String name) {
     return request.parameter(name).filter(value -> !value.isBlank()).orElse(null);
   }
 
-  private static String requiredParameter(HttpRequest request, String name) {
+  private static String requiredParameter(RouterHttpRequest request, String name) {
     String value = parameter(request, name);
     if (value == null) {
       throw S3TablesException.badRequest("The request is missing the required query parameter '" + name + "'.");
@@ -500,7 +500,7 @@ public final class S3TablesController implements HttpRequestHandler {
     return value;
   }
 
-  private static Integer intParameter(HttpRequest request, String name) {
+  private static Integer intParameter(RouterHttpRequest request, String name) {
     String value = parameter(request, name);
     if (value == null) {
       return null;
@@ -515,7 +515,7 @@ public final class S3TablesController implements HttpRequestHandler {
   /**
    * The JSON body of a request; an empty object for a request without one.
    */
-  private static ObjectNode body(HttpRequest request) {
+  private static ObjectNode body(RouterHttpRequest request) {
     ByteBuf body = request.getBody();
     if (body == null || body.readableBytes() == 0) {
       return IcebergJson.newObject();
@@ -532,7 +532,7 @@ public final class S3TablesController implements HttpRequestHandler {
     }
   }
 
-  private static void writeJson(HttpResponse response, int status, JsonNode body) {
+  private static void writeJson(RouterHttpResponse response, int status, JsonNode body) {
     response.status(HttpResponseStatus.valueOf(status))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), CONTENT_TYPE)
         .write(IcebergJson.write(body));
@@ -540,7 +540,7 @@ public final class S3TablesController implements HttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
   }
 
-  private static void writeStatus(HttpResponse response, int status) {
+  private static void writeStatus(RouterHttpResponse response, int status) {
     response.status(HttpResponseStatus.valueOf(status));
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
@@ -555,7 +555,7 @@ public final class S3TablesController implements HttpRequestHandler {
    * @param errorType the name of the modelled exception.
    * @param message the message.
    */
-  public static void writeError(HttpResponse response, int status, String errorType, String message) {
+  public static void writeError(RouterHttpResponse response, int status, String errorType, String message) {
     ObjectNode body = IcebergJson.newObject();
     body.put("message", Objects.toString(message, ""));
     // Sent in the body as well, which is the other place a rest-json client looks for the name of the exception.

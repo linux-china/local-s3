@@ -2,8 +2,8 @@ package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -21,14 +21,14 @@ class LocalS3RouterTest {
   void match() throws IllegalAccessException {
     LocalS3Router localS3Router = new LocalS3Router();
 
-    HttpRequestHandler handler1 = mock(HttpRequestHandler.class, "handler1");
+    RouterHttpRequestHandler handler1 = mock(RouterHttpRequestHandler.class, "handler1");
     localS3Router.route(Route.builder()
         .method(HttpMethod.GET).path("/a")
         .paramMatcher(params -> params.containsKey("versioning"))
         .handler(handler1)
         .build());
 
-    HttpRequestHandler handler2 = mock(HttpRequestHandler.class, "handler2");
+    RouterHttpRequestHandler handler2 = mock(RouterHttpRequestHandler.class, "handler2");
     localS3Router.route(Route.builder()
         .method(HttpMethod.GET).path("/a")
         .paramMatcher(params -> params.containsKey("versioning"))
@@ -36,13 +36,13 @@ class LocalS3RouterTest {
         .handler(handler2)
         .build());
 
-    HttpRequestHandler matchedHandler1 = localS3Router.match(HttpRequest.builder()
+    RouterHttpRequestHandler matchedHandler1 = localS3Router.match(RouterHttpRequest.builder()
         .method(HttpMethod.GET).path("/a")
         .params(Map.of("versioning", List.of("true")))
         .build());
     assertSame(handler1, ((OperationHandler) matchedHandler1).handler());
 
-    HttpRequestHandler matchedHandler2 = localS3Router.match(HttpRequest.builder()
+    RouterHttpRequestHandler matchedHandler2 = localS3Router.match(RouterHttpRequest.builder()
         .method(HttpMethod.GET).path("/a")
         .params(Map.of("versioning", List.of("true")))
         .headers(Map.of("x-header", "value"))
@@ -62,58 +62,58 @@ class LocalS3RouterTest {
     rules.put(LocalS3Router.BUCKET_KEY_PATH, objectPathRule);
     rules.put(LocalS3Router.BUCKET_PATH, bucketPathRule);
 
-    assertSame(pathRule1, localS3Router.matchPath(rules, HttpRequest.builder().path("/a/b/").build()));
-    assertSame(pathRule1, localS3Router.matchPath(rules, HttpRequest.builder().path("/a/b").build()));
+    assertSame(pathRule1, localS3Router.matchPath(rules, RouterHttpRequest.builder().path("/a/b/").build()));
+    assertSame(pathRule1, localS3Router.matchPath(rules, RouterHttpRequest.builder().path("/a/b").build()));
 
-    HttpRequest bucketOperation1 = HttpRequest.builder().path("/a").build();
+    RouterHttpRequest bucketOperation1 = RouterHttpRequest.builder().path("/a").build();
     assertSame(bucketPathRule, localS3Router.matchPath(rules, bucketOperation1));
     assertEquals("a", bucketOperation1.parameter("bucket").get());
     assertTrue(bucketOperation1.parameter("key").isEmpty());
 
-    HttpRequest bucketOperation2 = HttpRequest.builder().path("/a/").build();
+    RouterHttpRequest bucketOperation2 = RouterHttpRequest.builder().path("/a/").build();
     assertSame(bucketPathRule, localS3Router.matchPath(rules, bucketOperation2));
     assertEquals("a", bucketOperation2.parameter("bucket").get());
     assertTrue(bucketOperation2.parameter("key").isEmpty());
 
     List<Route> listBucketsRule = mock(List.class, "listBucketsRule");
     rules.put("/", listBucketsRule);
-    assertSame(listBucketsRule, localS3Router.matchPath(rules, HttpRequest.builder().path("/")
+    assertSame(listBucketsRule, localS3Router.matchPath(rules, RouterHttpRequest.builder().path("/")
         .headers(new HashMap<>(Map.of(HttpHeaderNames.HOST.toString(), "localhost:29090"))).build()));
 
-    HttpRequest bucketOperation3 = HttpRequest.builder().path("/")
+    RouterHttpRequest bucketOperation3 = RouterHttpRequest.builder().path("/")
         .headers(Map.of(HttpHeaderNames.HOST.toString(), "images.example.com.s3.us-east-1.amazonaws.com")).build();
     assertSame(bucketPathRule, localS3Router.matchPath(rules, bucketOperation3));
     assertEquals("images.example.com", bucketOperation3.parameter("bucket").get());
     assertFalse(bucketOperation3.parameter("key").isPresent());
 
-    HttpRequest objectOperation1 = HttpRequest.builder().path("/a/key").build();
+    RouterHttpRequest objectOperation1 = RouterHttpRequest.builder().path("/a/key").build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation1));
     assertEquals("a", objectOperation1.parameter("bucket").get());
     assertEquals("key", objectOperation1.parameter("key").get());
 
-    HttpRequest objectOperation2 = HttpRequest.builder().path("/a/key/").build();
+    RouterHttpRequest objectOperation2 = RouterHttpRequest.builder().path("/a/key/").build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation2));
     assertEquals("a", objectOperation2.parameter("bucket").get());
     assertEquals("key/", objectOperation2.parameter("key").get());
 
-    HttpRequest objectOperation3 = HttpRequest.builder().path("/a/dir/a.txt").build();
+    RouterHttpRequest objectOperation3 = RouterHttpRequest.builder().path("/a/dir/a.txt").build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation3));
     assertEquals("a", objectOperation3.parameter("bucket").get());
     assertEquals("dir/a.txt", objectOperation3.parameter("key").get());
 
-    HttpRequest objectOperation4 = HttpRequest.builder().path("/a/dir/sub-dir/").build();
+    RouterHttpRequest objectOperation4 = RouterHttpRequest.builder().path("/a/dir/sub-dir/").build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation4));
     assertEquals("a", objectOperation4.parameter("bucket").get());
     assertEquals("dir/sub-dir/", objectOperation4.parameter("key").get());
 
-    HttpRequest objectOperation5 = HttpRequest.builder().path("/a/dir/sub-dir/")
+    RouterHttpRequest objectOperation5 = RouterHttpRequest.builder().path("/a/dir/sub-dir/")
         .headers(Map.of(HttpHeaderNames.HOST.toString(), "bucket1.s3.localhost")).build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation5));
     assertEquals("bucket1.s3", objectOperation5.parameter("bucket").get());
     assertEquals("a/dir/sub-dir/", objectOperation5.parameter("key").get());
 
     // A virtual-hosted request whose key happens to be a path of the service is an object operation.
-    HttpRequest objectOperation6 = HttpRequest.builder().path("/a/b")
+    RouterHttpRequest objectOperation6 = RouterHttpRequest.builder().path("/a/b")
         .headers(Map.of(HttpHeaderNames.HOST.toString(), "bucket1.localhost")).build();
     assertSame(objectPathRule, localS3Router.matchPath(rules, objectOperation6));
     assertEquals("bucket1", objectOperation6.parameter("bucket").get());
@@ -128,7 +128,7 @@ class LocalS3RouterTest {
     rules.put(LocalS3Router.HEALTH_CHECK_PATH, healthCheckRule);
     rules.put(LocalS3Router.BUCKET_KEY_PATH, mock(List.class, "objectPathRule"));
 
-    assertSame(healthCheckRule, localS3Router.matchPath(rules, HttpRequest.builder().path("/_health")
+    assertSame(healthCheckRule, localS3Router.matchPath(rules, RouterHttpRequest.builder().path("/_health")
         .headers(Map.of(HttpHeaderNames.HOST.toString(), "bucket1.localhost")).build()));
   }
 
@@ -166,8 +166,8 @@ class LocalS3RouterTest {
     assertThrows(IllegalStateException.class, ambiguous::verifyRoutes);
 
     LocalS3Router router = new LocalS3Router();
-    HttpRequestHandler get = mock(HttpRequestHandler.class, "get");
-    HttpRequestHandler list = mock(HttpRequestHandler.class, "list");
+    RouterHttpRequestHandler get = mock(RouterHttpRequestHandler.class, "get");
+    RouterHttpRequestHandler list = mock(RouterHttpRequestHandler.class, "list");
     router.route("GetBucketAnalyticsConfiguration", Route.builder().method(HttpMethod.GET).path("/a")
         .paramMatcher(ParamCondition.has("analytics", "id")).handler(get).build());
     router.route("ListBucketAnalyticsConfigurations", Route.builder().method(HttpMethod.GET).path("/a")
@@ -198,7 +198,7 @@ class LocalS3RouterTest {
     LocalS3Router router = new LocalS3Router();
     router.route("Declared", route(HttpMethod.GET, ParamCondition.has("a"), null));
     router.route("Coded", Route.builder().method(HttpMethod.GET).path("/a")
-        .paramMatcher(params -> params.containsKey("b")).handler(mock(HttpRequestHandler.class)).build());
+        .paramMatcher(params -> params.containsKey("b")).handler(mock(RouterHttpRequestHandler.class)).build());
 
     IllegalStateException thrown = assertThrows(IllegalStateException.class, router::verifyRoutes);
     assertTrue(thrown.getMessage().contains("Coded has a condition that can't be checked"), thrown.getMessage());
@@ -223,7 +223,7 @@ class LocalS3RouterTest {
       assertSame(acl.getHandler(),
           ((OperationHandler) router.match(request(Map.of("acl", List.of("")), Map.of()))).handler());
 
-      HttpRequestHandler handler = router.match(request(Map.of("acl", List.of(""), "tagging", List.of("")), Map.of()));
+      RouterHttpRequestHandler handler = router.match(request(Map.of("acl", List.of(""), "tagging", List.of("")), Map.of()));
       assertEquals(LocalS3Router.AMBIGUOUS_OPERATION, ((OperationHandler) handler).operation());
       LocalS3RequestException thrown = assertThrows(LocalS3RequestException.class,
           () -> handler.handle(null, null));
@@ -250,7 +250,7 @@ class LocalS3RouterTest {
   }
 
   private static Route route(HttpMethod method, ParamCondition params, HeaderCondition headers) {
-    Route.Builder builder = Route.builder().method(method).path("/a").handler(mock(HttpRequestHandler.class));
+    Route.Builder builder = Route.builder().method(method).path("/a").handler(mock(RouterHttpRequestHandler.class));
     if (params != null) {
       builder.paramMatcher(params);
     }
@@ -260,8 +260,8 @@ class LocalS3RouterTest {
     return builder.build();
   }
 
-  private static HttpRequest request(Map<String, List<String>> params, Map<String, String> headers) {
-    return HttpRequest.builder().method(HttpMethod.GET).path("/a")
+  private static RouterHttpRequest request(Map<String, List<String>> params, Map<String, String> headers) {
+    return RouterHttpRequest.builder().method(HttpMethod.GET).path("/a")
         .params(new HashMap<>(params)).headers(new HashMap<>(headers)).build();
   }
 

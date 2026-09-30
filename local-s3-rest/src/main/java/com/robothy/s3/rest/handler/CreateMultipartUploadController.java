@@ -11,9 +11,9 @@ import com.robothy.s3.datatypes.enums.ChecksumType;
 import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.ObjectLockHeaders;
 import java.util.Objects;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.service.CreateMultipartUploadService;
 import com.robothy.s3.core.service.ObjectService;
@@ -30,7 +30,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html">CreateMultipartUpload</a>
  */
-class CreateMultipartUploadController implements HttpRequestHandler {
+class CreateMultipartUploadController implements RouterHttpRequestHandler {
 
   private final CreateMultipartUploadService uploadService;
 
@@ -42,7 +42,7 @@ class CreateMultipartUploadController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String contentType = request.header("content-type").orElse("octet/stream");

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.TotalSizeExceedException;
 import com.robothy.s3.core.storage.HeapContent;
@@ -68,7 +68,7 @@ class HeapRequestBodyTest {
     channel.writeInbound(request(HttpMethod.PUT, content.length), content(content, 0, 30),
         content(content, 30, 70), last(content, 70, 100));
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertEquals(bodyFiles, countBodyFiles(), "No temporary file is written.");
@@ -109,7 +109,7 @@ class HeapRequestBodyTest {
     channel.writeInbound(awsChunkedRequest(encoded.length, content.length), content(encoded, 0, 30),
         last(encoded, 30, encoded.length));
 
-    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    RouterHttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertInstanceOf(HeapBodyByteBuf.class, body);

@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
@@ -24,7 +24,7 @@ import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.netty.RequestBodies;
-import com.robothy.s3.rest.netty.StreamingHttpResponse;
+import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import com.robothy.s3.rest.service.BucketNameValidator;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -99,7 +99,7 @@ import tools.jackson.databind.ObjectMapper;
  * does, so that no request of the console is larger than a part and a file larger than the largest body the service
  * accepts is stored as well.
  */
-class ConsoleController implements HttpRequestHandler {
+class ConsoleController implements RouterHttpRequestHandler {
 
   /**
    * Path of the console page. The endpoints it calls are below it, and {@linkplain LocalS3Router} answers every
@@ -299,7 +299,7 @@ class ConsoleController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     if (!isAuthorized(request)) {
       unauthorized(response);
       return;
@@ -336,7 +336,7 @@ class ConsoleController implements HttpRequestHandler {
    * The endpoints.
    */
 
-  private void page(HttpResponse response) {
+  private void page(RouterHttpResponse response) {
     response.status(HttpResponseStatus.OK)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/html; charset=utf-8")
         .putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-store")
@@ -345,7 +345,7 @@ class ConsoleController implements HttpRequestHandler {
     ResponseUtils.addServerHeader(response);
   }
 
-  private void buckets(HttpResponse response) {
+  private void buckets(RouterHttpResponse response) {
     List<ConsoleBucket> buckets = bucketService.listBuckets().stream()
         .sorted(Comparator.comparing(Bucket::getName))
         .map(bucket -> new ConsoleBucket(bucket.getName(), Instant.ofEpochMilli(bucket.getCreationDate()).toString(),
@@ -354,7 +354,7 @@ class ConsoleController implements HttpRequestHandler {
     json(response, HttpResponseStatus.OK, new ConsoleBuckets(buckets));
   }
 
-  private void objects(HttpRequest request, HttpResponse response) {
+  private void objects(RouterHttpRequest request, RouterHttpResponse response) {
     String bucket = required(request, "bucket");
     String prefix = request.parameter("prefix").orElse(null);
     String continuationToken = request.parameter("continuation-token").orElse(null);
@@ -370,7 +370,7 @@ class ConsoleController implements HttpRequestHandler {
         listing.isTruncated(), listing.getNextContinuationToken().orElse(null)));
   }
 
-  private void object(HttpRequest request, HttpResponse response) {
+  private void object(RouterHttpRequest request, RouterHttpResponse response) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
     GetObjectAns object = objectService.getObject(bucket, key, GetObjectOptions.builder()
@@ -405,7 +405,7 @@ class ConsoleController implements HttpRequestHandler {
    * <p>Like Amazon S3, signing doesn't touch the data, but the page shares the objects it lists, so a URL of an object
    * that doesn't exist is refused rather than handed out.
    */
-  private void presign(HttpRequest request, HttpResponse response) {
+  private void presign(RouterHttpRequest request, RouterHttpResponse response) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
     String method = request.parameter("method").orElse("GET").trim().toUpperCase(Locale.ROOT);
@@ -446,7 +446,7 @@ class ConsoleController implements HttpRequestHandler {
    * The endpoint that the page reached this service at: the host it addressed and the scheme it arrived by, since a
    * presigned URL signs its host, and the browser that the page runs in is the one that reaches it.
    */
-  private String endpoint(HttpRequest request) {
+  private String endpoint(RouterHttpRequest request) {
     String host = request.header(HttpHeaderNames.HOST.toString())
         .map(String::trim)
         .filter(value -> HOST.matcher(value).matches())
@@ -460,7 +460,7 @@ class ConsoleController implements HttpRequestHandler {
    * Create a bucket, upload an object, in one request or in parts, or delete one: the requests of the console that
    * change the data, and the only ones that want the {@linkplain #CONSOLE_HEADER} header.
    */
-  private void write(HttpRequest request, HttpResponse response, String path, HttpMethod method) {
+  private void write(RouterHttpRequest request, RouterHttpResponse response, String path, HttpMethod method) {
     boolean createsBucket = BUCKET_PATH.equals(path) && HttpMethod.PUT.equals(method);
     boolean multipart = MULTIPART_PATH.equals(path) || (COMPLETE_PATH.equals(path) && HttpMethod.POST.equals(method));
     boolean object = OBJECT_PATH.equals(path) && !HttpMethod.POST.equals(method);
@@ -489,7 +489,7 @@ class ConsoleController implements HttpRequestHandler {
    * Create a bucket, in the default region and with the naming rules of Amazon S3, which is what
    * {@code CreateBucket} of the API applies as well.
    */
-  private void createBucket(HttpRequest request, HttpResponse response) {
+  private void createBucket(RouterHttpRequest request, RouterHttpResponse response) {
     String name = required(request, "bucket");
     bucketNameValidator.validate(name);
     Bucket bucket = bucketService.createBucket(name, LocalS3Constants.DEFAULT_LOCATION_CONSTRAINT);
@@ -497,7 +497,7 @@ class ConsoleController implements HttpRequestHandler {
         Instant.ofEpochMilli(bucket.getCreationDate()).toString(), bucket.regionOrDefault()));
   }
 
-  private void putObject(HttpRequest request, HttpResponse response) {
+  private void putObject(RouterHttpRequest request, RouterHttpResponse response) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
     // The body of a large upload was buffered in a file, or in the heap of an IN_MEMORY service, which the storage
@@ -519,7 +519,7 @@ class ConsoleController implements HttpRequestHandler {
    * uploads a file in parts once it is larger than what it sends in one request, which keeps every request below the
    * largest body the service accepts.
    */
-  private void multipart(HttpRequest request, HttpResponse response, String path, HttpMethod method) {
+  private void multipart(RouterHttpRequest request, RouterHttpResponse response, String path, HttpMethod method) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
     if (HttpMethod.POST.equals(method) && MULTIPART_PATH.equals(path)) {
@@ -568,7 +568,7 @@ class ConsoleController implements HttpRequestHandler {
     }
   }
 
-  private void deleteObject(HttpRequest request, HttpResponse response) {
+  private void deleteObject(RouterHttpRequest request, RouterHttpResponse response) {
     String bucket = required(request, "bucket");
     String key = required(request, "key");
     DeleteObjectAns deleted = objectService.deleteObject(bucket, key, request.parameter("versionId").orElse(null));
@@ -583,7 +583,7 @@ class ConsoleController implements HttpRequestHandler {
    *
    * @return the content type; {@code null} to store the object without one.
    */
-  private static @Nullable String uploadContentType(HttpRequest request, String key) {
+  private static @Nullable String uploadContentType(RouterHttpRequest request, String key) {
     String given = request.header(HttpHeaderNames.CONTENT_TYPE.toString()).orElse("").trim();
     if (!given.isEmpty() && !given.startsWith("application/octet-stream")) {
       return given;
@@ -600,7 +600,7 @@ class ConsoleController implements HttpRequestHandler {
    * credentials answers every request: it answers unsigned S3 requests too, so asking the console for a password it
    * doesn't have would guard nothing.
    */
-  private boolean isAuthorized(HttpRequest request) {
+  private boolean isAuthorized(RouterHttpRequest request) {
     if (accessKeyId == null) {
       return true;
     }
@@ -630,7 +630,7 @@ class ConsoleController implements HttpRequestHandler {
         Objects.toString(expected, "").getBytes(StandardCharsets.UTF_8));
   }
 
-  private void unauthorized(HttpResponse response) {
+  private void unauthorized(RouterHttpResponse response) {
     response.putHeader(HttpHeaderNames.WWW_AUTHENTICATE.toString(), AUTHENTICATE);
     error(response, HttpResponseStatus.UNAUTHORIZED, "AccessDenied",
         "The console wants the credentials of this service: the access key ID as the user name, and the secret "
@@ -641,7 +641,7 @@ class ConsoleController implements HttpRequestHandler {
    * Writing a response.
    */
 
-  private void json(HttpResponse response, HttpResponseStatus status, Object body) {
+  private void json(RouterHttpResponse response, HttpResponseStatus status, Object body) {
     response.status(status)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON)
         .putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-store")
@@ -653,7 +653,7 @@ class ConsoleController implements HttpRequestHandler {
   /**
    * Answer an error as JSON, which is what the page shows; the S3 API answers its own requests with XML.
    */
-  private void error(HttpResponse response, HttpResponseStatus status, String code, String message) {
+  private void error(RouterHttpResponse response, HttpResponseStatus status, String code, String message) {
     json(response, status, Map.of("code", code, "message", Objects.toString(message, status.reasonPhrase())));
   }
 
@@ -661,8 +661,8 @@ class ConsoleController implements HttpRequestHandler {
    * Stream the content of an object when the response supports it, like {@code GetObject} does, so that previewing
    * a large object doesn't buffer it in memory.
    */
-  private static void writeContent(HttpResponse response, InputStream content) {
-    if (response instanceof StreamingHttpResponse streamingResponse) {
+  private static void writeContent(RouterHttpResponse response, InputStream content) {
+    if (response instanceof StreamingRouterHttpResponse streamingResponse) {
       streamingResponse.stream(content);
     } else {
       response.write(ByteBufUtils.fromInputStream(content));
@@ -703,7 +703,7 @@ class ConsoleController implements HttpRequestHandler {
    * Reading a request.
    */
 
-  private static String required(HttpRequest request, String parameter) {
+  private static String required(RouterHttpRequest request, String parameter) {
     String value = request.parameter(parameter).orElse("");
     if (value.isEmpty()) {
       throw new IllegalArgumentException("The " + parameter + " parameter is required.");
@@ -711,7 +711,7 @@ class ConsoleController implements HttpRequestHandler {
     return value;
   }
 
-  private static int partNumber(HttpRequest request) {
+  private static int partNumber(RouterHttpRequest request) {
     String value = required(request, "partNumber");
     try {
       return Integer.parseInt(value);

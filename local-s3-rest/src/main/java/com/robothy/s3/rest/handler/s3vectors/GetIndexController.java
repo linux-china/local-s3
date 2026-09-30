@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.assertions.vectors.VectorIndexAssertions;
 import com.robothy.s3.core.model.internal.s3vectors.IndexIdentifier;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
@@ -18,7 +18,7 @@ import tools.jackson.databind.ObjectMapper;
  * Handles GET requests to retrieve information about a specific vector index.
  */
 @Slf4j
-public class GetIndexController implements HttpRequestHandler {
+public class GetIndexController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -29,13 +29,13 @@ public class GetIndexController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     GetIndexRequest getRequest = parseRequest(request);
     GetIndexResponse getResponse = processRequest(getRequest);
     HttpRequestUtils.sendJsonResponse(response, getResponse, objectMapper);
   }
 
-  private GetIndexRequest parseRequest(HttpRequest request) throws Exception {
+  private GetIndexRequest parseRequest(RouterHttpRequest request) throws Exception {
     byte[] bodyBytes = HttpRequestUtils.extractRequestBody(request);
     return HttpRequestUtils.parseRequiredRequest(bodyBytes, GetIndexRequest.class, objectMapper);
   }

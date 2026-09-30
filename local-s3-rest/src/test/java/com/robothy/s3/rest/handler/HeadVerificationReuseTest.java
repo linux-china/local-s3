@@ -6,8 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
@@ -58,7 +57,7 @@ class HeadVerificationReuseTest {
   @Test
   void theRouterVerifiesOnlyTheBodyOfARequestWhoseHeadTheDecoderVerified() {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
-    HttpRequestHandler handler = mock(HttpRequestHandler.class);
+    RouterHttpRequestHandler handler = mock(RouterHttpRequestHandler.class);
     LocalS3Router router = router(clock, handler);
 
     ReceivedRequest request = decode(router, CONTENT);
@@ -71,7 +70,7 @@ class HeadVerificationReuseTest {
   @Test
   void theRouterStillVerifiesTheBody() {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
-    LocalS3Router router = router(clock, mock(HttpRequestHandler.class));
+    LocalS3Router router = router(clock, mock(RouterHttpRequestHandler.class));
 
     ReceivedRequest tampered = decode(router, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
 
@@ -87,7 +86,7 @@ class HeadVerificationReuseTest {
   @Test
   void aRequestWithoutAVerifiedHeadIsVerifiedAsAWhole() {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
-    LocalS3Router router = router(clock, mock(HttpRequestHandler.class));
+    LocalS3Router router = router(clock, mock(RouterHttpRequestHandler.class));
     ReceivedRequest received = decode(router, CONTENT);
     clock.instant = Instant.parse("2013-05-24T00:30:00Z");
 
@@ -99,11 +98,11 @@ class HeadVerificationReuseTest {
    * Routes a request like {@linkplain com.robothy.s3.rest.netty.LocalS3HttpMessageHandler} does: with what the
    * decoder received with it bound to the thread.
    */
-  private static HttpRequestHandler match(LocalS3Router router, ReceivedRequest received) {
+  private static RouterHttpRequestHandler match(LocalS3Router router, ReceivedRequest received) {
     return received.handle(() -> router.match(received.request()));
   }
 
-  private static LocalS3Router router(Clock clock, HttpRequestHandler handler) {
+  private static LocalS3Router router(Clock clock, RouterHttpRequestHandler handler) {
     LocalS3Router router = new LocalS3Router(new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, clock),
         new VirtualHostParser(Set.of()));
     // The host of the example addresses the bucket, so the path is the key of an object.

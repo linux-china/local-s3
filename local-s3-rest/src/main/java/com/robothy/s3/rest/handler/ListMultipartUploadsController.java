@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.ListMultipartUploadsAns;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Owner;
@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-public class ListMultipartUploadsController implements HttpRequestHandler {
+public class ListMultipartUploadsController implements RouterHttpRequestHandler {
 
   private final ObjectService objectService;
 
@@ -29,7 +29,7 @@ public class ListMultipartUploadsController implements HttpRequestHandler {
   }
   
   @Override
-  public void handle(HttpRequest httpRequest, HttpResponse httpResponse) throws Exception {
+  public void handle(RouterHttpRequest httpRequest, RouterHttpResponse httpResponse) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(httpRequest);
     String delimiter = RequestAssertions.assertDelimiterIsValid(httpRequest).orElse(null);
     String encodingType = RequestAssertions.assertEncodingTypeIsValid(httpRequest).orElse(null);

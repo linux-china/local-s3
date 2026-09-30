@@ -1,5 +1,6 @@
 package com.robothy.netty.codec;
 
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.utils.RequestTargets;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
@@ -30,7 +31,7 @@ import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Aggregates netty HTTP messages into a {@linkplain com.robothy.netty.http.HttpRequest}. It also accepts
+ * Aggregates netty HTTP messages into a {@linkplain RouterHttpRequest}. It also accepts
  * {@linkplain io.netty.handler.codec.http.FullHttpRequest}s, e.g. from a {@code HttpObjectAggregator}.
  *
  * <p>The body is limited to {@code maxRequestBodySize} bytes. An oversized request is answered with
@@ -39,7 +40,7 @@ import lombok.extern.slf4j.Slf4j;
  * rejected before {@code 100 Continue} is sent, so clients that expect it never upload the body.
  */
 @Slf4j
-public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
+public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 
   /**
    * The default max request body size, 64 MiB.
@@ -48,11 +49,11 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 
   private final int maxRequestBodySize;
 
-  private com.robothy.netty.http.HttpRequest.HttpRequestBuilder builder;
+  private RouterHttpRequest.RouterHttpRequestBuilder builder;
 
   private CompositeByteBuf body;
 
-  public HttpRequestDecoder() {
+  public RouterHttpRequestDecoder() {
     this(DEFAULT_MAX_REQUEST_BODY_SIZE);
   }
 
@@ -60,7 +61,7 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
    * @param maxRequestBodySize max request body size in bytes. The body is held in a single {@linkplain ByteBuf}, so
    *                           it cannot exceed {@code Integer.MAX_VALUE}.
    */
-  public HttpRequestDecoder(int maxRequestBodySize) {
+  public RouterHttpRequestDecoder(int maxRequestBodySize) {
     if (maxRequestBodySize <= 0) {
       throw new IllegalArgumentException("maxRequestBodySize must be positive.");
     }
@@ -122,7 +123,7 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 
       // No component limit: consolidating the components of a large body would copy it over and over.
       this.body = Unpooled.compositeBuffer(Integer.MAX_VALUE);
-      this.builder = com.robothy.netty.http.HttpRequest.builder()
+      this.builder = RouterHttpRequest.builder()
           .method(httpRequest.method())
           .uri(uri)
           .httpVersion(httpRequest.protocolVersion())
@@ -149,7 +150,7 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       ReferenceCountUtil.retain(content);
       body.addComponent(true, content);
       if (msg instanceof LastHttpContent) {
-        com.robothy.netty.http.HttpRequest request = builder.build();
+        RouterHttpRequest request = builder.build();
         // The body now belongs to the request, HttpMessageHandler releases it.
         this.body = null;
         this.builder = null;

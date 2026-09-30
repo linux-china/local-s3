@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
@@ -131,7 +131,7 @@ final class AwsSignatureV4Verifier {
   /**
    * Verify a request, including its body.
    */
-  VerificationResult verify(HttpRequest request) {
+  VerificationResult verify(RouterHttpRequest request) {
     return verifyBody(request, null);
   }
 
@@ -144,7 +144,7 @@ final class AwsSignatureV4Verifier {
    *
    * @param head the request; its body is ignored.
    */
-  VerificationResult verifyHead(HttpRequest head) {
+  VerificationResult verifyHead(RouterHttpRequest head) {
     return verifyHeadForBody(head).result();
   }
 
@@ -155,7 +155,7 @@ final class AwsSignatureV4Verifier {
    * @param head the request; its body is ignored.
    * @return the result, and the verified head if the head is accepted.
    */
-  HeadVerification verifyHeadForBody(HttpRequest head) {
+  HeadVerification verifyHeadForBody(RouterHttpRequest head) {
     return verifyRequest(head, false);
   }
 
@@ -168,7 +168,7 @@ final class AwsSignatureV4Verifier {
    * @param verifiedHead the verified head of the request; {@code null} to verify the whole request.
    * @return the result.
    */
-  VerificationResult verifyBody(HttpRequest request, VerifiedHead verifiedHead) {
+  VerificationResult verifyBody(RouterHttpRequest request, VerifiedHead verifiedHead) {
     VerifiedHead head = verifiedHead;
     if (head == null || !head.signatureVerified()) {
       HeadVerification verification = verifyRequest(request, true);
@@ -180,7 +180,7 @@ final class AwsSignatureV4Verifier {
     return head.complete() ? VerificationResult.success() : verifyPayload(request.getBody(), head);
   }
 
-  private HeadVerification verifyRequest(HttpRequest request, boolean bodyReceived) {
+  private HeadVerification verifyRequest(RouterHttpRequest request, boolean bodyReceived) {
     try {
       Optional<String> authorization = request.header(HttpHeaderNames.AUTHORIZATION.toString());
       if (authorization.isPresent()) {
@@ -235,7 +235,7 @@ final class AwsSignatureV4Verifier {
    * {@code AWS4-ECDSA-P256-SHA256 Credential=AKID/20130524/s3/aws4_request, SignedHeaders=..., Signature=...}; its
    * ECDSA signature isn't verified.
    */
-  private VerificationResult verifySigV4aAccessKey(HttpRequest request, String authorization) {
+  private VerificationResult verifySigV4aAccessKey(RouterHttpRequest request, String authorization) {
     Map<String, String> attributes = authorizationAttributes(authorization.substring(SIGV4A_ALGORITHM.length() + 1));
     Map<String, String> headers = normalizedHeaders(request);
     return verifySigV4aCredential(requiredAttribute(attributes, "Credential"),
@@ -260,7 +260,7 @@ final class AwsSignatureV4Verifier {
    * Check the access key of a request signed with Signature Version 2, {@code AWS <access key>:<signature>}; its
    * signature isn't verified.
    */
-  private VerificationResult verifySigV2AccessKey(HttpRequest request, String authorization) {
+  private VerificationResult verifySigV2AccessKey(RouterHttpRequest request, String authorization) {
     String credential = authorization.substring(SIGV2_PREFIX.length()).trim();
     int separator = credential.lastIndexOf(':');
     if (separator <= 0 || separator == credential.length() - 1) {
@@ -282,8 +282,8 @@ final class AwsSignatureV4Verifier {
    * Verify the signature of the Authorization header of a request. Before the body is received, a request without
    * {@code x-amz-content-sha256} can't have its signature verified, which covers the hash of the body.
    */
-  private HeadVerification verifyAuthorizationHeader(HttpRequest request, String authorization,
-      boolean bodyReceived) {
+  private HeadVerification verifyAuthorizationHeader(RouterHttpRequest request, String authorization,
+                                                     boolean bodyReceived) {
     ParsedAuthorization parsed = parseAuthorization(authorization);
     CredentialScope scope = parseCredential(parsed.credential());
     Map<String, String> headers = normalizedHeaders(request);
@@ -476,8 +476,8 @@ final class AwsSignatureV4Verifier {
     }
   }
 
-  private VerificationResult verifyPresignedUrl(HttpRequest request, RawRequestTarget target,
-      List<QueryParameter> queryParameters) {
+  private VerificationResult verifyPresignedUrl(RouterHttpRequest request, RawRequestTarget target,
+                                                List<QueryParameter> queryParameters) {
     String algorithm = requiredQueryParameter(queryParameters, "X-Amz-Algorithm");
     if (!ALGORITHM.equals(algorithm)) {
       return malformed("Unsupported signing algorithm: " + algorithm);
@@ -533,7 +533,7 @@ final class AwsSignatureV4Verifier {
    * The services that the credential scope of a request may name: the endpoint that answers the request is the one
    * that the request is signed for, so a request meant for another service can't be replayed against LocalS3.
    */
-  private static Set<String> signedServices(HttpRequest request) {
+  private static Set<String> signedServices(RouterHttpRequest request) {
     if (StsController.isStsRequest(request)) {
       return Set.of("sts");
     }
@@ -646,9 +646,9 @@ final class AwsSignatureV4Verifier {
         || AmzHeaderValues.STREAMING_AWS4_HMAC_SHA256_PAYLOAD_TRAILER.equals(payloadHash);
   }
 
-  private String canonicalRequest(HttpRequest request, RawRequestTarget target, CredentialScope scope,
-      List<QueryParameter> queryParameters, Map<String, String> headers,
-      String signedHeaders, String payloadHash, boolean presigned) {
+  private String canonicalRequest(RouterHttpRequest request, RawRequestTarget target, CredentialScope scope,
+                                  List<QueryParameter> queryParameters, Map<String, String> headers,
+                                  String signedHeaders, String payloadHash, boolean presigned) {
     StringBuilder canonicalHeaders = new StringBuilder();
     for (String name : signedHeaders.split(";")) {
       canonicalHeaders.append(name).append(':').append(headers.get(name)).append('\n');
@@ -685,7 +685,7 @@ final class AwsSignatureV4Verifier {
         .orElse("");
   }
 
-  private static Map<String, String> normalizedHeaders(HttpRequest request) {
+  private static Map<String, String> normalizedHeaders(RouterHttpRequest request) {
     Map<String, String> result = new HashMap<>();
     request.getHeaders().forEach((name, value) -> result.put(
         name.toString().toLowerCase(Locale.ROOT), normalizeHeaderValue(value)));

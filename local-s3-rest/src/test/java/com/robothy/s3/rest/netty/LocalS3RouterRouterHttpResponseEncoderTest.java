@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class LocalS3HttpResponseEncoderTest {
+class LocalS3RouterRouterHttpResponseEncoderTest {
 
   /**
    * The content of an object stored in parts is sent part by part, and one part at a time: a file-backed part as a
@@ -36,7 +36,7 @@ class LocalS3HttpResponseEncoderTest {
     Storage files = Storage.createPersistent(directory);
     Long first = files.put("Hello".getBytes());
     Long third = files.put("S3!".getBytes());
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     response.status(HttpResponseStatus.OK).putHeader("Content-Length", 13);
     response.stream(new CompositeInputStream(List.<CompositeInputStream.Part>of(
         () -> files.getInputStream(first),

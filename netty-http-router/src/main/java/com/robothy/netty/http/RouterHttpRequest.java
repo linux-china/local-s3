@@ -15,7 +15,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Getter
-public class HttpRequest {
+public class RouterHttpRequest {
 
   /**
    * Request headers keyed by lower-case names; the values of a repeated header are joined by commas. Look a header up
@@ -30,7 +30,7 @@ public class HttpRequest {
 
   /**
    * Path variables of the matched route, e.g. {@code id} of {@code /user/{id}}, set by
-   * {@linkplain com.robothy.netty.router.Router#match(HttpRequest)}. Query parameters are in {@link #params}, so a
+   * {@linkplain com.robothy.netty.router.Router#match(RouterHttpRequest)}. Query parameters are in {@link #params}, so a
    * query parameter never overrides a path variable of the same name, or the other way around.
    */
   @Setter
@@ -47,8 +47,8 @@ public class HttpRequest {
   private HttpVersion httpVersion;
 
   @Builder
-  private HttpRequest(Map<String, String> headers, Map<String, List<String>> params, Map<String, String> pathVariables,
-                      String path, String uri, HttpMethod method, ByteBuf body, HttpVersion httpVersion) {
+  private RouterHttpRequest(Map<String, String> headers, Map<String, List<String>> params, Map<String, String> pathVariables,
+                            String path, String uri, HttpMethod method, ByteBuf body, HttpVersion httpVersion) {
     this.headers = headers == null ? new HashMap<>() : new HashMap<>(headers);
     this.params = new HashMap<>();
     if (params != null) {

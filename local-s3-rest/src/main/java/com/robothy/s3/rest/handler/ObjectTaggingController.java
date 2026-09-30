@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.GetObjectTaggingAns;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.ObjectTaggingService;
@@ -27,7 +27,7 @@ class ObjectTaggingController {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
 
-  void put(HttpRequest request, HttpResponse response) throws Exception {
+  void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String versionId = request.parameter("versionId").orElse(null);
@@ -39,7 +39,7 @@ class ObjectTaggingController {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, returnedVersionId);
   }
 
-  void get(HttpRequest request, HttpResponse response) throws Exception {
+  void get(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String versionId = request.parameter("versionId").orElse(null);
@@ -52,7 +52,7 @@ class ObjectTaggingController {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_VERSION_ID, tags.getVersionId());
   }
 
-  void delete(HttpRequest request, HttpResponse response) throws Exception {
+  void delete(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String versionId = request.parameter("versionId").orElse(null);

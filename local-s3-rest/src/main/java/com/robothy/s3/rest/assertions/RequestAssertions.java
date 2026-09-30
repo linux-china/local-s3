@@ -3,7 +3,7 @@ package com.robothy.s3.rest.assertions;
 
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -21,7 +21,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return the bucket name.
    */
-  public static String assertBucketNameProvided(HttpRequest request) {
+  public static String assertBucketNameProvided(RouterHttpRequest request) {
     return request.parameter("bucket")
         .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.InvalidRequest, "Bucket name must be provided in request path. " +
             "You may need to make the Amazon S3 client using path style via 'AmazonS3ClientBuilder#withPathStyleAccessEnabled(true)' " +
@@ -34,7 +34,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return the object key.
    */
-  public static String assertObjectKeyProvided(HttpRequest request) {
+  public static String assertObjectKeyProvided(RouterHttpRequest request) {
     return request.parameter("key")
         .map(key -> key.startsWith("/") ? key.substring(1) : key)
         .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.InvalidRequest, "The object key is required."));
@@ -47,7 +47,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return fetched delimiter, or empty if absent or blank.
    */
-  public static Optional<String> assertDelimiterIsValid(HttpRequest request) {
+  public static Optional<String> assertDelimiterIsValid(RouterHttpRequest request) {
     return request.parameter("delimiter").filter(delimiter -> !delimiter.isEmpty());
   }
 
@@ -57,7 +57,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return fetched encoding type or null.
    */
-  public static Optional<String> assertEncodingTypeIsValid(HttpRequest request) {
+  public static Optional<String> assertEncodingTypeIsValid(RouterHttpRequest request) {
     return request.parameter("encoding-type").map(encodingType -> {
       if (!"url".equalsIgnoreCase(encodingType)) {
         throw new LocalS3InvalidArgumentException("encoding-type", encodingType, "Invalid Encoding Method specified in Request");
@@ -81,7 +81,7 @@ public class RequestAssertions {
    * @return the number of keys to return at most; {@linkplain #DEFAULT_MAX_KEYS} if the request doesn't ask.
    * @throws LocalS3InvalidArgumentException if {@code max-keys} isn't a number, or is negative.
    */
-  public static int assertMaxKeysIsValid(HttpRequest request) {
+  public static int assertMaxKeysIsValid(RouterHttpRequest request) {
     String maxKeys = request.parameter("max-keys").orElse(null);
     if (maxKeys == null) {
       return DEFAULT_MAX_KEYS;
@@ -110,7 +110,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return the fetched part number.
    */
-  public static int assertPartNumberIsValid(HttpRequest request) {
+  public static int assertPartNumberIsValid(RouterHttpRequest request) {
     String partNumber = request.parameter("partNumber").orElseThrow(
         () -> new LocalS3InvalidArgumentException("partNumber", null, "Part number is required."));
     int number;
@@ -131,7 +131,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return the part number; {@code null} if the request carries none.
    */
-  public static Integer assertPartNumberIsValidIfPresent(HttpRequest request) {
+  public static Integer assertPartNumberIsValidIfPresent(RouterHttpRequest request) {
     return request.parameter("partNumber").isPresent() ? assertPartNumberIsValid(request) : null;
   }
 
@@ -142,7 +142,7 @@ public class RequestAssertions {
    *
    * @param request HTTP request.
    */
-  public static void assertNoServerSideEncryptionForRead(HttpRequest request) {
+  public static void assertNoServerSideEncryptionForRead(RouterHttpRequest request) {
     Optional<String> encryption = request.header(AmzHeaderNames.X_AMZ_SERVER_SIDE_ENCRYPTION);
     if (encryption.isPresent()) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_SERVER_SIDE_ENCRYPTION, encryption.get(),
@@ -156,7 +156,7 @@ public class RequestAssertions {
    * @param request HTTP request.
    * @return fetched upload ID.
    */
-  public static String assertUploadIdIsProvided(HttpRequest request) {
+  public static String assertUploadIdIsProvided(RouterHttpRequest request) {
     return request.parameter("uploadId").orElseThrow(
         () -> new LocalS3InvalidArgumentException("uploadId", null, "Upload ID is required."));
   }
@@ -179,7 +179,7 @@ public class RequestAssertions {
   /**
    * Assert that the HTTP request doesn't have the parameter, or the parameter is integer.
    */
-  public static Integer assertIntegerParameterOrNull(HttpRequest request, String queryParam) {
+  public static Integer assertIntegerParameterOrNull(RouterHttpRequest request, String queryParam) {
     List<String> values = request.getParams().get(queryParam);
     if (null == values || values.isEmpty()) {
       return null;

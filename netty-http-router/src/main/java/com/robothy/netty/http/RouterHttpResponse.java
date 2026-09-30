@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Getter
-public class HttpResponse {
+public class RouterHttpResponse {
 
   // Header names are case-insensitive (RFC 9110); a case-sensitive map would let "Content-Length" and
   // "content-length" both be emitted.
@@ -43,19 +43,19 @@ public class HttpResponse {
    */
   private ChunkedInput<ByteBuf> chunkedBody;
 
-  public HttpResponse write(String content) {
+  public RouterHttpResponse write(String content) {
     if (content != null) {
       write(content.getBytes(StandardCharsets.UTF_8));
     }
     return this;
   }
 
-  public HttpResponse write(byte[] bytes) {
+  public RouterHttpResponse write(byte[] bytes) {
     body.addComponent(true, Unpooled.copiedBuffer(bytes));
     return this;
   }
 
-  public HttpResponse write(ByteBuf buf) {
+  public RouterHttpResponse write(ByteBuf buf) {
     body.addComponent(true, buf);
     return this;
   }
@@ -71,7 +71,7 @@ public class HttpResponse {
    * @param input the response body.
    * @return this response.
    */
-  public HttpResponse chunkedBody(ChunkedInput<ByteBuf> input) {
+  public RouterHttpResponse chunkedBody(ChunkedInput<ByteBuf> input) {
     ChunkedInput<ByteBuf> previous = detachChunkedBody();
     if (previous != null && previous != input) {
       closeQuietly(previous);
@@ -107,7 +107,7 @@ public class HttpResponse {
     }
   }
 
-  public HttpResponse status(HttpResponseStatus status) {
+  public RouterHttpResponse status(HttpResponseStatus status) {
     this.status = status;
     return this;
   }
@@ -115,7 +115,7 @@ public class HttpResponse {
   /**
    * Set a header, replacing all the values it had.
    */
-  public HttpResponse putHeader(String key, Object value) {
+  public RouterHttpResponse putHeader(String key, Object value) {
     headers.put(key, String.valueOf(value));
     return this;
   }
@@ -124,7 +124,7 @@ public class HttpResponse {
    * Add a value to a header, keeping the values it had, e.g. for {@code Set-Cookie}, whose values can't be joined with
    * commas. Each value is sent as a header line of its own.
    */
-  public HttpResponse addHeader(String key, Object value) {
+  public RouterHttpResponse addHeader(String key, Object value) {
     headerValues.computeIfAbsent(key, k -> new ArrayList<>(1)).add(String.valueOf(value));
     return this;
   }

@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.BucketAclService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.datatypes.AccessControlPolicy;
@@ -17,7 +17,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * LocalS3 only stores the Acl information for the specified bucket;
  * it doesn't do granting actions.
  */
-class PutBucketAclController implements HttpRequestHandler {
+class PutBucketAclController implements RouterHttpRequestHandler {
 
   private final BucketAclService aclService;
 
@@ -29,7 +29,7 @@ class PutBucketAclController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
 
     AccessControlPolicy acl = AccessControlPolicyRequests.read(request, xmlMapper,

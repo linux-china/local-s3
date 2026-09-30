@@ -1,6 +1,6 @@
 package com.robothy.s3.spring.boot;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.service.manager.ObjectStatistics;
 import com.robothy.s3.core.service.manager.vectors.VectorStatistics;
 import com.robothy.s3.rest.LocalS3;
@@ -81,7 +81,7 @@ public class LocalS3Metrics implements MeterBinder, RequestRecorder {
   }
 
   @Override
-  public void record(HttpRequest request, String operation, int status, String requestId, long durationNanos) {
+  public void record(RouterHttpRequest request, String operation, int status, String requestId, long durationNanos) {
     if (LocalS3RouterFactory.UNRECORDED_OPERATIONS.contains(operation)) {
       return;
     }

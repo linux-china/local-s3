@@ -1,11 +1,9 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.constants.ServiceConstants;
 import com.robothy.s3.core.exception.BucketAlreadyOwnedByYouException;
-import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.datatypes.request.CreateBucketConfiguration;
 import com.robothy.s3.datatypes.response.CreateBucketResult;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -19,7 +17,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import java.io.InputStream;
 import lombok.extern.slf4j.Slf4j;
-import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html">CreateBucket</a>.
@@ -37,7 +34,7 @@ class CreateBucketController extends BucketHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     InputStream inputStream = RequestBodies.inputStream(request.getBody());
 
     String locationConstraint = LocalS3Constants.DEFAULT_LOCATION_CONSTRAINT;

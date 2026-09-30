@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.iceberg;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.iceberg.IcebergCatalogException;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.core.iceberg.IcebergIdentifier;
@@ -64,7 +64,7 @@ import tools.jackson.databind.node.ObjectNode;
  * the S3 requests that the engine then makes with the credentials this catalog vends either way, which is where a test
  * that asserts about signing has something to assert.
  */
-public final class IcebergCatalogController implements HttpRequestHandler {
+public final class IcebergCatalogController implements RouterHttpRequestHandler {
 
   private static final Logger log = LoggerFactory.getLogger(IcebergCatalogController.class);
 
@@ -162,7 +162,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * @param request the request.
    * @return {@code true} if it is a catalog request.
    */
-  public static boolean isIcebergRequest(HttpRequest request) {
+  public static boolean isIcebergRequest(RouterHttpRequest request) {
     String path = request.getPath();
     return path != null && path.startsWith(PATH_PREFIX);
   }
@@ -174,7 +174,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * @param request the request.
    * @return the operation.
    */
-  public static String operation(HttpRequest request) {
+  public static String operation(RouterHttpRequest request) {
     try {
       return operationOf(request.getMethod(), segments(request));
     } catch (RuntimeException e) {
@@ -183,7 +183,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) {
     try {
       dispatch(request, response);
     } catch (IcebergCatalogException e) {
@@ -194,7 +194,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     }
   }
 
-  private void dispatch(HttpRequest request, HttpResponse response) {
+  private void dispatch(RouterHttpRequest request, RouterHttpResponse response) {
     HttpMethod method = request.getMethod();
     Parsed parsed = parse(request);
     List<String> path = parsed.segments();
@@ -354,7 +354,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * credentials to reach it with — to a {@code LoadTableResult}, which is the credential vending of the REST catalog.
    * An engine configured with nothing but the catalog URI can then open the table.
    */
-  private ObjectNode withConfig(HttpRequest request, @Nullable String prefix, IcebergIdentifier table,
+  private ObjectNode withConfig(RouterHttpRequest request, @Nullable String prefix, IcebergIdentifier table,
                                 ObjectNode loadTableResult) {
     Map<String, String> config = clientConfig.tableConfig(request, tableRoute(prefix, table, "sign"),
         tableRoute(prefix, table, "credentials"));
@@ -440,7 +440,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   /**
    * Answer a signed request. A signature carries the time it was made at, so the client is told not to cache it.
    */
-  private static void writeSigned(HttpResponse response, ObjectNode signed) {
+  private static void writeSigned(RouterHttpResponse response, ObjectNode signed) {
     response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-cache");
     writeJson(response, 200, signed);
   }
@@ -448,7 +448,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
   /**
    * Answer the credentials of a table. Temporary credentials expire, so the client is told not to cache them.
    */
-  private static void writeCredentials(HttpResponse response, ObjectNode credentials) {
+  private static void writeCredentials(RouterHttpResponse response, ObjectNode credentials) {
     response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-store");
     writeJson(response, 200, credentials);
   }
@@ -479,7 +479,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * the prefix of the catalog of that table bucket, see {@linkplain #catalogOf}. A prefix that names no table bucket
    * is read as if it weren't there, which is what a client configured against an older LocalS3 sends.
    */
-  private static Parsed parse(HttpRequest request) {
+  private static Parsed parse(RouterHttpRequest request) {
     String path = RequestPaths.rawPath(request);
     if (!path.startsWith(PATH_PREFIX)) {
       return new Parsed(null, List.of());
@@ -502,7 +502,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     return new Parsed(null, segments);
   }
 
-  private static List<String> segments(HttpRequest request) {
+  private static List<String> segments(RouterHttpRequest request) {
     return parse(request).segments();
   }
 
@@ -529,7 +529,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * @throws IcebergCatalogException if the warehouse is the ARN of a table bucket that this service doesn't have,
    *     which is a mistake worth reporting rather than quietly answering another catalog.
    */
-  private ObjectNode config(HttpRequest request) {
+  private ObjectNode config(RouterHttpRequest request) {
     String warehouse = request.parameter("warehouse").filter(value -> !value.isBlank()).orElse(null);
     if (warehouse != null && S3TablesArn.isArn(warehouse)) {
       String tableBucket = s3Tables == null ? null : s3Tables.tableBucketNameOf(warehouse);
@@ -573,14 +573,14 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     return IcebergIdentifier.of(namespace(path), path.get(3));
   }
 
-  private static boolean purgeRequested(HttpRequest request) {
+  private static boolean purgeRequested(RouterHttpRequest request) {
     return request.parameter("purgeRequested").map(Boolean::parseBoolean).orElse(false);
   }
 
   /**
    * The JSON body of a request; an empty object for a request without one.
    */
-  private static ObjectNode body(HttpRequest request) {
+  private static ObjectNode body(RouterHttpRequest request) {
     ByteBuf body = request.getBody();
     if (body == null || body.readableBytes() == 0) {
       return IcebergJson.newObject();
@@ -593,7 +593,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     return IcebergJson.read(new String(bytes, StandardCharsets.UTF_8));
   }
 
-  private static void writeJson(HttpResponse response, int status, JsonNode body) {
+  private static void writeJson(RouterHttpResponse response, int status, JsonNode body) {
     response.status(HttpResponseStatus.valueOf(status))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), CONTENT_TYPE)
         .write(IcebergJson.write(body));
@@ -601,7 +601,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
   }
 
-  private static void writeStatus(HttpResponse response, int status) {
+  private static void writeStatus(RouterHttpResponse response, int status) {
     response.status(HttpResponseStatus.valueOf(status));
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
@@ -611,7 +611,7 @@ public final class IcebergCatalogController implements HttpRequestHandler {
    * Answer a failure in the error document of the REST catalog, which is what a client reads its exception off:
    * {@code code} chooses the kind of exception and {@code type} tells a missing namespace from a missing table.
    */
-  private static void writeError(HttpResponse response, int status, String type, String message) {
+  private static void writeError(RouterHttpResponse response, int status, String type, String message) {
     ObjectNode error = IcebergJson.newObject();
     error.put("message", Objects.toString(message, ""));
     error.put("type", type);

@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
 import java.util.Optional;
@@ -11,7 +11,7 @@ import java.util.Optional;
  * upload names the URL of the object it stored, and a client that posted the form over plain HTTP to a service that
  * also serves HTTPS is given an {@code http} URL rather than one it can't use.
  *
- * <p>The scheme is an attribute of the connection. {@linkplain com.robothy.netty.http.HttpRequest} carries nothing but
+ * <p>The scheme is an attribute of the connection. {@linkplain RouterHttpRequest} carries nothing but
  * what the client sent, so the scheme of a request travels with it as a {@linkplain ReceivedRequest}, which is bound to
  * the thread that handles the request, and nothing is kept by request.
  *
@@ -78,7 +78,7 @@ public final class ConnectionSchemes {
    *     arrived on a port that serves a single scheme, which the caller knows from the configuration, or that no
    *     connection decoded at all, e.g. one built by a test.
    */
-  public static Optional<String> of(HttpRequest request) {
+  public static Optional<String> of(RouterHttpRequest request) {
     return ReceivedRequest.of(request).map(ReceivedRequest::scheme);
   }
 

@@ -12,8 +12,8 @@ import com.robothy.s3.rest.model.request.CompletedPart;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.request.CompleteMultipartUploadPartOption;
 import com.robothy.s3.core.service.CompleteMultipartUploadService;
@@ -52,7 +52,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucket = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
@@ -102,7 +102,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
    * @return the {@code x-amz-mp-object-size}; {@code null} if the request expects none.
    * @throws LocalS3InvalidArgumentException if the header isn't a non-negative number.
    */
-  private static Long expectedObjectSize(HttpRequest request) {
+  private static Long expectedObjectSize(RouterHttpRequest request) {
     String value = request.header(AmzHeaderNames.X_AMZ_MP_OBJECT_SIZE).orElse(null);
     if (Objects.isNull(value)) {
       return null;

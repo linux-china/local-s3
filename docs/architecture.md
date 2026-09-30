@@ -62,7 +62,7 @@ socket ─▶ event loop (Netty)                                  ─▶ executo
 + **Routing.** `LocalS3Router` picks the route whose conditions on parameters and headers are the most specific, never
   depending on registration order. A request that still matches several routes equally, e.g. `?acl&tagging`, is
   answered with `InvalidRequest`. Routes are verified for ambiguity when the router is built.
-+ **Streaming.** A controller writes a `StreamingHttpResponse`, so the content of a large object is streamed from the
++ **Streaming.** A controller writes a `StreamingRouterHttpResponse`, so the content of a large object is streamed from the
   storage rather than loaded into memory.
 
 `InFlightRequests` counts every request from the moment it is handed to the executor until its response is written,

@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
@@ -30,7 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-class HttpRequestDecoderTest {
+class RouterRouterHttpRequestDecoderTest {
 
   private static ByteBuf content(String text) {
     return Unpooled.copiedBuffer(text, StandardCharsets.UTF_8);
@@ -48,12 +48,12 @@ class HttpRequestDecoderTest {
 
   @Test
   void invalidMaxRequestBodySize() {
-    assertThrows(IllegalArgumentException.class, () -> new HttpRequestDecoder(0));
+    assertThrows(IllegalArgumentException.class, () -> new RouterHttpRequestDecoder(0));
   }
 
   @Test
   void rejectTooLargeContentLengthBeforeContinue() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder(4));
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder(4));
     DefaultHttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload");
     request.headers().set(HttpHeaderNames.CONTENT_LENGTH, 5)
         .set(HttpHeaderNames.EXPECT, HttpHeaderValues.CONTINUE);
@@ -73,7 +73,7 @@ class HttpRequestDecoderTest {
         ReferenceCountUtil.release(msg);
         pendingWrites.add(promise);
       }
-    }, new HttpRequestDecoder(4));
+    }, new RouterHttpRequestDecoder(4));
     DefaultHttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload");
     request.headers().set(HttpHeaderNames.CONTENT_LENGTH, 5);
     channel.writeInbound(request);
@@ -92,7 +92,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void rejectTooLargeChunkedBody() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder(4));
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder(4));
     DefaultHttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload");
     request.headers().set(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
     channel.writeInbound(request);
@@ -108,11 +108,11 @@ class HttpRequestDecoderTest {
 
   @Test
   void acceptBodyOfMaxSize() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder(4));
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder(4));
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload"));
     channel.writeInbound(new DefaultHttpContent(content("12")));
     channel.writeInbound(new DefaultLastHttpContent(content("34")));
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     assertEquals("1234", request.getBody().toString(StandardCharsets.UTF_8));
     request.getBody().release();
     assertTrue(channel.isOpen());
@@ -121,7 +121,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void rejectMalformedRequest() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     DefaultHttpRequest request = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bad");
     request.setDecoderResult(DecoderResult.failure(new IllegalArgumentException("invalid header")));
     channel.writeInbound(request);
@@ -131,7 +131,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void rejectMalformedUri() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket/%zz"));
     assertRejected(channel, HttpResponseStatus.BAD_REQUEST);
     channel.finishAndReleaseAll();
@@ -139,9 +139,9 @@ class HttpRequestDecoderTest {
 
   @Test
   void convertAbsoluteFormTarget() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "http://host:8080/a/b?c=d"));
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     assertEquals("/a/b?c=d", request.getUri());
     assertEquals("/a/b", request.getPath());
     assertEquals(List.of("d"), request.getParams().get("c"));
@@ -151,7 +151,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void absoluteFormAuthorityReplacesHostHeader() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     DefaultFullHttpRequest absoluteForm =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "http://bucket.localhost:8080/key");
     absoluteForm.headers().set(HttpHeaderNames.HOST, "other.localhost:8080");
@@ -159,7 +159,7 @@ class HttpRequestDecoderTest {
     originForm.headers().set(HttpHeaderNames.HOST, "other.localhost:8080");
     channel.writeInbound(absoluteForm, originForm);
 
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     assertEquals("bucket.localhost:8080", request.header("Host").orElse(null));
     request.getBody().release();
     // The Host header of an origin-form target is kept.
@@ -171,9 +171,9 @@ class HttpRequestDecoderTest {
 
   @Test
   void semicolonIsNotParameterSeparator() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket?prefix=a;b&c=d"));
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     assertEquals(List.of("a;b"), request.getParams().get("prefix"));
     assertEquals(List.of("d"), request.getParams().get("c"));
     assertFalse(request.getParams().containsKey("b"));
@@ -183,7 +183,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void rejectAsteriskFormTarget() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*"));
     assertRejected(channel, HttpResponseStatus.BAD_REQUEST);
     channel.finishAndReleaseAll();
@@ -200,7 +200,7 @@ class HttpRequestDecoderTest {
         written.add(msg);
         pendingWrites.add(promise);
       }
-    }, new HttpRequestDecoder());
+    }, new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/bucket/key?a=%zz"));
     assertEquals(1, written.size());
     assertEquals(HttpResponseStatus.BAD_REQUEST, ((FullHttpResponse) written.get(0)).status());
@@ -219,7 +219,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void rejectMalformedContent() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload"));
     ByteBuf part1 = content("123");
     channel.writeInbound(new DefaultHttpContent(part1));
@@ -234,7 +234,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void decodeHeaders() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     DefaultFullHttpRequest fullRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/");
     fullRequest.headers()
         .set(HttpHeaderNames.HOST, "localhost")
@@ -243,7 +243,7 @@ class HttpRequestDecoderTest {
         .add("Cookie", "a=1")
         .add("cookie", "b=2");
     channel.writeInbound(fullRequest);
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
 
     assertEquals("localhost", request.getHeaders().get("host"));
     assertEquals("localhost", request.getHeaders().get(HttpHeaderNames.HOST.toString()));
@@ -259,10 +259,10 @@ class HttpRequestDecoderTest {
 
   @Test
   void decodeFullHttpRequest() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     ByteBuf body = content("hello");
     channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload?a=1", body));
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     assertEquals("/upload", request.getPath());
     assertEquals("1", request.parameter("a").orElseThrow());
     assertEquals("hello", request.getBody().toString(StandardCharsets.UTF_8));
@@ -273,7 +273,7 @@ class HttpRequestDecoderTest {
 
   @Test
   void manyChunksAreNotConsolidated() {
-    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    EmbeddedChannel channel = new EmbeddedChannel(new RouterHttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload"));
     int chunks = 100;
     StringBuilder expected = new StringBuilder();
@@ -282,7 +282,7 @@ class HttpRequestDecoderTest {
       expected.append("c").append(i).append(';');
     }
     channel.writeInbound(new DefaultLastHttpContent());
-    HttpRequest request = channel.readInbound();
+    RouterHttpRequest request = channel.readInbound();
     // Every chunk, and the empty last content, stays a component: consolidating them would copy the body over and over.
     assertEquals(chunks + 1, ((CompositeByteBuf) request.getBody()).numComponents());
     assertEquals(expected.toString(), request.getBody().toString(StandardCharsets.UTF_8));

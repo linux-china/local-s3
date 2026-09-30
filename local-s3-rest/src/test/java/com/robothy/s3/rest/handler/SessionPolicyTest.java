@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.s3.rest.service.ServiceFactory;
 import java.util.Map;
 import java.util.Set;
@@ -130,7 +130,7 @@ class SessionPolicyTest {
     Set<String> routed = new TreeSet<>();
     router.routesByOperation().forEach((operation, route) -> {
       routed.add(operation);
-      HttpRequestHandler handler = route.getHandler();
+      RouterHttpRequestHandler handler = route.getHandler();
       if (!(handler instanceof NotImplementedOperationController)
           && !handler.getClass().getPackageName().endsWith(".handler.s3vectors")) {
         implemented.add(operation);

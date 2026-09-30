@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.netty;
 
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.storage.CompositeInputStream;
 import com.robothy.s3.core.storage.FileRegionInputStream;
 import io.netty.channel.ChannelHandlerContext;
@@ -22,9 +22,9 @@ import java.io.InputStream;
 import java.util.List;
 
 /**
- * Encodes {@linkplain HttpResponse}s into Netty HTTP messages.
+ * Encodes {@linkplain RouterHttpResponse}s into Netty HTTP messages.
  *
- * <p>A buffered response becomes a {@linkplain FullHttpResponse}. A {@linkplain StreamingHttpResponse}
+ * <p>A buffered response becomes a {@linkplain FullHttpResponse}. A {@linkplain StreamingRouterHttpResponse}
  * with a body stream becomes the response headers followed by streaming content. File-backed content
  * is sent as a zero-copy {@linkplain DefaultFileRegion} on plaintext connections, or a
  * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}. The content of an object
@@ -41,13 +41,13 @@ import java.util.List;
  * own rather than on the event loop; see {@linkplain LocalS3ServerInitializer}. Only the encryption of the chunks runs
  * on the event loop.
  */
-public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<HttpResponse> {
+public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<RouterHttpResponse> {
 
   static final int STREAM_CHUNK_SIZE = 64 * 1024;
 
   @Override
-  protected void encode(ChannelHandlerContext ctx, HttpResponse msg, List<Object> out) throws IOException {
-    InputStream bodyStream = msg instanceof StreamingHttpResponse streaming ? streaming.getBodyStream() : null;
+  protected void encode(ChannelHandlerContext ctx, RouterHttpResponse msg, List<Object> out) throws IOException {
+    InputStream bodyStream = msg instanceof StreamingRouterHttpResponse streaming ? streaming.getBodyStream() : null;
     if (bodyStream == null) {
       FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, msg.getStatus(), msg.getBody());
       msg.getAllHeaders().forEach(response.headers()::set);

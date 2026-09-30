@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.net.URLDecoder;
@@ -26,7 +26,7 @@ record CopySource(String bucket, String key, String versionId) {
    * @throws LocalS3InvalidArgumentException if the request has no {@code x-amz-copy-source} header.
    * @throws LocalS3InvalidArgumentException if the header doesn't name a bucket and a key.
    */
-  static CopySource of(HttpRequest request) {
+  static CopySource of(RouterHttpRequest request) {
     return parse(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE).orElseThrow(() ->
         new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, null, "Copy Source must mention the source bucket and key: sourcebucket/sourcekey")));
   }

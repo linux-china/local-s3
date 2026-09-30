@@ -2,7 +2,7 @@ package com.robothy.s3.rest.handler;
 
 import static java.util.Map.entry;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.util.HashMap;
 import java.util.List;
@@ -163,7 +163,7 @@ final class SessionPolicyAuthorizer {
    *
    * @return the policy; empty if the request carries no session token of LocalS3, or one without a policy.
    */
-  Optional<SessionPolicy> policy(HttpRequest request) {
+  Optional<SessionPolicy> policy(RouterHttpRequest request) {
     String sessionToken = request.header(AmzHeaderNames.X_AMZ_SECURITY_TOKEN)
         .or(() -> Optional.ofNullable(request.getParams().get("X-Amz-Security-Token"))
             .flatMap(values -> values.stream().findFirst()))
@@ -183,7 +183,7 @@ final class SessionPolicyAuthorizer {
    * @param operation the name of the operation, e.g. {@code PutObject}.
    * @return whether the request is allowed.
    */
-  boolean allows(HttpRequest request, String operation) {
+  boolean allows(RouterHttpRequest request, String operation) {
     String action = ACTIONS.get(operation);
     if (action == null) {
       return true;
@@ -234,7 +234,7 @@ final class SessionPolicyAuthorizer {
         context);
   }
 
-  private static Optional<CopySource> copySource(HttpRequest request) {
+  private static Optional<CopySource> copySource(RouterHttpRequest request) {
     try {
       return Optional.of(CopySource.of(request));
     } catch (RuntimeException e) {

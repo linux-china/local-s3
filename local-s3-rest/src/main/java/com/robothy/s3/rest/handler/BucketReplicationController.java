@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.BucketReplicationService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -25,7 +25,7 @@ public class BucketReplicationController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketReplication.html">PutBucketReplication</a>
    */
-  public void put(HttpRequest request, HttpResponse response) throws Exception {
+  public void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       String replication = new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -39,7 +39,7 @@ public class BucketReplicationController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketReplication.html">GetBucketReplication</a>
    */
-  public void get(HttpRequest request, HttpResponse response) throws Exception {
+  public void get(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String bucketReplication = this.replicationService.getBucketReplication(bucketName);
     ResponseUtils.addCommonHeaders(response)
@@ -51,7 +51,7 @@ public class BucketReplicationController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketReplication.html">DeleteBucketReplication</a>
    */
-  public void delete(HttpRequest request, HttpResponse response) throws Exception {
+  public void delete(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     this.replicationService.deleteBucketReplication(bucketName);
     ResponseUtils.addCommonHeaders(response)

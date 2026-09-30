@@ -5,12 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.datatypes.enums.StorageClass;
-import com.robothy.s3.rest.netty.StreamingHttpResponse;
+import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test;
 
 class SystemMetadataHeadersTest {
 
-  private static HttpRequest request(Map<String, String> headers, Map<String, List<String>> params) {
-    return HttpRequest.builder().headers(new HashMap<>(headers)).params(new HashMap<>(params)).build();
+  private static RouterHttpRequest request(Map<String, String> headers, Map<String, List<String>> params) {
+    return RouterHttpRequest.builder().headers(new HashMap<>(headers)).params(new HashMap<>(params)).build();
   }
 
   @Test
@@ -67,7 +67,7 @@ class SystemMetadataHeadersTest {
         .cacheControl("max-age=60")
         .contentDisposition("inline")
         .build();
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
 
     SystemMetadataHeaders.addResponseHeaders(request(Map.of(), Map.of(
         "response-content-type", List.of("application/octet-stream"),
@@ -85,7 +85,7 @@ class SystemMetadataHeadersTest {
 
   @Test
   void anObjectStoredWithoutAContentTypeIsServedWithTheDefaultOne() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
 
     SystemMetadataHeaders.addResponseHeaders(request(Map.of(), Map.of()), response, null, null);
 
@@ -95,7 +95,7 @@ class SystemMetadataHeadersTest {
 
   @Test
   void theResponseParameterOverridesTheDefaultContentTypeToo() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
 
     SystemMetadataHeaders.addResponseHeaders(
         request(Map.of(), Map.of("response-content-type", List.of("text/csv"))), response, null, null);

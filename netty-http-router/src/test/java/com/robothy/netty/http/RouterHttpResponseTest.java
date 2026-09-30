@@ -6,11 +6,11 @@ import java.util.List;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-class HttpResponseTest {
+class RouterHttpResponseTest {
 
   @Test
   void manyWritesAreNotConsolidated() {
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     int writes = 100;
     StringBuilder expected = new StringBuilder();
     for (int i = 0; i < writes; i++) {
@@ -25,7 +25,7 @@ class HttpResponseTest {
 
   @Test
   void headerNamesAreCaseInsensitive() {
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     response.putHeader("Content-Length", 10);
     response.getHeaders().putIfAbsent("content-length", "20");
     assertEquals(1, response.getHeaders().size());
@@ -35,7 +35,7 @@ class HttpResponseTest {
 
   @Test
   void addHeaderKeepsEveryValue() {
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     response.addHeader("Set-Cookie", "a=1").addHeader("set-cookie", "b=2");
     assertEquals(List.of("a=1", "b=2"), response.getHeaderValues("SET-COOKIE"));
     // The single-value view shows the last value.

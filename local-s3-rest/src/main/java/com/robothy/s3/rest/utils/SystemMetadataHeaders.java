@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.SystemMetadata;
@@ -72,7 +72,7 @@ public final class SystemMetadataHeaders {
    * @param request a {@code PutObject}, {@code CreateMultipartUpload} or {@code CopyObject} request.
    * @return the system-defined metadata of the request; {@code null} if it carries none.
    */
-  public static SystemMetadata fromRequest(HttpRequest request) {
+  public static SystemMetadata fromRequest(RouterHttpRequest request) {
     return fromValues(name -> request.header(name).orElse(null));
   }
 
@@ -180,7 +180,7 @@ public final class SystemMetadataHeaders {
    * @param contentType    the content type of the object; {@code null} if it has none.
    * @param systemMetadata the system-defined metadata of the object; {@code null} if it has none.
    */
-  public static void addResponseHeaders(HttpRequest request, HttpResponse response, String contentType,
+  public static void addResponseHeaders(RouterHttpRequest request, RouterHttpResponse response, String contentType,
                                         SystemMetadata systemMetadata) {
     String contentTypeHeader = HttpHeaderNames.CONTENT_TYPE.toString();
     response.putHeader(contentTypeHeader, request.parameter(RESPONSE_PARAMETER_PREFIX + contentTypeHeader)

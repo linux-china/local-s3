@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
@@ -34,7 +34,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 class ByteBufReleaseTest {
 
   private static EmbeddedChannel channel(Router router) {
-    return new EmbeddedChannel(new HttpRequestDecoder(), new HttpResponseEncoder(), new HttpMessageHandler(router));
+    return new EmbeddedChannel(new RouterHttpRequestDecoder(), new RouterHttpResponseEncoder(), new HttpMessageHandler(router));
   }
 
   private static ByteBuf content(String text) {
@@ -68,7 +68,7 @@ class ByteBufReleaseTest {
 
   @Test
   void releaseResponseBodyReplacedByExceptionHandler() {
-    AtomicReference<HttpResponse> failedResponse = new AtomicReference<>();
+    AtomicReference<RouterHttpResponse> failedResponse = new AtomicReference<>();
     Router router = Router.router().route(HttpMethod.PUT, "/upload", (request, response) -> {
       failedResponse.set(response.write("partial"));
       throw new IllegalStateException("failed");
@@ -88,7 +88,7 @@ class ByteBufReleaseTest {
 
   @Test
   void releaseResponseBodyIfWriteFailed() {
-    AtomicReference<HttpResponse> writtenResponse = new AtomicReference<>();
+    AtomicReference<RouterHttpResponse> writtenResponse = new AtomicReference<>();
     Router router = Router.router().route(HttpMethod.PUT, "/upload",
         // An invalid header name fails the encoder, so the body is never handed over to netty.
         (request, response) -> writtenResponse.set(response.putHeader("invalid header", "value").write("data")));

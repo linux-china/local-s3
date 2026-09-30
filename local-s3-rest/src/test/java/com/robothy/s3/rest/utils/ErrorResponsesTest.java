@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.s3.rest.netty.StreamingHttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
@@ -19,7 +19,7 @@ class ErrorResponsesTest {
 
   @Test
   void writesS3ErrorDocuments() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.notImplemented(request(HttpMethod.PATCH, Map.of()), response);
 
     assertEquals(HttpResponseStatus.NOT_IMPLEMENTED, response.getStatus());
@@ -33,7 +33,7 @@ class ErrorResponsesTest {
 
   @Test
   void leavesOutTheFieldsThatTheErrorDoesNotCarry() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.notImplemented(request(HttpMethod.PATCH, Map.of()), response);
 
     // Amazon S3 names only what is relevant to an error; LocalS3 wrote every field, empty, through 2.4.
@@ -45,7 +45,7 @@ class ErrorResponsesTest {
 
   @Test
   void answersAHostIdOfTheShapeOfAmazonS3() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.notImplemented(request(HttpMethod.PATCH, Map.of()), response);
 
     // 56 random bytes, which base64 writes as the 76 characters of an x-amz-id-2 of Amazon S3.
@@ -56,7 +56,7 @@ class ErrorResponsesTest {
 
   @Test
   void omitsTheBodyForHeadRequests() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.internalError(request(HttpMethod.HEAD, Map.of()), response);
 
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
@@ -65,7 +65,7 @@ class ErrorResponsesTest {
 
   @Test
   void writesJsonErrorsForS3VectorsRequests() {
-    StreamingHttpResponse response = new StreamingHttpResponse();
+    StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ErrorResponses.internalError(request(HttpMethod.POST, Map.of("content-type", "application/json")), response);
 
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
@@ -74,8 +74,8 @@ class ErrorResponsesTest {
     assertEquals("{\"message\":\"We encountered an internal error. Please try again.\"}", body(response));
   }
 
-  private static HttpRequest request(HttpMethod method, Map<String, String> headers) {
-    return HttpRequest.builder()
+  private static RouterHttpRequest request(HttpMethod method, Map<String, String> headers) {
+    return RouterHttpRequest.builder()
         .method(method)
         .uri("/bucket/key")
         .path("/bucket/key")
@@ -85,7 +85,7 @@ class ErrorResponsesTest {
         .build();
   }
 
-  private static String body(StreamingHttpResponse response) {
+  private static String body(StreamingRouterHttpResponse response) {
     return response.getBody().toString(StandardCharsets.UTF_8);
   }
 

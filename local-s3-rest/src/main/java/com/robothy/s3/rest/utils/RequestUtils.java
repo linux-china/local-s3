@@ -2,7 +2,7 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -36,7 +36,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return decoded request body.
    */
-  public static DecodedAmzRequestBody getBody(HttpRequest request) {
+  public static DecodedAmzRequestBody getBody(RouterHttpRequest request) {
     DecodedAmzRequestBody result = new DecodedAmzRequestBody();
 
     String amzContentSha256 = request.header(AmzHeaderNames.X_AMZ_CONTENT_SHA256).orElse("").trim();
@@ -84,7 +84,7 @@ public class RequestUtils {
    * @throws LocalS3RequestException {@code MissingContentLength} if the request has no such header.
    * @throws LocalS3InvalidArgumentException if the header isn't a length.
    */
-  private static long contentLength(HttpRequest request, String headerName) {
+  private static long contentLength(RouterHttpRequest request, String headerName) {
     String value = request.header(headerName)
         .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.MissingContentLength));
     try {
@@ -98,7 +98,7 @@ public class RequestUtils {
     throw new LocalS3InvalidArgumentException(headerName, value, "The value of " + headerName + " is not valid.");
   }
 
-  public static Optional<String> getETag(HttpRequest request) {
+  public static Optional<String> getETag(RouterHttpRequest request) {
     return request.header(HttpHeaderNames.ETAG.toString());
   }
 
@@ -108,7 +108,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return tagging.
    */
-  public static Optional<String[][]> extractTagging(HttpRequest request) {
+  public static Optional<String[][]> extractTagging(RouterHttpRequest request) {
     Optional<String> taggingOpt = request.header(AmzHeaderNames.X_AMZ_TAGGING);
     String tagging;
     if (taggingOpt.isEmpty() || Strings.isBlank(tagging = taggingOpt.get())) {
@@ -166,7 +166,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it carries none.
    */
-  public static ObjectPreconditions extractPreconditions(HttpRequest request) {
+  public static ObjectPreconditions extractPreconditions(RouterHttpRequest request) {
     return ObjectPreconditions.builder()
         .ifMatch(request.header(HttpHeaderNames.IF_MATCH).orElse(null))
         .ifNoneMatch(request.header(HttpHeaderNames.IF_NONE_MATCH).orElse(null))
@@ -184,7 +184,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return the conditions of the source object.
    */
-  public static ObjectPreconditions extractCopySourcePreconditions(HttpRequest request) {
+  public static ObjectPreconditions extractCopySourcePreconditions(RouterHttpRequest request) {
     return ObjectPreconditions.builder()
         .ifMatch(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_MATCH).orElse(null))
         .ifNoneMatch(request.header(AmzHeaderNames.X_AMZ_COPY_SOURCE_IF_NONE_MATCH).orElse(null))
@@ -200,7 +200,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return the conditions of the object to rename.
    */
-  public static ObjectPreconditions extractRenameSourcePreconditions(HttpRequest request) {
+  public static ObjectPreconditions extractRenameSourcePreconditions(RouterHttpRequest request) {
     return ObjectPreconditions.builder()
         .ifMatch(request.header(AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_MATCH).orElse(null))
         .ifNoneMatch(request.header(AmzHeaderNames.X_AMZ_RENAME_SOURCE_IF_NONE_MATCH).orElse(null))
@@ -215,7 +215,7 @@ public class RequestUtils {
    * @param request HTTP request.
    * @return {@code true} if the request sends {@code x-amz-bypass-governance-retention: true}.
    */
-  public static boolean isBypassGovernanceRetention(HttpRequest request) {
+  public static boolean isBypassGovernanceRetention(RouterHttpRequest request) {
     return request.header(AmzHeaderNames.X_AMZ_BYPASS_GOVERNANCE_RETENTION)
         .map(value -> "true".equalsIgnoreCase(value.trim()))
         .orElse(false);
@@ -232,7 +232,7 @@ public class RequestUtils {
    * @return the conditions of the delete.
    * @throws LocalS3InvalidArgumentException if the time isn't an HTTP or ISO 8601 date, or the size isn't a number.
    */
-  public static ObjectPreconditions extractDeletePreconditions(HttpRequest request) {
+  public static ObjectPreconditions extractDeletePreconditions(RouterHttpRequest request) {
     Long lastModifiedTime = request.header(AmzHeaderNames.X_AMZ_IF_MATCH_LAST_MODIFIED_TIME)
         .map(value -> parseTimestamp(AmzHeaderNames.X_AMZ_IF_MATCH_LAST_MODIFIED_TIME, value))
         .orElse(null);
@@ -280,7 +280,7 @@ public class RequestUtils {
    * @return the date in epoch milliseconds; {@code null} if the request doesn't carry the header, or its
    *     value isn't an HTTP date.
    */
-  private static Long httpDate(HttpRequest request, CharSequence headerName) {
+  private static Long httpDate(RouterHttpRequest request, CharSequence headerName) {
     return request.header(headerName)
         .map(DateFormatter::parseHttpDate)
         .map(Date::getTime)
@@ -295,7 +295,7 @@ public class RequestUtils {
    * @param request HTTP request
    * @return fetched user metadata.
    */
-  public static Map<String, String> extractUserMetadata(HttpRequest request) {
+  public static Map<String, String> extractUserMetadata(RouterHttpRequest request) {
     Map<String, String> userMetadata = new HashMap<>();
     request.getHeaders()
         .forEach((k, v) -> {

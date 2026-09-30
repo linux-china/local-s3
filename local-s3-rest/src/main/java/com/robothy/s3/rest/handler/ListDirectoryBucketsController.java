@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListBucketsAns;
 import com.robothy.s3.core.service.BucketService;
@@ -23,7 +23,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * <p>It is a {@code GET /} like {@code ListBuckets}: the router tells the two apart by the {@code max-directory-buckets}
  * parameter, or, of a request without it, by the {@code s3express} service that the AWS SDKs sign it for.
  */
-class ListDirectoryBucketsController implements HttpRequestHandler {
+class ListDirectoryBucketsController implements RouterHttpRequestHandler {
 
   static final String OPERATION = "ListDirectoryBuckets";
 
@@ -37,7 +37,7 @@ class ListDirectoryBucketsController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     ListBucketsAns ans = bucketService.listDirectoryBuckets(
         request.parameter("continuation-token").orElse(null),
         request.parameter("max-directory-buckets").map(ListDirectoryBucketsController::parseMax).orElse(null));

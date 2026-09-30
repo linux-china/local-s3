@@ -1,7 +1,7 @@
 package com.robothy.netty.router;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -18,7 +18,7 @@ import java.util.TreeSet;
  * A {@link Router} backed by a dictionary tree of path segments.
  *
  * <p>The tree and the route set are plain {@link HashMap}/{@link HashSet} instances without synchronization, so
- * {@link #route(Route)} must only be called before the server starts. Concurrent {@link #match(HttpRequest)} calls
+ * {@link #route(Route)} must only be called before the server starts. Concurrent {@link #match(RouterHttpRequest)} calls
  * are safe once registration is finished and the router has been safely published to the I/O threads (e.g. by
  * starting the server after registration).
  */
@@ -97,12 +97,12 @@ final class DefaultRouter extends AbstractRouter {
 
 
   @Override
-  public HttpRequestHandler match(HttpRequest request) {
+  public RouterHttpRequestHandler match(RouterHttpRequest request) {
     request.setPathVariables(Map.of());
     // A request target that is not in the origin-form, e.g. "*", matches no route.
     String[] segments = request.getPath() == null || !request.getPath().startsWith("/")
         ? null : Route.splitPath(request.getPath());
-    HttpRequestHandler handler;
+    RouterHttpRequestHandler handler;
     if (null != (handler = matchHandler(request, segments, request.getMethod()))) {
       return handler;
     }
@@ -125,7 +125,7 @@ final class DefaultRouter extends AbstractRouter {
    *
    * @return the handler; or {@code null} if no route of any method matches.
    */
-  private HttpRequestHandler methodNotAllowedHandler(HttpRequest request, String[] segments) {
+  private RouterHttpRequestHandler methodNotAllowedHandler(RouterHttpRequest request, String[] segments) {
     if (segments == null) {
       return null;
     }
@@ -148,7 +148,7 @@ final class DefaultRouter extends AbstractRouter {
         .write("Netty HTTP Router: 405 Method Not Allowed.");
   }
 
-  private HttpRequestHandler matchHandler(HttpRequest request, String[] segments, HttpMethod method) {
+  private RouterHttpRequestHandler matchHandler(RouterHttpRequest request, String[] segments, HttpMethod method) {
     if (segments == null) {
       return null;
     }
@@ -186,7 +186,7 @@ final class DefaultRouter extends AbstractRouter {
    * tried before the path variable child, and the search backtracks to the path variable child if the exact branch
    * has no matched route.
    */
-  private Route matchRoute(TreeNode node, String[] segments, int idx, HttpRequest request) {
+  private Route matchRoute(TreeNode node, String[] segments, int idx, RouterHttpRequest request) {
     if (idx == segments.length) {
       for (Route route : node.routes) {
         boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().test(request.getHeaders()));

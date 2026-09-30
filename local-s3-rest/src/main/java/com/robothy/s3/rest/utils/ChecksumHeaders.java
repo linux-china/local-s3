@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.utils;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
@@ -42,7 +42,7 @@ public final class ChecksumHeaders {
    * @throws LocalS3RequestException {@code InvalidRequest} if the request names more than one checksum, a checksum
    *     that isn't one, or an algorithm that doesn't exist.
    */
-  public static RequestChecksum fromRequest(HttpRequest request, DecodedAmzRequestBody body) {
+  public static RequestChecksum fromRequest(RouterHttpRequest request, DecodedAmzRequestBody body) {
     List<CheckSumAlgorithm> inHeaders = headerAlgorithms(request);
     List<CheckSumAlgorithm> inTrailer = request.header(AmzHeaderNames.X_AMZ_TRAILER)
         .map(names -> Arrays.stream(names.split(","))
@@ -87,7 +87,7 @@ public final class ChecksumHeaders {
    * @throws LocalS3RequestException {@code InvalidRequest} if the request sends more than one, or one that isn't a
    *     checksum.
    */
-  public static RequestChecksum fromHeaders(HttpRequest request) {
+  public static RequestChecksum fromHeaders(RouterHttpRequest request) {
     List<CheckSumAlgorithm> inHeaders = headerAlgorithms(request);
     if (inHeaders.size() > 1) {
       throw multipleChecksums();
@@ -105,7 +105,7 @@ public final class ChecksumHeaders {
    * @return the algorithm; {@code null} if the request has no such header.
    * @throws LocalS3RequestException {@code InvalidRequest} if the header names no algorithm.
    */
-  public static CheckSumAlgorithm algorithm(HttpRequest request, String headerName) {
+  public static CheckSumAlgorithm algorithm(RouterHttpRequest request, String headerName) {
     Optional<String> value = request.header(headerName).filter(name -> !name.isBlank());
     if (value.isEmpty()) {
       return null;
@@ -119,7 +119,7 @@ public final class ChecksumHeaders {
    * @return the type; {@code null} if the request has no such header.
    * @throws LocalS3RequestException {@code InvalidRequest} if the header names no type.
    */
-  public static ChecksumType type(HttpRequest request) {
+  public static ChecksumType type(RouterHttpRequest request) {
     Optional<String> value = request.header(AmzHeaderNames.X_AMZ_CHECKSUM_TYPE).filter(type -> !type.isBlank());
     if (value.isEmpty()) {
       return null;
@@ -135,7 +135,7 @@ public final class ChecksumHeaders {
    * Whether a read asks for the checksum of the object with {@code x-amz-checksum-mode: ENABLED}, which Amazon S3
    * answers {@code GetObject} and {@code HeadObject} with the checksum for, and only then.
    */
-  public static boolean isChecksumModeEnabled(HttpRequest request) {
+  public static boolean isChecksumModeEnabled(RouterHttpRequest request) {
     return request.header(AmzHeaderNames.X_AMZ_CHECKSUM_MODE)
         .map(mode -> "ENABLED".equalsIgnoreCase(mode.trim()))
         .orElse(false);
@@ -147,7 +147,7 @@ public final class ChecksumHeaders {
    * @param response the response.
    * @param checksum the checksum; {@code null} to add nothing.
    */
-  public static void addHeaders(HttpResponse response, ObjectChecksum checksum) {
+  public static void addHeaders(RouterHttpResponse response, ObjectChecksum checksum) {
     if (Objects.isNull(checksum) || Objects.isNull(checksum.getAlgorithm())) {
       return;
     }
@@ -155,7 +155,7 @@ public final class ChecksumHeaders {
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_CHECKSUM_TYPE, checksum.getType());
   }
 
-  private static List<CheckSumAlgorithm> headerAlgorithms(HttpRequest request) {
+  private static List<CheckSumAlgorithm> headerAlgorithms(RouterHttpRequest request) {
     List<CheckSumAlgorithm> algorithms = new ArrayList<>(1);
     for (CheckSumAlgorithm algorithm : CheckSumAlgorithm.values()) {
       if (request.header(Checksums.headerName(algorithm)).isPresent()) {

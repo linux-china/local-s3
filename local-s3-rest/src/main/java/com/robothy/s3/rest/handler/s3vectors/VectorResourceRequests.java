@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.model.internal.s3vectors.VectorResourceIdentifier;
 
 /**
@@ -16,7 +16,7 @@ public final class VectorResourceRequests {
   private VectorResourceRequests() {
   }
 
-  static VectorResourceIdentifier resource(HttpRequest request) {
+  static VectorResourceIdentifier resource(RouterHttpRequest request) {
     return VectorResourceIdentifier.fromArn(request.parameter(RESOURCE_ARN_PARAMETER).orElse(null));
   }
 

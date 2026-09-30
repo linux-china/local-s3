@@ -21,7 +21,7 @@ import static io.netty.handler.codec.http.HttpMethod.HEAD;
 import static io.netty.handler.codec.http.HttpMethod.OPTIONS;
 import static io.netty.handler.codec.http.HttpMethod.POST;
 import static io.netty.handler.codec.http.HttpMethod.PUT;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.exception.LocalS3Exception;
@@ -541,16 +541,16 @@ public class LocalS3RouterFactory {
    */
   private record Routes(LocalS3Router router) {
 
-    Routes add(String operation, HttpMethod method, String path, HttpRequestHandler handler) {
+    Routes add(String operation, HttpMethod method, String path, RouterHttpRequestHandler handler) {
       return add(operation, method, path, null, null, handler);
     }
 
-    Routes add(String operation, HttpMethod method, String path, ParamCondition params, HttpRequestHandler handler) {
+    Routes add(String operation, HttpMethod method, String path, ParamCondition params, RouterHttpRequestHandler handler) {
       return add(operation, method, path, params, null, handler);
     }
 
     Routes add(String operation, HttpMethod method, String path, HeaderCondition headers,
-               HttpRequestHandler handler) {
+               RouterHttpRequestHandler handler) {
       return add(operation, method, path, null, headers, handler);
     }
 
@@ -561,7 +561,7 @@ public class LocalS3RouterFactory {
      * @param headers the headers that a request of the operation has; {@code null} for any.
      */
     Routes add(String operation, HttpMethod method, String path, ParamCondition params, HeaderCondition headers,
-               HttpRequestHandler handler) {
+               RouterHttpRequestHandler handler) {
       Route.Builder route = Route.builder().method(method).path(path).handler(handler);
       if (params != null) {
         route.paramMatcher(params);
@@ -573,7 +573,7 @@ public class LocalS3RouterFactory {
       return this;
     }
 
-    Routes addVectorOperation(String operation, HttpRequestHandler handler) {
+    Routes addVectorOperation(String operation, RouterHttpRequestHandler handler) {
       return add(operation, POST, "/" + operation, handler);
     }
 

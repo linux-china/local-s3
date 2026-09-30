@@ -2,7 +2,7 @@ package com.robothy.s3.rest.assertions;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import java.util.List;
@@ -12,8 +12,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class RequestAssertionsTest {
 
-  private static HttpRequest withMaxKeys(String maxKeys) {
-    HttpRequest request = HttpRequest.builder().build();
+  private static RouterHttpRequest withMaxKeys(String maxKeys) {
+    RouterHttpRequest request = RouterHttpRequest.builder().build();
     if (maxKeys != null) {
       request.putParameter("max-keys", List.of(maxKeys));
     }

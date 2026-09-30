@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -29,7 +29,7 @@ import java.util.Set;
  * every operation of a directory bucket, {@code CreateBucket} included, which Amazon S3 answers through the control
  * endpoint of S3 Express One Zone without a session.
  */
-class CreateSessionController implements HttpRequestHandler {
+class CreateSessionController implements RouterHttpRequestHandler {
 
   static final Duration SESSION_DURATION = Duration.ofMinutes(5);
 
@@ -42,7 +42,7 @@ class CreateSessionController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     RequestAssertions.assertBucketNameProvided(request);
     request.header(AmzHeaderNames.X_AMZ_CREATE_SESSION_MODE)
         .filter(mode -> !SESSION_MODES.contains(mode))

@@ -125,7 +125,7 @@ router.route(HttpMethod.GET, "/export", (request, response) -> response
     .chunkedBody(new ChunkedStream(openExport())));
 ```
 
-A pipeline of your own needs a `ChunkedWriteHandler` between the HTTP codec and the `HttpResponseEncoder`, as
+A pipeline of your own needs a `ChunkedWriteHandler` between the HTTP codec and the `RouterHttpResponseEncoder`, as
 `HttpServerInitializer` has. Request bodies are still aggregated in memory, up to the max request body size.
 
 ### 2.4 HEAD and 405 Method Not Allowed

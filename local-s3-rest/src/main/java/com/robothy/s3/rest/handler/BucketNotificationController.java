@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.BucketNotificationService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -32,7 +32,7 @@ class BucketNotificationController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketNotificationConfiguration.html">PutBucketNotificationConfiguration</a>
    */
-  void put(HttpRequest request, HttpResponse response) throws Exception {
+  void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration;
     try (InputStream in = RequestUtils.getBody(request).getDecodedBody()) {
@@ -46,7 +46,7 @@ class BucketNotificationController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html">GetBucketNotificationConfiguration</a>
    */
-  void get(HttpRequest request, HttpResponse response) {
+  void get(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration = notificationService.getBucketNotificationConfiguration(bucketName);
     ResponseUtils.addCommonHeaders(response)

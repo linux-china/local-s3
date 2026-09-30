@@ -1,9 +1,9 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -56,7 +56,7 @@ import tools.jackson.dataformat.xml.XmlMapper;
  * {@code success_action_status} of the form, {@code 204 No Content} by default, or {@code 201 Created} with a
  * {@code PostResponse} document.
  */
-class PostObjectController implements HttpRequestHandler {
+class PostObjectController implements RouterHttpRequestHandler {
 
   /**
    * The operation that the change of an object stored by a form is named after.
@@ -97,7 +97,7 @@ class PostObjectController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     MultipartFormData form = MultipartFormData.parse(request.header(HttpHeaderNames.CONTENT_TYPE).orElse(null),
         request.getBody());
@@ -207,7 +207,7 @@ class PostObjectController implements HttpRequestHandler {
    * The URL of the stored object, addressed like the form was: by the scheme the form was posted with, at the bucket
    * of the path, or at the bucket of the host of a virtual-hosted-style request.
    */
-  private String objectLocation(HttpRequest request, String bucketName, String key) {
+  private String objectLocation(RouterHttpRequest request, String bucketName, String key) {
     String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
     String path = request.getPath() == null ? "/" : request.getPath();
     boolean bucketInPath = !path.replace("/", "").isEmpty();

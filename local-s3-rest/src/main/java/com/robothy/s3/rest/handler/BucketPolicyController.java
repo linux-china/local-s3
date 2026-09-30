@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.BucketPolicyService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -25,7 +25,7 @@ class BucketPolicyController {
   /**
    * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicy.html">GetBucketPolicy</a>
    */
-  void get(HttpRequest request, HttpResponse response) {
+  void get(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String bucketPolicy = bucketPolicyService.getBucketPolicy(bucketName);
     response.status(HttpResponseStatus.OK)
@@ -38,7 +38,7 @@ class BucketPolicyController {
   /**
    * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketPolicy.html">PutBucketPolicy</a>
    */
-  void put(HttpRequest request, HttpResponse response) throws IOException {
+  void put(RouterHttpRequest request, RouterHttpResponse response) throws IOException {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody()) ){
       bucketPolicyService.putBucketPolicy(bucketName, new String(in.readAllBytes(), StandardCharsets.UTF_8));
@@ -51,7 +51,7 @@ class BucketPolicyController {
   /**
    * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketPolicy.html">DeleteBucketPolicy</a>
    */
-  void delete(HttpRequest httpRequest, HttpResponse httpResponse) throws Exception {
+  void delete(RouterHttpRequest httpRequest, RouterHttpResponse httpResponse) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(httpRequest);
     bucketPolicyService.deleteBucketPolicy(bucketName);
     httpResponse.status(HttpResponseStatus.OK);

@@ -3,7 +3,7 @@ package com.robothy.s3.rest.handler;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.handler.AwsSignatureV4Verifier.VerificationResult;
 import com.robothy.s3.rest.netty.ChunkSignatures;
@@ -115,7 +115,7 @@ class AwsSignatureV4VerifierTest {
 
   private static VerificationResult verifyHead(Map<String, String> headers, String path, HttpMethod method,
                                                AwsSignatureV4Verifier verifier) {
-    return verifier.verifyHead(HttpRequest.builder()
+    return verifier.verifyHead(RouterHttpRequest.builder()
         .method(method)
         .uri(path)
         .httpVersion(HttpVersion.HTTP_1_1)
@@ -191,7 +191,7 @@ class AwsSignatureV4VerifierTest {
     Path file = Files.write(Files.createTempFile(directory, "body", ".tmp"), content);
     ByteBuf body = RequestBodies.fileBody(file);
     try {
-      return verifier.verify(HttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path)
+      return verifier.verify(RouterHttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path)
           .httpVersion(HttpVersion.HTTP_1_1).headers(new HashMap<>(headers)).params(new HashMap<>()).body(body)
           .build());
     } finally {
@@ -236,7 +236,7 @@ class AwsSignatureV4VerifierTest {
                                     byte[] content, int... cuts) {
     ByteBuf body = compositeBody(content, cuts);
     try {
-      HttpRequest request = HttpRequest.builder()
+      RouterHttpRequest request = RouterHttpRequest.builder()
           .method(method)
           .uri(path)
           .httpVersion(HttpVersion.HTTP_1_1)
@@ -344,7 +344,7 @@ class AwsSignatureV4VerifierTest {
   void verifiesTheChunkSignaturesWithTheVerifiedHead() {
     Map<String, String> headers = chunkedHeaders();
     String path = "/examplebucket/chunkObject.txt";
-    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(RouterHttpRequest.builder()
         .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
         .headers(new HashMap<>(headers)).params(new HashMap<>()).build());
     assertTrue(head.result().authenticated());
@@ -365,7 +365,7 @@ class AwsSignatureV4VerifierTest {
   void verifiesTheChunkSignaturesWhileTheBodyIsReceived() {
     Map<String, String> headers = chunkedHeaders();
     String path = "/examplebucket/chunkObject.txt";
-    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
+    AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(RouterHttpRequest.builder()
         .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
         .headers(new HashMap<>(headers)).params(new HashMap<>()).build());
     assertTrue(head.result().authenticated());
@@ -482,7 +482,7 @@ class AwsSignatureV4VerifierTest {
     headers.put("x-amz-content-sha256", "STREAMING-AWS4-ECDSA-P256-SHA256-PAYLOAD");
     headers.put("authorization", "AWS4-ECDSA-P256-SHA256 Credential=" + ACCESS_KEY_ID
         + "/20130524/s3/aws4_request, SignedHeaders=host;x-amz-date;x-amz-region-set, Signature=3045022100abcd");
-    HttpRequest sigV4a = request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT));
+    RouterHttpRequest sigV4a = request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT));
     assertTrue(verifier.verify(sigV4a).authenticated());
     AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(sigV4a);
     assertTrue(head.result().authenticated());
@@ -530,13 +530,13 @@ class AwsSignatureV4VerifierTest {
     return headers;
   }
 
-  private static HttpRequest chunkedRequest(Map<String, String> headers, String path, byte[] body) {
-    return HttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
+  private static RouterHttpRequest chunkedRequest(Map<String, String> headers, String path, byte[] body) {
+    return RouterHttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
         .headers(new HashMap<>(headers)).params(new HashMap<>()).body(Unpooled.wrappedBuffer(body)).build();
   }
 
-  private static HttpRequest request(Map<String, String> headers, ByteBuf body) {
-    return HttpRequest.builder().method(HttpMethod.PUT).uri(PUT_OBJECT_PATH).path(PUT_OBJECT_PATH)
+  private static RouterHttpRequest request(Map<String, String> headers, ByteBuf body) {
+    return RouterHttpRequest.builder().method(HttpMethod.PUT).uri(PUT_OBJECT_PATH).path(PUT_OBJECT_PATH)
         .httpVersion(HttpVersion.HTTP_1_1).headers(new HashMap<>(headers)).params(new HashMap<>()).body(body).build();
   }
 

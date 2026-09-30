@@ -2,14 +2,13 @@ package com.robothy.s3.rest.handler;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.request.CopyObjectOptions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -26,7 +25,7 @@ class CopyObjectControllerTest {
   void parseCopyOptions(String copySource, CopyObjectOptions result) {
     ServiceFactory serviceFactory = Mockito.mock(ServiceFactory.class);
     CopyObjectController copyObjectController = new CopyObjectController(serviceFactory);
-    HttpRequest request = HttpRequest.builder().headers(Map.of(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource)).build();
+    RouterHttpRequest request = RouterHttpRequest.builder().headers(Map.of(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource)).build();
     if (result == null) {
       assertThrows(LocalS3InvalidArgumentException.class, () -> copyObjectController.parseCopyOptions(request));
     } else {
@@ -40,7 +39,7 @@ class CopyObjectControllerTest {
     CopyObjectController copyObjectController = new CopyObjectController(serviceFactory);
 
     // Test REPLACE directive with user metadata
-    HttpRequest request = HttpRequest.builder().headers(Map.of(
+    RouterHttpRequest request = RouterHttpRequest.builder().headers(Map.of(
         AmzHeaderNames.X_AMZ_COPY_SOURCE, "/my-bucket/a.txt",
         AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE, "REPLACE",
         AmzHeaderNames.X_AMZ_META_PREFIX + "key1", "value1",
@@ -55,7 +54,7 @@ class CopyObjectControllerTest {
     assertEquals(expectedMetadata, options.getUserMetadata());
 
     // Test COPY directive (no user metadata should be parsed)
-    request = HttpRequest.builder().headers(Map.of(
+    request = RouterHttpRequest.builder().headers(Map.of(
         AmzHeaderNames.X_AMZ_COPY_SOURCE, "/my-bucket/a.txt",
         AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE, "COPY",
         AmzHeaderNames.X_AMZ_META_PREFIX + "key3", "value3")).build();
@@ -65,7 +64,7 @@ class CopyObjectControllerTest {
     assertEquals(Collections.emptyMap(), options.getUserMetadata());
 
     // Test default directive (should be COPY)
-    request = HttpRequest.builder().headers(Map.of(AmzHeaderNames.X_AMZ_COPY_SOURCE, "/my-bucket/a.txt")).build();
+    request = RouterHttpRequest.builder().headers(Map.of(AmzHeaderNames.X_AMZ_COPY_SOURCE, "/my-bucket/a.txt")).build();
     options = copyObjectController.parseCopyOptions(request);
     assertEquals(CopyObjectOptions.MetadataDirective.COPY, options.getMetadataDirective());
   }
@@ -75,7 +74,7 @@ class CopyObjectControllerTest {
     ServiceFactory serviceFactory = Mockito.mock(ServiceFactory.class);
     CopyObjectController copyObjectController = new CopyObjectController(serviceFactory);
 
-    HttpRequest request = HttpRequest.builder().headers(Map.of(
+    RouterHttpRequest request = RouterHttpRequest.builder().headers(Map.of(
         AmzHeaderNames.X_AMZ_COPY_SOURCE, "/my-bucket/a.txt",
         AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE, "INVALID")).build();
 

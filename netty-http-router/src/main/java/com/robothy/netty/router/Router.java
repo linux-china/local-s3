@@ -1,14 +1,14 @@
 package com.robothy.netty.router;
 
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
- * A Router is a {@link HttpRequestHandler} container. The route path must start with a '/'.
+ * A Router is a {@link RouterHttpRequestHandler} container. The route path must start with a '/'.
  *
  * <ul>
  *   <li>"/" and "//" match route("/"); a request path that does not start with '/', e.g. "", matches nothing.</li>
@@ -17,16 +17,16 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  *   the text between the braces is taken as the variable name as is.</li>
  * </ul>
  *
- * <p><b>Thread safety:</b> the registration methods ({@link #route(Route)}, {@link #notFound(HttpRequestHandler)},
+ * <p><b>Thread safety:</b> the registration methods ({@link #route(Route)}, {@link #notFound(RouterHttpRequestHandler)},
  * {@link #staticResource(String)}, {@link #headFallbackToGet(boolean)}, {@link #methodNotAllowed(boolean)},
  * {@link #exceptionHandler(Class, ExceptionHandler)} and
  * {@link #interfaceExceptionHandler(Class, ExceptionHandler)}) are not thread-safe. Register everything <b>before the
- * server starts</b> and do not modify the router afterwards; {@link #match(HttpRequest)} and
+ * server starts</b> and do not modify the router afterwards; {@link #match(RouterHttpRequest)} and
  * {@link #findExceptionHandler(Class)} are safe to call concurrently once registration is done.
  */
 public interface Router {
 
-  HttpRequestHandler DEFAULT_NOT_FOUND_HANDLER = (request, response) -> response.status(HttpResponseStatus.NOT_FOUND)
+  RouterHttpRequestHandler DEFAULT_NOT_FOUND_HANDLER = (request, response) -> response.status(HttpResponseStatus.NOT_FOUND)
       .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
       .write("Netty HTTP Router: 404 Not Found.");
 
@@ -45,7 +45,7 @@ public interface Router {
    */
   Router route(Route rule);
 
-  default Router route(HttpMethod method, String path, HttpRequestHandler handler) {
+  default Router route(HttpMethod method, String path, RouterHttpRequestHandler handler) {
     Route rule = Route.builder()
         .method(method)
         .path(path)
@@ -60,7 +60,7 @@ public interface Router {
    * @param handler the handler for requests that match no route; must not be {@code null}.
    * @return this
    */
-  Router notFound(HttpRequestHandler handler);
+  Router notFound(com.robothy.netty.http.RouterHttpRequestHandler handler);
 
   /**
    * Serve the files under {@code rootPath} to the {@code GET} and {@code HEAD} requests that no route matches, mapping
@@ -136,12 +136,12 @@ public interface Router {
 
   /**
    * Find a handler for the given request according to registered routes, and set the path variables of the
-   * matched route to {@linkplain HttpRequest#getPathVariables()}, replacing those of a previous match; they are empty
-   * if no route matches. Query parameters in {@linkplain HttpRequest#getParams()} are not changed.
+   * matched route to {@linkplain RouterHttpRequest#getPathVariables()}, replacing those of a previous match; they are empty
+   * if no route matches. Query parameters in {@linkplain RouterHttpRequest#getParams()} are not changed.
    *
    * @param request HTTP request.
    * @return a matched handler; or {@code null} if no matched handlers.
    */
-  HttpRequestHandler match(HttpRequest request);
+  RouterHttpRequestHandler match(RouterHttpRequest request);
 
 }

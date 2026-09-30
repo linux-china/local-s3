@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.datatypes.s3vectors.response.ListTagsForResourceResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
@@ -12,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Handle S3 Vectors ListTagsForResource operation, {@code GET /tags/{resourceArn}}.
  */
-public class ListTagsForResourceController implements HttpRequestHandler {
+public class ListTagsForResourceController implements RouterHttpRequestHandler {
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;
@@ -23,7 +23,7 @@ public class ListTagsForResourceController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     ListTagsForResourceResponse listResponse =
         s3VectorsService.listTagsForResource(VectorResourceRequests.resource(request));
     HttpRequestUtils.sendJsonResponse(response, listResponse, objectMapper);

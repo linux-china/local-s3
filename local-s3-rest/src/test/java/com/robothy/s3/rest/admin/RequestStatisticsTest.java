@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import java.time.Clock;
 import java.time.Instant;
@@ -145,16 +145,16 @@ class RequestStatisticsTest {
         TimeUnit.MILLISECONDS.toNanos(millis));
   }
 
-  private static HttpRequest request(HttpMethod method, String uri) {
-    return HttpRequest.builder().method(method).uri(uri).path(uri).build();
+  private static RouterHttpRequest request(HttpMethod method, String uri) {
+    return RouterHttpRequest.builder().method(method).uri(uri).path(uri).build();
   }
 
-  private static HttpRequest request(HttpMethod method, String path, String... parameters) {
+  private static RouterHttpRequest request(HttpMethod method, String path, String... parameters) {
     Map<String, List<String>> params = new HashMap<>();
     for (String parameter : parameters) {
       params.put(parameter, List.of(""));
     }
-    return HttpRequest.builder().method(method).uri(path).path(path).params(params).build();
+    return RouterHttpRequest.builder().method(method).uri(path).path(path).params(params).build();
   }
 
 }

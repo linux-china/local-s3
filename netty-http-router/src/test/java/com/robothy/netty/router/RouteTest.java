@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.HashSet;
 import java.util.List;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class RouteTest {
 
-  private static final HttpRequestHandler HANDLER = (request, response) -> { };
+  private static final RouterHttpRequestHandler HANDLER = (request, response) -> { };
 
   @Test
   @SuppressWarnings("removal")

@@ -1,6 +1,6 @@
 package com.robothy.netty.router;
 
-import com.robothy.netty.http.HttpRequestHandler;
+import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.ByteArrayOutputStream;
@@ -50,15 +50,15 @@ public abstract class AbstractRouter implements Router {
     });
   }
 
-  private HttpRequestHandler notFoundHandler = DEFAULT_NOT_FOUND_HANDLER;
+  private RouterHttpRequestHandler notFoundHandler = DEFAULT_NOT_FOUND_HANDLER;
 
   @Override
-  public Router notFound(HttpRequestHandler handler) {
+  public Router notFound(RouterHttpRequestHandler handler) {
     this.notFoundHandler = Objects.requireNonNull(handler, "The not found handler shouldn't be null.");
     return this;
   }
 
-  protected HttpRequestHandler notFoundHandler() {
+  protected RouterHttpRequestHandler notFoundHandler() {
     return this.notFoundHandler;
   }
 

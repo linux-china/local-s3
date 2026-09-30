@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.service.ObjectService;
@@ -23,7 +23,7 @@ import java.nio.charset.StandardCharsets;
  * {@code 202 Accepted}, and one of an object that has a restored copy answers {@code 200 OK}, like Amazon S3 does.
  * The {@code Tier} of the request is ignored.
  */
-class RestoreObjectController implements HttpRequestHandler {
+class RestoreObjectController implements RouterHttpRequestHandler {
 
   private final RestoreObjectService restoreObjectService;
 
@@ -32,7 +32,7 @@ class RestoreObjectController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
     String restoreRequest;
@@ -63,7 +63,7 @@ class RestoreObjectController implements HttpRequestHandler {
    *
    * @param restoreExpiryDate when the restored copy expires, in epoch milliseconds; {@code null} if there is none.
    */
-  static void addRestoreHeader(HttpResponse response, Long restoreExpiryDate) {
+  static void addRestoreHeader(RouterHttpResponse response, Long restoreExpiryDate) {
     if (restoreExpiryDate != null) {
       response.putHeader(AmzHeaderNames.X_AMZ_RESTORE, "ongoing-request=\"false\", expiry-date=\""
           + ResponseUtils.toRfc1123DateTime(restoreExpiryDate) + "\"");

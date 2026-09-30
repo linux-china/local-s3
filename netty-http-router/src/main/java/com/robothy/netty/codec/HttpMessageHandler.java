@@ -1,9 +1,9 @@
 package com.robothy.netty.codec;
 
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.ByteBuf;
@@ -20,13 +20,13 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Dispatches {@linkplain HttpRequest}s to the {@linkplain Router} and writes the responses.
+ * Dispatches {@linkplain RouterHttpRequest}s to the {@linkplain Router} and writes the responses.
  *
  * <p>The request body is released once the handler has returned. A handler that keeps the body, or writes it to the
  * response, must {@linkplain ByteBuf#retain() retain} it.
  */
 @Slf4j
-public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest> {
+public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRequest> {
 
   /**
    * Error bodies echo client input, e.g. the request path, so they are plain text rather than HTML to avoid XSS.
@@ -67,7 +67,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
   }
 
   @Override
-  protected void channelRead0(ChannelHandlerContext ctx, HttpRequest request) throws Exception {
+  protected void channelRead0(ChannelHandlerContext ctx, RouterHttpRequest request) throws Exception {
     if (log.isDebugEnabled()) {
       log.debug("{} {}", request.getMethod(), request.getUri());
       StringBuilder headers = new StringBuilder();
@@ -76,10 +76,10 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.debug(headers.toString());
     }
 
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     boolean written = false;
     try {
-      HttpRequestHandler handler = router.match(request);
+      RouterHttpRequestHandler handler = router.match(request);
       if (null == handler) {
         // A client asking for what isn't there, e.g. a browser for /favicon.ico, isn't a failure of the server.
         log.debug("No handler for {} {}", request.getMethod(), request.getUri());
@@ -92,7 +92,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         } catch (Throwable e) {
           ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
           releaseBody(response);
-          response = new HttpResponse();
+          response = new RouterHttpResponse();
           try {
             exceptionHandler.handle(e, request, response);
           } catch (Throwable handlerFailure) {
@@ -126,7 +126,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       }
       if (head || hasNoContent(response.getStatus())) {
         // No content is sent, so a chunked body that a handler set anyway is closed unread.
-        HttpResponse.closeQuietly(response.detachChunkedBody());
+        RouterHttpResponse.closeQuietly(response.detachChunkedBody());
       }
       written = true;
       write(ctx, response, keepAlive);
@@ -148,11 +148,11 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
   }
 
   /**
-   * Write the response. {@linkplain HttpResponseEncoder} hands the body over to netty, which releases it once written,
+   * Write the response. {@linkplain RouterHttpResponseEncoder} hands the body over to netty, which releases it once written,
    * and the chunked body to the {@linkplain io.netty.handler.stream.ChunkedWriteHandler}, which closes it; if the write
    * fails before that, e.g. the channel is closed, release or close the body here.
    */
-  private static void write(ChannelHandlerContext ctx, HttpResponse response, boolean keepAlive) {
+  private static void write(ChannelHandlerContext ctx, RouterHttpResponse response, boolean keepAlive) {
     ChannelFuture channelFuture = ctx.writeAndFlush(response).addListener(future -> {
       if (!future.isSuccess()) {
         releaseBody(response);
@@ -173,7 +173,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
    * handler made of a "not found" exception, is part of the normal flow and only logged at debug, with the stack
    * trace at trace.
    */
-  private static void logFailure(HttpRequest request, HttpResponse response, Throwable e) {
+  private static void logFailure(RouterHttpRequest request, RouterHttpResponse response, Throwable e) {
     // A handler that sets no status answers 200.
     int status = response.getStatus() == null ? HttpResponseStatus.OK.code() : response.getStatus().code();
     if (status >= 500) {
@@ -190,7 +190,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
    * a mistake with a range, would make the client take the rest of the body for the next response, or wait for the
    * missing bytes, so it is replaced with a warning.
    */
-  private static void correctContentLength(HttpRequest request, HttpResponse response) {
+  private static void correctContentLength(RouterHttpRequest request, RouterHttpResponse response) {
     String name = HttpHeaderNames.CONTENT_LENGTH.toString();
     String actual = String.valueOf(response.getBody().readableBytes());
     String declared = response.getHeaders().put(name, actual);
@@ -210,10 +210,10 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     return code < 200 || code == HttpResponseStatus.NO_CONTENT.code() || code == HttpResponseStatus.NOT_MODIFIED.code();
   }
 
-  private static void releaseBody(HttpResponse response) {
+  private static void releaseBody(RouterHttpResponse response) {
     releaseBody(response.getBody());
     // Null once the encoder has taken it over.
-    HttpResponse.closeQuietly(response.detachChunkedBody());
+    RouterHttpResponse.closeQuietly(response.detachChunkedBody());
   }
 
   private static void releaseBody(ByteBuf body) {
@@ -227,7 +227,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
    * the request has {@code Connection: close}; HTTP/1.0 closes the connection unless the request has
    * {@code Connection: keep-alive}. The header value may be a comma-separated list and is case-insensitive.
    */
-  static boolean isKeepAlive(HttpRequest request) {
+  static boolean isKeepAlive(RouterHttpRequest request) {
     String connection = request.header(HttpHeaderNames.CONNECTION.toString()).orElse("");
     if (request.getHttpVersion().isKeepAliveDefault()) {
       return !containsToken(connection, HttpHeaderValues.CLOSE.toString());
@@ -253,7 +253,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       return;
     }
     log.error("Caught exception.", cause);
-    HttpResponse response = new HttpResponse();
+    RouterHttpResponse response = new RouterHttpResponse();
     response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
         .write("Internal Server Error.")
         .write(cause.getMessage() == null ? null : " " + cause.getMessage())

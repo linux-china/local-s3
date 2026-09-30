@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.datatypes.response.S3Object;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -24,13 +24,13 @@ final class OptionalObjectAttributes {
    * @param objects the objects of the listing, whose restore status the service filled in.
    * @throws LocalS3InvalidArgumentException if the header names an attribute other than {@code RestoreStatus}.
    */
-  static void apply(HttpRequest request, List<S3Object> objects) {
+  static void apply(RouterHttpRequest request, List<S3Object> objects) {
     if (!restoreStatusRequested(request)) {
       objects.forEach(object -> object.setRestoreStatus(null));
     }
   }
 
-  static boolean restoreStatusRequested(HttpRequest request) {
+  static boolean restoreStatusRequested(RouterHttpRequest request) {
     String header = request.header(AmzHeaderNames.X_AMZ_OPTIONAL_OBJECT_ATTRIBUTES).orElse(null);
     if (header == null || header.isBlank()) {
       return false;

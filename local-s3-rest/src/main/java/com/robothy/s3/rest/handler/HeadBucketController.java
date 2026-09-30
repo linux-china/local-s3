@@ -1,8 +1,8 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpRequestHandler;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -14,7 +14,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadBucket.html">HeadBucket</a>
  */
-class HeadBucketController implements HttpRequestHandler {
+class HeadBucketController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;
 
@@ -23,7 +23,7 @@ class HeadBucketController implements HttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     Bucket bucket = bucketService.getBucket(bucketName);
     response.status(HttpResponseStatus.OK)

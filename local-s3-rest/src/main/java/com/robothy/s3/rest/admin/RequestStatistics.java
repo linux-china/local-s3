@@ -1,6 +1,6 @@
 package com.robothy.s3.rest.admin;
 
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.time.Clock;
@@ -117,7 +117,7 @@ public final class RequestStatistics implements RequestRecorder {
   }
 
   @Override
-  public void record(HttpRequest request, String operation, int status, String requestId, long durationNanos) {
+  public void record(RouterHttpRequest request, String operation, int status, String requestId, long durationNanos) {
     if (unrecordedOperations.contains(operation)) {
       return;
     }
@@ -209,7 +209,7 @@ public final class RequestStatistics implements RequestRecorder {
    * method and the shape of the path, without the names of buckets and keys, which would count every bucket apart, and
    * the names of the query parameters, which name the operation of Amazon S3, without the ones of a signature.
    */
-  static String notImplementedName(HttpRequest request, String operation) {
+  static String notImplementedName(RouterHttpRequest request, String operation) {
     if (!OperationHandler.UNKNOWN_OPERATION.equals(operation) && !OperationHandler.NOT_FOUND_OPERATION.equals(operation)) {
       return operation;
     }

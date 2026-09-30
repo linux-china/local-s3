@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.service.BucketEncryptionService;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
@@ -23,7 +23,7 @@ class BucketEncryptionController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html">PutBucketEncryption</a>
    */
-  void put(HttpRequest request, HttpResponse response) throws Exception {
+  void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
       this.encryptionService.putBucketEncryption(bucketName, new String(in.readAllBytes()));
@@ -35,7 +35,7 @@ class BucketEncryptionController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html">GetBucketEncryption</a>
    */
-  void get(HttpRequest request, HttpResponse response) {
+  void get(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String encryption = this.encryptionService.getBucketEncryption(bucketName);
     ResponseUtils.addCommonHeaders(response)
@@ -46,7 +46,7 @@ class BucketEncryptionController {
   /**
    * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html">DeleteBucketEncryption</a>
    */
-  void delete(HttpRequest request, HttpResponse response) {
+  void delete(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     this.encryptionService.deleteBucketEncryption(bucketName);
     ResponseUtils.addCommonHeaders(response)

@@ -5,12 +5,10 @@ import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.request.PutObjectOptions;
-import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
@@ -36,7 +34,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest request, HttpResponse response) throws Exception {
+  public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
 
@@ -88,7 +86,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
    * @throws LocalS3RequestException {@code InvalidDigest} if the header isn't the base64 of an MD5 digest, e.g. is
    *     empty, like Amazon S3 rejects it before it reads the content; a digest that doesn't match is {@code BadDigest}.
    */
-  private static String contentMd5(HttpRequest request) {
+  private static String contentMd5(RouterHttpRequest request) {
     String value = request.header(HttpHeaderNames.CONTENT_MD5).orElse(null);
     if (Objects.isNull(value)) {
       return null;
@@ -109,7 +107,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
    * @return the {@code x-amz-write-offset-bytes}; {@code null} if the request replaces the object.
    * @throws LocalS3InvalidArgumentException if the header isn't a number.
    */
-  private static Long writeOffsetBytes(HttpRequest request) {
+  private static Long writeOffsetBytes(RouterHttpRequest request) {
     String value = request.header(AmzHeaderNames.X_AMZ_WRITE_OFFSET_BYTES).orElse(null);
     if (Objects.isNull(value)) {
       return null;

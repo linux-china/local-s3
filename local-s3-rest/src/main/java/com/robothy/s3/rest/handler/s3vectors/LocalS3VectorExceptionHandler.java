@@ -1,7 +1,7 @@
 package com.robothy.s3.rest.handler.s3vectors;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.datatypes.s3vectors.response.S3VectorsError;
@@ -23,7 +23,7 @@ public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3Ve
   }
 
   @Override
-  public void handle(LocalS3VectorException e, HttpRequest httpRequest, HttpResponse httpResponse) {
+  public void handle(LocalS3VectorException e, RouterHttpRequest httpRequest, RouterHttpResponse httpResponse) {
     if (e.getErrorType().getStatus() >= 500) {
       // Not a rejected request but a failure of the service, e.g. lost vector data, which must not go unnoticed.
       log.error("Failed to handle {} {}.", httpRequest.getMethod(), httpRequest.getUri(), e);

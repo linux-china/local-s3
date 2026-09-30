@@ -2,7 +2,7 @@ package com.robothy.s3.rest.netty;
 
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.storage.HeapContent;
-import com.robothy.netty.http.HttpRequest;
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.utils.RequestTargets;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -50,7 +50,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Aggregates Netty HTTP messages into an {@linkplain HttpRequest} for the router, handed on as a
+ * Aggregates Netty HTTP messages into an {@linkplain RouterHttpRequest} for the router, handed on as a
  * {@linkplain ReceivedRequest} with what the connection knows about it.
  *
  * <p>The body is limited to {@code maxRequestBodySize} bytes. An oversized request is answered with
@@ -126,12 +126,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    */
   private final LongFunction<Optional<HeapContent.Writer>> heapBodyWriters;
 
-  private HttpRequest.HttpRequestBuilder builder;
+  private RouterHttpRequest.RouterHttpRequestBuilder builder;
 
   /**
    * The head of the current request, if the verifier accepted it; handed to the verifier with the complete request.
    */
-  private HttpRequest verifiedHead;
+  private RouterHttpRequest verifiedHead;
 
   /**
    * What the verifier verified of {@link #verifiedHead}, which it is handed back with; {@code null} for nothing.
@@ -374,11 +374,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    */
   private void requestReceived(ChannelHandlerContext ctx, ByteBuf requestBody) {
     // The body now belongs to the request; LocalS3HttpMessageHandler releases it.
-    HttpRequest request = builder.body(requestBody).build();
+    RouterHttpRequest request = builder.body(requestBody).build();
     builder = null;
     Object verification = null;
     if (verifiedHead != null) {
-      HttpRequest head = verifiedHead;
+      RouterHttpRequest head = verifiedHead;
       Object state = headState;
       verifiedHead = null;
       headState = null;
@@ -474,7 +474,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // Only '&' separates parameters, like S3; netty also splits at ';' by default, so "prefix=a;b" became two.
     QueryStringDecoder queryStringDecoder = QueryStringDecoder.builder().semicolonIsNormalChar(true).build(uri);
 
-    builder = HttpRequest.builder()
+    builder = RouterHttpRequest.builder()
         .method(request.method())
         .uri(uri)
         .httpVersion(request.protocolVersion())
@@ -483,7 +483,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
         .params(new HashMap<>(queryStringDecoder.parameters()));
 
     if (hasBody(request, contentLength)) {
-      HttpRequest head = builder.build();
+      RouterHttpRequest head = builder.build();
       RequestHeadVerifier.Outcome outcome = headVerifier.verifyHead(head);
       if (outcome instanceof RequestHeadVerifier.Rejection rejection) {
         reject(ctx, rejection.errorCode(), rejection.message());

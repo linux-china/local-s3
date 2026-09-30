@@ -1,8 +1,7 @@
 package com.robothy.s3.rest.handler;
 
-import com.robothy.netty.http.HttpRequest;
-import com.robothy.netty.http.HttpRequestHandler;
-import com.robothy.netty.http.HttpResponse;
+import com.robothy.netty.http.RouterHttpRequest;
+import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.service.DeleteObjectService;
 import com.robothy.s3.core.service.ObjectService;
@@ -26,7 +25,7 @@ class DeleteObjectController extends ObjectHttpRequestHandler {
   }
 
   @Override
-  public void handle(HttpRequest httpRequest, HttpResponse httpResponse) throws Exception {
+  public void handle(RouterHttpRequest httpRequest, RouterHttpResponse httpResponse) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(httpRequest);
     String key = RequestAssertions.assertObjectKeyProvided(httpRequest);
     String versionId = httpRequest.parameter("versionId").orElse(null);
