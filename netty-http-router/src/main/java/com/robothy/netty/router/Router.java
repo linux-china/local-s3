@@ -12,6 +12,11 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * "/", "//", "" matches route("/")
  * "/a" matches route("/a") firstly, then match "/{param}" and pass 'a' as value of `param`.
  *
+ * <p><b>Thread safety:</b> the registration methods ({@link #route(Route)}, {@link #notFound(HttpRequestHandler)},
+ * {@link #staticResource(String)}, {@link #exceptionHandler(Class, ExceptionHandler)} and
+ * {@link #interfaceExceptionHandler(Class, ExceptionHandler)}) are not thread-safe. Register everything <b>before the
+ * server starts</b> and do not modify the router afterwards; {@link #match(HttpRequest)} and
+ * {@link #findExceptionHandler(Class)} are safe to call concurrently once registration is done.
  */
 public interface Router {
 
@@ -80,7 +85,19 @@ public interface Router {
   <T extends Throwable> Router exceptionHandler(Class<T> exceptionType, ExceptionHandler<T> handler);
 
   /**
-   * Find the best match exception handler for the given {@code exceptionType}.
+   * Set a handler for exceptions implementing {@code interfaceType}, e.g. a marker interface shared by several
+   * unrelated exception classes.
+   *
+   * @param interfaceType an interface type; a non-interface type is rejected.
+   * @param handler handle exceptions implementing the interface.
+   * @return this.
+   */
+  Router interfaceExceptionHandler(Class<?> interfaceType, ExceptionHandler<Throwable> handler);
+
+  /**
+   * Find the best match exception handler for the given {@code exceptionType}. The superclass chain is walked from
+   * {@code exceptionType} upwards; at each level the class is checked first, then the interfaces it declares
+   * (breadth-first, including their super interfaces). Results are cached.
    */
   ExceptionHandler<Throwable> findExceptionHandler(Class<? extends Throwable> exceptionType);
 

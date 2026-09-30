@@ -383,4 +383,41 @@ class DefaultRouterTest {
     assertEquals(subRuntimeExceptionHandler, router.findExceptionHandler(SubRuntimeException.class));
   }
 
+  interface Retryable {
+  }
+
+  interface TransientFailure extends Retryable {
+  }
+
+  static class RetryableIOException extends IOException implements TransientFailure {
+  }
+
+  static class SubRetryableIOException extends RetryableIOException {
+  }
+
+  @Test
+  void testInterfaceExceptionHandler() {
+    DefaultRouter router = new DefaultRouter();
+    ExceptionHandler<Throwable> defaultHandler = router.findExceptionHandler(Throwable.class);
+    ExceptionHandler<IOException> ioExceptionHandler = Mockito.mock(ExceptionHandler.class);
+    router.exceptionHandler(IOException.class, ioExceptionHandler);
+    assertEquals(ioExceptionHandler, router.findExceptionHandler(SubRetryableIOException.class));
+
+    // A super interface declared at a more specific level wins over the handler of a superclass.
+    ExceptionHandler<Throwable> retryableHandler = Mockito.mock(ExceptionHandler.class);
+    router.interfaceExceptionHandler(Retryable.class, retryableHandler);
+    assertEquals(retryableHandler, router.findExceptionHandler(RetryableIOException.class));
+    assertEquals(retryableHandler, router.findExceptionHandler(SubRetryableIOException.class));
+    assertEquals(ioExceptionHandler, router.findExceptionHandler(IOException.class));
+    assertEquals(defaultHandler, router.findExceptionHandler(RuntimeException.class));
+
+    // The class itself wins over its interfaces.
+    ExceptionHandler<RetryableIOException> classHandler = Mockito.mock(ExceptionHandler.class);
+    router.exceptionHandler(RetryableIOException.class, classHandler);
+    assertEquals(classHandler, router.findExceptionHandler(SubRetryableIOException.class));
+
+    assertThrows(IllegalArgumentException.class,
+        () -> router.interfaceExceptionHandler(RuntimeException.class, retryableHandler));
+  }
+
 }

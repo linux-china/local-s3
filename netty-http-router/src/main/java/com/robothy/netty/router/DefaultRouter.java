@@ -10,6 +10,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+/**
+ * A {@link Router} backed by a dictionary tree of path segments.
+ *
+ * <p>The tree and the route set are plain {@link HashMap}/{@link HashSet} instances without synchronization, so
+ * {@link #route(Route)} must only be called before the server starts. Concurrent {@link #match(HttpRequest)} calls
+ * are safe once registration is finished and the router has been safely published to the I/O threads (e.g. by
+ * starting the server after registration).
+ */
 final class DefaultRouter extends AbstractRouter {
 
   private final Set<Route> ruleSet = new HashSet<>();
