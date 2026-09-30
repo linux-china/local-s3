@@ -10,6 +10,12 @@ class MimeTypeUtilsTest {
   void mimeTypeByFileExtension() {
     assertEquals("text/html; charset=utf-8", MimeTypeUtils.mimeTypeByFileExtension("html"));
     assertEquals("image/png", MimeTypeUtils.mimeTypeByFileExtension("PNG"));
+    assertEquals("audio/mp4", MimeTypeUtils.mimeTypeByFileExtension("m4a"));
+    assertEquals("audio/ogg", MimeTypeUtils.mimeTypeByFileExtension("ogg"));
+    assertEquals("audio/flac", MimeTypeUtils.mimeTypeByFileExtension("flac"));
+    assertEquals("application/ld+json", MimeTypeUtils.mimeTypeByFileExtension("jsonld"));
+    assertEquals("application/manifest+json", MimeTypeUtils.mimeTypeByFileExtension("webmanifest"));
+    assertEquals("application/x-7z-compressed", MimeTypeUtils.mimeTypeByFileExtension("7z"));
     assertEquals(MimeTypeUtils.DEFAULT_MIME_TYPE, MimeTypeUtils.mimeTypeByFileExtension("no-such-extension"));
     assertEquals(MimeTypeUtils.DEFAULT_MIME_TYPE, MimeTypeUtils.mimeTypeByFileExtension(null));
   }

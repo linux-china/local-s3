@@ -25,6 +25,8 @@ public class MimeTypeUtils {
     map.put("mjs", "text/javascript; charset=utf-8");
     map.put("ts", "text/typescript; charset=utf-8");
     map.put("json", "application/json");
+    map.put("jsonld", "application/ld+json");
+    map.put("webmanifest", "application/manifest+json");
     map.put("map", "application/json");
     map.put("xml", "application/xml");
     map.put("wasm", "application/wasm");
@@ -56,6 +58,9 @@ public class MimeTypeUtils {
     map.put("tar", "application/x-tar");
     map.put("bz2", "application/x-bzip2");
     map.put("zst", "application/zstd");
+    map.put("xz", "application/x-xz");
+    map.put("7z", "application/x-7z-compressed");
+    map.put("rar", "application/vnd.rar");
 
     // Images
     map.put("png", "image/png");
@@ -79,6 +84,13 @@ public class MimeTypeUtils {
     // Audio and video
     map.put("mp3", "audio/mpeg");
     map.put("wav", "audio/wav");
+    map.put("m4a", "audio/mp4");
+    map.put("aac", "audio/aac");
+    map.put("ogg", "audio/ogg");
+    map.put("oga", "audio/ogg");
+    map.put("opus", "audio/ogg");
+    map.put("flac", "audio/flac");
+    map.put("ogv", "video/ogg");
     map.put("mp4", "video/mp4");
     map.put("mov", "video/quicktime");
     map.put("webm", "video/webm");
