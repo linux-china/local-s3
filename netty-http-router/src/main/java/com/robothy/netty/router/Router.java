@@ -60,7 +60,7 @@ public interface Router {
    * @param handler the handler for requests that match no route; must not be {@code null}.
    * @return this
    */
-  Router notFound(com.robothy.netty.http.RouterHttpRequestHandler handler);
+  Router notFound(RouterHttpRequestHandler handler);
 
   /**
    * Serve the files under {@code rootPath} to the {@code GET} and {@code HEAD} requests that no route matches, mapping
@@ -113,7 +113,7 @@ public interface Router {
    * @param exceptionType subtype of Throwable.
    * @param handler handle specific exception.
    * @return this.
-   * @param <T> type of the exception to handle..
+   * @param <T> type of the exception to handle.
    */
   <T extends Throwable> Router exceptionHandler(Class<T> exceptionType, ExceptionHandler<T> handler);
 

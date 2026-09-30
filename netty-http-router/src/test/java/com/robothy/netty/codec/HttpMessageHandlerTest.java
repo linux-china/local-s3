@@ -331,6 +331,27 @@ class HttpMessageHandlerTest {
     assertEquals(logged, HttpMessageHandler.headerValueForLog(name, value));
   }
 
+  @ParameterizedTest
+  @CsvSource(value = {
+      // A SigV4 presigned URL: the credential, the signature and the session token are masked.
+      "'/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKID%2F20260930%2Fus-east-1%2Fs3%2Faws4_request"
+          + "&X-Amz-Date=20260930T000000Z&X-Amz-Expires=900&X-Amz-Security-Token=token&X-Amz-SignedHeaders=host"
+          + "&X-Amz-Signature=abcdef', "
+          + "'/b/k?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=***"
+          + "&X-Amz-Date=20260930T000000Z&X-Amz-Expires=900&X-Amz-Security-Token=***&X-Amz-SignedHeaders=host"
+          + "&X-Amz-Signature=***'",
+      // A SigV2 presigned URL, names in any case.
+      "'/b/k?AWSAccessKeyId=AKID&Expires=1&signature=abc', '/b/k?AWSAccessKeyId=AKID&Expires=1&signature=***'",
+      // Other parameters, empty parameters and a parameter without a value are kept as they are.
+      "'/b?list-type=2&&prefix=a&X-Amz-Signature', '/b?list-type=2&&prefix=a&X-Amz-Signature'",
+      "'/b/k', '/b/k'",
+      "'/b/k?', '/b/k?'",
+      "NULL, NULL",
+  }, nullValues = "NULL")
+  void sensitiveParamsAreMaskedInLog(String uri, String logged) {
+    assertEquals(logged, HttpMessageHandler.uriForLog(uri));
+  }
+
   @Test
   void ioExceptionClosesWithoutResponse() {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(Router.router()));

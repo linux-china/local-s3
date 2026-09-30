@@ -51,12 +51,16 @@ public class RouterHttpResponse {
   }
 
   public RouterHttpResponse write(byte[] bytes) {
-    body.addComponent(true, Unpooled.copiedBuffer(bytes));
+    if (bytes != null) {
+      body.addComponent(true, Unpooled.copiedBuffer(bytes));
+    }
     return this;
   }
 
   public RouterHttpResponse write(ByteBuf buf) {
-    body.addComponent(true, buf);
+    if (buf != null) {
+      body.addComponent(true, buf);
+    }
     return this;
   }
 

@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
@@ -46,6 +47,12 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
    */
   private static final int UNMASKED_PREFIX_LENGTH = 8;
 
+  /**
+   * Lower-case names of the query parameters that carry credentials, e.g. of a presigned URL, masked in the debug log.
+   */
+  private static final Set<String> SENSITIVE_PARAMS =
+      Set.of("x-amz-signature", "x-amz-credential", "x-amz-security-token", "signature");
+
   private final Router router;
 
   public HttpMessageHandler(Router router) {
@@ -66,10 +73,39 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
     return value.length() > UNMASKED_PREFIX_LENGTH ? value.substring(0, UNMASKED_PREFIX_LENGTH) + "***" : "***";
   }
 
+  /**
+   * The request URI as the debug log shows it: the values of the query parameters carrying credentials, e.g.
+   * {@code X-Amz-Signature} of a presigned URL, are masked whole, as they are usable by themselves.
+   *
+   * @param uri the raw request URI, e.g. {@code /a?b=c}; {@code null} is returned as is.
+   */
+  static String uriForLog(String uri) {
+    int queryStart = uri == null ? -1 : uri.indexOf('?');
+    if (queryStart < 0) {
+      return uri;
+    }
+    StringBuilder masked = new StringBuilder(uri.length()).append(uri, 0, queryStart + 1);
+    String[] params = uri.substring(queryStart + 1).split("&", -1);
+    for (int i = 0; i < params.length; i++) {
+      if (i > 0) {
+        masked.append('&');
+      }
+      String param = params[i];
+      int eq = param.indexOf('=');
+      String name = eq < 0 ? param : param.substring(0, eq);
+      if (eq >= 0 && SENSITIVE_PARAMS.contains(name.toLowerCase(Locale.ROOT))) {
+        masked.append(name).append("=***");
+      } else {
+        masked.append(param);
+      }
+    }
+    return masked.toString();
+  }
+
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, RouterHttpRequest request) throws Exception {
     if (log.isDebugEnabled()) {
-      log.debug("{} {}", request.getMethod(), request.getUri());
+      log.debug("{} {}", request.getMethod(), uriForLog(request.getUri()));
       StringBuilder headers = new StringBuilder();
       request.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ")
           .append(headerValueForLog(name, value)));
@@ -83,7 +119,9 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
       if (null == handler) {
         // A Router that has no not found handler of its own, e.g. a custom one, answers as the default router does.
         // A client asking for what isn't there, e.g. a browser for /favicon.ico, isn't a failure of the server.
-        log.debug("No handler for {} {}", request.getMethod(), request.getUri());
+        if (log.isDebugEnabled()) {
+          log.debug("No handler for {} {}", request.getMethod(), uriForLog(request.getUri()));
+        }
         handler = Router.DEFAULT_NOT_FOUND_HANDLER;
       }
       try {
@@ -131,8 +169,9 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRe
       written = true;
       write(ctx, response, keepAlive);
 
-      log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
       if (log.isDebugEnabled()) {
+        log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(),
+            uriForLog(request.getUri()));
         StringBuilder headers = new StringBuilder();
         response.getAllHeaders().forEach((name, values) -> values.forEach(value -> headers.append("\n")
           .append(name).append(": ").append(headerValueForLog(name, value))));
