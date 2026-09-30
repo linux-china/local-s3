@@ -6,6 +6,7 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.utils.MimeTypeUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -23,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.jar.JarEntry;
@@ -33,12 +36,21 @@ import lombok.extern.slf4j.Slf4j;
  * Serves the files under a root directory or classpath resource path to {@code GET} and {@code HEAD} requests.
  *
  * <p>A request path is resolved against the root only if it has no {@code ..} segment and no backslash, so it cannot
- * address a file outside of the root; only regular files are served, not directories.
+ * address a file outside of the root; only regular files are served, not directories. A directory with an
+ * {@code index.html} is served as that file, e.g. {@code /docs/} as {@code docs/index.html}, and {@code /docs} is
+ * redirected to {@code /docs/} so that the relative links of the page resolve under the directory.
+ *
+ * <p>A file is sent with {@code Last-Modified}, a weak {@code ETag} made of its length and modification time, and
+ * {@code Cache-Control: no-cache}, so a browser revalidates it on every use: a request with a matching
+ * {@code If-None-Match}, or else an {@code If-Modified-Since} not before the modification time, is answered with
+ * {@code 304 Not Modified} and no content.
  */
 @Slf4j
 abstract class StaticResourceMatcher {
 
   static final int CHUNK_SIZE = 64 * 1024;
+
+  static final String INDEX = "index.html";
 
   abstract HttpRequestHandler match(HttpRequest request);
 
@@ -53,7 +65,7 @@ abstract class StaticResourceMatcher {
 
   /**
    * Get the path of the requested file relative to the root, e.g. {@code css/app.css} of {@code /css//app.css}; the
-   * root path is {@code index.html}.
+   * root path is {@code index.html}. A path may be of a directory, which is served by its {@code index.html}.
    *
    * @return the relative path; or {@code null} if the request isn't a {@code GET} or {@code HEAD}, or the path has a
    *     {@code ..} segment or a backslash, which could address a file outside of the root.
@@ -72,7 +84,73 @@ abstract class StaticResourceMatcher {
         segments.add(segment);
       }
     }
-    return segments.isEmpty() ? "index.html" : String.join("/", segments);
+    return segments.isEmpty() ? INDEX : String.join("/", segments);
+  }
+
+  /**
+   * Redirect the path of a directory that has an {@code index.html} to the path with a trailing '/', keeping the
+   * query, e.g. {@code /docs?a=1} to {@code /docs/?a=1}.
+   *
+   * @return the redirecting handler; or {@code null} if the path already ends with '/', and the index is served.
+   */
+  static HttpRequestHandler redirectToDirectory(HttpRequest request) {
+    if (request.getPath().endsWith("/")) {
+      return null;
+    }
+    String uri = request.getUri() == null ? request.getPath() : request.getUri();
+    int queryStart = uri.indexOf('?');
+    String location = queryStart < 0 ? uri + "/" : uri.substring(0, queryStart) + "/" + uri.substring(queryStart);
+    return (req, response) -> response.status(HttpResponseStatus.MOVED_PERMANENTLY)
+        .putHeader(HttpHeaderNames.LOCATION.toString(), location);
+  }
+
+  /**
+   * Put the validators of a resource and answer {@code 304 Not Modified} if the client has it already.
+   *
+   * @param lastModified the modification time in milliseconds; or {@code 0} if it is unknown, then the resource has
+   *     no validators and is always sent.
+   * @param length the length of the resource; or {@code -1} if it is unknown.
+   * @return {@code true} if the response is a {@code 304}, which has no content.
+   */
+  static boolean notModified(HttpRequest request, HttpResponse response, long lastModified, long length) {
+    response.putHeader(HttpHeaderNames.CACHE_CONTROL.toString(), "no-cache");
+    if (lastModified <= 0) {
+      return false;
+    }
+    // An HTTP date has seconds precision.
+    long lastModifiedSeconds = lastModified / 1000;
+    String etag = "W/\"" + Long.toHexString(length) + "-" + Long.toHexString(lastModified) + "\"";
+    response.putHeader(HttpHeaderNames.LAST_MODIFIED.toString(),
+            DateFormatter.format(new Date(lastModifiedSeconds * 1000)))
+        .putHeader(HttpHeaderNames.ETAG.toString(), etag);
+    boolean notModified;
+    String ifNoneMatch = request.header(HttpHeaderNames.IF_NONE_MATCH).orElse(null);
+    if (ifNoneMatch != null) {
+      // If-Modified-Since is ignored along with If-None-Match (RFC 9110, section 13.1.3).
+      notModified = etagMatches(ifNoneMatch, etag);
+    } else {
+      Date since = request.header(HttpHeaderNames.IF_MODIFIED_SINCE).map(DateFormatter::parseHttpDate).orElse(null);
+      notModified = since != null && lastModifiedSeconds <= since.getTime() / 1000;
+    }
+    if (notModified) {
+      response.status(HttpResponseStatus.NOT_MODIFIED);
+    }
+    return notModified;
+  }
+
+  /**
+   * The weak comparison of {@code If-None-Match}: {@code *}, or any of its tags equal to the ETag, ignoring the
+   * {@code W/} prefixes.
+   */
+  private static boolean etagMatches(String ifNoneMatch, String etag) {
+    String opaqueTag = etag.substring(2);
+    for (String tag : ifNoneMatch.split(",")) {
+      tag = tag.trim();
+      if (tag.equals("*") || (tag.startsWith("W/") ? tag.substring(2) : tag).equals(opaqueTag)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -120,17 +198,32 @@ abstract class StaticResourceMatcher {
       if (relativePath == null) {
         return null;
       }
-      String resourceName = resourceRoot.isEmpty() ? relativePath : resourceRoot + "/" + relativePath;
-      URL url = classLoader.getResource(resourceName);
-      if (url == null || !isRegularFile(url)) {
-        return null;
+      String name = resourceRoot.isEmpty() ? relativePath : resourceRoot + "/" + relativePath;
+      URL resource = classLoader.getResource(name);
+      if (resource == null || !isRegularFile(resource)) {
+        // A jar may have no entry for a directory, so it is found by its index.
+        resource = classLoader.getResource(name + "/" + INDEX);
+        if (resource == null || !isRegularFile(resource)) {
+          return null;
+        }
+        HttpRequestHandler redirect = redirectToDirectory(request);
+        if (redirect != null) {
+          return redirect;
+        }
+        name = name + "/" + INDEX;
       }
+      String resourceName = name;
+      URL url = resource;
       return (req, response) -> {
         response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(resourceName));
+        long[] lengthAndLastModified = lengthAndLastModified(url);
+        long length = lengthAndLastModified[0];
+        if (notModified(req, response, lengthAndLastModified[1], length)) {
+          return;
+        }
         if (HttpMethod.HEAD.equals(req.getMethod())) {
-          long contentLength = contentLength(url);
-          if (contentLength >= 0) {
-            response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength);
+          if (length >= 0) {
+            response.putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), length);
           }
           return;
         }
@@ -152,26 +245,30 @@ abstract class StaticResourceMatcher {
     }
 
     /**
-     * The length of a resource without reading it, for a {@code HEAD} request.
+     * The length and the modification time of a resource without reading it.
      *
-     * @return the length; or {@code -1} if it is unknown.
+     * @return the length, or {@code -1} if it is unknown; and the modification time in milliseconds, or {@code 0} if
+     *     it is unknown.
      */
-    private static long contentLength(URL url) throws IOException {
+    private static long[] lengthAndLastModified(URL url) throws IOException {
       if ("file".equals(url.getProtocol())) {
         try {
-          return Files.size(Path.of(url.toURI()));
+          BasicFileAttributes attributes = Files.readAttributes(Path.of(url.toURI()), BasicFileAttributes.class);
+          return new long[] {attributes.size(), attributes.lastModifiedTime().toMillis()};
         } catch (URISyntaxException | IllegalArgumentException e) {
-          return -1;
+          return new long[] {-1, 0};
         }
       }
       URLConnection connection = url.openConnection();
-      if (connection instanceof JarURLConnection) {
-        // The size of the jar entry; the jar file is shared by the connections, so there is nothing to close.
-        return connection.getContentLengthLong();
+      if (connection instanceof JarURLConnection jarConnection) {
+        // The jar file is shared by the connections, so there is nothing to close. The time of the entry rather than
+        // the one of the connection, which is of the jar file.
+        JarEntry entry = jarConnection.getJarEntry();
+        return new long[] {entry.getSize(), Math.max(entry.getTime(), 0)};
       }
       // Other connections may open the resource to get its length, which is closed unread.
       try (InputStream ignored = connection.getInputStream()) {
-        return connection.getContentLengthLong();
+        return new long[] {connection.getContentLengthLong(), connection.getLastModified()};
       }
     }
 
@@ -223,17 +320,31 @@ abstract class StaticResourceMatcher {
         return null;
       }
       // relativePath has no "..", this is a second line of defense, e.g. against "C:" on Windows.
-      if (!absPath.startsWith(rootDirectory) || !Files.isRegularFile(absPath)) {
+      if (!absPath.startsWith(rootDirectory)) {
         return null;
       }
+      if (Files.isDirectory(absPath) && Files.isRegularFile(absPath.resolve(INDEX))) {
+        HttpRequestHandler redirect = redirectToDirectory(request);
+        if (redirect != null) {
+          return redirect;
+        }
+        absPath = absPath.resolve(INDEX);
+      } else if (!Files.isRegularFile(absPath)) {
+        return null;
+      }
+      Path file = absPath;
       return (req, response) -> {
+        response.putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(file.toString()));
+        BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
+        if (notModified(req, response, attributes.lastModifiedTime().toMillis(), attributes.size())) {
+          return;
+        }
         if (HttpMethod.HEAD.equals(req.getMethod())) {
           // Only the headers are sent, so the file isn't opened.
           response.status(HttpResponseStatus.OK)
-              .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), Files.size(absPath))
-              .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()));
+              .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), attributes.size());
         } else {
-          serve(absPath, response);
+          serve(file, response);
         }
       };
     }
@@ -244,7 +355,6 @@ abstract class StaticResourceMatcher {
         long contentLength = fileChannel.size();
         response.status(HttpResponseStatus.OK)
             .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), contentLength)
-            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), MimeTypeUtils.mimeTypeByFileName(absPath.toString()))
             // Streamed as the connection accepts it, rather than read into memory; the response closes the file.
             .chunkedBody(new FileChunkedInput(absPath, fileChannel, contentLength));
       } catch (IOException | RuntimeException e) {

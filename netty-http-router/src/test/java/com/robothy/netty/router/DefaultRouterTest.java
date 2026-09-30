@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -510,6 +511,160 @@ class DefaultRouterTest {
     };
     assertThrows(UnsupportedOperationException.class, () -> router.headFallbackToGet(true));
     assertThrows(UnsupportedOperationException.class, () -> router.methodNotAllowed(true));
+  }
+
+  @Test
+  void staticResourceConditionalRequests(@TempDir Path directory) throws Exception {
+    Path file = Files.writeString(directory.resolve("app.js"), "app");
+    Files.setLastModifiedTime(file, FileTime.fromMillis(1_700_000_000_123L));
+    Router router = new DefaultRouter().staticResource(directory.toString());
+
+    HttpRequest request = getRequest("/app.js");
+    HttpResponse response = new HttpResponse();
+    router.match(request).handle(request, response);
+    assertEquals(HttpResponseStatus.OK, response.getStatus());
+    String lastModified = response.getHeaders().get("last-modified");
+    String etag = response.getHeaders().get("etag");
+    assertEquals("Tue, 14 Nov 2023 22:13:20 GMT", lastModified);
+    assertTrue(etag.startsWith("W/\""), etag);
+    assertEquals("no-cache", response.getHeaders().get("cache-control"));
+    readBody(response);
+
+    for (Map<String, String> headers : List.of(
+        Map.of("if-none-match", etag),
+        Map.of("if-none-match", "\"other\", " + etag.substring(2)),
+        Map.of("if-none-match", "*"),
+        Map.of("if-modified-since", lastModified),
+        Map.of("if-modified-since", "Wed, 15 Nov 2023 00:00:00 GMT"))) {
+      for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.HEAD)) {
+        HttpRequest conditional = request(method, "/app.js", headers);
+        HttpResponse notModified = new HttpResponse();
+        router.match(conditional).handle(conditional, notModified);
+        assertEquals(HttpResponseStatus.NOT_MODIFIED, notModified.getStatus(), headers + " " + method);
+        assertEquals(etag, notModified.getHeaders().get("etag"));
+        assertEquals(null, notModified.getChunkedBody());
+      }
+    }
+
+    for (Map<String, String> headers : List.of(
+        Map.of("if-none-match", "W/\"other\""),
+        // If-Modified-Since is ignored along with If-None-Match.
+        Map.of("if-none-match", "W/\"other\"", "if-modified-since", lastModified),
+        Map.of("if-modified-since", "Tue, 14 Nov 2023 22:13:19 GMT"),
+        Map.of("if-modified-since", "not a date"))) {
+      HttpRequest conditional = request(HttpMethod.GET, "/app.js", headers);
+      HttpResponse modified = new HttpResponse();
+      router.match(conditional).handle(conditional, modified);
+      assertEquals(HttpResponseStatus.OK, modified.getStatus(), headers.toString());
+      assertEquals("app", new String(readBody(modified), StandardCharsets.UTF_8));
+    }
+
+    // A changed file has another ETag.
+    Files.writeString(file, "app2");
+    HttpRequest changed = request(HttpMethod.GET, "/app.js", Map.of("if-none-match", etag));
+    HttpResponse changedResponse = new HttpResponse();
+    router.match(changed).handle(changed, changedResponse);
+    assertEquals(HttpResponseStatus.OK, changedResponse.getStatus());
+    assertEquals("app2", new String(readBody(changedResponse), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void classpathResourceConditionalRequests(@TempDir Path directory) throws Exception {
+    Path jar = directory.resolve("static.jar");
+    try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+      JarEntry entry = new JarEntry("cond-static/a.txt");
+      entry.setTime(1_700_000_000_000L);
+      out.putNextEntry(entry);
+      out.write("a".getBytes(StandardCharsets.UTF_8));
+      out.closeEntry();
+    }
+    Thread thread = Thread.currentThread();
+    ClassLoader contextClassLoader = thread.getContextClassLoader();
+    try (URLClassLoader classLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, null)) {
+      thread.setContextClassLoader(classLoader);
+      Router router = new DefaultRouter().staticResource("classpath:cond-static");
+      thread.setContextClassLoader(contextClassLoader);
+      HttpRequest request = getRequest("/a.txt");
+      HttpResponse response = new HttpResponse();
+      router.match(request).handle(request, response);
+      assertEquals("a", new String(readBody(response), StandardCharsets.UTF_8));
+      String etag = response.getHeaders().get("etag");
+      assertNotNull(response.getHeaders().get("last-modified"));
+
+      HttpRequest conditional = request(HttpMethod.GET, "/a.txt", Map.of("if-none-match", etag));
+      HttpResponse notModified = new HttpResponse();
+      router.match(conditional).handle(conditional, notModified);
+      assertEquals(HttpResponseStatus.NOT_MODIFIED, notModified.getStatus());
+      assertEquals(null, notModified.getChunkedBody());
+    } finally {
+      thread.setContextClassLoader(contextClassLoader);
+    }
+  }
+
+  @Test
+  void directoryIndex(@TempDir Path directory) throws Exception {
+    Files.createDirectories(directory.resolve("docs/empty"));
+    Files.writeString(directory.resolve("docs/index.html"), "docs");
+    Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource(directory.toString());
+
+    HttpRequest request = getRequest("/docs/");
+    HttpResponse response = new HttpResponse();
+    router.match(request).handle(request, response);
+    assertEquals("docs", new String(readBody(response), StandardCharsets.UTF_8));
+    assertEquals("text/html; charset=utf-8", response.getHeaders().get("content-type"));
+
+    HttpRequest withoutSlash = HttpRequest.builder().method(HttpMethod.GET).uri("/docs?a=1").path("/docs").build();
+    HttpResponse redirect = new HttpResponse();
+    router.match(withoutSlash).handle(withoutSlash, redirect);
+    assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
+    assertEquals("/docs/?a=1", redirect.getHeaders().get("location"));
+
+    // A directory without an index is not found.
+    assertSame(NOT_FOUND, router.match(getRequest("/docs/empty/")));
+
+    // On the classpath: the test resources have static/test.html only, and "static" has no index.
+    Router classpathRouter = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:");
+    assertSame(NOT_FOUND, classpathRouter.match(getRequest("/static/")));
+  }
+
+  @Test
+  void classpathDirectoryIndexInJar(@TempDir Path directory) throws Exception {
+    Path jar = directory.resolve("static.jar");
+    try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+      // No entry for the directory itself.
+      out.putNextEntry(new JarEntry("index-static/docs/index.html"));
+      out.write("docs".getBytes(StandardCharsets.UTF_8));
+      out.closeEntry();
+    }
+    Thread thread = Thread.currentThread();
+    ClassLoader contextClassLoader = thread.getContextClassLoader();
+    try (URLClassLoader classLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, null)) {
+      thread.setContextClassLoader(classLoader);
+      Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:index-static");
+      thread.setContextClassLoader(contextClassLoader);
+      HttpRequest request = getRequest("/docs/");
+      HttpResponse response = new HttpResponse();
+      router.match(request).handle(request, response);
+      assertEquals("docs", new String(readBody(response), StandardCharsets.UTF_8));
+
+      HttpRequest withoutSlash = getRequest("/docs");
+      HttpResponse redirect = new HttpResponse();
+      router.match(withoutSlash).handle(withoutSlash, redirect);
+      assertEquals(HttpResponseStatus.MOVED_PERMANENTLY, redirect.getStatus());
+      assertEquals("/docs/", redirect.getHeaders().get("location"));
+    } finally {
+      thread.setContextClassLoader(contextClassLoader);
+    }
+  }
+
+  private static HttpRequest request(HttpMethod method, String path, Map<String, String> headers) {
+    return HttpRequest.builder()
+        .method(method)
+        .uri(path)
+        .path(path)
+        .params(new HashMap<>())
+        .headers(new HashMap<>(headers))
+        .build();
   }
 
   private static HttpRequest getRequest(String path) {
