@@ -7,7 +7,6 @@ import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -60,7 +59,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         try {
           handler.handle(request, response);
         } catch (Throwable e) {
-          log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
+          log.error("Failed to handle {} {}", request.getMethod(), request.getPath(), e);
           ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
           releaseBody(response);
           response = new HttpResponse();
@@ -80,7 +79,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       written = true;
       write(ctx, response, keepAlive);
 
-      log.info("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
+      log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
       if (log.isDebugEnabled()) {
         StringBuilder headers = new StringBuilder();
         response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ").append(value));
@@ -163,12 +162,13 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
 
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
-    log.info("Channel " + ctx.channel().id() + " active.");
+    log.debug("Channel {} active.", ctx.channel().id());
+    super.channelActive(ctx);
   }
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-    Channel ch = ctx.channel();
-    log.info("Channel " + ch.id() + " inactive.");
+    log.debug("Channel {} inactive.", ctx.channel().id());
+    super.channelInactive(ctx);
   }
 }
