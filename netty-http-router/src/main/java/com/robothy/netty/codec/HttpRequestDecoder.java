@@ -29,6 +29,8 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
   @Override
   protected void decode(ChannelHandlerContext ctx, HttpObject msg, List<Object> out) throws Exception {
     if (msg instanceof HttpRequest) {
+      // An unfinished request is replaced, e.g. the previous request was invalid.
+      releaseBody();
       HttpRequest httpRequest = (HttpRequest) msg;
       HashMap<CharSequence, String> headers = new HashMap<>();
       httpRequest.headers().forEach(header -> headers.put(header.getKey().toLowerCase(Locale.ROOT), header.getValue()));
@@ -49,15 +51,41 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
         ctx.writeAndFlush(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE));
       }
 
-    } else if (msg instanceof HttpContent) {
+    } else if (msg instanceof HttpContent && body != null) {
       HttpContent httpContent = (HttpContent) msg;
       ByteBuf content = httpContent.content();
       ReferenceCountUtil.retain(content);
       body.addComponent(true, content);
       if (msg instanceof LastHttpContent) {
         com.robothy.netty.http.HttpRequest request = builder.build();
+        // The body now belongs to the request, HttpMessageHandler releases it.
+        this.body = null;
+        this.builder = null;
         out.add(request);
       }
+    }
+  }
+
+  @Override
+  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+    releaseBody();
+    super.channelInactive(ctx);
+  }
+
+  @Override
+  public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+    releaseBody();
+    super.handlerRemoved(ctx);
+  }
+
+  /**
+   * Release the body of the unfinished request.
+   */
+  private void releaseBody() {
+    if (body != null) {
+      body.release();
+      body = null;
+      builder = null;
     }
   }
 

@@ -6,6 +6,7 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
 import com.robothy.netty.router.ExceptionHandler;
 import com.robothy.netty.router.Router;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -16,6 +17,12 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Dispatches {@linkplain HttpRequest}s to the {@linkplain Router} and writes the responses.
+ *
+ * <p>The request body is released once the handler has returned. A handler that keeps the body, or writes it to the
+ * response, must {@linkplain ByteBuf#retain() retain} it.
+ */
 @Slf4j
 public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
@@ -34,45 +41,77 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.debug(headers.toString());
     }
 
-    HttpRequestHandler handler = router.match(request);
     HttpResponse response = new HttpResponse();
-    if (null == handler) {
-      log.warn("No handler for {} {}", request.getMethod(), request.getUri());
-      response.write("Not found " + request.getPath())
-          .status(HttpResponseStatus.NOT_FOUND)
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML);
-    } else {
-      try {
-        handler.handle(request, response);
-      } catch (Throwable e) {
-        log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
-        ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
-        response = new HttpResponse();
-        // Exceptions from exceptionHandler will be handled by exceptionCaught().
-        exceptionHandler.handle(e, request, response);
+    boolean written = false;
+    try {
+      HttpRequestHandler handler = router.match(request);
+      if (null == handler) {
+        log.warn("No handler for {} {}", request.getMethod(), request.getUri());
+        response.write("Not found " + request.getPath())
+            .status(HttpResponseStatus.NOT_FOUND)
+            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML);
+      } else {
+        try {
+          handler.handle(request, response);
+        } catch (Throwable e) {
+          log.error("Failed to handle " + request.getMethod() + " " + request.getPath(), e);
+          ExceptionHandler<Throwable> exceptionHandler = router.findExceptionHandler(e.getClass());
+          releaseBody(response);
+          response = new HttpResponse();
+          // Exceptions from exceptionHandler will be handled by exceptionCaught().
+          exceptionHandler.handle(e, request, response);
+        }
       }
-    }
 
-    if (null == response.getStatus()) {
-      response.status(HttpResponseStatus.OK);
-    }
+      if (null == response.getStatus()) {
+        response.status(HttpResponseStatus.OK);
+      }
 
-    boolean keepAlive = isKeepAlive(request);
-    response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
-    response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
-        String.valueOf(response.getBody().readableBytes()));
-    ChannelFuture channelFuture = ctx.writeAndFlush(response);
+      boolean keepAlive = isKeepAlive(request);
+      response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
+      response.getHeaders().putIfAbsent(HttpHeaderNames.CONTENT_LENGTH.toString(),
+          String.valueOf(response.getBody().readableBytes()));
+      written = true;
+      write(ctx, response, keepAlive);
+
+      log.info("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
+      if (log.isDebugEnabled()) {
+        StringBuilder headers = new StringBuilder();
+        response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ").append(value));
+        log.debug(headers.toString());
+      }
+    } finally {
+      if (!written) {
+        releaseBody(response);
+      }
+      // The request body is released once the handler has returned, retain it to keep it longer.
+      releaseBody(request.getBody());
+    }
+  }
+
+  /**
+   * Write the response. {@linkplain HttpResponseEncoder} hands the body over to netty, which releases it once written;
+   * if the write fails before that, e.g. the channel is closed, release the body here.
+   */
+  private static void write(ChannelHandlerContext ctx, HttpResponse response, boolean keepAlive) {
+    ChannelFuture channelFuture = ctx.writeAndFlush(response).addListener(future -> {
+      if (!future.isSuccess()) {
+        releaseBody(response);
+      }
+    });
     if (!keepAlive) {
       channelFuture.addListener(ChannelFutureListener.CLOSE);
     }
+  }
 
-    log.info("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
-    if (log.isDebugEnabled()) {
-      StringBuilder headers = new StringBuilder();
-      response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ").append(value));
-      log.debug(headers.toString());
+  private static void releaseBody(HttpResponse response) {
+    releaseBody(response.getBody());
+  }
+
+  private static void releaseBody(ByteBuf body) {
+    if (body != null && body.refCnt() > 0) {
+      body.release();
     }
-
   }
 
   /**
@@ -107,7 +146,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML)
         .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
-    ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+    write(ctx, response, false);
   }
 
   @Override

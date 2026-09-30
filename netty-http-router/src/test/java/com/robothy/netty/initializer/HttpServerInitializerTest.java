@@ -125,7 +125,7 @@ class HttpServerInitializerTest {
             .build(), responseInfo -> HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8));
     assertEquals(200, classpathResourceResp.statusCode());
     assertEquals("Hello World", classpathResourceResp.body());
-    assertEquals("text/html", classpathResourceResp.headers().firstValue("Content-Type").get());
+    assertEquals("text/html; charset=utf-8", classpathResourceResp.headers().firstValue("Content-Type").get());
 
     // Test default exception handler for a RuntimeException.
     AtomicReference<RuntimeException> exceptionHolder = new AtomicReference<>();
