@@ -150,6 +150,18 @@ class HttpRequestDecoderTest {
   }
 
   @Test
+  void semicolonIsNotParameterSeparator() {
+    EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
+    channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket?prefix=a;b&c=d"));
+    HttpRequest request = channel.readInbound();
+    assertEquals(List.of("a;b"), request.getParams().get("prefix"));
+    assertEquals(List.of("d"), request.getParams().get("c"));
+    assertFalse(request.getParams().containsKey("b"));
+    request.getBody().release();
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
   void rejectAsteriskFormTarget() {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder());
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*"));

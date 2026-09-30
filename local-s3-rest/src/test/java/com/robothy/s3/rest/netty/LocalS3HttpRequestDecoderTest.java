@@ -82,6 +82,21 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   @Test
+  void keepsSemicolonsInQueryParameterValues() {
+    channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
+        "/bucket?list-type=2&prefix=a;b"), new DefaultLastHttpContent());
+
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
+    try {
+      assertEquals(List.of("a;b"), request.getParams().get("prefix"));
+      assertEquals(List.of("2"), request.getParams().get("list-type"));
+      assertFalse(request.getParams().containsKey("b"));
+    } finally {
+      request.getBody().release();
+    }
+  }
+
+  @Test
   void rejectsAnAsteriskFormTarget() {
     channel.writeInbound(new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.OPTIONS, "*"));
     assertRejected(channel, S3ErrorCode.BadRequest);

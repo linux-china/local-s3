@@ -465,7 +465,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
       reject(ctx, S3ErrorCode.BadRequest, "The request target is not supported.");
       return false;
     }
-    QueryStringDecoder queryStringDecoder = new QueryStringDecoder(uri);
+    // Only '&' separates parameters, like S3; netty also splits at ';' by default, so "prefix=a;b" became two.
+    QueryStringDecoder queryStringDecoder = QueryStringDecoder.builder().semicolonIsNormalChar(true).build(uri);
 
     builder = HttpRequest.builder()
         .method(request.method())

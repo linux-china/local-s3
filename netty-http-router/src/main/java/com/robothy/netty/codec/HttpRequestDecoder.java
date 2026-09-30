@@ -102,7 +102,8 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       String path;
       Map<String, List<String>> params;
       try {
-        QueryStringDecoder queryStringDecoder = new QueryStringDecoder(uri);
+        // Only '&' separates parameters (RFC 3986, WHATWG URL), netty also splits at ';' by default.
+        QueryStringDecoder queryStringDecoder = QueryStringDecoder.builder().semicolonIsNormalChar(true).build(uri);
         path = queryStringDecoder.path();
         params = queryStringDecoder.parameters();
       } catch (IllegalArgumentException e) {
