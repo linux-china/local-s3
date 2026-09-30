@@ -87,10 +87,13 @@ public class HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
       }
 
       // Header names are lower case; the values of a repeated header are joined by commas, in the order they were
-      // received (RFC 9110, section 5.3).
+      // received (RFC 9110, section 5.3), except Cookie, whose values are joined by "; " (RFC 6265, section 5.4).
       HashMap<String, String> headers = new HashMap<>();
-      httpRequest.headers().forEach(header -> headers.merge(header.getKey().toLowerCase(Locale.ROOT),
-          header.getValue().trim(), (values, value) -> values + "," + value));
+      httpRequest.headers().forEach(header -> {
+        String name = header.getKey().toLowerCase(Locale.ROOT);
+        String separator = HttpHeaderNames.COOKIE.contentEquals(name) ? "; " : ",";
+        headers.merge(name, header.getValue().trim(), (values, value) -> values + separator + value);
+      });
       // Parse the URI before allocating the body, a malformed one (e.g. "%zz") must not leave a half-built request.
       // An absolute-form target (e.g. "http://host/a") is converted to its path, "*" and others are not routable.
       RequestTargets.RequestTarget target = RequestTargets.parse(httpRequest.uri());

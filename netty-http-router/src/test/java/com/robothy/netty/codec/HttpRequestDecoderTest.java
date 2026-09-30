@@ -239,7 +239,9 @@ class HttpRequestDecoderTest {
     fullRequest.headers()
         .set(HttpHeaderNames.HOST, "localhost")
         .add("X-Amz-Meta-Tag", "a")
-        .add("x-amz-meta-tag", "b c");
+        .add("x-amz-meta-tag", "b c")
+        .add("Cookie", "a=1")
+        .add("cookie", "b=2");
     channel.writeInbound(fullRequest);
     HttpRequest request = channel.readInbound();
 
@@ -249,6 +251,8 @@ class HttpRequestDecoderTest {
     assertEquals("localhost", request.header("Host").orElseThrow());
     // The values of a repeated header are joined by commas, in the order they were received.
     assertEquals("a,b c", request.getHeaders().get("x-amz-meta-tag"));
+    // Cookie values are joined by "; " (RFC 6265, section 5.4).
+    assertEquals("a=1; b=2", request.getHeaders().get("cookie"));
     request.getBody().release();
     channel.finishAndReleaseAll();
   }
