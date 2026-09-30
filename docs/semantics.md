@@ -65,6 +65,13 @@ counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#kno
 + Every part of a multipart upload except the last one must be at least 5 MiB, the
   [minimum part size](https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html) of Amazon S3; otherwise
   `CompleteMultipartUpload` fails with `EntityTooSmall`. An upload with a single part may be of any size.
++ An object key must be at most 1024 bytes in UTF-8, and the user-defined metadata of an object at most 2 KB, the
+  UTF-8 encodings of the names, without their `x-amz-meta-` prefix, and of the values summed: the
+  [limits](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingMetadata.html) of Amazon S3. Otherwise
+  `PutObject`, `CopyObject`, `CreateMultipartUpload`, `POST Object` and `RenameObject` fail with `400 KeyTooLongError`
+  or `400 MetadataTooLarge`. The key of a browser form upload is checked once `${filename}` is replaced. Objects of an
+  existing data path stay readable whatever their keys and metadata. `ObjectLimitsIntegrationTest` checks these answers,
+  and runs the same scenarios against Amazon S3 with `./gradlew :local-s3-integration-test:realS3Test`.
 + `CompleteMultipartUpload` checks `x-amz-mp-object-size`, like Amazon S3: a size that isn't the sum of the parts
   fails with `400 InvalidRequest`, and one that isn't a non-negative number with `400 InvalidArgument`. The upload is
   kept, so it can be completed again with the right parts or aborted.

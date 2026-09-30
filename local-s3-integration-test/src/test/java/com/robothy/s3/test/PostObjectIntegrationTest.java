@@ -96,6 +96,26 @@ class PostObjectIntegrationTest {
     assertEquals("hello", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("a b.txt")).asUtf8String());
   }
 
+  /**
+   * The key is checked once {@code ${filename}} is replaced, since that is the key the object would be stored under.
+   */
+  @Test
+  @LocalS3(buckets = BUCKET)
+  void rejectsAKeyOrMetadataBeyondTheLimitsOfAmazonS3(S3Client s3, LocalS3Endpoint endpoint) throws Exception {
+    String prefix = "k".repeat(1020) + "/";
+    HttpResponse<String> tooLong = post(endpoint, BUCKET, Map.of("key", prefix + "${filename}"), "a.txt",
+        bytes("hello"));
+    assertEquals(400, tooLong.statusCode(), tooLong.body());
+    assertTrue(tooLong.body().contains("<Code>KeyTooLongError</Code>"), tooLong.body());
+
+    HttpResponse<String> tooLarge = post(endpoint, BUCKET,
+        Map.of("key", "large-metadata.txt", "x-amz-meta-a", "v".repeat(2048)), "a.txt", bytes("hello"));
+    assertEquals(400, tooLarge.statusCode(), tooLarge.body());
+    assertTrue(tooLarge.body().contains("<Code>MetadataTooLarge</Code>"), tooLarge.body());
+
+    assertEquals(0, s3.listObjectsV2(b -> b.bucket(BUCKET)).keyCount());
+  }
+
   @Test
   @LocalS3(buckets = BUCKET)
   void redirectsToTheSuccessActionRedirect(S3Client s3, LocalS3Endpoint endpoint) throws Exception {

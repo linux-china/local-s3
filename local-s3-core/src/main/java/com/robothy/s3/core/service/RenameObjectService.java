@@ -46,7 +46,7 @@ public interface RenameObjectService extends LocalS3MetadataApplicable, StorageA
    * @throws PreconditionFailedException if a condition doesn't hold.
    */
   default void renameObject(String bucketName, String key, RenameObjectOptions options) {
-    ObjectAssertions.assertObjectKeyIsValid(key);
+    ObjectAssertions.assertObjectKeyIsWritable(key);
     String sourceKey = options.getSourceKey();
     changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);

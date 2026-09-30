@@ -70,6 +70,11 @@ class AppendAndRenameObjectIntegrationTest {
 
     assertEquals(404, assertThrows(S3Exception.class, () -> s3.renameObject(b -> b.bucket(BUCKET).key("x.txt")
         .renameSource(BUCKET + "/missing.txt"))).statusCode());
+    S3Exception tooLong = assertThrows(S3Exception.class, () -> s3.renameObject(b -> b.bucket(BUCKET)
+        .key("k".repeat(1025)).renameSource(BUCKET + "/taken.txt")));
+    assertEquals(400, tooLong.statusCode());
+    assertEquals("KeyTooLongError", tooLong.awsErrorDetails().errorCode());
+    assertEquals("content", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("taken.txt")).asUtf8String());
     s3.putBucketVersioning(b -> b.bucket(BUCKET).versioningConfiguration(v -> v.status(BucketVersioningStatus.ENABLED)));
     assertEquals("InvalidRequest", assertThrows(S3Exception.class, () -> s3.renameObject(b -> b.bucket(BUCKET)
         .key("y.txt").renameSource(BUCKET + "/taken.txt"))).awsErrorDetails().errorCode());

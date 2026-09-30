@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.CustomerEncryptionAssertions;
+import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
@@ -67,6 +68,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   default PutObjectAns putObject(String bucketName, String key, PutObjectOptions options) {
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
     BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+    ObjectAssertions.assertObjectKeyIsWritable(key);
+    ObjectAssertions.assertUserMetadataIsValid(options.getUserMetadata());
     ObjectLockAssertions.assertRequestedObjectLockIsValid(options.getObjectLock(), System.currentTimeMillis());
     if (Objects.nonNull(options.getWriteOffsetBytes())) {
       return appendObject(bucketName, key, options);

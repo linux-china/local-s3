@@ -47,7 +47,8 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
     ObjectLockAssertions.assertRequestedObjectLockIsValid(options.getObjectLock(), System.currentTimeMillis());
     return changeBucket(bucket, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
-      ObjectAssertions.assertObjectKeyIsValid(key);
+      ObjectAssertions.assertObjectKeyIsWritable(key);
+      ObjectAssertions.assertUserMetadataIsValid(options.getUserMetadata());
       if (options.getObjectLock() != null && !options.getObjectLock().isEmpty()) {
         ObjectLockAssertions.assertObjectLockEnabled(bucketMetadata);
       }

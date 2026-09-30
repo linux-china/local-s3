@@ -13,9 +13,13 @@ import org.junit.jupiter.api.Test;
  */
 class RequestHeaderSizeTest {
 
-  private static String put(LocalS3 localS3, int metadataLength) throws Exception {
+  /**
+   * Put an object with a header of {@code headerLength} characters that LocalS3 ignores; not user-defined metadata,
+   * which is limited to 2 KB of its own.
+   */
+  private static String put(LocalS3 localS3, int headerLength) throws Exception {
     String request = "PUT /headers/key HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\n"
-        + "x-amz-meta-large: " + "a".repeat(metadataLength) + "\r\n\r\nx";
+        + "x-large: " + "a".repeat(headerLength) + "\r\n\r\nx";
     try (Socket socket = new Socket("127.0.0.1", localS3.getPort())) {
       socket.setSoTimeout(10_000);
       socket.getOutputStream().write(request.getBytes(StandardCharsets.ISO_8859_1));
