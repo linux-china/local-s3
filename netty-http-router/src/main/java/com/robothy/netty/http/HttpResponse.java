@@ -5,14 +5,16 @@ import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import lombok.Getter;
 
 @Getter
 public class HttpResponse {
 
-  private final Map<String, String> headers = new HashMap<>();
+  // Header names are case-insensitive (RFC 9110); a case-sensitive map would let "Content-Length" and
+  // "content-length" both be emitted.
+  private final Map<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
   private HttpResponseStatus status;
 

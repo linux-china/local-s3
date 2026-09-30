@@ -21,4 +21,14 @@ class HttpResponseTest {
     response.getBody().release();
   }
 
+  @Test
+  void headerNamesAreCaseInsensitive() {
+    HttpResponse response = new HttpResponse();
+    response.putHeader("Content-Length", 10);
+    response.getHeaders().putIfAbsent("content-length", "20");
+    assertEquals(1, response.getHeaders().size());
+    assertEquals("10", response.getHeaders().get("CONTENT-LENGTH"));
+    response.getBody().release();
+  }
+
 }
