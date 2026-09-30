@@ -27,6 +27,11 @@ public final class Route {
 
   private final Predicate<Map<String, List<String>>> paramMatcher;
 
+  /**
+   * The path without empty segments and with the path variable names left out, e.g. {@code /a/{}} of
+   * {@code /a//{id}/}; routes with the same method, trim path and matchers can't be told apart.
+   */
+  @Getter(AccessLevel.PACKAGE)
   private final String trimPath;
 
   /**
@@ -101,6 +106,17 @@ public final class Route {
   @Override
   public int hashCode() {
     return Objects.hash(method, trimPath, headerMatcher, paramMatcher);
+  }
+
+  /**
+   * The method and the path, and which matchers the route has, e.g. {@code GET /a/{id} [header matcher]}.
+   */
+  @Override
+  public String toString() {
+    String matchers = headerMatcher == null
+        ? (paramMatcher == null ? "" : " [param matcher]")
+        : (paramMatcher == null ? " [header matcher]" : " [header matcher, param matcher]");
+    return method + " " + path + matchers;
   }
 
   /**

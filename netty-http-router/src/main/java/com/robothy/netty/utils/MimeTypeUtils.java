@@ -1,7 +1,5 @@
 package com.robothy.netty.utils;
 
-import org.jspecify.annotations.Nullable;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -134,8 +132,7 @@ public class MimeTypeUtils {
   }
 
   /**
-   * Get the MIME type by the file name. Look up the extension in the built-in table first, then fall back to
-   * {@linkplain Files#probeContentType(Path)}, whose result depends on the platform.
+   * Get the MIME type by the file name. Look up the extension in the built-in table
    *
    * @param fileName file name or path, e.g. {@code static/index.html}.
    * @return the MIME type, never {@code null}; {@code application/octet-stream} if it is unknown.

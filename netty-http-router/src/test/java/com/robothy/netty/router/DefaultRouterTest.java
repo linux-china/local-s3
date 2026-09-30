@@ -423,6 +423,16 @@ class DefaultRouterTest {
   }
 
   @Test
+  void conflictingRouteIsNamedInError() {
+    DefaultRouter router = new DefaultRouter();
+    RouterHttpRequestHandler handler = Mockito.mock(RouterHttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/user/{id}", handler);
+    IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+        () -> router.route(HttpMethod.GET, "/user/{name}", handler));
+    assertEquals("The route GET /user/{name} conflicts with the registered route GET /user/{id}.", e.getMessage());
+  }
+
+  @Test
   void rejectInvalidPathVariables() {
     DefaultRouter router = new DefaultRouter();
     RouterHttpRequestHandler handler = Mockito.mock(RouterHttpRequestHandler.class);

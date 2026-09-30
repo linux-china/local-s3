@@ -22,8 +22,10 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.util.ReferenceCountUtil;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -211,6 +213,54 @@ class RouterRouterHttpRequestDecoderTest {
     channel.writeInbound(new DefaultLastHttpContent(body));
     assertEquals(0, body.refCnt());
     assertNull(channel.readInbound());
+
+    pendingWrites.forEach(ChannelPromise::setSuccess);
+    assertFalse(channel.isOpen());
+    channel.finishAndReleaseAll();
+  }
+
+  @Test
+  void dropPipelinedRequestAfterTooLargeRequest() {
+    DefaultHttpRequest tooLarge = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/upload");
+    tooLarge.headers().set(HttpHeaderNames.CONTENT_LENGTH, 5);
+    ByteBuf body = content("12345");
+    assertPipelinedRequestDropped(new RouterHttpRequestDecoder(4), HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE,
+        tooLarge, new DefaultLastHttpContent(body));
+    assertEquals(0, body.refCnt());
+  }
+
+  @Test
+  void dropPipelinedRequestAfterMalformedUri() {
+    assertPipelinedRequestDropped(new RouterHttpRequestDecoder(), HttpResponseStatus.BAD_REQUEST,
+        new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/bucket/%zz"), LastHttpContent.EMPTY_LAST_CONTENT);
+  }
+
+  /**
+   * Send {@code rejected} and then a pipelined {@code DELETE} while the rejection is still being written: the
+   * {@code DELETE} is dropped rather than handled, as its response would never be sent.
+   */
+  private static void assertPipelinedRequestDropped(RouterHttpRequestDecoder decoder, HttpResponseStatus status,
+                                                    HttpObject... rejected) {
+    // Hold the writes, so that the connection is still open when the next request arrives.
+    List<ChannelPromise> pendingWrites = new ArrayList<>();
+    List<Object> written = new ArrayList<>();
+    EmbeddedChannel channel = new EmbeddedChannel(new ChannelOutboundHandlerAdapter() {
+      @Override
+      public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        written.add(msg);
+        pendingWrites.add(promise);
+      }
+    }, decoder);
+    channel.writeInbound((Object[]) rejected);
+    assertEquals(1, written.size());
+    assertEquals(status, ((FullHttpResponse) written.get(0)).status());
+    written.forEach(ReferenceCountUtil::release);
+
+    ByteBuf deleteBody = content("");
+    channel.writeInbound(new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.DELETE, "/bucket/key", deleteBody));
+    assertNull(channel.readInbound());
+    assertEquals(0, deleteBody.refCnt());
+    assertEquals(1, written.size());
 
     pendingWrites.forEach(ChannelPromise::setSuccess);
     assertFalse(channel.isOpen());

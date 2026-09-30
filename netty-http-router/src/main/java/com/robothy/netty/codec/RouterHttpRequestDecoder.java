@@ -53,6 +53,13 @@ public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject
 
   private CompositeByteBuf body;
 
+  /**
+   * Set once a request is rejected; the connection is closed once the response is written. Until then, whatever else
+   * the client sends, e.g. a pipelined request, is dropped rather than handled, as its response would never be sent.
+   * The connection is still read, so that a client still sending the body receives the response rather than a reset.
+   */
+  private boolean rejected;
+
   public RouterHttpRequestDecoder() {
     this(DEFAULT_MAX_REQUEST_BODY_SIZE);
   }
@@ -70,6 +77,10 @@ public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject
 
   @Override
   protected void decode(ChannelHandlerContext ctx, HttpObject msg, List<Object> out) throws Exception {
+    if (rejected) {
+      // Released by MessageToMessageDecoder.
+      return;
+    }
     DecoderResult decoderResult = msg.decoderResult();
     if (decoderResult.isFailure()) {
       log.warn("Failed to decode the HTTP request, close the connection.", decoderResult.cause());
@@ -139,7 +150,6 @@ public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject
     }
 
     // Not "else if": a FullHttpRequest is both a HttpRequest and a LastHttpContent.
-    // The content of a rejected request (body == null) is dropped.
     if (msg instanceof HttpContent && body != null) {
       HttpContent httpContent = (HttpContent) msg;
       ByteBuf content = httpContent.content();
@@ -166,10 +176,11 @@ public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject
   }
 
   /**
-   * Drop the unfinished request, answer with {@code status} and close the connection. The content still to come is
-   * dropped since {@code body} is {@code null}.
+   * Drop the unfinished request, answer with {@code status} and close the connection. Everything still to come, the
+   * content of the request as well as the next requests, is dropped.
    */
   private void reject(ChannelHandlerContext ctx, HttpResponseStatus status, String message) {
+    rejected = true;
     releaseBody();
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status,
         Unpooled.copiedBuffer(message, StandardCharsets.UTF_8));

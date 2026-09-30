@@ -29,4 +29,13 @@ class RouteTest {
     assertEquals("", Route.builder().method(HttpMethod.GET).path("/").handler(HANDLER).build().getTrimPath());
   }
 
+  @Test
+  void toStringShowsMethodPathAndMatchers() {
+    Route.Builder builder = Route.builder().method(HttpMethod.PUT).path("/a/{id}").handler(HANDLER);
+    assertEquals("PUT /a/{id}", builder.build().toString());
+    assertEquals("PUT /a/{id} [param matcher]", builder.paramMatcher(ps -> true).build().toString());
+    assertEquals("PUT /a/{id} [header matcher, param matcher]", builder.headerMatcher(hs -> true).build().toString());
+    assertEquals("PUT /a/{id} [header matcher]", builder.paramMatcher(null).build().toString());
+  }
+
 }

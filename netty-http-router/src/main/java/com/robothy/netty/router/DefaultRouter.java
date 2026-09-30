@@ -17,14 +17,17 @@ import java.util.TreeSet;
 /**
  * A {@link Router} backed by a dictionary tree of path segments.
  *
- * <p>The tree and the route set are plain {@link HashMap}/{@link HashSet} instances without synchronization, so
+ * <p>The tree and the route map are plain {@link HashMap} instances without synchronization, so
  * {@link #route(Route)} must only be called before the server starts. Concurrent {@link #match(RouterHttpRequest)} calls
  * are safe once registration is finished and the router has been safely published to the I/O threads (e.g. by
  * starting the server after registration).
  */
 final class DefaultRouter extends AbstractRouter {
 
-  private final Set<Route> ruleSet = new HashSet<>();
+  /**
+   * The registered routes, each keyed by itself, to find the one that a new route conflicts with.
+   */
+  private final Map<Route, Route> routes = new HashMap<>();
 
   private final TreeNode root = new TreeNode();
 
@@ -71,10 +74,11 @@ final class DefaultRouter extends AbstractRouter {
       }
     }
 
-    if (ruleSet.contains(route)) {
-      throw new IllegalArgumentException("The router already has a handler for route " + route);
+    Route existing = routes.putIfAbsent(route, route);
+    if (existing != null) {
+      // The paths may differ, e.g. in the path variable names or in empty segments.
+      throw new IllegalArgumentException("The route " + route + " conflicts with the registered route " + existing + ".");
     }
-    ruleSet.add(route);
 
     TreeNode node = addNode(root, route.getMethod().name());
     for (int i = 0; i < route.segmentCount(); i++) {
