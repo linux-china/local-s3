@@ -127,7 +127,24 @@ router.route(HttpMethod.GET, "/export", (request, response) -> response
 A pipeline of your own needs a `ChunkedWriteHandler` between the HTTP codec and the `HttpResponseEncoder`, as
 `HttpServerInitializer` has. Request bodies are still aggregated in memory, up to the max request body size.
 
-### 2.4 Not found handler and exception handlers
+### 2.4 HEAD and 405 Method Not Allowed
+
+Two switches of `Router.router()`, both off by default:
+
+```java
+Router router = Router.router()
+    .route(HttpMethod.GET, "/user/{id}", handler)
+    // A HEAD request without a HEAD route is handled by the GET route, and answered without the body.
+    .headFallbackToGet(true)
+    // A request whose path matches routes of other methods only is answered with 405 and an Allow header,
+    // e.g. "POST /user/1" with "Allow: GET, HEAD", instead of the not found handler.
+    .methodNotAllowed(true);
+```
+
+The request is matched against the routes first, then, for a HEAD request, the GET routes, then the static resources,
+and only then answered with 405, or else with the not found handler.
+
+### 2.5 Not found handler and exception handlers
 
 You can set a not found handler and exception handlers for a Router.
 

@@ -14,6 +14,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.stream.ChunkedInput;
 import java.io.ByteArrayOutputStream;
 import java.io.EOFException;
@@ -415,6 +416,87 @@ class DefaultRouterTest {
     // The rejected routes are not registered, so they can be registered again once fixed.
     router.route(HttpMethod.GET, "/{id}/a/{name}", handler);
     router.route(HttpMethod.GET, "/b/{name}", handler);
+  }
+
+  private static HttpRequest request(HttpMethod method, String path) {
+    return HttpRequest.builder().method(method).uri(path).path(path).build();
+  }
+
+  @Test
+  void headFallbackAndMethodNotAllowedAreOffByDefault() {
+    Router router = new DefaultRouter().notFound(NOT_FOUND)
+        .route(HttpMethod.GET, "/user/{id}", (request, response) -> response.write("user"));
+    assertSame(NOT_FOUND, router.match(request(HttpMethod.HEAD, "/user/1")));
+    assertSame(NOT_FOUND, router.match(request(HttpMethod.POST, "/user/1")));
+  }
+
+  @Test
+  void headFallsBackToGet() {
+    HttpRequestHandler get = (request, response) -> response.write("get");
+    HttpRequestHandler head = (request, response) -> { };
+    Router router = new DefaultRouter().notFound(NOT_FOUND).headFallbackToGet(true)
+        .route(HttpMethod.GET, "/user/{id}", get)
+        .route(HttpMethod.GET, "/file", get)
+        .route(HttpMethod.HEAD, "/file", head);
+
+    HttpRequest request = request(HttpMethod.HEAD, "/user/1");
+    assertSame(get, router.match(request));
+    assertEquals("1", request.pathVariable("id").orElse(null));
+    // A HEAD route takes precedence.
+    assertSame(head, router.match(request(HttpMethod.HEAD, "/file")));
+    // Only HEAD falls back.
+    assertSame(NOT_FOUND, router.match(request(HttpMethod.POST, "/user/1")));
+  }
+
+  @Test
+  void methodNotAllowed(@TempDir Path directory) throws Exception {
+    HttpRequestHandler handler = (request, response) -> { };
+    Router router = new DefaultRouter().notFound(NOT_FOUND).methodNotAllowed(true)
+        .route(HttpMethod.GET, "/user/{id}", handler)
+        .route(HttpMethod.DELETE, "/user/{id}", handler)
+        .route(HttpMethod.POST, "/upload", handler);
+
+    HttpRequest post = request(HttpMethod.POST, "/user/1");
+    HttpResponse response = new HttpResponse();
+    router.match(post).handle(post, response);
+    assertEquals(HttpResponseStatus.METHOD_NOT_ALLOWED, response.getStatus());
+    assertEquals("DELETE, GET", response.getHeaders().get("allow"));
+    response.getBody().release();
+
+    // A path that no route of any method matches is not found.
+    assertSame(NOT_FOUND, router.match(request(HttpMethod.POST, "/user/1/profile")));
+
+    // HEAD is allowed along with GET when it falls back to it.
+    router.headFallbackToGet(true);
+    response = new HttpResponse();
+    router.match(post).handle(post, response);
+    assertEquals("DELETE, GET, HEAD", response.getHeaders().get("allow"));
+    response.getBody().release();
+
+    // A static resource is served before the request is answered with 405.
+    Files.writeString(directory.resolve("upload"), "file");
+    router.staticResource(directory.toString());
+    HttpRequest get = getRequest("/upload");
+    response = new HttpResponse();
+    router.match(get).handle(get, response);
+    assertEquals("file", new String(readBody(response), StandardCharsets.UTF_8));
+  }
+
+  @Test
+  void headFallbackAndMethodNotAllowedNeedDefaultRouter() {
+    Router router = new AbstractRouter() {
+      @Override
+      public Router route(Route rule) {
+        return this;
+      }
+
+      @Override
+      public HttpRequestHandler match(HttpRequest request) {
+        return notFoundHandler();
+      }
+    };
+    assertThrows(UnsupportedOperationException.class, () -> router.headFallbackToGet(true));
+    assertThrows(UnsupportedOperationException.class, () -> router.methodNotAllowed(true));
   }
 
   private static HttpRequest getRequest(String path) {

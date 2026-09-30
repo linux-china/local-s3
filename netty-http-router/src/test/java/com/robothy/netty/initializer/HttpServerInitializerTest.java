@@ -259,6 +259,39 @@ class HttpServerInitializerTest {
   }
 
   @Test
+  void headFallsBackToGetWithoutBody() throws Exception {
+    Router router = Router.router().headFallbackToGet(true)
+        .route(HttpMethod.GET, "/hello", (request, response) -> response.write("Hello"));
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    EventLoopGroup group = new NioEventLoopGroup(1);
+    Channel serverChannel = new ServerBootstrap().group(group)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new HttpServerInitializer(executor, router))
+        .bind(0)
+        .sync()
+        .channel();
+    try (Socket socket = new Socket("localhost", ((InetSocketAddress) serverChannel.localAddress()).getPort())) {
+      socket.setSoTimeout(10_000);
+      socket.getOutputStream().write(("HEAD /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"
+          + "GET /hello HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+          .getBytes(StandardCharsets.US_ASCII));
+      String responses = new String(socket.getInputStream().readAllBytes(), StandardCharsets.US_ASCII);
+
+      String[] parts = responses.split("\r\n\r\n", -1);
+      assertEquals(3, parts.length, responses);
+      // The Content-Length of the GET response, without its body.
+      assertTrue(parts[0].startsWith("HTTP/1.1 200 OK"), responses);
+      assertTrue(parts[0].contains("content-length: 5"), responses);
+      assertTrue(parts[1].startsWith("HTTP/1.1 200 OK"), responses);
+      assertEquals("Hello", parts[2]);
+    } finally {
+      serverChannel.close().sync();
+      group.shutdownGracefully();
+      executor.shutdownGracefully();
+    }
+  }
+
+  @Test
   void headResponseHasNoBody() throws Exception {
     Router router = Router.router()
         .route(HttpMethod.HEAD, "/hello", (request, response) -> response.write("Hello"))

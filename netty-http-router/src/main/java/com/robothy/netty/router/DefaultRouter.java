@@ -2,6 +2,9 @@ package com.robothy.netty.router;
 
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -9,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * A {@link Router} backed by a dictionary tree of path segments.
@@ -29,9 +33,25 @@ final class DefaultRouter extends AbstractRouter {
    */
   private StaticResourceMatcher staticResourceMatcher;
 
+  private boolean headFallbackToGet;
+
+  private boolean methodNotAllowed;
+
   @Override
   public Router staticResource(String rootPath) {
     this.staticResourceMatcher = StaticResourceMatcher.create(rootPath);
+    return this;
+  }
+
+  @Override
+  public Router headFallbackToGet(boolean enabled) {
+    this.headFallbackToGet = enabled;
+    return this;
+  }
+
+  @Override
+  public Router methodNotAllowed(boolean enabled) {
+    this.methodNotAllowed = enabled;
     return this;
   }
 
@@ -84,23 +104,60 @@ final class DefaultRouter extends AbstractRouter {
   @Override
   public HttpRequestHandler match(HttpRequest request) {
     HttpRequestHandler handler;
-    if (null != (handler = matchHandler(request))) {
+    if (null != (handler = matchHandler(request, request.getMethod()))) {
+      return handler;
+    }
+    // The body of the GET response is dropped by the codec, which pairs the response with the HEAD request.
+    if (headFallbackToGet && HttpMethod.HEAD.equals(request.getMethod())
+        && null != (handler = matchHandler(request, HttpMethod.GET))) {
       return handler;
     }
     if (staticResourceMatcher != null && null != (handler = staticResourceMatcher.match(request))) {
       return handler;
     }
+    if (methodNotAllowed && null != (handler = methodNotAllowedHandler(request))) {
+      return handler;
+    }
     return super.notFoundHandler();
   }
 
-  private HttpRequestHandler matchHandler(HttpRequest request) {
+  /**
+   * Answer with {@code 405 Method Not Allowed} if routes of other methods match the request.
+   *
+   * @return the handler; or {@code null} if no route of any method matches.
+   */
+  private HttpRequestHandler methodNotAllowedHandler(HttpRequest request) {
+    if (request.getPath() == null || !request.getPath().startsWith("/")) {
+      return null;
+    }
+    String[] segments = Route.splitPath(request.getPath());
+    Set<String> allowed = new TreeSet<>();
+    root.exactChildren.forEach((method, node) -> {
+      if (matchRoute(node, segments, 0, request) != null) {
+        allowed.add(method);
+      }
+    });
+    if (headFallbackToGet && allowed.contains(HttpMethod.GET.name())) {
+      allowed.add(HttpMethod.HEAD.name());
+    }
+    if (allowed.isEmpty()) {
+      return null;
+    }
+    String allow = String.join(", ", allowed);
+    return (req, response) -> response.status(HttpResponseStatus.METHOD_NOT_ALLOWED)
+        .putHeader(HttpHeaderNames.ALLOW.toString(), allow)
+        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
+        .write("Netty HTTP Router: 405 Method Not Allowed.");
+  }
+
+  private HttpRequestHandler matchHandler(HttpRequest request, HttpMethod method) {
     request.setPathVariables(Map.of());
     // A request target that is not in the origin-form, e.g. "*", matches no route.
     if (request.getPath() == null || !request.getPath().startsWith("/")) {
       return null;
     }
     String[] segments = Route.splitPath(request.getPath());
-    TreeNode node = root.exactChildren.get(request.getMethod().name());
+    TreeNode node = root.exactChildren.get(method.name());
     if (node == null) {
       return null;
     }

@@ -17,7 +17,8 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * </ul>
  *
  * <p><b>Thread safety:</b> the registration methods ({@link #route(Route)}, {@link #notFound(HttpRequestHandler)},
- * {@link #staticResource(String)}, {@link #exceptionHandler(Class, ExceptionHandler)} and
+ * {@link #staticResource(String)}, {@link #headFallbackToGet(boolean)}, {@link #methodNotAllowed(boolean)},
+ * {@link #exceptionHandler(Class, ExceptionHandler)} and
  * {@link #interfaceExceptionHandler(Class, ExceptionHandler)}) are not thread-safe. Register everything <b>before the
  * server starts</b> and do not modify the router afterwards; {@link #match(HttpRequest)} and
  * {@link #findExceptionHandler(Class)} are safe to call concurrently once registration is done.
@@ -75,6 +76,32 @@ public interface Router {
    */
   default Router staticResource(String rootPath) {
     throw new UnsupportedOperationException(getClass().getName() + " doesn't serve static resources.");
+  }
+
+  /**
+   * Whether a {@code HEAD} request that no {@code HEAD} route matches is handled by the {@code GET} route of the same
+   * path, as RFC 9110 (section 9.3.2) expects of a resource that supports {@code GET}. The response keeps the headers
+   * of the {@code GET} response, e.g. its {@code Content-Length}, without the body. Off by default.
+   *
+   * @param enabled {@code true} to fall back to {@code GET} routes.
+   * @return this.
+   * @throws UnsupportedOperationException if this router doesn't support it; the default.
+   */
+  default Router headFallbackToGet(boolean enabled) {
+    throw new UnsupportedOperationException(getClass().getName() + " doesn't support falling back to GET routes.");
+  }
+
+  /**
+   * Whether a request whose path matches routes of other methods only is answered with
+   * {@code 405 Method Not Allowed} and an {@code Allow} header listing those methods, instead of the not found
+   * handler. Static resources are tried first. Off by default.
+   *
+   * @param enabled {@code true} to answer with {@code 405 Method Not Allowed}.
+   * @return this.
+   * @throws UnsupportedOperationException if this router doesn't support it; the default.
+   */
+  default Router methodNotAllowed(boolean enabled) {
+    throw new UnsupportedOperationException(getClass().getName() + " doesn't support 405 Method Not Allowed.");
   }
 
   /**
