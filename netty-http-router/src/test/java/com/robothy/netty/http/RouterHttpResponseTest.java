@@ -1,6 +1,7 @@
 package com.robothy.netty.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import java.util.List;
 import java.nio.charset.StandardCharsets;
@@ -49,6 +50,27 @@ class RouterHttpResponseTest {
     response.getHeaders().remove("set-cookie");
     assertEquals(List.of(), response.getHeaderValues("Set-Cookie"));
     assertNull(response.getHeaders().get("Set-Cookie"));
+    response.getBody().release();
+  }
+
+  @Test
+  void nullHeaderValueIsNotSent() {
+    RouterHttpResponse response = new RouterHttpResponse();
+    // putHeader with null removes every value of the header.
+    response.addHeader("Set-Cookie", "a=1").addHeader("Set-Cookie", "b=2");
+    response.putHeader("set-cookie", null);
+    assertFalse(response.getHeaders().containsKey("Set-Cookie"));
+    assertEquals(List.of(), response.getHeaderValues("Set-Cookie"));
+
+    // A header that isn't there stays absent.
+    response.putHeader("Content-Type", null);
+    assertFalse(response.getAllHeaders().containsKey("Content-Type"));
+
+    // addHeader with null keeps the values the header had.
+    response.addHeader("Vary", "Origin").addHeader("Vary", null);
+    assertEquals(List.of("Origin"), response.getHeaderValues("Vary"));
+    response.addHeader("X-Empty", null);
+    assertFalse(response.getAllHeaders().containsKey("X-Empty"));
     response.getBody().release();
   }
 

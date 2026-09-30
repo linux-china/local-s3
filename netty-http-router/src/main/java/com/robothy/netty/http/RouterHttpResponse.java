@@ -114,18 +114,28 @@ public class RouterHttpResponse {
 
   /**
    * Set a header, replacing all the values it had.
+   *
+   * @param value the header value; {@code null} removes the header rather than sending the text "null".
    */
   public RouterHttpResponse putHeader(String key, Object value) {
-    headers.put(key, String.valueOf(value));
+    if (value == null) {
+      headers.remove(key);
+    } else {
+      headers.put(key, String.valueOf(value));
+    }
     return this;
   }
 
   /**
    * Add a value to a header, keeping the values it had, e.g. for {@code Set-Cookie}, whose values can't be joined with
    * commas. Each value is sent as a header line of its own.
+   *
+   * @param value the header value; {@code null} is ignored rather than sent as the text "null".
    */
   public RouterHttpResponse addHeader(String key, Object value) {
-    headerValues.computeIfAbsent(key, k -> new ArrayList<>(1)).add(String.valueOf(value));
+    if (value != null) {
+      headerValues.computeIfAbsent(key, k -> new ArrayList<>(1)).add(String.valueOf(value));
+    }
     return this;
   }
 
