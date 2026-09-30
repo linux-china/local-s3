@@ -140,15 +140,11 @@ public class MimeTypeUtils {
    * @param fileName file name or path, e.g. {@code static/index.html}.
    * @return the MIME type, never {@code null}; {@code application/octet-stream} if it is unknown.
    */
-  @Nullable
   public static String mimeTypeByFileName(String fileName) {
     Objects.requireNonNull(fileName, "The file name shouldn't be null.");
     String name = fileName.substring(Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\')) + 1);
     int dot = name.lastIndexOf('.');
-    if (dot >= 0) {
-        return extensionToMimeType.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
-    }
-    return null;
+    return dot < 0 ? DEFAULT_MIME_TYPE : mimeTypeByFileExtension(name.substring(dot + 1));
   }
 
 }
