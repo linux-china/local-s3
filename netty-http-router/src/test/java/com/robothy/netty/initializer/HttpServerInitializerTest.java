@@ -1,6 +1,7 @@
 package com.robothy.netty.initializer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.router.Router;
 import io.netty.bootstrap.ServerBootstrap;
@@ -173,6 +174,20 @@ class HttpServerInitializerTest {
       assertEquals(HttpServerInitializer.DEFAULT_MAX_CHUNK_SIZE, config.getMaxChunkSize());
       assertEquals(2048, config.getMaxInitialLineLength());
       assertEquals(4096, config.getMaxHeaderSize());
+    } finally {
+      executor.shutdownGracefully();
+    }
+  }
+
+  @Test
+  void invalidLimitsAreRejectedByConstructor() {
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    try {
+      Router router = Router.router();
+      assertThrows(IllegalArgumentException.class, () -> new HttpServerInitializer(executor, router, 0));
+      assertThrows(IllegalArgumentException.class, () -> new HttpServerInitializer(executor, router, -1));
+      assertThrows(IllegalArgumentException.class, () -> new HttpServerInitializer(executor, router, 1024, 0, 4096));
+      assertThrows(IllegalArgumentException.class, () -> new HttpServerInitializer(executor, router, 1024, 2048, 0));
     } finally {
       executor.shutdownGracefully();
     }

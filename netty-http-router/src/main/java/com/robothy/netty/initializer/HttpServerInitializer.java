@@ -46,7 +46,7 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   /**
-   * @param maxRequestBodySize max request body size in bytes, a larger request is answered with
+   * @param maxRequestBodySize max request body size in bytes, positive; a larger request is answered with
    *                           {@code 413 Request Entity Too Large}.
    */
   public HttpServerInitializer(EventExecutorGroup executorGroup, Router router, int maxRequestBodySize) {
@@ -54,13 +54,17 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   /**
-   * @param maxRequestBodySize   max request body size in bytes, a larger request is answered with
+   * @param maxRequestBodySize   max request body size in bytes, positive; a larger request is answered with
    *                             {@code 413 Request Entity Too Large}.
    * @param maxInitialLineLength max length in bytes of the request line, positive.
    * @param maxHeaderSize        max size in bytes of the header section of a request, positive.
    */
   public HttpServerInitializer(EventExecutorGroup executorGroup, Router router, int maxRequestBodySize,
                                int maxInitialLineLength, int maxHeaderSize) {
+    // Checked here rather than by the decoder, which is only created for each connection.
+    if (maxRequestBodySize <= 0) {
+      throw new IllegalArgumentException("maxRequestBodySize must be positive.");
+    }
     if (maxInitialLineLength <= 0) {
       throw new IllegalArgumentException("maxInitialLineLength must be positive.");
     }
