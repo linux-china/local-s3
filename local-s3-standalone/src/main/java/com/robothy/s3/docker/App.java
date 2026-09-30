@@ -57,21 +57,22 @@ public class App {
             return;
         }
         LocalS3Config localS3Config = localS3.getConfig();
+        // One line, so that collectors that split logs by line (docker logs, Loki, CloudWatch) keep it one entry.
         List<String> hint = new ArrayList<>();
-        hint.add("- Mode: " + localS3Config.mode());
-        hint.add("- Port: " + localS3Config.port());
+        hint.add("mode=" + localS3Config.mode());
+        hint.add("port=" + localS3Config.port());
         if (localS3Config.dataPath() != null) {
-            hint.add("- Data Path: " + localS3Config.dataPath());
+            hint.add("dataPath=" + localS3Config.dataPath());
         }
         if (localS3Config.authenticationEnabled()) {
-            hint.add("- Authentication: Access Key("
-                    + LocalS3Environment.maskAccessKeyId(localS3Config.accessKeyId()) + ")");
+            hint.add("accessKeyId=" + LocalS3Environment.maskAccessKeyId(localS3Config.accessKeyId()));
         }
         if (localS3Config.tlsEnabled()) {
             // The certificate itself is logged by the service, which prints a generated one in PEM format.
-            hint.add("- HTTPS: " + localS3Config.tls().describe());
+            // The description has commas of its own, so it is bracketed to keep it one field.
+            hint.add("https=[" + localS3Config.tls().describe() + "]");
         }
-        log.info("Starting LocalS3: {}", String.join("\n", hint));
+        log.info("Starting LocalS3: {}", String.join(", ", hint));
         try {
             localS3.start();
         } catch (Exception e) {
