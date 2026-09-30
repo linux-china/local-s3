@@ -65,6 +65,39 @@ your own user instead, and keep the ownership of the directory, start the contai
 
 `local-s3-standalone/docker-compose.yaml` starts both images side by side, on ports `29090` and `39090`.
 
+### JVM options
+
+The JVM based image starts in about half the time that a plain `java -jar` takes, thanks to an
+[AppCDS](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html) archive, `/app/app.jsa`, that the image
+build creates by running the service and sending it the common S3, S3 Vectors and Iceberg requests. The image always
+starts with `-XX:SharedArchiveFile=/app/app.jsa`, whatever `JAVA_OPTS` says; a JVM that can't use the archive, e.g.
+because another jar is mounted over `/app/s3.jar`, warns and starts without it.
+
+`JAVA_OPTS` defaults to `-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC`: the heap is sized by the memory limit of the
+container, and the Serial GC takes less memory and CPU than G1 for the heaps below a few GB that a test or development
+service has. Set `-XX:+UseG1GC` in `JAVA_OPTS` for a service with a large heap.
+
+A short-lived container, e.g. one per test class in [Testcontainers](embedding.md#testcontainers), starts faster and takes less
+memory still with a minimal configuration for tests:
+
+```shell
+docker run -d -p 29090:29090 -e LOCAL_S3_MODE=IN_MEMORY \
+    -e JAVA_OPTS="-Xss256k -XX:+UseSerialGC -XX:MaxRAMPercentage=50 -XX:TieredStopAtLevel=1" luofuxiang/local-s3
+```
+
+```java
+new LocalS3Container("latest")
+    .withMode(LocalS3Container.Mode.IN_MEMORY)
+    .withEnv("JAVA_OPTS", "-Xss256k -XX:+UseSerialGC -XX:MaxRAMPercentage=50 -XX:TieredStopAtLevel=1");
+```
+
+| Option | Effect |
+|---|---|
+| `-Xss256k` | Smaller stacks of the platform threads. The requests run on virtual threads, whose stacks grow on the heap. |
+| `-XX:+UseSerialGC` | The GC that takes the least memory and CPU for a small heap. |
+| `-XX:MaxRAMPercentage=50` | Leaves half the memory limit of the container to the JVM beyond its heap and to the page cache. |
+| `-XX:TieredStopAtLevel=1` | Compiles with C1 alone, which warms up faster; the peak throughput is lower, so leave it out for large uploads or benchmarks. |
+
 ## Executable jar
 
 The same service runs without Docker. `local-s3-standalone` is published to Maven Central as an executable
@@ -155,7 +188,7 @@ logging variables, which the logging configuration of the jar and the image read
 | `LOCAL_S3_TLS_REQUIRED` | `false` | Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port, so that a plain HTTP request fails. No effect without a certificate; see [HTTPS](#https). |
 | `LOCAL_S3_LOGGING_LEVEL` | `INFO` | The level of the log of the jar and the image, e.g. `DEBUG`. |
 | `LOCAL_S3_LOG_COLOR` | `false` | `true` colors the log for a terminal. Off by default, so that `docker logs`, CI logs and log files hold no escape sequences. The log is timestamped in the time zone of the process, with its offset, e.g. `2026-09-30T13:31:01.319+02:00`; set `TZ` to change it, e.g. `TZ=UTC` for a container. |
-| `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
+| `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC` | JVM options of the JVM based image; see [JVM options](#jvm-options). |
 
 The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them
 from the environment or from the system properties of the same names. Only the variables that are set are

@@ -10,6 +10,11 @@ COPY --chown=locals3:locals3 build/libs/s3.jar /app/s3.jar
 
 WORKDIR /app
 
+# AppCDS: archive the classes that the service loads to start and to answer the common requests, which about halves
+# its startup time. The archive is only valid for this JDK and this jar at this path; a JVM that can't use it, e.g.
+# with another jar mounted over /app/s3.jar, warns and starts without it.
+RUN --mount=type=bind,source=cds-training.sh,target=/tmp/cds-training.sh bash /tmp/cds-training.sh /app/s3.jar /app/app.jsa
+
 # The data directory of a PERSISTENCE service, which this image runs by default. It has to belong to the user
 # the service runs as, and before VOLUME: an anonymous volume, i.e. the one that `docker run` without a bind
 # mount creates, is initialized from this directory of the image, its ownership included, so a /data left to
@@ -35,7 +40,9 @@ ENV LOCAL_S3_MODE=PERSISTENCE
 # client credentials of one there: keep reading them as the credentials of the service, as the image always did.
 ENV LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true
 
-# Size the heap by the memory limit of the container. Override JAVA_OPTS to tune the JVM.
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+# Size the heap by the memory limit of the container, and collect it with the Serial GC, which takes the least memory
+# and CPU for the heaps of a few GB that a test or development service has. Override JAVA_OPTS to tune the JVM, e.g.
+# with -XX:+UseG1GC for a large heap. The AppCDS archive is used whatever JAVA_OPTS says.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC"
 
-CMD exec java $JAVA_OPTS -jar s3.jar
+CMD exec java -XX:SharedArchiveFile=/app/app.jsa $JAVA_OPTS -jar s3.jar
