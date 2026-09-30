@@ -69,7 +69,9 @@ your own user instead, and keep the ownership of the directory, start the contai
 
 The JVM based image starts in about half the time that a plain `java -jar` takes, thanks to an
 [AppCDS](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html) archive, `/app/app.jsa`, that the image
-build creates by running the service and sending it the common S3, S3 Vectors and Iceberg requests. The image always
+build creates by running the service the way the image runs it, in `PERSISTENCE` mode and with credentials, and
+sending it the common S3, S3 Vectors and Iceberg requests, signed with SigV4 like the requests of the AWS SDKs, DuckDB
+and s5cmd, including bodies larger than 4 MiB, `aws-chunked` bodies and a presigned URL. The image always
 starts with `-XX:SharedArchiveFile=/app/app.jsa`, whatever `JAVA_OPTS` says; a JVM that can't use the archive, e.g.
 because another jar is mounted over `/app/s3.jar`, warns and starts without it.
 
