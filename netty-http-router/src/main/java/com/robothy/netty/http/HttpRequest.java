@@ -50,7 +50,10 @@ public class HttpRequest {
   private HttpRequest(Map<String, String> headers, Map<String, List<String>> params, Map<String, String> pathVariables,
                       String path, String uri, HttpMethod method, ByteBuf body, HttpVersion httpVersion) {
     this.headers = headers == null ? new HashMap<>() : new HashMap<>(headers);
-    this.params = params == null ? new HashMap<>() : new HashMap<>(params);
+    this.params = new HashMap<>();
+    if (params != null) {
+      params.forEach((name, values) -> this.params.put(name, List.copyOf(values)));
+    }
     this.pathVariables = pathVariables == null ? Map.of() : pathVariables;
     this.path = path;
     this.uri = uri;
@@ -71,7 +74,7 @@ public class HttpRequest {
   /**
    * Query parameters, read-only. Use {@linkplain #putParameter(String, List)} to add a parameter while routing.
    *
-   * @return an unmodifiable view of the query parameters.
+   * @return an unmodifiable view of the query parameters; each value list is immutable as well.
    */
   public Map<String, List<String>> getParams() {
     return Collections.unmodifiableMap(params);
