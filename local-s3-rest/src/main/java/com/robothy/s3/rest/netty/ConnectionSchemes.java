@@ -3,10 +3,7 @@ package com.robothy.s3.rest.netty;
 import com.robothy.netty.http.HttpRequest;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
-import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
-import java.util.WeakHashMap;
 
 /**
  * The scheme that a request reached the service by, {@code http} or {@code https}, which a port that answers both,
@@ -14,14 +11,12 @@ import java.util.WeakHashMap;
  * upload names the URL of the object it stored, and a client that posted the form over plain HTTP to a service that
  * also serves HTTPS is given an {@code http} URL rather than one it can't use.
  *
- * <p>{@linkplain com.robothy.netty.http.HttpRequest} carries nothing but what the client sent, so the scheme of a
- * request is kept here instead of in the request, by the identity of the request and only while it exists: the keys
- * are weak, and compared by identity, since {@code HttpRequest} doesn't override {@code equals}. An entry is dropped
- * with the request it belongs to, and no request of a client can read another's.
+ * <p>The scheme is an attribute of the connection. {@linkplain com.robothy.netty.http.HttpRequest} carries nothing but
+ * what the client sent, so the scheme of a request travels with it as a {@linkplain ReceivedRequest}, which is bound to
+ * the thread that handles the request, and nothing is kept by request.
  *
- * <p>Only the connections of a port that answers both schemes are recorded, see {@linkplain #mixed}: where the port
- * serves one of them, every request arrived by that one, and the caller reads it off the configuration instead. So a
- * service that serves plain HTTP, which is the usual one, keeps nothing here at all.
+ * <p>Only the connections of a port that answers both schemes have one, see {@linkplain #mixed}: where the port serves
+ * one of them, every request arrived by that one, and the caller reads it off the configuration instead.
  */
 public final class ConnectionSchemes {
 
@@ -39,8 +34,6 @@ public final class ConnectionSchemes {
    */
   private static final AttributeKey<Boolean> ENCRYPTED =
       AttributeKey.valueOf(ConnectionSchemes.class, "encrypted");
-
-  private static final Map<HttpRequest, String> SCHEMES = Collections.synchronizedMap(new WeakHashMap<>());
 
   private ConnectionSchemes() {
   }
@@ -64,16 +57,17 @@ public final class ConnectionSchemes {
   }
 
   /**
-   * Record the scheme of a decoded request, from the connection it arrived on. A connection of a port that serves one
-   * scheme is left out: nothing about it is worth a lookup, since every request of the service arrived the same way.
+   * The scheme of the requests of a connection, if it arrived on a port that answers both.
    *
-   * @param channel the connection that the request arrived on.
-   * @param request the decoded request.
+   * @param channel the connection.
+   * @return {@code "https"} or {@code "http"}; {@code null} for a connection of a port that serves one scheme, since
+   *     every request of the service arrived the same way.
    */
-  static void record(Channel channel, HttpRequest request) {
-    if (Boolean.TRUE.equals(channel.attr(MIXED).get())) {
-      SCHEMES.put(request, Boolean.TRUE.equals(channel.attr(ENCRYPTED).get()) ? HTTPS : HTTP);
+  static String of(Channel channel) {
+    if (!Boolean.TRUE.equals(channel.attr(MIXED).get())) {
+      return null;
     }
+    return Boolean.TRUE.equals(channel.attr(ENCRYPTED).get()) ? HTTPS : HTTP;
   }
 
   /**
@@ -85,7 +79,7 @@ public final class ConnectionSchemes {
    *     connection decoded at all, e.g. one built by a test.
    */
   public static Optional<String> of(HttpRequest request) {
-    return Optional.ofNullable(SCHEMES.get(request));
+    return ReceivedRequest.of(request).map(ReceivedRequest::scheme);
   }
 
 }

@@ -14,6 +14,7 @@ import com.robothy.s3.rest.model.request.BucketRegion;
 import com.robothy.s3.rest.netty.ChunkSignatures;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestBodies;
+import com.robothy.s3.rest.netty.ReceivedRequest;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
 import com.robothy.s3.rest.utils.SigV4Requests;
 import com.robothy.s3.rest.utils.VirtualHostParser;
@@ -21,7 +22,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -31,7 +31,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.WeakHashMap;
 
 
 /**
@@ -104,21 +103,6 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   private final Map<Route, String> operations = new IdentityHashMap<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
-
-  /**
-   * The verified heads of the requests whose bodies are being received, by the head that the decoder verified.
-   * Weak, and compared by identity, since {@linkplain HttpRequest} doesn't override {@code equals}: an entry is dropped
-   * with a request that is abandoned, e.g. by a closed connection, and no request of a client can reach another's.
-   */
-  private final Map<HttpRequest, AwsSignatureV4Verifier.VerifiedHead> headsBeingReceived =
-      Collections.synchronizedMap(new WeakHashMap<>());
-
-  /**
-   * The verified heads of the requests whose bodies are received, by the complete request, which
-   * {@linkplain #match} verifies only the body of.
-   */
-  private final Map<HttpRequest, AwsSignatureV4Verifier.VerifiedHead> receivedRequests =
-      Collections.synchronizedMap(new WeakHashMap<>());
 
   private final VirtualHostParser virtualHostParser;
 
@@ -369,8 +353,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         && PostObjectController.OPERATION.equals(handler.operation());
     if (requiresAuthentication(request) && !authenticatedByForm && website == null) {
       // A request whose head was verified before its body was received has only its body verified.
-      AwsSignatureV4Verifier.VerificationResult result =
-          signatureVerifier.verifyBody(request, receivedRequests.remove(request));
+      AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verifyBody(request, verifiedHead(request));
       if (!result.authenticated()) {
         return new OperationHandler(AUTHENTICATION_FAILURE_OPERATION, new AuthenticationFailureHandler(result));
       }
@@ -478,12 +461,12 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   /**
    * Verify the signature of a request before its body is received, so that a request with an invalid signature
-   * doesn't get to upload its body. What was verified is kept, and handed to the complete request by
-   * {@linkplain #requestReceived}, so that {@linkplain #match} only verifies what depends on the body: the payload hash
-   * and the chunk signatures.
+   * doesn't get to upload its body. What was verified is the state of the accepted head, which the decoder of the
+   * connection hands on with the complete request, see {@linkplain #requestReceived}, so that {@linkplain #match} only
+   * verifies what depends on the body: the payload hash and the chunk signatures.
    */
   @Override
-  public RequestHeadVerifier.Rejection verifyHead(HttpRequest head) {
+  public RequestHeadVerifier.Outcome verifyHead(HttpRequest head) {
     // The credentials of a form upload are fields of its body, so it can only be verified once the body is received.
     // An STS or KMS request is small, and verified once it is received, so that a rejection is answered in the error
     // format of that service.
@@ -501,18 +484,29 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     if (!result.authenticated()) {
       return new RequestHeadVerifier.Rejection(result.errorCode(), result.message());
     }
-    headsBeingReceived.put(head, verification.verifiedHead());
-    return null;
+    return new RequestHeadVerifier.Accepted(verification.verifiedHead());
   }
 
   @Override
-  public void requestReceived(HttpRequest head, HttpRequest request) {
-    AwsSignatureV4Verifier.VerifiedHead verifiedHead = headsBeingReceived.remove(head);
-    if (verifiedHead != null) {
-      // An aws-chunked body that was decoded while it was received had its chunk signatures verified already.
-      receivedRequests.put(request, RequestBodies.awsChunkedTrailer(request.getBody()).isPresent()
-          ? AwsSignatureV4Verifier.VerifiedHead.COMPLETE : verifiedHead);
+  public Object requestReceived(HttpRequest head, HttpRequest request, Object state) {
+    if (!(state instanceof AwsSignatureV4Verifier.VerifiedHead verifiedHead)) {
+      return null;
     }
+    // An aws-chunked body that was decoded while it was received had its chunk signatures verified already.
+    return RequestBodies.awsChunkedTrailer(request.getBody()).isPresent()
+        ? AwsSignatureV4Verifier.VerifiedHead.COMPLETE : verifiedHead;
+  }
+
+  /**
+   * What {@linkplain #verifyHead} verified of a request before its body was received, which the decoder handed on with
+   * the request; {@code null} if nothing was.
+   */
+  private static AwsSignatureV4Verifier.VerifiedHead verifiedHead(HttpRequest request) {
+    return ReceivedRequest.of(request)
+        .map(ReceivedRequest::verification)
+        .filter(AwsSignatureV4Verifier.VerifiedHead.class::isInstance)
+        .map(AwsSignatureV4Verifier.VerifiedHead.class::cast)
+        .orElse(null);
   }
 
   /**
@@ -521,12 +515,12 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * received, and verified whole once it is.
    */
   @Override
-  public ChunkSignatures chunkSignatures(HttpRequest head) {
+  public ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
     if (!requiresAuthentication(head)) {
       return ChunkSignatures.UNVERIFIED;
     }
-    AwsSignatureV4Verifier.VerifiedHead verifiedHead = headsBeingReceived.get(head);
-    return verifiedHead == null ? null : AwsSignatureV4Verifier.chunkSignatures(verifiedHead);
+    return state instanceof AwsSignatureV4Verifier.VerifiedHead verifiedHead
+        ? AwsSignatureV4Verifier.chunkSignatures(verifiedHead) : null;
   }
 
   private boolean requiresAuthentication(HttpRequest request) {

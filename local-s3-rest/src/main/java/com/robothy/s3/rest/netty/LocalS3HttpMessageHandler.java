@@ -61,7 +61,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * Requests received, e.g. pipelined, while another request of the connection is in flight. Only accessed on the
    * event loop.
    */
-  private final Queue<HttpRequest> pendingRequests = new ArrayDeque<>();
+  private final Queue<ReceivedRequest> pendingRequests = new ArrayDeque<>();
 
   /**
    * Whether a request is being handled, or its response written. Only accessed on the event loop.
@@ -116,13 +116,19 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
-    if (!(msg instanceof HttpRequest request)) {
+    ReceivedRequest received;
+    if (msg instanceof ReceivedRequest decoded) {
+      received = decoded;
+    } else if (msg instanceof HttpRequest request) {
+      // Nothing is known about a request that another decoder, or a test, hands on.
+      received = new ReceivedRequest(request, null, null);
+    } else {
       ctx.fireChannelRead(msg);
       return;
     }
     // Received bytes may still hold pipelined requests, but no more is read until the connection is idle again.
     ReadSuspensions.suspend(ctx.channel(), this);
-    pendingRequests.add(request);
+    pendingRequests.add(received);
     handleNext(ctx);
   }
 
@@ -133,17 +139,18 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     if (inFlight) {
       return;
     }
-    HttpRequest request = pendingRequests.poll();
-    if (request == null) {
+    ReceivedRequest received = pendingRequests.poll();
+    if (received == null) {
       ReadSuspensions.resume(ctx.channel(), this);
       return;
     }
+    HttpRequest request = received.request();
 
     inFlight = true;
     Runnable end = endOnce();
     long startNanos = System.nanoTime();
     try {
-      executor.execute(() -> handleOnExecutor(ctx, request, end, startNanos));
+      executor.execute(() -> handleOnExecutor(ctx, received, end, startNanos));
     } catch (RejectedExecutionException e) {
       // The server is shutting down.
       log.debug("Closing connection {}: the request executor rejected {} {}.", ctx.channel().id(),
@@ -168,14 +175,28 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     };
   }
 
-  private void handleOnExecutor(ChannelHandlerContext ctx, HttpRequest request, Runnable end, long startNanos) {
+  /**
+   * The operation that a request was routed to, and its response.
+   */
+  private record Handled(String operation, StreamingHttpResponse response) {
+  }
+
+  private void handleOnExecutor(ChannelHandlerContext ctx, ReceivedRequest received, Runnable end, long startNanos) {
+    HttpRequest request = received.request();
     StreamingHttpResponse response = null;
     Throwable failure = null;
     String operation = OperationHandler.UNKNOWN_OPERATION;
+    // The operation that the router named, kept if the handler then fails.
+    String[] routed = {operation};
     try {
-      HttpRequestHandler handler = router.match(request);
-      operation = OperationHandler.operationOf(handler);
-      response = handle(request, handler);
+      // Bound to this thread while the request is routed and handled, where the router and the controllers read it.
+      Handled handled = received.handle(() -> {
+        HttpRequestHandler handler = router.match(request);
+        routed[0] = OperationHandler.operationOf(handler);
+        return new Handled(routed[0], handle(request, handler));
+      });
+      operation = handled.operation();
+      response = handled.response();
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
       if (!response.isStreaming()) {
@@ -184,6 +205,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       }
     } catch (Throwable e) {
       failure = e;
+      operation = routed[0];
     } finally {
       releaseBody(request);
     }
@@ -265,9 +287,9 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   }
 
   private void releasePendingRequests() {
-    HttpRequest request;
-    while ((request = pendingRequests.poll()) != null) {
-      releaseBody(request);
+    ReceivedRequest received;
+    while ((received = pendingRequests.poll()) != null) {
+      releaseBody(received.request());
     }
   }
 

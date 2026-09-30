@@ -11,6 +11,7 @@ import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.netty.router.Route;
 import com.robothy.s3.rest.netty.LocalS3HttpRequestDecoder;
+import com.robothy.s3.rest.netty.ReceivedRequest;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -60,11 +61,11 @@ class HeadVerificationReuseTest {
     HttpRequestHandler handler = mock(HttpRequestHandler.class);
     LocalS3Router router = router(clock, handler);
 
-    HttpRequest request = decode(router, CONTENT);
+    ReceivedRequest request = decode(router, CONTENT);
     // The upload took longer than the allowed clock skew; the time was valid when the request started.
     clock.instant = Instant.parse("2013-05-24T00:30:00Z");
 
-    assertSame(handler, ((OperationHandler) router.match(request)).handler());
+    assertSame(handler, ((OperationHandler) match(router, request)).handler());
   }
 
   @Test
@@ -72,25 +73,34 @@ class HeadVerificationReuseTest {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
     LocalS3Router router = router(clock, mock(HttpRequestHandler.class));
 
-    HttpRequest tampered = decode(router, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
+    ReceivedRequest tampered = decode(router, "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8));
 
-    OperationHandler rejected = (OperationHandler) router.match(tampered);
+    OperationHandler rejected = (OperationHandler) match(router, tampered);
     assertInstanceOf(AuthenticationFailureHandler.class, rejected.handler());
     assertEquals(LocalS3Router.AUTHENTICATION_FAILURE_OPERATION, rejected.operation());
   }
 
   /**
-   * A request that no decoder verified the head of, e.g. one that a test hands to the router directly, is verified
-   * as a whole.
+   * A request that is routed without what the decoder verified of its head, e.g. one that a test hands to the router
+   * directly, is verified as a whole.
    */
   @Test
   void aRequestWithoutAVerifiedHeadIsVerifiedAsAWhole() {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
-    LocalS3Router verifying = router(clock, mock(HttpRequestHandler.class));
-    HttpRequest request = decode(router(clock, mock(HttpRequestHandler.class)), CONTENT);
+    LocalS3Router router = router(clock, mock(HttpRequestHandler.class));
+    ReceivedRequest received = decode(router, CONTENT);
     clock.instant = Instant.parse("2013-05-24T00:30:00Z");
 
-    assertInstanceOf(AuthenticationFailureHandler.class, ((OperationHandler) verifying.match(request)).handler());
+    assertInstanceOf(AuthenticationFailureHandler.class,
+        ((OperationHandler) router.match(received.request())).handler());
+  }
+
+  /**
+   * Routes a request like {@linkplain com.robothy.s3.rest.netty.LocalS3HttpMessageHandler} does: with what the
+   * decoder received with it bound to the thread.
+   */
+  private static HttpRequestHandler match(LocalS3Router router, ReceivedRequest received) {
+    return received.handle(() -> router.match(received.request()));
   }
 
   private static LocalS3Router router(Clock clock, HttpRequestHandler handler) {
@@ -102,7 +112,7 @@ class HeadVerificationReuseTest {
     return router;
   }
 
-  private static HttpRequest decode(LocalS3Router router, byte[] body) {
+  private static ReceivedRequest decode(LocalS3Router router, byte[] body) {
     EmbeddedChannel channel = new EmbeddedChannel(
         new LocalS3HttpRequestDecoder(1024 * 1024, Long.MAX_VALUE, new XmlMapper(), router));
     try {

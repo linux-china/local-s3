@@ -6,6 +6,10 @@ import com.robothy.s3.core.exception.S3ErrorCode;
 /**
  * Verifies the head of a request, i.e. its request line and headers, before its body is received, so that a
  * request that fails anyway doesn't get to upload its body.
+ *
+ * <p>A verifier keeps nothing about the requests it verifies: what it verified in a head is its {@linkplain Accepted
+ * state}, which the decoder of the connection keeps with the request, hands back to the other methods, and hands on
+ * with the complete request as its {@linkplain ReceivedRequest#verification() verification}.
  */
 @FunctionalInterface
 public interface RequestHeadVerifier {
@@ -19,19 +23,23 @@ public interface RequestHeadVerifier {
    * Verify the head of a request.
    *
    * @param head the request without its body.
-   * @return why the request is rejected; {@code null} to receive its body.
+   * @return why the request is rejected, or what was verified of an accepted one; {@code null} to receive its body
+   *     with nothing to keep.
    */
-  Rejection verifyHead(HttpRequest head);
+  Outcome verifyHead(HttpRequest head);
 
   /**
    * Called once the body of a request whose head was accepted is received, with the complete request, before the
-   * request is handed on. A verifier that keeps what it verified in the head can hand it on to the request here, so
-   * that the verification of the complete request doesn't repeat it. The default does nothing.
+   * request is handed on. What it answers is handed on with the request, so that the verification of the complete
+   * request doesn't repeat what the head verified. The default answers the state of the head as it is.
    *
    * @param head the head that {@linkplain #verifyHead} accepted.
    * @param request the complete request, with the headers, the parameters and the URI of the head, and its body.
+   * @param state the state that {@linkplain #verifyHead} accepted the head with; {@code null} for none.
+   * @return the verification of the request, see {@linkplain ReceivedRequest#verification()}; {@code null} for none.
    */
-  default void requestReceived(HttpRequest head, HttpRequest request) {
+  default Object requestReceived(HttpRequest head, HttpRequest request, Object state) {
+    return state;
   }
 
   /**
@@ -41,11 +49,18 @@ public interface RequestHeadVerifier {
    * default verifies none of them.
    *
    * @param head the head that {@linkplain #verifyHead} accepted.
+   * @param state the state that {@linkplain #verifyHead} accepted the head with; {@code null} for none.
    * @return verifies the chunk signatures of the body; {@code null} to buffer the body as it is received, e.g. for a
    *     verifier that verifies it once it is received.
    */
-  default ChunkSignatures chunkSignatures(HttpRequest head) {
+  default ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
     return ChunkSignatures.UNVERIFIED;
+  }
+
+  /**
+   * What {@linkplain #verifyHead} decided about a head.
+   */
+  sealed interface Outcome permits Rejection, Accepted {
   }
 
   /**
@@ -54,7 +69,15 @@ public interface RequestHeadVerifier {
    * @param errorCode the S3 error to respond with.
    * @param message the error message.
    */
-  record Rejection(S3ErrorCode errorCode, String message) {
+  record Rejection(S3ErrorCode errorCode, String message) implements Outcome {
+  }
+
+  /**
+   * A head that is accepted, with what was verified of it.
+   *
+   * @param state what was verified, handed back to {@linkplain #chunkSignatures} and {@linkplain #requestReceived}.
+   */
+  record Accepted(Object state) implements Outcome {
   }
 
 }

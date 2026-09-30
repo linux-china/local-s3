@@ -49,7 +49,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Aggregates Netty HTTP messages into an {@linkplain HttpRequest} for the router.
+ * Aggregates Netty HTTP messages into an {@linkplain HttpRequest} for the router, handed on as a
+ * {@linkplain ReceivedRequest} with what the connection knows about it.
  *
  * <p>The body is limited to {@code maxRequestBodySize} bytes. An oversized request is answered with
  * an S3 {@code EntityTooLarge} error and the connection is closed. When the declared
@@ -130,6 +131,11 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    * The head of the current request, if the verifier accepted it; handed to the verifier with the complete request.
    */
   private HttpRequest verifiedHead;
+
+  /**
+   * What the verifier verified of {@link #verifiedHead}, which it is handed back with; {@code null} for nothing.
+   */
+  private Object headState;
 
   /**
    * Verifies the chunk signatures of the {@code aws-chunked} body of the current request while it is written to a file;
@@ -369,19 +375,22 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // The body now belongs to the request; LocalS3HttpMessageHandler releases it.
     HttpRequest request = builder.body(requestBody).build();
     builder = null;
-    // The scheme of the connection, which a port that answers both HTTP and HTTPS only knows per connection.
-    ConnectionSchemes.record(ctx.channel(), request);
+    Object verification = null;
     if (verifiedHead != null) {
       HttpRequest head = verifiedHead;
+      Object state = headState;
       verifiedHead = null;
+      headState = null;
       try {
-        headVerifier.requestReceived(head, request);
+        verification = headVerifier.requestReceived(head, request, state);
       } catch (RuntimeException e) {
         requestBody.release();
         throw e;
       }
     }
-    ctx.fireChannelRead(request);
+    // The scheme of the connection, which a port that answers both HTTP and HTTPS only knows per connection, travels
+    // with the request, like what the verifier verified of its head.
+    ctx.fireChannelRead(new ReceivedRequest(request, ConnectionSchemes.of(ctx.channel()), verification));
   }
 
   private void bodyFileCompleted(ChannelHandlerContext ctx, ByteBuf mappedBody) {
@@ -461,14 +470,15 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
 
     if (hasBody(request, contentLength)) {
       HttpRequest head = builder.build();
-      RequestHeadVerifier.Rejection rejection = headVerifier.verifyHead(head);
-      if (rejection != null) {
+      RequestHeadVerifier.Outcome outcome = headVerifier.verifyHead(head);
+      if (outcome instanceof RequestHeadVerifier.Rejection rejection) {
         reject(ctx, rejection.errorCode(), rejection.message());
         return false;
       }
       verifiedHead = head;
+      headState = outcome instanceof RequestHeadVerifier.Accepted accepted ? accepted.state() : null;
       decodedContentLength = awsChunkedDecodedLength(headers);
-      chunkSignatures = decodedContentLength < 0 ? null : headVerifier.chunkSignatures(head);
+      chunkSignatures = decodedContentLength < 0 ? null : headVerifier.chunkSignatures(head, headState);
     }
 
     // No component limit: consolidating the components of a large body would copy it over and over.
@@ -666,6 +676,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private void releaseBody(ChannelHandlerContext ctx) {
     builder = null;
     verifiedHead = null;
+    headState = null;
     chunkSignatures = null;
     if (body != null) {
       body.release();

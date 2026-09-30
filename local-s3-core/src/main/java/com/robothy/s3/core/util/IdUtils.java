@@ -1,6 +1,7 @@
 package com.robothy.s3.core.util;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class IdUtils {
 
@@ -26,28 +27,26 @@ public class IdUtils {
   private final static long DATACENTER_ID_SHIFT = SEQUENCE_ID_BITS + WORKER_ID_BITS;
   private final static long TIMESTAMP_SHIFT = DATACENTER_ID_SHIFT + DATACENTER_BITS;
 
-  private long datacenterId;
-  private long machineId;
-  private long sequence = 0L;
+  /**
+   * The datacenter and worker bits of the IDs of this generator.
+   */
+  private final long nodeBits;
 
   /**
-   * The timestamp that the last ID was generated with. It is a logical clock: it never moves backwards,
-   * even when the system clock does.
+   * The last ID that this generator issued, so that the generated IDs never decrease: its timestamp is a logical clock,
+   * which never moves backwards, even when the system clock does. IDs persisted by a LocalS3 that computed the
+   * timestamp against an epoch expressed in seconds are far larger than the ones generated now, and objects order their
+   * versions by ID; {@linkplain #ensureGreaterThan(long)} keeps the new IDs above the loaded ones.
+   *
+   * <p>Updated by compare-and-set rather than under a lock: the generator is shared by every LocalS3 service of the
+   * JVM, since services that share a data directory must not issue the same ID, and it is called by every write.
    */
-  private long lastStamp = -1L;
-
-  /**
-   * The last ID that this generator issued, so that the generated IDs never decrease. IDs persisted by
-   * a LocalS3 that computed the timestamp against an epoch expressed in seconds are far larger than the
-   * ones generated now, and objects order their versions by ID; {@linkplain #ensureGreaterThan(long)}
-   * keeps the new IDs above the loaded ones.
-   */
-  private long lastId = -1L;
+  private final AtomicLong lastId = new AtomicLong(-1L);
 
   private static final IdUtils GENERATOR = new IdUtils(0, 0);
 
   /**
-   * Snow flake ID generator.
+   * Snow flake ID generator, shared by the LocalS3 services of the JVM.
    */
   public static IdUtils defaultGenerator() {
     return GENERATOR;
@@ -68,8 +67,7 @@ public class IdUtils {
     if (workerId > MAX_WORKER_ID || workerId < 0) {
       throw new IllegalArgumentException(String.format("workerId can't be greater than %d or less than 0", MAX_WORKER_ID));
     }
-    this.datacenterId = datacenterId;
-    this.machineId = workerId;
+    this.nodeBits = datacenterId << DATACENTER_ID_SHIFT | workerId << SEQUENCE_SHIFT;
   }
 
   public String nextStrId() {
@@ -81,28 +79,28 @@ public class IdUtils {
    *
    * @return the generated ID.
    */
-  public synchronized long nextId() {
-    // A clock correction, e.g. by NTP, must not fail the request that generates an ID; the IDs keep
-    // following the last timestamp until the system clock passes it again.
-    long currStmp = Math.max(getNewTimestamp(), lastStamp);
-
-    if (currStmp == lastStamp) {
-      sequence = (sequence + 1) & MAX_SEQUENCE;
-      if (sequence == 0L) {
-        // The sequence of this millisecond is exhausted; borrow from the next one instead of waiting.
-        currStmp = lastStamp + 1;
+  public long nextId() {
+    // A clock correction, e.g. by NTP, must not fail the request that generates an ID; the IDs keep following the
+    // last one until the system clock passes it again.
+    long fromClock = (getNewTimestamp() - S3_EPOCH) << TIMESTAMP_SHIFT | nodeBits;
+    while (true) {
+      long last = lastId.get();
+      long id = Math.max(fromClock, successor(last));
+      if (lastId.compareAndSet(last, id)) {
+        return id;
       }
-    } else {
-      sequence = 0L;
     }
+  }
 
-    lastStamp = currStmp;
-
-    long id = (currStmp - S3_EPOCH) << TIMESTAMP_SHIFT
-        | datacenterId << DATACENTER_ID_SHIFT
-        | machineId << SEQUENCE_SHIFT
-        | sequence;
-    return lastId = Math.max(id, lastId + 1);
+  /**
+   * The least ID that follows {@code id}: the next sequence number of its millisecond, or, once the sequence of the
+   * millisecond is exhausted, the first one of the next millisecond, borrowed from it rather than waited for.
+   */
+  private long successor(long id) {
+    if ((id & MAX_SEQUENCE) != MAX_SEQUENCE) {
+      return id + 1;
+    }
+    return ((id >> TIMESTAMP_SHIFT) + 1) << TIMESTAMP_SHIFT | nodeBits;
   }
 
   /**
@@ -110,8 +108,8 @@ public class IdUtils {
    *
    * @param id an ID that the generated ones must follow.
    */
-  public synchronized void ensureGreaterThan(long id) {
-    lastId = Math.max(lastId, id);
+  public void ensureGreaterThan(long id) {
+    lastId.accumulateAndGet(id, Math::max);
   }
 
   /**

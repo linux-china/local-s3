@@ -68,7 +68,7 @@ class HeapRequestBodyTest {
     channel.writeInbound(request(HttpMethod.PUT, content.length), content(content, 0, 30),
         content(content, 30, 70), last(content, 70, 100));
 
-    HttpRequest request = channel.readInbound();
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertEquals(bodyFiles, countBodyFiles(), "No temporary file is written.");
@@ -96,7 +96,7 @@ class HeapRequestBodyTest {
     byte[] content = randomBytes(BUDGET);
     channel.writeInbound(request(HttpMethod.PUT, content.length), last(content, 0, content.length));
 
-    ByteBuf body = ((HttpRequest) channel.readInbound()).getBody();
+    ByteBuf body = channel.<ReceivedRequest>readInbound().request().getBody();
     assertThrows(TotalSizeExceedException.class, () -> storage.put(new byte[1]));
     body.release();
     assertDoesNotThrow(() -> storage.put(new byte[BUDGET]));
@@ -109,7 +109,7 @@ class HeapRequestBodyTest {
     channel.writeInbound(awsChunkedRequest(encoded.length, content.length), content(encoded, 0, 30),
         last(encoded, 30, encoded.length));
 
-    HttpRequest request = channel.readInbound();
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertInstanceOf(HeapBodyByteBuf.class, body);
@@ -167,7 +167,7 @@ class HeapRequestBodyTest {
   void buffersTheBodiesOfOtherRequestsInFiles() {
     byte[] content = randomBytes(100);
     channel.writeInbound(request(HttpMethod.POST, content.length), last(content, 0, content.length));
-    ByteBuf post = ((HttpRequest) channel.readInbound()).getBody();
+    ByteBuf post = channel.<ReceivedRequest>readInbound().request().getBody();
     try {
       assertInstanceOf(MappedFileByteBuf.class, post);
       assertTrue(RequestBodies.heapContent(post).isEmpty());
@@ -178,7 +178,7 @@ class HeapRequestBodyTest {
     DefaultHttpRequest chunked = new DefaultHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/bucket/key");
     HttpUtil.setTransferEncodingChunked(chunked, true);
     channel.writeInbound(chunked, content(content, 0, 50), last(content, 50, 100));
-    ByteBuf unknownLength = ((HttpRequest) channel.readInbound()).getBody();
+    ByteBuf unknownLength = channel.<ReceivedRequest>readInbound().request().getBody();
     try {
       assertInstanceOf(MappedFileByteBuf.class, unknownLength);
     } finally {

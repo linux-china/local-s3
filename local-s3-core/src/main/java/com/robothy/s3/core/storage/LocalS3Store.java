@@ -88,6 +88,10 @@ public final class LocalS3Store implements AutoCloseable {
 
   /**
    * The stores of the files that are open, by the absolute path of the file. Guarded by itself.
+   *
+   * <p>Static by design: MVStore locks the file it opens, so the services of a JVM that use the same data directory
+   * must share one open store rather than each open their own. It is only locked when a store is opened or closed,
+   * never by a request.
    */
   private static final Map<Path, LocalS3Store> OPEN_FILES = new HashMap<>();
 

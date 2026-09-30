@@ -1,8 +1,17 @@
 package com.robothy.s3.core.util;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 
 class IdUtilsTest {
@@ -60,6 +69,58 @@ class IdUtilsTest {
     long id = generator.nextId();
     assertTrue(id > persisted, "ID " + id + " doesn't follow the persisted " + persisted);
     assertTrue(generator.nextId() > id);
+  }
+
+  /**
+   * The generator is shared by the services of a JVM, so threads that generate IDs at the same time get distinct ones,
+   * each thread in increasing order.
+   */
+  @Test
+  void generatesDistinctIdsOnConcurrentThreads() throws Exception {
+    IdUtils generator = new IdUtils(0, 0);
+    int threads = 8;
+    int idsPerThread = 20_000;
+    Set<Long> ids = ConcurrentHashMap.newKeySet();
+    CountDownLatch start = new CountDownLatch(1);
+    try (ExecutorService executor = Executors.newFixedThreadPool(threads)) {
+      List<Future<?>> futures = new ArrayList<>();
+      for (int t = 0; t < threads; t++) {
+        futures.add(executor.submit(() -> {
+          start.await();
+          long previous = -1;
+          for (int i = 0; i < idsPerThread; i++) {
+            long id = generator.nextId();
+            assertTrue(id > previous, "ID " + id + " doesn't follow " + previous + " on the same thread");
+            ids.add(id);
+            previous = id;
+          }
+          return null;
+        }));
+      }
+      start.countDown();
+      for (Future<?> future : futures) {
+        future.get();
+      }
+    }
+    assertEquals(threads * idsPerThread, ids.size());
+  }
+
+  /**
+   * Once the 4096 IDs of a millisecond are issued, the next one borrows the following millisecond.
+   */
+  @Test
+  void borrowsTheNextMillisecondOnceItsSequenceIsExhausted() {
+    FixedClockIdUtils generator = new FixedClockIdUtils(Instant.parse("2030-01-01T00:00:00Z").toEpochMilli());
+    long first = generator.nextId();
+    long previous = first;
+    for (int i = 0; i < 4096 * 3; i++) {
+      long id = generator.nextId();
+      assertTrue(id > previous);
+      previous = id;
+    }
+    // Three milliseconds borrowed, and the sequence starts over in each.
+    assertEquals((first >> 22) + 3, previous >> 22);
+    assertEquals(0, previous & 0x3FF000L, "The datacenter and worker bits are kept.");
   }
 
   /**

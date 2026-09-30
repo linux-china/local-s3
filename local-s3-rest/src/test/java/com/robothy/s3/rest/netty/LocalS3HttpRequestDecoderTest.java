@@ -135,7 +135,7 @@ class LocalS3HttpRequestDecoderTest {
     try {
       byte[] content = randomBytes(100);
       configured.writeInbound(request(content.length), last(content, 0, content.length));
-      HttpRequest request = configured.readInbound();
+      HttpRequest request = configured.<ReceivedRequest>readInbound().request();
       ByteBuf body = request.getBody();
       try {
         Path file = RequestBodies.file(body).orElseThrow();
@@ -223,7 +223,7 @@ class LocalS3HttpRequestDecoderTest {
 
       executor.runAll();
       async.runPendingTasks();
-      HttpRequest decoded = async.readInbound();
+      HttpRequest decoded = async.<ReceivedRequest>readInbound().request();
       try {
         assertInstanceOf(MappedFileByteBuf.class, decoded.getBody());
         assertArrayEquals(content, bytes(decoded.getBody()));
@@ -257,8 +257,8 @@ class LocalS3HttpRequestDecoderTest {
       executor.runAll();
       async.runPendingTasks();
 
-      HttpRequest first = async.readInbound();
-      HttpRequest next = async.readInbound();
+      HttpRequest first = async.<ReceivedRequest>readInbound().request();
+      HttpRequest next = async.<ReceivedRequest>readInbound().request();
       try {
         assertEquals("/bucket/key", first.getUri());
         assertArrayEquals(large, bytes(first.getBody()));
@@ -296,7 +296,7 @@ class LocalS3HttpRequestDecoderTest {
       async.writeInbound(last(content, size - 1, size));
       executor.runAll();
       async.runPendingTasks();
-      HttpRequest decoded = async.readInbound();
+      HttpRequest decoded = async.<ReceivedRequest>readInbound().request();
       assertEquals(size, decoded.getBody().readableBytes());
       decoded.getBody().release();
     } finally {
@@ -332,7 +332,7 @@ class LocalS3HttpRequestDecoderTest {
     DefaultHttpRequest head = awsChunkedRequest(encoded.length, content.length);
     channel.writeInbound(head, content(encoded, 0, 30), last(encoded, 30, encoded.length));
 
-    HttpRequest request = channel.readInbound();
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
     ByteBuf body = request.getBody();
     try {
       assertArrayEquals(content, bytes(body));
@@ -357,12 +357,12 @@ class LocalS3HttpRequestDecoderTest {
   void rejectsAnAwsChunkedBodyWhoseChunkSignaturesDontMatch(@TempDir Path directory) throws IOException {
     RequestHeadVerifier verifier = new RequestHeadVerifier() {
       @Override
-      public Rejection verifyHead(HttpRequest head) {
+      public Outcome verifyHead(HttpRequest head) {
         return null;
       }
 
       @Override
-      public ChunkSignatures chunkSignatures(HttpRequest head) {
+      public ChunkSignatures chunkSignatures(HttpRequest head, Object state) {
         return new ChunkSignatures() {
           @Override
           public boolean verifyChunk(String signature, byte[] sha256) {
@@ -420,7 +420,7 @@ class LocalS3HttpRequestDecoderTest {
     request.headers().add("content-type", "text/plain");
     channel.writeInbound(request, last(new byte[0], 0, 0));
 
-    HttpRequest decoded = channel.readInbound();
+    HttpRequest decoded = channel.<ReceivedRequest>readInbound().request();
     try {
       assertEquals("first,second", decoded.getHeaders().get("x-amz-meta-tag"),
           "The values of a repeated header are joined, whatever case its name is written in.");
@@ -436,7 +436,7 @@ class LocalS3HttpRequestDecoderTest {
   }
 
   private ByteBuf readBody() {
-    HttpRequest request = channel.readInbound();
+    HttpRequest request = channel.<ReceivedRequest>readInbound().request();
     return request.getBody();
   }
 
@@ -522,7 +522,7 @@ class LocalS3HttpRequestDecoderTest {
     codec.writeInbound(ascii("GET /bucket/key HTTP/1.1\r\nHost: localhost\r\nx-amz-meta-large: "
         + "a".repeat(300) + "\r\n\r\n"));
 
-    HttpRequest request = codec.readInbound();
+    HttpRequest request = codec.<ReceivedRequest>readInbound().request();
     assertEquals("a".repeat(300), request.header("x-amz-meta-large").orElse(null));
     request.getBody().release();
     assertFalse(codec.finishAndReleaseAll());
