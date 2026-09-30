@@ -18,6 +18,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -156,6 +158,44 @@ class HttpServerInitializerTest {
     parentGroup.shutdownGracefully();
     childGroup.shutdownGracefully();
     executor.shutdownGracefully();
+  }
+
+  @Test
+  void headResponseHasNoBody() throws Exception {
+    Router router = Router.router()
+        .route(HttpMethod.HEAD, "/hello", (request, response) -> response.write("Hello"))
+        .route(HttpMethod.GET, "/hello", (request, response) -> response.write("Hello"));
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    EventLoopGroup group = new NioEventLoopGroup(1);
+    Channel serverChannel = new ServerBootstrap().group(group)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new HttpServerInitializer(executor, router))
+        .bind(0)
+        .sync()
+        .channel();
+    try (Socket socket = new Socket("localhost", ((InetSocketAddress) serverChannel.localAddress()).getPort())) {
+      socket.setSoTimeout(10_000);
+      // Pipelined on one connection: the body of the HEAD response would be taken for the start of the next response.
+      socket.getOutputStream().write(("HEAD /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"
+          + "HEAD /test.html HTTP/1.1\r\nHost: localhost\r\n\r\n"
+          + "GET /hello HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+          .getBytes(StandardCharsets.US_ASCII));
+      String responses = new String(socket.getInputStream().readAllBytes(), StandardCharsets.US_ASCII);
+
+      String[] parts = responses.split("\r\n\r\n", -1);
+      assertEquals(4, parts.length, responses);
+      // The HEAD responses keep the Content-Length of the body they would have, without the body.
+      assertTrue(parts[0].startsWith("HTTP/1.1 200 OK"), responses);
+      assertTrue(parts[0].contains("content-length: 5"), responses);
+      assertTrue(parts[1].startsWith("HTTP/1.1 200 OK"), responses);
+      assertTrue(parts[1].contains("content-length: 11"), responses);
+      assertTrue(parts[2].startsWith("HTTP/1.1 200 OK"), responses);
+      assertEquals("Hello", parts[3]);
+    } finally {
+      serverChannel.close().sync();
+      group.shutdownGracefully();
+      executor.shutdownGracefully();
+    }
   }
 
 }

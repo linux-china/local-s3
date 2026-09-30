@@ -81,8 +81,8 @@ Router router=Router.router()
     .staticResource("my-static-resources");
 ```
 
-Static resources are served to `GET` requests only, and only regular files are served, not directories. A request
-path with a `..` segment or a backslash is not found, so a request cannot read a file outside of the root.
+Static resources are served to `GET` and `HEAD` requests only, and only regular files are served, not directories.
+A request path with a `..` segment or a backslash is not found, so a request cannot read a file outside of the root.
 
 > **Security note:** every file under the root is readable by anyone who can reach the server, without
 > authentication. Don't put secrets under it, and keep in mind that a symbolic link under a root directory is

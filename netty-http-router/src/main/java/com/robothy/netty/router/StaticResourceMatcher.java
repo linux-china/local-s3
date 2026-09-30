@@ -27,7 +27,7 @@ import java.util.Objects;
 import java.util.jar.JarEntry;
 
 /**
- * Serves the files under a root directory or classpath resource path to {@code GET} requests.
+ * Serves the files under a root directory or classpath resource path to {@code GET} and {@code HEAD} requests.
  *
  * <p>A request path is resolved against the root only if it has no {@code ..} segment and no backslash, so it cannot
  * address a file outside of the root; only regular files are served, not directories.
@@ -49,11 +49,12 @@ abstract class StaticResourceMatcher {
    * Get the path of the requested file relative to the root, e.g. {@code css/app.css} of {@code /css//app.css}; the
    * root path is {@code index.html}.
    *
-   * @return the relative path; or {@code null} if the request isn't a {@code GET}, or the path has a {@code ..}
-   *     segment or a backslash, which could address a file outside of the root.
+   * @return the relative path; or {@code null} if the request isn't a {@code GET} or {@code HEAD}, or the path has a
+   *     {@code ..} segment or a backslash, which could address a file outside of the root.
    */
   static String relativePath(HttpRequest request) {
-    if (request.getMethod() != HttpMethod.GET || request.getPath() == null) {
+    HttpMethod method = request.getMethod();
+    if ((!HttpMethod.GET.equals(method) && !HttpMethod.HEAD.equals(method)) || request.getPath() == null) {
       return null;
     }
     List<String> segments = new ArrayList<>();
