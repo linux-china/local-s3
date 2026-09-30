@@ -102,19 +102,22 @@ final class DefaultRouter extends AbstractRouter {
     // A request target that is not in the origin-form, e.g. "*", matches no route.
     String[] segments = request.getPath() == null || !request.getPath().startsWith("/")
         ? null : Route.splitPath(request.getPath());
+    // Read-only views created once for all candidate routes.
+    Map<String, String> headers = request.getHeaders();
+    Map<String, List<String>> params = request.getParams();
     RouterHttpRequestHandler handler;
-    if (null != (handler = matchHandler(request, segments, request.getMethod()))) {
+    if (null != (handler = matchHandler(request, segments, headers, params, request.getMethod()))) {
       return handler;
     }
     // The body of the GET response is dropped by the codec, which pairs the response with the HEAD request.
     if (headFallbackToGet && HttpMethod.HEAD.equals(request.getMethod())
-        && null != (handler = matchHandler(request, segments, HttpMethod.GET))) {
+        && null != (handler = matchHandler(request, segments, headers, params, HttpMethod.GET))) {
       return handler;
     }
     if (staticResourceMatcher != null && null != (handler = staticResourceMatcher.match(request))) {
       return handler;
     }
-    if (methodNotAllowed && null != (handler = methodNotAllowedHandler(request, segments))) {
+    if (methodNotAllowed && null != (handler = methodNotAllowedHandler(segments, headers, params))) {
       return handler;
     }
     return super.notFoundHandler();
@@ -125,13 +128,14 @@ final class DefaultRouter extends AbstractRouter {
    *
    * @return the handler; or {@code null} if no route of any method matches.
    */
-  private RouterHttpRequestHandler methodNotAllowedHandler(RouterHttpRequest request, String[] segments) {
+  private RouterHttpRequestHandler methodNotAllowedHandler(String[] segments, Map<String, String> headers,
+                                                           Map<String, List<String>> params) {
     if (segments == null) {
       return null;
     }
     Set<String> allowed = new TreeSet<>();
     root.exactChildren.forEach((method, node) -> {
-      if (matchRoute(node, segments, 0, request) != null) {
+      if (matchRoute(node, segments, 0, headers, params) != null) {
         allowed.add(method);
       }
     });
@@ -148,7 +152,9 @@ final class DefaultRouter extends AbstractRouter {
         .write("Netty HTTP Router: 405 Method Not Allowed.");
   }
 
-  private RouterHttpRequestHandler matchHandler(RouterHttpRequest request, String[] segments, HttpMethod method) {
+  private RouterHttpRequestHandler matchHandler(RouterHttpRequest request, String[] segments,
+                                                Map<String, String> headers, Map<String, List<String>> params,
+                                                HttpMethod method) {
     if (segments == null) {
       return null;
     }
@@ -157,7 +163,7 @@ final class DefaultRouter extends AbstractRouter {
       return null;
     }
 
-    Route result = matchRoute(node, segments, 0, request);
+    Route result = matchRoute(node, segments, 0, headers, params);
     if (result == null) {
       return null;
     }
@@ -186,11 +192,12 @@ final class DefaultRouter extends AbstractRouter {
    * tried before the path variable child, and the search backtracks to the path variable child if the exact branch
    * has no matched route.
    */
-  private Route matchRoute(TreeNode node, String[] segments, int idx, RouterHttpRequest request) {
+  private Route matchRoute(TreeNode node, String[] segments, int idx, Map<String, String> headers,
+                           Map<String, List<String>> params) {
     if (idx == segments.length) {
       for (Route route : node.routes) {
-        boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().test(request.getHeaders()));
-        boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().test(request.getParams()));
+        boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().test(headers));
+        boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().test(params));
         if (headerMatched && paramMatched) {
           return route;
         }
@@ -200,12 +207,12 @@ final class DefaultRouter extends AbstractRouter {
 
     TreeNode exactChild = node.exactChildren.get(segments[idx]);
     if (exactChild != null) {
-      Route route = matchRoute(exactChild, segments, idx + 1, request);
+      Route route = matchRoute(exactChild, segments, idx + 1, headers, params);
       if (route != null) {
         return route;
       }
     }
-    return node.likeChild == null ? null : matchRoute(node.likeChild, segments, idx + 1, request);
+    return node.likeChild == null ? null : matchRoute(node.likeChild, segments, idx + 1, headers, params);
   }
 
   /**
