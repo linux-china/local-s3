@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
@@ -625,6 +626,36 @@ class DefaultRouterTest {
     // On the classpath: the test resources have static/test.html only, and "static" has no index.
     Router classpathRouter = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:");
     assertSame(NOT_FOUND, classpathRouter.match(getRequest("/static/")));
+  }
+
+  @Test
+  void classpathResourceNotFoundIsCached() {
+    AtomicInteger lookups = new AtomicInteger();
+    ClassLoader counting = new ClassLoader(getClass().getClassLoader()) {
+      @Override
+      public URL getResource(String name) {
+        lookups.incrementAndGet();
+        return super.getResource(name);
+      }
+    };
+    Thread thread = Thread.currentThread();
+    ClassLoader contextClassLoader = thread.getContextClassLoader();
+    Router router;
+    try {
+      thread.setContextClassLoader(counting);
+      router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:static");
+    } finally {
+      thread.setContextClassLoader(contextClassLoader);
+    }
+    lookups.set(0);
+    assertSame(NOT_FOUND, router.match(getRequest("/favicon.ico")));
+    int firstLookups = lookups.get();
+    assertTrue(firstLookups > 0);
+    assertSame(NOT_FOUND, router.match(getRequest("/favicon.ico")));
+    assertSame(NOT_FOUND, router.match(getRequest("//favicon.ico")));
+    assertEquals(firstLookups, lookups.get());
+    // A found resource is still looked up.
+    assertNotSame(NOT_FOUND, router.match(getRequest("/test.html")));
   }
 
   @Test

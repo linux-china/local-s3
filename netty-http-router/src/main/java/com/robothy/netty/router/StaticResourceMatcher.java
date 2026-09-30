@@ -27,7 +27,9 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.jar.JarEntry;
 import lombok.extern.slf4j.Slf4j;
@@ -158,6 +160,8 @@ abstract class StaticResourceMatcher {
    */
   private static class ClasspathResourceMatcher extends StaticResourceMatcher {
 
+    static final int NOT_FOUND_CACHE_SIZE = 128;
+
     private final String resourceRoot;
 
     /**
@@ -165,6 +169,18 @@ abstract class StaticResourceMatcher {
      * thread started it, which isn't predictable, e.g. in an IDE plugin or a Spring Boot fat jar.
      */
     private final ClassLoader classLoader;
+
+    /**
+     * The least recently requested relative paths that are not found, e.g. {@code favicon.ico} probed by browsers, so
+     * that a repeated 404 doesn't look up the class loader and open connections again. The resources of a class loader
+     * don't change while it's used, so a miss stays a miss.
+     */
+    private final Map<String, Boolean> notFound = new LinkedHashMap<>(16, 0.75f, true) {
+      @Override
+      protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+        return size() > NOT_FOUND_CACHE_SIZE;
+      }
+    };
 
     ClasspathResourceMatcher(String path) {
       this.resourceRoot = trimSlashes(path.substring("classpath:".length()));
@@ -195,7 +211,7 @@ abstract class StaticResourceMatcher {
     @Override
     public RouterHttpRequestHandler match(RouterHttpRequest request) {
       String relativePath = relativePath(request);
-      if (relativePath == null) {
+      if (relativePath == null || isNotFound(relativePath)) {
         return null;
       }
       String name = resourceRoot.isEmpty() ? relativePath : resourceRoot + "/" + relativePath;
@@ -204,6 +220,9 @@ abstract class StaticResourceMatcher {
         // A jar may have no entry for a directory, so it is found by its index.
         resource = classLoader.getResource(name + "/" + INDEX);
         if (resource == null || !isRegularFile(resource)) {
+          synchronized (notFound) {
+            notFound.put(relativePath, Boolean.TRUE);
+          }
           return null;
         }
         RouterHttpRequestHandler redirect = redirectToDirectory(request);
@@ -242,6 +261,12 @@ abstract class StaticResourceMatcher {
           throw e;
         }
       };
+    }
+
+    private boolean isNotFound(String relativePath) {
+      synchronized (notFound) {
+        return notFound.get(relativePath) != null;
+      }
     }
 
     /**

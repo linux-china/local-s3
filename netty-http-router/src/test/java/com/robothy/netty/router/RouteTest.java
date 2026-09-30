@@ -1,42 +1,15 @@
 package com.robothy.netty.router;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.RouterHttpRequestHandler;
 import io.netty.handler.codec.http.HttpMethod;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 class RouteTest {
 
   private static final RouterHttpRequestHandler HANDLER = (request, response) -> { };
-
-  @Test
-  @SuppressWarnings("removal")
-  void deprecatedParamMatcherDoesNotModifyTheRoute() {
-    Route route = Route.builder().method(HttpMethod.GET).path("/a/{b}").handler(HANDLER).build();
-    Set<Route> routes = new HashSet<>(Set.of(route));
-    int hashCode = route.hashCode();
-
-    Predicate<Map<String, List<String>>> params = ps -> ps.containsKey("x");
-    Route withParams = route.paramMatcher(params);
-
-    assertNull(route.getParamMatcher());
-    assertEquals(hashCode, route.hashCode());
-    assertTrue(routes.contains(route), "The route can still be found in a hash set after the calls.");
-
-    assertNotSame(route, withParams);
-    assertSame(params, withParams.getParamMatcher());
-    assertEquals(route.getTrimPath(), withParams.getTrimPath());
-    assertSame(HANDLER, withParams.getHandler());
-  }
 
   @Test
   void builderDoesNotAffectBuiltRoutes() {

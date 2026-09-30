@@ -85,16 +85,6 @@ public final class Route {
     return variableNames[idx];
   }
 
-  /**
-   * Returns a copy of this route with the given parameter matcher; this route is not modified.
-   *
-   * @deprecated set the matcher with {@link Builder#paramMatcher(Predicate)} instead.
-   */
-  @Deprecated(forRemoval = true)
-  public Route paramMatcher(Predicate<Map<String, List<String>>> paramMatcher) {
-    return new Route(method, path, handler, headerMatcher, paramMatcher);
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
