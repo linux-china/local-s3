@@ -31,10 +31,9 @@ dependencies {
 
     // Types of the public API: the request handlers implement HttpRequestHandler, and the router factory
     // returns a Router.
-    api(libs.nettyHttpRouter) {
+    api(project(":netty-http-router")) {
+        // Only the SpringWebRouter of Router.router() matches paths with spring-web; LocalS3Router has its own matching.
         exclude(group: "org.springframework", module: "spring-web")
-        // It depends on netty-all, which would bring every netty module back.
-        exclude(group: "io.netty", module: "netty-all")
     }
 
     implementation(libs.jspecify)

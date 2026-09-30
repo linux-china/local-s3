@@ -2,7 +2,6 @@
 logback = "1.5.38"
 awssdkS3 = "2.54.14"
 jackson = "3.2.3"
-nettyHttpRouter = "1.15"
 netty = "4.2.18.Final"
 junit5 = "6.1.3"
 junitPlatform = "6.1.3"
@@ -52,7 +51,6 @@ awsS3EncryptionClient = { group = "software.amazon.encryption.s3", name = "amazo
 # Optional, java.time and parameter names are supported by databind itself, without modules.
 jacksonDatabind = { group = "tools.jackson.core", name = "jackson-databind", version.ref = "jackson" }
 jacksonDataformatXml = { group = "tools.jackson.dataformat", name = "jackson-dataformat-xml", version.ref = "jackson" }
-nettyHttpRouter = { group = "io.github.robothy", name = "netty-http-router", version.ref = "nettyHttpRouter" }
 nettyBom = { group = "io.netty", name = "netty-bom", version.ref = "netty" }
 nettyCodecHttp = { group = "io.netty", name = "netty-codec-http", version.ref = "netty" }
 nettyHandler = { group = "io.netty", name = "netty-handler", version.ref = "netty" }
