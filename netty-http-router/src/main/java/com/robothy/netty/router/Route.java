@@ -86,16 +86,6 @@ public final class Route {
   }
 
   /**
-   * Returns a copy of this route with the given header matcher; this route is not modified.
-   *
-   * @deprecated set the matcher with {@link Builder#headerMatcher(Predicate)} instead.
-   */
-  @Deprecated(forRemoval = true)
-  public Route headerMather(Predicate<Map<String, String>> headerMatcher) {
-    return new Route(method, path, handler, headerMatcher, paramMatcher);
-  }
-
-  /**
    * Returns a copy of this route with the given parameter matcher; this route is not modified.
    *
    * @deprecated set the matcher with {@link Builder#paramMatcher(Predicate)} instead.

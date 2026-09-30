@@ -20,26 +20,22 @@ class RouteTest {
 
   @Test
   @SuppressWarnings("removal")
-  void deprecatedMatcherMethodsDoNotModifyTheRoute() {
+  void deprecatedParamMatcherDoesNotModifyTheRoute() {
     Route route = Route.builder().method(HttpMethod.GET).path("/a/{b}").handler(HANDLER).build();
     Set<Route> routes = new HashSet<>(Set.of(route));
     int hashCode = route.hashCode();
 
     Predicate<Map<String, List<String>>> params = ps -> ps.containsKey("x");
-    Predicate<Map<String, String>> headers = hs -> hs.containsKey("y");
     Route withParams = route.paramMatcher(params);
-    Route withHeaders = route.headerMather(headers);
 
     assertNull(route.getParamMatcher());
-    assertNull(route.getHeaderMatcher());
     assertEquals(hashCode, route.hashCode());
     assertTrue(routes.contains(route), "The route can still be found in a hash set after the calls.");
 
     assertNotSame(route, withParams);
     assertSame(params, withParams.getParamMatcher());
     assertEquals(route.getTrimPath(), withParams.getTrimPath());
-    assertSame(headers, withHeaders.getHeaderMatcher());
-    assertSame(HANDLER, withHeaders.getHandler());
+    assertSame(HANDLER, withParams.getHandler());
   }
 
   @Test
