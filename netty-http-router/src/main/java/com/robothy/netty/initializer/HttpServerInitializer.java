@@ -2,13 +2,18 @@ package com.robothy.netty.initializer;
 
 import com.robothy.netty.codec.HttpMessageHandler;
 import com.robothy.netty.router.Router;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpDecoderConfig;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.stream.ChunkedWriteHandler;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.EventExecutorGroup;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -30,6 +35,12 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
    * by default ({@linkplain io.netty.channel.AdaptiveRecvByteBufAllocator#DEFAULT_MAXIMUM}).
    */
   public static final int DEFAULT_MAX_CHUNK_SIZE = 64 * 1024;
+
+  /**
+   * Default time after which a connection that has neither read nor written anything is closed, e.g. one that sent
+   * half of a request, or stalled during an upload, and holds its partly aggregated body meanwhile.
+   */
+  public static final Duration DEFAULT_IDLE_TIMEOUT = Duration.ofMinutes(5);
 
   private final EventExecutorGroup executorGroup;
 
@@ -81,8 +92,10 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
   @Override
   protected void initChannel(SocketChannel ch) throws Exception {
     ChannelPipeline pipeline = ch.pipeline();
-    ch.config().setConnectTimeoutMillis(10000);
-    ch.config().setAutoClose(true);
+    Duration idleTimeout = idleTimeout();
+    if (idleTimeout != null && idleTimeout.isPositive()) {
+      pipeline.addLast("idle-state-handler", new IdleConnectionCloser(idleTimeout));
+    }
     // Unlike a separate decoder and encoder, the codec pairs each response with its request, so the response to a HEAD
     // request keeps its Content-Length but not its body, which would be taken for the start of the next response.
     pipeline.addLast("http-server-codec", new HttpServerCodec(decoderConfig()));
@@ -105,6 +118,33 @@ public class HttpServerInitializer extends ChannelInitializer<SocketChannel> {
         .setMaxInitialLineLength(maxInitialLineLength)
         .setMaxHeaderSize(maxHeaderSize)
         .setMaxChunkSize(DEFAULT_MAX_CHUNK_SIZE);
+  }
+
+  /**
+   * The time after which a connection that has neither read nor written anything is closed; override it to change
+   * or disable the timeout.
+   *
+   * @return {@linkplain #DEFAULT_IDLE_TIMEOUT}; {@code null}, zero or negative to never close an idle connection.
+   */
+  protected Duration idleTimeout() {
+    return DEFAULT_IDLE_TIMEOUT;
+  }
+
+  /**
+   * Closes a connection idle for both reads and writes. Not idle for reads only, which a long download is, as the
+   * client sends nothing while it receives the response.
+   */
+  private static class IdleConnectionCloser extends IdleStateHandler {
+
+    IdleConnectionCloser(Duration idleTimeout) {
+      super(0, 0, idleTimeout.toNanos(), TimeUnit.NANOSECONDS);
+    }
+
+    @Override
+    protected void channelIdle(ChannelHandlerContext ctx, IdleStateEvent evt) {
+      ctx.close();
+    }
+
   }
 
 }

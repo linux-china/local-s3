@@ -37,6 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -175,6 +176,36 @@ class HttpServerInitializerTest {
       assertEquals(2048, config.getMaxInitialLineLength());
       assertEquals(4096, config.getMaxHeaderSize());
     } finally {
+      executor.shutdownGracefully();
+    }
+  }
+
+  @Test
+  void idleConnectionIsClosed() throws Exception {
+    Router router = Router.router().route(HttpMethod.GET, "/hello", (request, response) -> response.write("Hello"));
+    DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
+    EventLoopGroup group = new NioEventLoopGroup(1);
+    Channel serverChannel = new ServerBootstrap().group(group)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new HttpServerInitializer(executor, router) {
+          @Override
+          protected Duration idleTimeout() {
+            return Duration.ofMillis(200);
+          }
+        })
+        .bind(0)
+        .sync()
+        .channel();
+    try (Socket socket = new Socket("localhost", ((InetSocketAddress) serverChannel.localAddress()).getPort())) {
+      socket.setSoTimeout(10_000);
+      // Half of the request headers, never completed.
+      socket.getOutputStream().write("GET /hello HTTP/1.1\r\nHost: loc".getBytes(StandardCharsets.US_ASCII));
+      long start = System.nanoTime();
+      assertEquals(-1, socket.getInputStream().read());
+      assertTrue(System.nanoTime() - start < Duration.ofSeconds(5).toNanos());
+    } finally {
+      serverChannel.close().sync();
+      group.shutdownGracefully();
       executor.shutdownGracefully();
     }
   }
