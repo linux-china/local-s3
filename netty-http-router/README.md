@@ -166,3 +166,20 @@ Router router = Router.router()
 > Without a handler for its type, an exception, including an `Error` such as `OutOfMemoryError`, is answered by the
 > default handler with `500` and the full stack trace as `text/plain; charset=utf-8`. Register a handler for
 > `Throwable.class` to keep the stack trace from clients.
+
+For example, to answer every otherwise unhandled exception with a plain `500` and nothing about the server:
+
+```java
+Router router = Router.router()
+    .route(HttpMethod.GET, "/", handler)
+    // Replaces the default handler, which writes the stack trace; more specific handlers still take precedence.
+    .exceptionHandler(Throwable.class, (e, request, response) -> response
+      .status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
+      .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
+      .write("Internal Server Error."))
+    ;
+```
+
+The exception is still logged with its stack trace on the server side, so nothing is lost for debugging. If an
+exception handler throws in turn, the connection is answered with `500 Internal Server Error.` followed by the message
+of that exception, and closed; keep exception handlers simple enough not to fail.

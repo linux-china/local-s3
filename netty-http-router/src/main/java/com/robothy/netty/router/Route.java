@@ -136,7 +136,7 @@ public final class Route {
     StringBuilder seg = new StringBuilder();
     for (int i = 1; i < path.length(); i++) {
       if (path.charAt(i) == '/') {
-        if (!(seg.length() == 0)) {
+        if (!(seg.isEmpty())) {
           segments.add(seg.toString());
           seg = new StringBuilder();
         }
@@ -145,7 +145,7 @@ public final class Route {
       }
     }
 
-    if (!(seg.length() == 0)) {
+    if (!(seg.isEmpty())) {
       segments.add(seg.toString());
     }
 
