@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
+import lombok.AccessLevel;
 import lombok.Getter;
 
 /**
@@ -28,15 +29,60 @@ public final class Route {
 
   private final String trimPath;
 
+  /**
+   * The non-empty segments of {@link #path}, split once when the route is created.
+   */
+  @Getter(AccessLevel.NONE)
+  private final String[] segments;
+
+  /**
+   * The path variable name of each segment; {@code null} for the literal segments.
+   */
+  @Getter(AccessLevel.NONE)
+  private final String[] variableNames;
+
   private Route(HttpMethod method, String path, HttpRequestHandler handler,
                 Predicate<Map<String, String>> headerMatcher,
-                Predicate<Map<String, List<String>>> paramMatcher, String trimPath) {
+                Predicate<Map<String, List<String>>> paramMatcher) {
     this.method = method;
     this.path = path;
     this.handler = handler;
     this.headerMatcher = headerMatcher;
     this.paramMatcher = paramMatcher;
-    this.trimPath = trimPath;
+    this.segments = splitPath(path);
+    this.variableNames = new String[segments.length];
+    StringBuilder trim = new StringBuilder();
+    for (int i = 0; i < segments.length; i++) {
+      String seg = segments[i];
+      if (seg.startsWith("{") && seg.endsWith("}")) {
+        variableNames[i] = seg.substring(1, seg.length() - 1);
+        trim.append("/{}");
+      } else {
+        trim.append('/').append(seg);
+      }
+    }
+    this.trimPath = trim.toString();
+  }
+
+  /**
+   * The number of path segments.
+   */
+  int segmentCount() {
+    return segments.length;
+  }
+
+  /**
+   * The segment at {@code idx}.
+   */
+  String segment(int idx) {
+    return segments[idx];
+  }
+
+  /**
+   * The path variable name of the segment at {@code idx}; {@code null} if the segment is literal.
+   */
+  String variableName(int idx) {
+    return variableNames[idx];
   }
 
   /**
@@ -46,7 +92,7 @@ public final class Route {
    */
   @Deprecated(forRemoval = true)
   public Route headerMather(Predicate<Map<String, String>> headerMatcher) {
-    return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath);
+    return new Route(method, path, handler, headerMatcher, paramMatcher);
   }
 
   /**
@@ -56,7 +102,7 @@ public final class Route {
    */
   @Deprecated(forRemoval = true)
   public Route paramMatcher(Predicate<Map<String, List<String>>> paramMatcher) {
-    return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath);
+    return new Route(method, path, handler, headerMatcher, paramMatcher);
   }
 
   @Override
@@ -147,24 +193,11 @@ public final class Route {
       return this;
     }
 
-    private String trimPath(String path) {
-      String[] segments = splitPath(path);
-      StringBuilder result = new StringBuilder();
-      for (String seg : segments) {
-        if (seg.startsWith("{") && seg.endsWith("}")) {
-          result.append("/{}");
-        } else {
-          result.append('/').append(seg);
-        }
-      }
-      return result.toString();
-    }
-
     public Route build() {
       Objects.requireNonNull(method, "'method' is required.");
       Objects.requireNonNull(path, "'path' is required.");
       Objects.requireNonNull(handler, "'handler' is required.");
-      return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath(path));
+      return new Route(method, path, handler, headerMatcher, paramMatcher);
     }
 
   }

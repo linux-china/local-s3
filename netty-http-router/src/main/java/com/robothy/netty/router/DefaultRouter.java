@@ -57,13 +57,12 @@ final class DefaultRouter extends AbstractRouter {
 
   @Override
   public Router route(Route route) {
-    String[] segments = Route.splitPath(route.getPath());
     Set<String> variableNames = new HashSet<>();
-    for (String segment : segments) {
-      if (!isPathVariable(segment)) {
+    for (int i = 0; i < route.segmentCount(); i++) {
+      String name = route.variableName(i);
+      if (name == null) {
         continue;
       }
-      String name = pathVariableName(segment);
       if (name.isEmpty()) {
         throw new IllegalArgumentException("The path variable name cannot be empty.");
       }
@@ -78,44 +77,44 @@ final class DefaultRouter extends AbstractRouter {
     ruleSet.add(route);
 
     TreeNode node = addNode(root, route.getMethod().name());
-    for (String segment : segments) {
-      node = addNode(node, segment);
+    for (int i = 0; i < route.segmentCount(); i++) {
+      node = route.variableName(i) == null ? addNode(node, route.segment(i)) : addLikeNode(node);
     }
     node.addRoute(route);
     return this;
   }
 
   private TreeNode addNode(TreeNode parent, String path) {
-    TreeNode child = new TreeNode();
-    if (isPathVariable(path)) {
-      if (parent.likeChild == null) {
-        parent.likeChild = child;
-      }
-      return parent.likeChild;
-    } else {
-      if (!parent.exactChildren.containsKey(path)) {
-        parent.exactChildren.put(path, child);
-      }
-      return parent.exactChildren.get(path);
+    return parent.exactChildren.computeIfAbsent(path, k -> new TreeNode());
+  }
+
+  private TreeNode addLikeNode(TreeNode parent) {
+    if (parent.likeChild == null) {
+      parent.likeChild = new TreeNode();
     }
+    return parent.likeChild;
   }
 
 
   @Override
   public HttpRequestHandler match(HttpRequest request) {
+    request.setPathVariables(Map.of());
+    // A request target that is not in the origin-form, e.g. "*", matches no route.
+    String[] segments = request.getPath() == null || !request.getPath().startsWith("/")
+        ? null : Route.splitPath(request.getPath());
     HttpRequestHandler handler;
-    if (null != (handler = matchHandler(request, request.getMethod()))) {
+    if (null != (handler = matchHandler(request, segments, request.getMethod()))) {
       return handler;
     }
     // The body of the GET response is dropped by the codec, which pairs the response with the HEAD request.
     if (headFallbackToGet && HttpMethod.HEAD.equals(request.getMethod())
-        && null != (handler = matchHandler(request, HttpMethod.GET))) {
+        && null != (handler = matchHandler(request, segments, HttpMethod.GET))) {
       return handler;
     }
     if (staticResourceMatcher != null && null != (handler = staticResourceMatcher.match(request))) {
       return handler;
     }
-    if (methodNotAllowed && null != (handler = methodNotAllowedHandler(request))) {
+    if (methodNotAllowed && null != (handler = methodNotAllowedHandler(request, segments))) {
       return handler;
     }
     return super.notFoundHandler();
@@ -126,11 +125,10 @@ final class DefaultRouter extends AbstractRouter {
    *
    * @return the handler; or {@code null} if no route of any method matches.
    */
-  private HttpRequestHandler methodNotAllowedHandler(HttpRequest request) {
-    if (request.getPath() == null || !request.getPath().startsWith("/")) {
+  private HttpRequestHandler methodNotAllowedHandler(HttpRequest request, String[] segments) {
+    if (segments == null) {
       return null;
     }
-    String[] segments = Route.splitPath(request.getPath());
     Set<String> allowed = new TreeSet<>();
     root.exactChildren.forEach((method, node) -> {
       if (matchRoute(node, segments, 0, request) != null) {
@@ -150,13 +148,10 @@ final class DefaultRouter extends AbstractRouter {
         .write("Netty HTTP Router: 405 Method Not Allowed.");
   }
 
-  private HttpRequestHandler matchHandler(HttpRequest request, HttpMethod method) {
-    request.setPathVariables(Map.of());
-    // A request target that is not in the origin-form, e.g. "*", matches no route.
-    if (request.getPath() == null || !request.getPath().startsWith("/")) {
+  private HttpRequestHandler matchHandler(HttpRequest request, String[] segments, HttpMethod method) {
+    if (segments == null) {
       return null;
     }
-    String[] segments = Route.splitPath(request.getPath());
     TreeNode node = root.exactChildren.get(method.name());
     if (node == null) {
       return null;
@@ -167,31 +162,23 @@ final class DefaultRouter extends AbstractRouter {
       return null;
     }
 
-    request.setPathVariables(parsePathVariables(result.getPath(), segments));
+    request.setPathVariables(parsePathVariables(result, segments));
     return result.getHandler();
   }
 
-  private Map<String, String> parsePathVariables(String pattern, String[] pathSegments) {
-    String[] patternSegments = Route.splitPath(pattern);
-    if (pathSegments.length != patternSegments.length) {
-      throw new IllegalArgumentException("'" + String.join("/", pathSegments) + "' should not match '" + pattern + "'.");
+  private Map<String, String> parsePathVariables(Route route, String[] pathSegments) {
+    if (pathSegments.length != route.segmentCount()) {
+      throw new IllegalArgumentException("'" + String.join("/", pathSegments) + "' should not match '" + route.getPath() + "'.");
     }
 
     Map<String, String> result = new HashMap<>();
     for (int i = 0; i < pathSegments.length; i++) {
-      if (isPathVariable(patternSegments[i])) {
-        result.put(pathVariableName(patternSegments[i]), pathSegments[i]);
+      String name = route.variableName(i);
+      if (name != null) {
+        result.put(name, pathSegments[i]);
       }
     }
     return Map.copyOf(result);
-  }
-
-  private static boolean isPathVariable(String segment) {
-    return segment.startsWith("{") && segment.endsWith("}");
-  }
-
-  private static String pathVariableName(String segment) {
-    return segment.substring(1, segment.length() - 1);
   }
 
   /**
