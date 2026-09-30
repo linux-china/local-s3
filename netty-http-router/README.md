@@ -89,14 +89,18 @@ Route.builder()
 
 ### 2.2 Serving static resources
 
-netty-http-router scans static resources in the `/static` directory of the classpath by default.
-You can customize the path via `Router#staticResource()`.
+Static resources are **off** by default. Turn them on with `Router#staticResource()`, which takes either a directory,
+which must exist, or a classpath resource path prefixed with `classpath:`. Classpath resources are looked up with the
+context class loader of the thread that calls `staticResource()`.
 
 ```java
 Router router = Router.router()
     .route(HttpMethod.GET, "/", handler)
-    .staticResource("my-static-resources");
+    .staticResource("my-static-resources"); // or .staticResource("classpath:static")
 ```
+
+Routes take precedence over static resources. Only the router of `Router.router()` serves static resources; for a
+subclass of `AbstractRouter`, `staticResource()` throws `UnsupportedOperationException`.
 
 Static resources are served to `GET` and `HEAD` requests only, and only regular files are served, not directories.
 A request path with a `..` segment or a backslash is not found, so a request cannot read a file outside of the root.

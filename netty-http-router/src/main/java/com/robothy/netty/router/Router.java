@@ -59,24 +59,23 @@ public interface Router {
   Router notFound(HttpRequestHandler handler);
 
   /**
-   * The router will map the request uri to the relative path of files under the {@code rootPath}
-   * directory. By default, the router loads static resources from `classpath:static`.
+   * Serve the files under {@code rootPath} to the {@code GET} and {@code HEAD} requests that no route matches, mapping
+   * the request path to the relative path of a file under the root. Static resources are <b>off</b> by default.
    *
    * <ul>
-   *   <li> The {@code rootPath} must be a valid directory, the router will map the request uri
-   *   to relative path of files under the {@code rootPath} directory.
-   *   </li>
-   *
-   *   <li> If static resource paths conflict with routes registered via {@code route()},
-   *   the router will ignore static resources.
-   *   </li>
+   *   <li>{@code rootPath} is either a directory, which must exist, or a classpath resource path such as
+   *   {@code classpath:static}, which is looked up with the context class loader of the calling thread.</li>
+   *   <li>Routes registered via {@code route()} take precedence over static resources.</li>
    * </ul>
    *
-   *
-   * @param rootPath static resources root directory or resource path.
+   * @param rootPath static resources root directory, or classpath resource path prefixed with {@code classpath:}.
    * @return this.
+   * @throws IllegalArgumentException if {@code rootPath} is a directory that doesn't exist.
+   * @throws UnsupportedOperationException if this router doesn't serve static resources; the default.
    */
-  Router staticResource(String rootPath);
+  default Router staticResource(String rootPath) {
+    throw new UnsupportedOperationException(getClass().getName() + " doesn't serve static resources.");
+  }
 
   /**
    * Set a handler for exceptions with {@code exceptionType}.

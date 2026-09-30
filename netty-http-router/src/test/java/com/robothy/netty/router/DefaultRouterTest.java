@@ -120,27 +120,49 @@ class DefaultRouterTest {
 
   @Test
   void testStaticResources() {
-    Router router = new DefaultRouter();
-    HttpRequest.HttpRequestBuilder requestBuilder = HttpRequest.builder();
+    Router router = new DefaultRouter().notFound(NOT_FOUND);
+    // Off by default, e.g. the "static" directory of a Spring Boot application on the classpath isn't served.
+    assertSame(NOT_FOUND, router.match(getRequest("/test.html")));
 
     /* Static resources in classpath:static */
-    assertNotNull(router.match(requestBuilder.method(HttpMethod.GET)
-        .path("/test.html").build()));
+    router.staticResource("classpath:static");
+    assertNotSame(NOT_FOUND, router.match(getRequest("/test.html")));
 
     /* Static resources in directory */
     router.staticResource("src");
-    assertNotNull(router.match(requestBuilder
-        .method(HttpMethod.GET)
-        .path("/test/java/com/robothy/netty/router/RouterImplTest.java").build()));
-
-    assertNotNull(router.match(requestBuilder
+    assertNotSame(NOT_FOUND, router.match(getRequest("/test/java/com/robothy/netty/router/DefaultRouterTest.java")));
+    assertSame(NOT_FOUND, router.match(HttpRequest.builder()
         .method(HttpMethod.POST)
-        .path("/test/java/com/robothy/netty/router/RouterImplTest.java").build()));
+        .path("/test/java/com/robothy/netty/router/DefaultRouterTest.java").build()));
+  }
+
+  @Test
+  void staticResourceDirectoryMustExist(@TempDir Path directory) throws Exception {
+    Router router = new DefaultRouter();
+    assertThrows(IllegalArgumentException.class, () -> router.staticResource(directory.resolve("missing").toString()));
+    Path file = Files.writeString(directory.resolve("file.txt"), "file");
+    assertThrows(IllegalArgumentException.class, () -> router.staticResource(file.toString()));
+  }
+
+  @Test
+  void staticResourcesAreOnlyServedByDefaultRouter() {
+    Router router = new AbstractRouter() {
+      @Override
+      public Router route(Route rule) {
+        return this;
+      }
+
+      @Override
+      public HttpRequestHandler match(HttpRequest request) {
+        return notFoundHandler();
+      }
+    };
+    assertThrows(UnsupportedOperationException.class, () -> router.staticResource("classpath:static"));
   }
 
   @Test
   void staticResourceContentType(@TempDir Path directory) throws Exception {
-    Router router = new DefaultRouter();
+    Router router = new DefaultRouter().staticResource("classpath:static");
     HttpRequest classpathRequest = getRequest("/test.html");
     HttpResponse classpathResponse = new HttpResponse();
     router.match(classpathRequest).handle(classpathRequest, classpathResponse);
@@ -158,7 +180,7 @@ class DefaultRouterTest {
 
   @Test
   void classpathResourcesStayUnderRoot() {
-    Router router = new DefaultRouter().notFound(NOT_FOUND);
+    Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:static");
     assertNotSame(NOT_FOUND, router.match(getRequest("/test.html")));
     // The test classes are on the classpath next to "static", so "static/../com/..." resolves to one of them.
     assertSame(NOT_FOUND, router.match(getRequest("/../com/robothy/netty/router/DefaultRouterTest.class")));
@@ -168,7 +190,7 @@ class DefaultRouterTest {
 
   @Test
   void classpathResourcesAreRegularFilesServedToGet() {
-    Router router = new DefaultRouter().notFound(NOT_FOUND);
+    Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:static");
     // A directory would be answered with a listing of its files.
     assertSame(NOT_FOUND, router.match(getRequest("/../static")));
     assertSame(NOT_FOUND, router.match(getRequest("/../com/robothy/netty")));
@@ -192,6 +214,8 @@ class DefaultRouterTest {
     try (URLClassLoader classLoader = new URLClassLoader(new URL[] {jar.toUri().toURL()}, contextClassLoader)) {
       thread.setContextClassLoader(classLoader);
       Router router = new DefaultRouter().notFound(NOT_FOUND).staticResource("classpath:jar-static");
+      // The class loader is the one of the thread that set the root, not of the thread that serves the request.
+      thread.setContextClassLoader(contextClassLoader);
       HttpRequest request = getRequest("/a.txt");
       HttpResponse response = new HttpResponse();
       router.match(request).handle(request, response);

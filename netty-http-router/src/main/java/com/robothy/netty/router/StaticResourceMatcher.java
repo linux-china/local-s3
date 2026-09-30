@@ -76,8 +76,16 @@ abstract class StaticResourceMatcher {
 
     private final String resourceRoot;
 
+    /**
+     * Captured when the root is set: the context class loader of a netty executor thread is the one of whichever
+     * thread started it, which isn't predictable, e.g. in an IDE plugin or a Spring Boot fat jar.
+     */
+    private final ClassLoader classLoader;
+
     ClasspathResourceMatcher(String path) {
       this.resourceRoot = path.substring("classpath:".length());
+      ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+      this.classLoader = contextClassLoader == null ? StaticResourceMatcher.class.getClassLoader() : contextClassLoader;
     }
 
     @Override
@@ -87,7 +95,7 @@ abstract class StaticResourceMatcher {
         return null;
       }
       String resourceName = resourceRoot + "/" + relativePath;
-      URL url = Thread.currentThread().getContextClassLoader().getResource(resourceName);
+      URL url = classLoader.getResource(resourceName);
       if (url == null || !isRegularFile(url)) {
         return null;
       }
@@ -128,6 +136,10 @@ abstract class StaticResourceMatcher {
 
     DirectoryResourceMatcher(String directory) {
       this.rootDirectory = Path.of(directory).toAbsolutePath().normalize();
+      // Fail fast: a wrong root would otherwise only show as every static resource being not found.
+      if (!Files.isDirectory(rootDirectory)) {
+        throw new IllegalArgumentException("The static resource root " + rootDirectory + " is not a directory.");
+      }
     }
 
     @Override

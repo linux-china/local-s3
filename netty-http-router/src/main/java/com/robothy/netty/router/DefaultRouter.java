@@ -24,6 +24,17 @@ final class DefaultRouter extends AbstractRouter {
 
   private final TreeNode root = new TreeNode();
 
+  /**
+   * Serves the static resources to the requests that no route matches; {@code null} while they are off.
+   */
+  private StaticResourceMatcher staticResourceMatcher;
+
+  @Override
+  public Router staticResource(String rootPath) {
+    this.staticResourceMatcher = StaticResourceMatcher.create(rootPath);
+    return this;
+  }
+
   @Override
   public Router route(Route route) {
     String[] segments = Route.splitPath(route.getPath());
@@ -73,7 +84,10 @@ final class DefaultRouter extends AbstractRouter {
   @Override
   public HttpRequestHandler match(HttpRequest request) {
     HttpRequestHandler handler;
-    if (null != (handler = matchHandler(request)) || null != (handler = super.staticResourceMatcher().match(request))) {
+    if (null != (handler = matchHandler(request))) {
+      return handler;
+    }
+    if (staticResourceMatcher != null && null != (handler = staticResourceMatcher.match(request))) {
       return handler;
     }
     return super.notFoundHandler();

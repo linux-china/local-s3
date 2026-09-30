@@ -17,10 +17,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Base {@link Router} implementation that manages the not found handler, static resources and exception handlers.
+ * Base {@link Router} implementation that manages the not found handler and exception handlers. Static resources are
+ * served by {@link DefaultRouter} only, see {@link Router#staticResource(String)}.
  *
- * <p><b>Thread safety:</b> registration methods ({@code route}, {@code notFound}, {@code staticResource},
- * {@code exceptionHandler}) are not thread-safe and must only be called before the server starts. Once the server is
+ * <p><b>Thread safety:</b> registration methods ({@code route}, {@code notFound}, {@code exceptionHandler}) are not thread-safe and must only be called before the server starts. Once the server is
  * running, the router is only read ({@code match}, {@code findExceptionHandler}), which is safe from multiple threads.
  */
 public abstract class AbstractRouter implements Router {
@@ -51,27 +51,14 @@ public abstract class AbstractRouter implements Router {
 
   private HttpRequestHandler notFoundHandler = DEFAULT_NOT_FOUND_HANDLER;
 
-  private StaticResourceMatcher staticResourceMatcher
-      = StaticResourceMatcher.create("classpath:static");
-
   @Override
   public Router notFound(HttpRequestHandler handler) {
     this.notFoundHandler = handler;
     return this;
   }
 
-  @Override
-  public Router staticResource(String rootPath) {
-    this.staticResourceMatcher = StaticResourceMatcher.create(rootPath);
-    return this;
-  }
-
   protected HttpRequestHandler notFoundHandler() {
     return this.notFoundHandler;
-  }
-
-  protected StaticResourceMatcher staticResourceMatcher() {
-    return this.staticResourceMatcher;
   }
 
   @Override

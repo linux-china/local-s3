@@ -262,7 +262,8 @@ class HttpServerInitializerTest {
   void headResponseHasNoBody() throws Exception {
     Router router = Router.router()
         .route(HttpMethod.HEAD, "/hello", (request, response) -> response.write("Hello"))
-        .route(HttpMethod.GET, "/hello", (request, response) -> response.write("Hello"));
+        .route(HttpMethod.GET, "/hello", (request, response) -> response.write("Hello"))
+        .staticResource("classpath:static");
     DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(1);
     EventLoopGroup group = new NioEventLoopGroup(1);
     Channel serverChannel = new ServerBootstrap().group(group)
