@@ -18,13 +18,27 @@ final class DefaultRouter extends AbstractRouter {
 
   @Override
   public Router route(Route route) {
+    String[] segments = splitPath(route.getPath());
+    Set<String> variableNames = new HashSet<>();
+    for (String segment : segments) {
+      if (!isPathVariable(segment)) {
+        continue;
+      }
+      String name = pathVariableName(segment);
+      if (name.isEmpty()) {
+        throw new IllegalArgumentException("The path variable name cannot be empty.");
+      }
+      if (!variableNames.add(name)) {
+        throw new IllegalArgumentException("Duplicate path variable '" + name + "' in " + route.getPath() + ".");
+      }
+    }
+
     if (ruleSet.contains(route)) {
       throw new IllegalArgumentException("The router already has a handler for route " + route);
     }
     ruleSet.add(route);
 
     TreeNode node = addNode(root, route.getMethod().name());
-    String[] segments = splitPath(route.getPath());
     for (String segment : segments) {
       node = addNode(node, segment);
     }
@@ -34,10 +48,7 @@ final class DefaultRouter extends AbstractRouter {
 
   private TreeNode addNode(TreeNode parent, String path) {
     TreeNode child = new TreeNode();
-    if (path.startsWith("{") && path.endsWith("}")) {
-      if (path.length() == 2) {
-        throw new IllegalArgumentException("The path variable name cannot be empty.");
-      }
+    if (isPathVariable(path)) {
       if (parent.likeChild == null) {
         parent.likeChild = child;
       }
@@ -61,6 +72,7 @@ final class DefaultRouter extends AbstractRouter {
   }
 
   private HttpRequestHandler matchHandler(HttpRequest request) {
+    request.setPathVariables(Map.of());
     String[] segments = splitPath(request.getPath());
     TreeNode node = root.exactChildren.get(request.getMethod().name());
     if (node == null) {
@@ -72,27 +84,31 @@ final class DefaultRouter extends AbstractRouter {
       return null;
     }
 
-    request.getParams().putAll(parsePathParams(result.getPath(), request.getPath()));
+    request.setPathVariables(parsePathVariables(result.getPath(), segments));
     return result.getHandler();
   }
 
-  private Map<String, List<String>> parsePathParams(String pattern, String path) {
-    Map<String, List<String>> result = new HashMap<>();
-    String[] pathSegments = splitPath(path);
+  private Map<String, String> parsePathVariables(String pattern, String[] pathSegments) {
     String[] patternSegments = splitPath(pattern);
     if (pathSegments.length != patternSegments.length) {
-      throw new IllegalArgumentException("'" + path + "' should not match '" + pattern + "'.");
+      throw new IllegalArgumentException("'" + String.join("/", pathSegments) + "' should not match '" + pattern + "'.");
     }
 
+    Map<String, String> result = new HashMap<>();
     for (int i = 0; i < pathSegments.length; i++) {
-      if (patternSegments[i].startsWith("{") && patternSegments[i].endsWith("}")) {
-        String key = patternSegments[i].substring(1, patternSegments[i].length() - 1);
-        result.putIfAbsent(key, new ArrayList<>());
-        result.get(key).add(pathSegments[i]);
+      if (isPathVariable(patternSegments[i])) {
+        result.put(pathVariableName(patternSegments[i]), pathSegments[i]);
       }
     }
+    return Map.copyOf(result);
+  }
 
-    return result;
+  private static boolean isPathVariable(String segment) {
+    return segment.startsWith("{") && segment.endsWith("}");
+  }
+
+  private static String pathVariableName(String segment) {
+    return segment.substring(1, segment.length() - 1);
   }
 
   /**

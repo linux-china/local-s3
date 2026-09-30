@@ -80,7 +80,7 @@ class ErrorResponsesTest {
         .uri("/bucket/key")
         .path("/bucket/key")
         .httpVersion(HttpVersion.HTTP_1_1)
-        .headers(new HashMap<CharSequence, String>(headers))
+        .headers(new HashMap<String, String>(headers))
         .params(new HashMap<>())
         .build();
   }

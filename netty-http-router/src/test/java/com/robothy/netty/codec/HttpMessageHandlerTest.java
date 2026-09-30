@@ -33,7 +33,7 @@ class HttpMessageHandlerTest {
     Router router = Router.router().route(HttpMethod.GET, "/hello", (request, response) -> response.write("hello"));
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(router));
 
-    Map<CharSequence, String> headers = new HashMap<>();
+    Map<String, String> headers = new HashMap<>();
     if (connection != null) {
       headers.put("connection", connection);
     }

@@ -760,7 +760,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   /**
    * The routes that match the request with the highest priority.
    */
-  private List<Route> bestRoutes(List<Route> candidates, Map<CharSequence, String> headers,
+  private List<Route> bestRoutes(List<Route> candidates, Map<String, String> headers,
                                  Map<CharSequence, List<String>> params) {
     List<Route> best = new ArrayList<>();
     int bestPriority = -1;
@@ -782,7 +782,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return calculatePriority(route, request.getHeaders(), request.getParams());
   }
 
-  private static int calculatePriority(Route route, Map<CharSequence, String> headers,
+  private static int calculatePriority(Route route, Map<String, String> headers,
                                        Map<CharSequence, List<String>> params) {
 
     int priority = 0;
@@ -842,7 +842,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
               + "ParamCondition or HeaderCondition.");
           continue;
         }
-        Map<CharSequence, String> headers = route.getHeaderMatcher() instanceof HeaderCondition condition
+        Map<String, String> headers = route.getHeaderMatcher() instanceof HeaderCondition condition
             ? condition.minimalHeaders() : Map.of();
         Map<CharSequence, List<String>> params = route.getParamMatcher() instanceof ParamCondition condition
             ? condition.minimalParams() : Map.of();

@@ -3,6 +3,7 @@ package com.robothy.netty.router;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.netty.http.HttpRequest;
 import com.robothy.netty.http.HttpRequestHandler;
 import com.robothy.netty.http.HttpResponse;
@@ -49,7 +50,7 @@ class DefaultRouterTest {
     assertEquals(notFoundHandler, router.match(requestBuilder.path("/").build()));
     HttpRequest actionRequest = requestBuilder.method(HttpMethod.GET).path("/read").build();
     assertEquals(actionHandler, router.match(actionRequest));
-    assertEquals("read", actionRequest.getParams().get("action").get(0));
+    assertEquals("read", actionRequest.pathVariable("action").orElseThrow());
     assertEquals(listHandler, router.match(requestBuilder.path("/list").build()));
 
     HttpRequestHandler emptyPathHandler = Mockito.mock(HttpRequestHandler.class);
@@ -82,7 +83,7 @@ class DefaultRouterTest {
             .handler(headerRequestHandler)
             .build());
     assertEquals(paramRequestHandler, router.match(requestBuilder.method(HttpMethod.HEAD).path("/a/content").build()));
-    Map<CharSequence, String> headers = new HashMap<>();
+    Map<String, String> headers = new HashMap<>();
     headers.put("hello", "");
     // The header matcher has higher priority.
     assertEquals(headerRequestHandler, router.match(requestBuilder.headers(headers).build()));
@@ -175,7 +176,7 @@ class DefaultRouterTest {
     // The exact branch "/a/b" has no child "d", backtrack to "/{x}/b/d".
     HttpRequest request = getRequest("/a/b/d");
     assertEquals(variableHandler, router.match(request));
-    assertEquals(List.of("a"), request.getParams().get("x"));
+    assertEquals(Map.of("x", "a"), request.getPathVariables());
 
     DefaultRouter paramRouter = new DefaultRouter();
     HttpRequestHandler paramHandler = Mockito.mock(HttpRequestHandler.class);
@@ -190,6 +191,37 @@ class DefaultRouterTest {
     assertEquals(variableHandler, paramRouter.match(getRequest("/a")));
   }
 
+  @Test
+  void pathVariablesAreSeparatedFromQueryParameters() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler userHandler = Mockito.mock(HttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/user/{id}", userHandler);
+
+    HttpRequest request = getRequest("/user/123");
+    request.getParams().put("id", List.of("x"));
+    assertEquals(userHandler, router.match(request));
+    assertEquals("123", request.pathVariable("id").orElseThrow());
+    // The query parameter of the same name is not changed.
+    assertEquals(Map.of("id", List.of("x")), request.getParams());
+
+    // No path variables are left from a previous match if no route matches.
+    HttpRequest notFoundRequest = getRequest("/order/123");
+    notFoundRequest.setPathVariables(Map.of("id", "stale"));
+    assertEquals(DefaultRouter.DEFAULT_NOT_FOUND_HANDLER, router.match(notFoundRequest));
+    assertTrue(notFoundRequest.getPathVariables().isEmpty());
+  }
+
+  @Test
+  void rejectInvalidPathVariables() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler handler = Mockito.mock(HttpRequestHandler.class);
+    assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/{id}/a/{id}", handler));
+    assertThrows(IllegalArgumentException.class, () -> router.route(HttpMethod.GET, "/b/{}", handler));
+    // The rejected routes are not registered, so they can be registered again once fixed.
+    router.route(HttpMethod.GET, "/{id}/a/{name}", handler);
+    router.route(HttpMethod.GET, "/b/{name}", handler);
+  }
+
   private static HttpRequest getRequest(String path) {
     return HttpRequest.builder()
         .method(HttpMethod.GET)
@@ -200,7 +232,7 @@ class DefaultRouterTest {
         .build();
   }
 
-  private static HttpRequest bucketRequest(Map<CharSequence, List<String>> params, Map<CharSequence, String> headers) {
+  private static HttpRequest bucketRequest(Map<CharSequence, List<String>> params, Map<String, String> headers) {
     return HttpRequest.builder()
         .method(HttpMethod.GET)
         .uri("/bucket")

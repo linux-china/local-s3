@@ -85,8 +85,9 @@ public interface Router {
   ExceptionHandler<Throwable> findExceptionHandler(Class<? extends Throwable> exceptionType);
 
   /**
-   * Find a handler for the given request according to registered routes.
-   * And set the extracted path parameters to {@linkplain HttpRequest#parameters(String)}.
+   * Find a handler for the given request according to registered routes, and set the path variables of the
+   * matched route to {@linkplain HttpRequest#getPathVariables()}, replacing those of a previous match; they are empty
+   * if no route matches. Query parameters in {@linkplain HttpRequest#getParams()} are not changed.
    *
    * @param request HTTP request.
    * @return a matched handler; or {@code null} if no matched handlers.

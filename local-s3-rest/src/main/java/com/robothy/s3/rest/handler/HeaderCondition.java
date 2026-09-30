@@ -11,7 +11,7 @@ import java.util.function.Function;
  * {@linkplain LocalS3Router#verifyRoutes()} can tell which requests the route matches: that a header is present, or
  * that it is absent. Header names are compared ignoring case.
  */
-final class HeaderCondition implements Function<Map<CharSequence, String>, Boolean> {
+final class HeaderCondition implements Function<Map<String, String>, Boolean> {
 
   private final String name;
 
@@ -43,9 +43,9 @@ final class HeaderCondition implements Function<Map<CharSequence, String>, Boole
   }
 
   @Override
-  public Boolean apply(Map<CharSequence, String> headers) {
+  public Boolean apply(Map<String, String> headers) {
     boolean found = headers.containsKey(name)
-        || headers.keySet().stream().anyMatch(header -> name.equalsIgnoreCase(header.toString()));
+        || headers.keySet().stream().anyMatch(name::equalsIgnoreCase);
     return found == present;
   }
 
@@ -54,8 +54,8 @@ final class HeaderCondition implements Function<Map<CharSequence, String>, Boole
    *
    * @return the headers.
    */
-  Map<CharSequence, String> minimalHeaders() {
-    Map<CharSequence, String> headers = new LinkedHashMap<>();
+  Map<String, String> minimalHeaders() {
+    Map<String, String> headers = new LinkedHashMap<>();
     if (present) {
       headers.put(name, "");
     }

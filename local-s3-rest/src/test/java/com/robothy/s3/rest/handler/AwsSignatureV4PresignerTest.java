@@ -157,7 +157,7 @@ class AwsSignatureV4PresignerTest {
     URI uri = URI.create(url);
     String target = uri.getRawPath() + '?' + uri.getRawQuery();
     QueryStringDecoder decoder = new QueryStringDecoder(target);
-    Map<CharSequence, String> headers = new HashMap<>();
+    Map<String, String> headers = new HashMap<>();
     headers.put("host", hostHeader(uri));
     return new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, Clock.fixed(at, ZoneOffset.UTC))
         .verifyHead(HttpRequest.builder()

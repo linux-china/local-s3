@@ -54,7 +54,7 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesThePayloadHashAgainstTheBody() {
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
 
     assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7, 15);
 
@@ -66,7 +66,7 @@ class AwsSignatureV4VerifierTest {
 
   @Test
   void verifiesTheSignatureBeforeTheBodyIsReceived() {
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     VerificationResult result = verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT);
     assertTrue(result.authenticated(), () -> result.errorCode() + ": " + result.message());
 
@@ -79,7 +79,7 @@ class AwsSignatureV4VerifierTest {
 
   @Test
   void verifiesTheSignatureWithoutPayloadHashOnlyWithTheBody() {
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     headers.remove("x-amz-content-sha256");
     headers.put("authorization", authorization("date;host;x-amz-date;x-amz-storage-class", "0".repeat(64)));
 
@@ -97,8 +97,8 @@ class AwsSignatureV4VerifierTest {
 
   private static final byte[] PUT_OBJECT_CONTENT = "Welcome to Amazon S3.".getBytes(StandardCharsets.UTF_8);
 
-  private static Map<CharSequence, String> putObjectHeaders() {
-    Map<CharSequence, String> headers = new HashMap<>();
+  private static Map<String, String> putObjectHeaders() {
+    Map<String, String> headers = new HashMap<>();
     headers.put("date", "Fri, 24 May 2013 00:00:00 GMT");
     headers.put("host", "examplebucket.s3.amazonaws.com");
     headers.put("x-amz-date", AMZ_DATE);
@@ -109,11 +109,11 @@ class AwsSignatureV4VerifierTest {
     return headers;
   }
 
-  private VerificationResult verifyHead(Map<CharSequence, String> headers, String path, HttpMethod method) {
+  private VerificationResult verifyHead(Map<String, String> headers, String path, HttpMethod method) {
     return verifyHead(headers, path, method, verifier);
   }
 
-  private static VerificationResult verifyHead(Map<CharSequence, String> headers, String path, HttpMethod method,
+  private static VerificationResult verifyHead(Map<String, String> headers, String path, HttpMethod method,
                                                AwsSignatureV4Verifier verifier) {
     return verifier.verifyHead(HttpRequest.builder()
         .method(method)
@@ -132,7 +132,7 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesChunkSignaturesAcrossBufferComponents() {
-    Map<CharSequence, String> headers = new HashMap<>();
+    Map<String, String> headers = new HashMap<>();
     headers.put("content-encoding", "aws-chunked");
     headers.put("content-length", "66824");
     headers.put("host", "s3.amazonaws.com");
@@ -170,12 +170,12 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesThePayloadOfABodyThatIsOnlyInAFile(@TempDir Path directory) throws IOException {
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     assertTrue(verifyFileBody(directory, headers, PUT_OBJECT_PATH, PUT_OBJECT_CONTENT).authenticated());
     assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch, verifyFileBody(directory, headers, PUT_OBJECT_PATH,
         "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8)).errorCode());
 
-    Map<CharSequence, String> chunked = chunkedHeaders();
+    Map<String, String> chunked = chunkedHeaders();
     String path = "/examplebucket/chunkObject.txt";
     byte[] encoded = chunkedBody();
     assertTrue(verifyFileBody(directory, chunked, path, encoded).authenticated());
@@ -186,7 +186,7 @@ class AwsSignatureV4VerifierTest {
         verifyFileBody(directory, chunked, path, Arrays.copyOf(encoded, encoded.length - 100)).errorCode());
   }
 
-  private VerificationResult verifyFileBody(Path directory, Map<CharSequence, String> headers, String path,
+  private VerificationResult verifyFileBody(Path directory, Map<String, String> headers, String path,
                                             byte[] content) throws IOException {
     Path file = Files.write(Files.createTempFile(directory, "body", ".tmp"), content);
     ByteBuf body = RequestBodies.fileBody(file);
@@ -217,13 +217,13 @@ class AwsSignatureV4VerifierTest {
     out.writeBytes("\r\n".getBytes(StandardCharsets.US_ASCII));
   }
 
-  private void assertVerified(Map<CharSequence, String> headers, String path, HttpMethod method,
+  private void assertVerified(Map<String, String> headers, String path, HttpMethod method,
                               byte[] content, int... cuts) {
     VerificationResult result = verify(headers, path, method, content, cuts);
     assertTrue(result.authenticated(), () -> result.errorCode() + ": " + result.message());
   }
 
-  private void assertRejected(Map<CharSequence, String> headers, String path, HttpMethod method,
+  private void assertRejected(Map<String, String> headers, String path, HttpMethod method,
                               byte[] content, int... cuts) {
     assertEquals(S3ErrorCode.SignatureDoesNotMatch, verify(headers, path, method, content, cuts).errorCode());
   }
@@ -232,7 +232,7 @@ class AwsSignatureV4VerifierTest {
    * Verify a request whose body is a composite buffer made of {@code content} split at {@code cuts},
    * preceded by junk bytes that have already been read.
    */
-  private VerificationResult verify(Map<CharSequence, String> headers, String path, HttpMethod method,
+  private VerificationResult verify(Map<String, String> headers, String path, HttpMethod method,
                                     byte[] content, int... cuts) {
     ByteBuf body = compositeBody(content, cuts);
     try {
@@ -284,7 +284,7 @@ class AwsSignatureV4VerifierTest {
   @Test
   void acceptsTheDateHeaderInsteadOfXAmzDate() {
     for (String date : new String[] {"Fri, 24 May 2013 00:00:00 GMT", AMZ_DATE}) {
-      Map<CharSequence, String> headers = dateSignedHeaders(date);
+      Map<String, String> headers = dateSignedHeaders(date);
       assertVerified(headers, PUT_OBJECT_PATH, HttpMethod.PUT, PUT_OBJECT_CONTENT, 7);
       assertEquals(S3ErrorCode.XAmzContentSHA256Mismatch, verify(headers, PUT_OBJECT_PATH, HttpMethod.PUT,
           "Welcome to Amazon S4.".getBytes(StandardCharsets.UTF_8)).errorCode());
@@ -293,22 +293,22 @@ class AwsSignatureV4VerifierTest {
 
   @Test
   void rejectsADateHeaderThatIsMissingUnsignedOrInvalid() {
-    Map<CharSequence, String> unsigned = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
+    Map<String, String> unsigned = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
     unsigned.put("authorization", authorization("host;x-amz-content-sha256;x-amz-storage-class", "0".repeat(64)));
     VerificationResult result = verifyHead(unsigned, PUT_OBJECT_PATH, HttpMethod.PUT);
     assertEquals(S3ErrorCode.AuthorizationHeaderMalformed, result.errorCode());
     assertEquals("The date header must be signed.", result.message());
 
-    Map<CharSequence, String> missing = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
+    Map<String, String> missing = dateSignedHeaders("Fri, 24 May 2013 00:00:00 GMT");
     missing.remove("date");
     assertEquals("The x-amz-date or Date header is required.",
         verifyHead(missing, PUT_OBJECT_PATH, HttpMethod.PUT).message());
 
-    Map<CharSequence, String> invalid = dateSignedHeaders("yesterday");
+    Map<String, String> invalid = dateSignedHeaders("yesterday");
     assertEquals(S3ErrorCode.AuthorizationHeaderMalformed,
         verifyHead(invalid, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
 
-    Map<CharSequence, String> skewed = dateSignedHeaders("Fri, 24 May 2013 01:00:00 GMT");
+    Map<String, String> skewed = dateSignedHeaders("Fri, 24 May 2013 01:00:00 GMT");
     assertEquals(S3ErrorCode.RequestTimeTooSkewed, verifyHead(skewed, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
   }
 
@@ -321,7 +321,7 @@ class AwsSignatureV4VerifierTest {
   void verifiesOnlyTheBodyOfARequestWhoseHeadIsVerified() {
     MutableClock clock = new MutableClock(Instant.parse("2013-05-24T00:00:00Z"));
     AwsSignatureV4Verifier verifier = new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, clock);
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(request(headers, null));
     assertTrue(head.result().authenticated());
 
@@ -342,7 +342,7 @@ class AwsSignatureV4VerifierTest {
 
   @Test
   void verifiesTheChunkSignaturesWithTheVerifiedHead() {
-    Map<CharSequence, String> headers = chunkedHeaders();
+    Map<String, String> headers = chunkedHeaders();
     String path = "/examplebucket/chunkObject.txt";
     AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
         .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
@@ -363,7 +363,7 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesTheChunkSignaturesWhileTheBodyIsReceived() {
-    Map<CharSequence, String> headers = chunkedHeaders();
+    Map<String, String> headers = chunkedHeaders();
     String path = "/examplebucket/chunkObject.txt";
     AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(HttpRequest.builder()
         .method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
@@ -412,7 +412,7 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void verifiesTheWholeRequestWhenTheHeadSignatureDependsOnTheBody() {
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     headers.remove("x-amz-content-sha256");
     headers.put("authorization", authorization("date;host;x-amz-date;x-amz-storage-class", "0".repeat(64)));
     AwsSignatureV4Verifier.HeadVerification head = verifier.verifyHeadForBody(request(headers, null));
@@ -436,31 +436,31 @@ class AwsSignatureV4VerifierTest {
         "arn:aws:sts::000000000000:assumed-role/role/session", "AROAEXAMPLE:session");
     String signedHeaders = "host;x-amz-content-sha256;x-amz-date;x-amz-security-token;x-amz-storage-class";
 
-    Map<CharSequence, String> headers = putObjectHeaders();
+    Map<String, String> headers = putObjectHeaders();
     headers.put("x-amz-security-token", credentials.sessionToken());
     headers.put("authorization", authorization(credentials.accessKeyId(), signedHeaders,
         sign(credentials.secretAccessKey(), "PUT", PUT_OBJECT_PATH, headers, signedHeaders, AMZ_DATE,
             headers.get("x-amz-content-sha256"))));
     assertTrue(verifier.verify(request(headers, Unpooled.wrappedBuffer(PUT_OBJECT_CONTENT))).authenticated());
 
-    Map<CharSequence, String> withoutToken = new HashMap<>(headers);
+    Map<String, String> withoutToken = new HashMap<>(headers);
     withoutToken.remove("x-amz-security-token");
     assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(withoutToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
         .errorCode());
 
-    Map<CharSequence, String> otherToken = new HashMap<>(headers);
+    Map<String, String> otherToken = new HashMap<>(headers);
     otherToken.put("x-amz-security-token", issuer.issue(java.time.Duration.ofHours(1),
         "arn:aws:sts::000000000000:assumed-role/role/other", "AROAEXAMPLE:other").sessionToken());
     assertEquals(S3ErrorCode.InvalidToken, verifyHead(otherToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
         .errorCode());
 
-    Map<CharSequence, String> forgedToken = new HashMap<>(headers);
+    Map<String, String> forgedToken = new HashMap<>(headers);
     forgedToken.put("x-amz-security-token", credentials.sessionToken().substring(1));
     assertEquals(S3ErrorCode.InvalidToken, verifyHead(forgedToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
         .errorCode());
 
     // The static access key has no session token.
-    Map<CharSequence, String> staticKeyWithToken = putObjectHeaders();
+    Map<String, String> staticKeyWithToken = putObjectHeaders();
     staticKeyWithToken.put("x-amz-security-token", credentials.sessionToken());
     assertEquals(S3ErrorCode.InvalidToken, verifyHead(staticKeyWithToken, PUT_OBJECT_PATH, HttpMethod.PUT, verifier)
         .errorCode());
@@ -475,7 +475,7 @@ class AwsSignatureV4VerifierTest {
    */
   @Test
   void checksOnlyTheAccessKeyOfSigV4aAndSignatureVersion2() {
-    Map<CharSequence, String> headers = new HashMap<>();
+    Map<String, String> headers = new HashMap<>();
     headers.put("host", "examplebucket.s3.amazonaws.com");
     headers.put("x-amz-date", AMZ_DATE);
     headers.put("x-amz-region-set", "*");
@@ -496,7 +496,7 @@ class AwsSignatureV4VerifierTest {
     headers.put("authorization", "AWS UNKNOWNKEY:frJIUN8DYpKDtOLCwo//yllqDzg=");
     assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(headers, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
 
-    Map<CharSequence, String> host = Map.of("host", "examplebucket.s3.amazonaws.com");
+    Map<String, String> host = Map.of("host", "examplebucket.s3.amazonaws.com");
     assertTrue(verifyHead(host, PUT_OBJECT_PATH + "?X-Amz-Algorithm=AWS4-ECDSA-P256-SHA256&X-Amz-Credential="
         + ACCESS_KEY_ID + "%2F20130524%2Fs3%2Faws4_request&X-Amz-Signature=3045", HttpMethod.GET).authenticated());
     assertTrue(verifyHead(host, PUT_OBJECT_PATH + "?AWSAccessKeyId=" + ACCESS_KEY_ID
@@ -505,8 +505,8 @@ class AwsSignatureV4VerifierTest {
         + "?AWSAccessKeyId=UNKNOWNKEY&Expires=1369353600&Signature=abc%3D", HttpMethod.GET).errorCode());
   }
 
-  private static Map<CharSequence, String> dateSignedHeaders(String date) {
-    Map<CharSequence, String> headers = putObjectHeaders();
+  private static Map<String, String> dateSignedHeaders(String date) {
+    Map<String, String> headers = putObjectHeaders();
     headers.remove("x-amz-date");
     headers.put("date", date);
     String signedHeaders = "date;host;x-amz-content-sha256;x-amz-storage-class";
@@ -515,8 +515,8 @@ class AwsSignatureV4VerifierTest {
     return headers;
   }
 
-  private static Map<CharSequence, String> chunkedHeaders() {
-    Map<CharSequence, String> headers = new HashMap<>();
+  private static Map<String, String> chunkedHeaders() {
+    Map<String, String> headers = new HashMap<>();
     headers.put("content-encoding", "aws-chunked");
     headers.put("content-length", "66824");
     headers.put("host", "s3.amazonaws.com");
@@ -530,12 +530,12 @@ class AwsSignatureV4VerifierTest {
     return headers;
   }
 
-  private static HttpRequest chunkedRequest(Map<CharSequence, String> headers, String path, byte[] body) {
+  private static HttpRequest chunkedRequest(Map<String, String> headers, String path, byte[] body) {
     return HttpRequest.builder().method(HttpMethod.PUT).uri(path).path(path).httpVersion(HttpVersion.HTTP_1_1)
         .headers(new HashMap<>(headers)).params(new HashMap<>()).body(Unpooled.wrappedBuffer(body)).build();
   }
 
-  private static HttpRequest request(Map<CharSequence, String> headers, ByteBuf body) {
+  private static HttpRequest request(Map<String, String> headers, ByteBuf body) {
     return HttpRequest.builder().method(HttpMethod.PUT).uri(PUT_OBJECT_PATH).path(PUT_OBJECT_PATH)
         .httpVersion(HttpVersion.HTTP_1_1).headers(new HashMap<>(headers)).params(new HashMap<>()).body(body).build();
   }
@@ -543,12 +543,12 @@ class AwsSignatureV4VerifierTest {
   /**
    * Sign a request without a query, following the steps of the AWS Signature Version 4 documentation.
    */
-  private static String sign(String method, String path, Map<CharSequence, String> headers, String signedHeaders,
+  private static String sign(String method, String path, Map<String, String> headers, String signedHeaders,
                              String amzDate, String payloadHash) {
     return sign(SECRET_ACCESS_KEY, method, path, headers, signedHeaders, amzDate, payloadHash);
   }
 
-  private static String sign(String secretAccessKey, String method, String path, Map<CharSequence, String> headers,
+  private static String sign(String secretAccessKey, String method, String path, Map<String, String> headers,
                              String signedHeaders, String amzDate, String payloadHash) {
     StringBuilder canonicalHeaders = new StringBuilder();
     for (String name : signedHeaders.split(";")) {

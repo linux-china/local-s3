@@ -11,16 +11,31 @@ import java.util.Objects;
 import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 @Getter
 @Builder
 public class HttpRequest {
 
+  /**
+   * Request headers keyed by lower-case names; the values of a repeated header are joined by commas. Look a header up
+   * with a lower-case {@linkplain String}, e.g. {@code HttpHeaderNames.HOST.toString()}, or with
+   * {@linkplain #header(CharSequence)}, which accepts any {@linkplain CharSequence} in any case.
+   */
   @Builder.Default
-  private Map<CharSequence, String> headers = new HashMap<>();
+  private Map<String, String> headers = new HashMap<>();
 
   @Builder.Default
   private Map<CharSequence, List<String>> params = new HashMap<>();
+
+  /**
+   * Path variables of the matched route, e.g. {@code id} of {@code /user/{id}}, set by
+   * {@linkplain com.robothy.netty.router.Router#match(HttpRequest)}. Query parameters are in {@link #params}, so a
+   * query parameter never overrides a path variable of the same name, or the other way around.
+   */
+  @Setter
+  @Builder.Default
+  private Map<String, String> pathVariables = Map.of();
 
   private String path;
 
@@ -44,7 +59,7 @@ public class HttpRequest {
   }
 
   /**
-   * Get the first value by the parameter name.
+   * Get the first value of a query parameter.
    *
    * @param name parameter name.
    * @return the first value of the parameter.
@@ -57,7 +72,17 @@ public class HttpRequest {
   }
 
   /**
-   * Get the parameter values by name. Include path parameters and query parameters.
+   * Get the value of a path variable.
+   *
+   * @param name path variable name, e.g. {@code id} of {@code /user/{id}}.
+   * @return the path variable value.
+   */
+  public Optional<String> pathVariable(String name) {
+    return Optional.ofNullable(pathVariables.get(name));
+  }
+
+  /**
+   * Get the query parameter values by name. Path variables are in {@linkplain #pathVariable(String)}.
    *
    * @param name parameter name.
    * @return the parameter values.

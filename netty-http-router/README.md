@@ -49,6 +49,9 @@ This library uses SpringMVC path pattern to match request paths.
 + `/user/{id}/profile` matches `/user/123/profile`, `/user/bob/profie`, etc.
 + `/user/{id:[0-9]{1,}}/profile` matches `/user/123/profile` and not match `/user/bob/profile`.
 
+Path variables are read with `request.pathVariable("id")`, query parameters with `request.parameter("id")`;
+they are kept apart, so a query parameter never overrides a path variable of the same name.
+
 You can find more details about the path pattern in the [PathPattern](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/web/util/pattern/PathPattern.html) javadoc.
 
 #### Headers and parameters matcher

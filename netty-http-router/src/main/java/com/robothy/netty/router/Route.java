@@ -17,7 +17,7 @@ public class Route {
 
   private HttpRequestHandler handler;
 
-  private Function<Map<CharSequence, String>, Boolean> headerMatcher;
+  private Function<Map<String, String>, Boolean> headerMatcher;
 
   private Function<Map<CharSequence, List<String>>, Boolean> paramMatcher;
 
@@ -27,7 +27,7 @@ public class Route {
 
   }
 
-  public Route headerMather(Function<Map<CharSequence, String>, Boolean> headerMatcher) {
+  public Route headerMather(Function<Map<String, String>, Boolean> headerMatcher) {
     this.headerMatcher = headerMatcher;
     return this;
   }
@@ -73,7 +73,7 @@ public class Route {
       return this;
     }
 
-    public Builder headerMatcher(Function<Map<CharSequence, String>, Boolean> headerMatcher) {
+    public Builder headerMatcher(Function<Map<String, String>, Boolean> headerMatcher) {
       propHolder.headerMatcher = headerMatcher;
       return this;
     }

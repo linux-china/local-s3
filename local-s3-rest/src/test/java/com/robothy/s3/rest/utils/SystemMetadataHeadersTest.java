@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 class SystemMetadataHeadersTest {
 
-  private static HttpRequest request(Map<CharSequence, String> headers, Map<String, List<String>> params) {
+  private static HttpRequest request(Map<String, String> headers, Map<String, List<String>> params) {
     return HttpRequest.builder().headers(new HashMap<>(headers)).params(new HashMap<>(params)).build();
   }
 

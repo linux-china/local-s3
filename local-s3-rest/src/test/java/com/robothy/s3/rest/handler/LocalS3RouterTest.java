@@ -260,7 +260,7 @@ class LocalS3RouterTest {
     return builder.build();
   }
 
-  private static HttpRequest request(Map<CharSequence, List<String>> params, Map<CharSequence, String> headers) {
+  private static HttpRequest request(Map<CharSequence, List<String>> params, Map<String, String> headers) {
     return HttpRequest.builder().method(HttpMethod.GET).path("/a")
         .params(new HashMap<>(params)).headers(new HashMap<>(headers)).build();
   }

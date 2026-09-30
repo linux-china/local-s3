@@ -165,7 +165,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     }
     
     Map<String, String> userMetadata = new HashMap<>();
-    for (Map.Entry<CharSequence, String> entry : request.getHeaders().entrySet()) {
+    for (Map.Entry<String, String> entry : request.getHeaders().entrySet()) {
       String name = entry.getKey().toString();
       String value = entry.getValue();
       
