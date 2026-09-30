@@ -104,3 +104,8 @@ Router router=Router.router()
       .write(e.getMessage()))
     ;
 ```
+
+> [!WARNING]
+> Without a handler for its type, an exception, including an `Error` such as `OutOfMemoryError`, is answered by the
+> default handler with `500` and the full stack trace as `text/plain; charset=utf-8`. Register a handler for
+> `Throwable.class` to keep the stack trace from clients.

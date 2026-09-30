@@ -2,10 +2,10 @@ package com.robothy.netty.router;
 
 import com.robothy.netty.http.HttpRequestHandler;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,14 +15,15 @@ public abstract class AbstractRouter implements Router {
 
   private final Map<Class<? extends Throwable>, ExceptionHandler<?>> exceptionHandlerMap;
 
+  // The default handler for exceptions without a more specific handler. It writes the full stack trace to the
+  // response body, which exposes server internals to clients; register a handler for Throwable to override it.
   {
     exceptionHandlerMap = new HashMap<>();
     exceptionHandlerMap.put(Throwable.class, (cause, request, response) -> {
       ByteArrayOutputStream out = new ByteArrayOutputStream();
-      PrintStream printStream = new PrintStream(out);
-      cause.printStackTrace(printStream);
-      response.write(out.toString())
-          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_PLAIN)
+      cause.printStackTrace(new PrintStream(out, true, StandardCharsets.UTF_8));
+      response.write(out.toString(StandardCharsets.UTF_8))
+          .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), "text/plain; charset=utf-8")
           .status(HttpResponseStatus.INTERNAL_SERVER_ERROR);
     });
   }

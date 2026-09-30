@@ -559,3 +559,13 @@ curl -s -X POST "http://localhost:29090/_admin/lifecycle?days=31"
 The latency of a request is measured from when its body is received until its response is written. The health check
 and the admin endpoints aren't recorded. Unlike the health check, the admin endpoints must be signed if credentials
 are configured, e.g. with `curl --aws-sigv4 "aws:amz:us-east-1:s3" --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" http://localhost:29090/_admin/stats`.
+
+## Error responses
+
+A failed S3 request is answered with the usual S3 XML error, e.g. `500 InternalError`, and a failed S3 Vectors request
+with its JSON error. An `Error` thrown while a request is handled, e.g. `OutOfMemoryError` or `StackOverflowError`, isn't
+an `Exception` and reaches the default handler of the HTTP router instead, which answers `500` with the **full stack
+trace** as `text/plain; charset=utf-8`. That helps local debugging but exposes the internals of the service, e.g. class
+names and paths, to whoever reaches the port, so don't expose LocalS3 to an untrusted network. The other errors of the
+router, a request without a route (`404`) and a failure outside of a handler (`500`), are plain text as well, so the
+request path or exception message they echo is never rendered as HTML.

@@ -138,10 +138,11 @@ class HttpServerInitializerTest {
 
     HttpResponse<String> exceptionResponse = HttpClient.newHttpClient()
         .send(requestBuilder.GET().uri(new URI("http://localhost:" + port + "/test/exception")).build(),
-            responseInfo -> HttpResponse.BodySubscribers.ofString(Charset.defaultCharset()));
+            responseInfo -> HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8));
     ByteArrayOutputStream out = new ByteArrayOutputStream();
-    exceptionHolder.get().printStackTrace(new PrintStream(out));
-    assertEquals(out.toString(), exceptionResponse.body());
+    exceptionHolder.get().printStackTrace(new PrintStream(out, true, StandardCharsets.UTF_8));
+    assertEquals(out.toString(StandardCharsets.UTF_8), exceptionResponse.body());
+    assertEquals("text/plain; charset=utf-8", exceptionResponse.headers().firstValue("Content-Type").get());
 
     // Test user registered RuntimeException handler.
     router.exceptionHandler(RuntimeException.class, (cause, req, resp) -> {

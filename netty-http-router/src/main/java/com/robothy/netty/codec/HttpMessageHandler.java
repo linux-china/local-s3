@@ -26,6 +26,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
+  /**
+   * Error bodies echo client input, e.g. the request path, so they are plain text rather than HTML to avoid XSS.
+   */
+  private static final String TEXT_PLAIN_UTF8 = "text/plain; charset=utf-8";
+
   private final Router router;
 
   public HttpMessageHandler(Router router) {
@@ -49,7 +54,7 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
         log.warn("No handler for {} {}", request.getMethod(), request.getUri());
         response.write("Not found " + request.getPath())
             .status(HttpResponseStatus.NOT_FOUND)
-            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML);
+            .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), TEXT_PLAIN_UTF8);
       } else {
         try {
           handler.handle(request, response);
@@ -141,9 +146,9 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     log.error("Caught exception.", cause);
     HttpResponse response = new HttpResponse();
     response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR)
-        .write("<h1>Internal Server Error.</h1>")
-        .write(cause.getMessage())
-        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.TEXT_HTML)
+        .write("Internal Server Error.")
+        .write(cause.getMessage() == null ? null : " " + cause.getMessage())
+        .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), TEXT_PLAIN_UTF8)
         .putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
     write(ctx, response, false);
