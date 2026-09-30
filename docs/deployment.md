@@ -121,8 +121,8 @@ LocalS3 credentials from the variables LOCAL_S3_ACCESS_KEY_ID and LOCAL_S3_SECRE
 Every variable of the table below is also an option of the [executable jar](#executable-jar), named after it:
 `LOCAL_S3_PORT` is `--port`, `LOCAL_S3_WEBSITE_ALL_BUCKETS` is `--website-all-buckets`, `AWS_BUCKETS` is `--buckets`
 (or `--bucket`, repeated), and `LOCAL_S3_ACCESS_KEY_ID` and `LOCAL_S3_SECRET_ACCESS_KEY` are `--access-key` and `--secret-key`.
-The exceptions are the cache limits, which are read when a cache is created rather than applied to a service, so they
-are set by a variable alone. A container is configured by the variables; `java -jar s3.jar --help` prints the options.
+The exceptions are the cache limits, which are read when a cache is created rather than applied to a service, and the
+logging variables, which the logging configuration of the jar and the image reads; they are set by a variable alone. A container is configured by the variables; `java -jar s3.jar --help` prints the options.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -153,6 +153,8 @@ are set by a variable alone. A container is configured by the variables; `java -
 | `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS, alongside plain HTTP on the same port, with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
 | `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). |
 | `LOCAL_S3_TLS_REQUIRED` | `false` | Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port, so that a plain HTTP request fails. No effect without a certificate; see [HTTPS](#https). |
+| `LOCAL_S3_LOGGING_LEVEL` | `INFO` | The level of the log of the jar and the image, e.g. `DEBUG`. |
+| `LOCAL_S3_LOG_COLOR` | `false` | `true` colors the log for a terminal. Off by default, so that `docker logs`, CI logs and log files hold no escape sequences. The log is timestamped in the time zone of the process, with its offset, e.g. `2026-09-30T13:31:01.319+02:00`; set `TZ` to change it, e.g. `TZ=UTC` for a container. |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75.0` | JVM options of the JVM based image. |
 
 The same variables configure an embedded service, through `LocalS3Builder.fromEnvironment()`, which reads them

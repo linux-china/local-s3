@@ -21,8 +21,11 @@ VOLUME /data
 
 EXPOSE 29090
 
+# HTTPS first, for a service that serves it, possibly alone (LOCAL_S3_TLS_REQUIRED=true), with a certificate that the
+# container doesn't trust, e.g. a self-signed one; then plain HTTP, for a service without TLS.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl --fail --silent --show-error http://localhost:29090/_health || exit 1
+    CMD curl --fail --silent --insecure "https://localhost:${LOCAL_S3_PORT:-29090}/_health" \
+        || curl --fail --silent --show-error "http://localhost:${LOCAL_S3_PORT:-29090}/_health" || exit 1
 
 USER locals3
 

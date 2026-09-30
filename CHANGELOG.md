@@ -372,6 +372,10 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Changed
 
++ The log of the jar and the Docker images is timestamped in the time zone of the process, with its offset, e.g.
+  `2026-09-30T13:31:01.319+02:00`, rather than always in `Asia/Shanghai`; set `TZ` to change it. It is no longer colored
+  unless `LOCAL_S3_LOG_COLOR=true`, so `docker logs`, CI logs and log files hold no escape sequences, and no longer
+  names the line of each message, which took a stack trace per message.
 + The clients of the Spring Boot starter back off, with a warning, when the application is configured with another S3
   endpoint, e.g. `spring.cloud.aws.s3.endpoint`, `spring.cloud.aws.endpoint`, `AWS_ENDPOINT_URL_S3` or
   `AWS_ENDPOINT_URL`, so that a starter included in a production build by mistake doesn't point them at the embedded
@@ -445,6 +449,9 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ The health check of the Docker images tries HTTPS before plain HTTP, so a container with `LOCAL_S3_TLS_REQUIRED=true`
+  is no longer reported `unhealthy`, which held up a `depends_on: condition: service_healthy` of Docker Compose. The one
+  of the native image also follows `LOCAL_S3_PORT` now, rather than always checking port 29090.
 + The service of the Spring Boot starter listens on a random free port in a `@SpringBootTest` unless `local-s3.port` is
   set, as it does with `@AutoConfigureLocalS3`: the test contexts that Spring caches side by side, e.g. of test classes
   with different properties, each start a service, and the second one failed to bind port 29090. The client beans and

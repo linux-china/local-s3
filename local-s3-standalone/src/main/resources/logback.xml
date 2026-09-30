@@ -1,11 +1,17 @@
 <configuration>
 
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <!-- encoders are assigned the type
-             ch.qos.logback.classic.encoder.PatternLayoutEncoder by default -->
-        <encoder>
-            <Pattern>%blue(%date{"yyyy-MM-dd HH:mm:ss.SSS", "Asia/Shanghai"}) %highlight(%-5level) [%thread] %yellow(%logger{36}:%line) - %msg%n%throwable</Pattern>
+    <!-- The time in the time zone of the process, i.e. TZ in a container, with its offset, so that it can't be misread.
+         No caller data (%line): it takes a stack trace for every event. -->
+    <property name="PATTERN_false" value="%date{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] %logger{36} - %msg%n%throwable"/>
+    <!-- An empty LOCAL_S3_LOG_COLOR, which the default below doesn't replace. -->
+    <property name="PATTERN_" value="${PATTERN_false}"/>
+    <!-- LOCAL_S3_LOG_COLOR=true colors the output for a terminal; off by default, since docker logs, CI logs and files
+         would get the escape sequences. -->
+    <property name="PATTERN_true" value="%blue(%date{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}) %highlight(%-5level) [%thread] %yellow(%logger{36}) - %msg%n%throwable"/>
 
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <Pattern>${PATTERN_${LOCAL_S3_LOG_COLOR:-false}}</Pattern>
         </encoder>
     </appender>
 
