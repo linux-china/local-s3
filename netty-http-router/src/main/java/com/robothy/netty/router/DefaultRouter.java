@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
 
 final class DefaultRouter extends AbstractRouter {
 
@@ -29,7 +28,7 @@ final class DefaultRouter extends AbstractRouter {
     for (String segment : segments) {
       node = addNode(node, segment);
     }
-    node.routes.add(route);
+    node.addRoute(route);
     return this;
   }
 
@@ -157,28 +156,34 @@ final class DefaultRouter extends AbstractRouter {
 
     private TreeNode likeChild;
 
-    private final TreeSet<Route> routes = new TreeSet<>((r1, r2) -> {
-      // r1 and r2 has the same method and path
-      int score1 = 0, score2 = 0;
-      // Header matcher has higher priority.
-      if (Objects.nonNull(r1.getHeaderMatcher())) {
-        score1 |= (1 << 1);
-      }
+    /**
+     * Routes with the same method and path, ordered by {@link #score(Route)} from high to low. Routes with the same
+     * score keep their registration order.
+     */
+    private final List<Route> routes = new ArrayList<>();
 
-      if (Objects.nonNull(r1.getParamMatcher())) {
-        score1 |= 1;
+    private void addRoute(Route route) {
+      int score = score(route);
+      int idx = 0;
+      while (idx < routes.size() && score(routes.get(idx)) >= score) {
+        idx++;
       }
+      routes.add(idx, route);
+    }
 
-      if (Objects.nonNull(r2.getHeaderMatcher())) {
-        score2 |= (1 << 1);
+    /**
+     * Header matcher has higher priority than param matcher.
+     */
+    private static int score(Route route) {
+      int score = 0;
+      if (Objects.nonNull(route.getHeaderMatcher())) {
+        score |= (1 << 1);
       }
-
-      if (Objects.nonNull(r2.getParamMatcher())) {
-        score2 |= 1;
+      if (Objects.nonNull(route.getParamMatcher())) {
+        score |= 1;
       }
-
-      return score2 - score1;
-    });
+      return score;
+    }
   }
 
 }

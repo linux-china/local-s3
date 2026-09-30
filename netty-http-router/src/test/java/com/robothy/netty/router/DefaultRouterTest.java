@@ -115,6 +115,43 @@ class DefaultRouterTest {
   }
 
   @Test
+  void matchRoutesWithSamePriority() {
+    DefaultRouter router = new DefaultRouter();
+    HttpRequestHandler aclHandler = Mockito.mock(HttpRequestHandler.class);
+    HttpRequestHandler taggingHandler = Mockito.mock(HttpRequestHandler.class);
+    HttpRequestHandler jsonHandler = Mockito.mock(HttpRequestHandler.class);
+    HttpRequestHandler xmlHandler = Mockito.mock(HttpRequestHandler.class);
+    HttpRequestHandler defaultHandler = Mockito.mock(HttpRequestHandler.class);
+    router.route(HttpMethod.GET, "/{bucket}", defaultHandler)
+        .route(Route.builder().method(HttpMethod.GET).path("/{bucket}")
+            .paramMatcher(params -> params.containsKey("acl")).handler(aclHandler).build())
+        .route(Route.builder().method(HttpMethod.GET).path("/{bucket}")
+            .paramMatcher(params -> params.containsKey("tagging")).handler(taggingHandler).build())
+        .route(Route.builder().method(HttpMethod.GET).path("/{bucket}")
+            .headerMatcher(headers -> "application/json".equals(headers.get("accept"))).handler(jsonHandler).build())
+        .route(Route.builder().method(HttpMethod.GET).path("/{bucket}")
+            .headerMatcher(headers -> "application/xml".equals(headers.get("accept"))).handler(xmlHandler).build());
+
+    assertEquals(aclHandler, router.match(bucketRequest(Map.of("acl", List.of("")), Map.of())));
+    assertEquals(taggingHandler, router.match(bucketRequest(Map.of("tagging", List.of("")), Map.of())));
+    assertEquals(jsonHandler, router.match(bucketRequest(Map.of(), Map.of("accept", "application/json"))));
+    assertEquals(xmlHandler, router.match(bucketRequest(Map.of(), Map.of("accept", "application/xml"))));
+    // Header matchers have higher priority than param matchers.
+    assertEquals(xmlHandler, router.match(bucketRequest(Map.of("acl", List.of("")), Map.of("accept", "application/xml"))));
+    assertEquals(defaultHandler, router.match(bucketRequest(Map.of(), Map.of())));
+  }
+
+  private static HttpRequest bucketRequest(Map<CharSequence, List<String>> params, Map<CharSequence, String> headers) {
+    return HttpRequest.builder()
+        .method(HttpMethod.GET)
+        .uri("/bucket")
+        .path("/bucket")
+        .params(new HashMap<>(params))
+        .headers(new HashMap<>(headers))
+        .build();
+  }
+
+  @Test
   void testExceptionHandler() {
     DefaultRouter router = new DefaultRouter();
     assertNotNull(router.findExceptionHandler(RuntimeException.class));
