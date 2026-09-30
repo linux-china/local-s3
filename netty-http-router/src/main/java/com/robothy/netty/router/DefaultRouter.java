@@ -123,8 +123,8 @@ final class DefaultRouter extends AbstractRouter {
   private Route matchRoute(TreeNode node, String[] segments, int idx, HttpRequest request) {
     if (idx == segments.length) {
       for (Route route : node.routes) {
-        boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().apply(request.getHeaders()));
-        boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().apply(request.getParams()));
+        boolean headerMatched = (route.getHeaderMatcher() == null || route.getHeaderMatcher().test(request.getHeaders()));
+        boolean paramMatched = (route.getParamMatcher() == null || route.getParamMatcher().test(request.getParams()));
         if (headerMatched && paramMatched) {
           return route;
         }

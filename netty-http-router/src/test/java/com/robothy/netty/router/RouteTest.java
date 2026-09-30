@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 class RouteTest {
@@ -25,8 +25,8 @@ class RouteTest {
     Set<Route> routes = new HashSet<>(Set.of(route));
     int hashCode = route.hashCode();
 
-    Function<Map<String, List<String>>, Boolean> params = ps -> ps.containsKey("x");
-    Function<Map<String, String>, Boolean> headers = hs -> hs.containsKey("y");
+    Predicate<Map<String, List<String>>> params = ps -> ps.containsKey("x");
+    Predicate<Map<String, String>> headers = hs -> hs.containsKey("y");
     Route withParams = route.paramMatcher(params);
     Route withHeaders = route.headerMather(headers);
 

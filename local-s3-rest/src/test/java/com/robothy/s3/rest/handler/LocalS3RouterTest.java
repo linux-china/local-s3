@@ -236,17 +236,17 @@ class LocalS3RouterTest {
   @Test
   void conditionsMatchTheRequestsTheyDeclare() {
     ParamCondition listV2 = ParamCondition.equalTo("list-type", "2");
-    assertTrue(listV2.apply(Map.of("list-type", List.of("2"))));
-    assertFalse(listV2.apply(Map.of("list-type", List.of("1"))));
-    assertFalse(listV2.apply(Map.of("list-type", List.of())));
-    assertFalse(listV2.apply(Map.of()));
+    assertTrue(listV2.test(Map.of("list-type", List.of("2"))));
+    assertFalse(listV2.test(Map.of("list-type", List.of("1"))));
+    assertFalse(listV2.test(Map.of("list-type", List.of())));
+    assertFalse(listV2.test(Map.of()));
     assertThrows(IllegalArgumentException.class, () -> ParamCondition.has("id").andHasNot("id"));
 
     HeaderCondition copy = HeaderCondition.has("X-Amz-Copy-Source");
-    assertTrue(copy.apply(Map.of("x-amz-copy-source", "/b/k")));
-    assertTrue(copy.apply(Map.of("X-AMZ-COPY-SOURCE", "/b/k")), "Header names are compared ignoring case.");
-    assertFalse(copy.apply(Map.of()));
-    assertTrue(HeaderCondition.hasNot("x-amz-object-attributes").apply(Map.of()));
+    assertTrue(copy.test(Map.of("x-amz-copy-source", "/b/k")));
+    assertTrue(copy.test(Map.of("X-AMZ-COPY-SOURCE", "/b/k")), "Header names are compared ignoring case.");
+    assertFalse(copy.test(Map.of()));
+    assertTrue(HeaderCondition.hasNot("x-amz-object-attributes").test(Map.of()));
   }
 
   private static Route route(HttpMethod method, ParamCondition params, HeaderCondition headers) {

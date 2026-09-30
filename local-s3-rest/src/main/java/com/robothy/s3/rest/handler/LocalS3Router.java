@@ -788,7 +788,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
     if (Objects.isNull(route.getHeaderMatcher())) {
       priority |= (1 << 1);
-    } else if (route.getHeaderMatcher().apply(headers)) {
+    } else if (route.getHeaderMatcher().test(headers)) {
       priority |= (1 << 3);
     } else {
       priority = -1;
@@ -796,7 +796,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
     if (Objects.isNull(route.getParamMatcher())) {
       priority |= (1 << 2);
-    } else if (route.getParamMatcher().apply(params)) {
+    } else if (route.getParamMatcher().test(params)) {
       priority |= (1 << 4);
     } else {
       priority = -1;

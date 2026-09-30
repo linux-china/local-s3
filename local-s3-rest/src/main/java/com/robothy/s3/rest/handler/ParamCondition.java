@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * The condition of a route on the query parameters of a request, declared rather than coded, so that
@@ -19,7 +19,7 @@ import java.util.function.Function;
  * <p>A condition is immutable; {@linkplain #andHas}, {@linkplain #andHasNot} and {@linkplain #andEqualTo} return a new
  * one.
  */
-final class ParamCondition implements Function<Map<String, List<String>>, Boolean> {
+final class ParamCondition implements Predicate<Map<String, List<String>>> {
 
   private final Set<String> present;
 
@@ -102,7 +102,7 @@ final class ParamCondition implements Function<Map<String, List<String>>, Boolea
   }
 
   @Override
-  public Boolean apply(Map<String, List<String>> params) {
+  public boolean test(Map<String, List<String>> params) {
     for (String name : present) {
       if (!params.containsKey(name)) {
         return false;

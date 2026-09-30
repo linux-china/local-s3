@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import lombok.Getter;
 
 /**
@@ -22,15 +22,15 @@ public final class Route {
 
   private final HttpRequestHandler handler;
 
-  private final Function<Map<String, String>, Boolean> headerMatcher;
+  private final Predicate<Map<String, String>> headerMatcher;
 
-  private final Function<Map<String, List<String>>, Boolean> paramMatcher;
+  private final Predicate<Map<String, List<String>>> paramMatcher;
 
   private final String trimPath;
 
   private Route(HttpMethod method, String path, HttpRequestHandler handler,
-                Function<Map<String, String>, Boolean> headerMatcher,
-                Function<Map<String, List<String>>, Boolean> paramMatcher, String trimPath) {
+                Predicate<Map<String, String>> headerMatcher,
+                Predicate<Map<String, List<String>>> paramMatcher, String trimPath) {
     this.method = method;
     this.path = path;
     this.handler = handler;
@@ -42,20 +42,20 @@ public final class Route {
   /**
    * Returns a copy of this route with the given header matcher; this route is not modified.
    *
-   * @deprecated set the matcher with {@link Builder#headerMatcher(Function)} instead.
+   * @deprecated set the matcher with {@link Builder#headerMatcher(Predicate)} instead.
    */
   @Deprecated(forRemoval = true)
-  public Route headerMather(Function<Map<String, String>, Boolean> headerMatcher) {
+  public Route headerMather(Predicate<Map<String, String>> headerMatcher) {
     return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath);
   }
 
   /**
    * Returns a copy of this route with the given parameter matcher; this route is not modified.
    *
-   * @deprecated set the matcher with {@link Builder#paramMatcher(Function)} instead.
+   * @deprecated set the matcher with {@link Builder#paramMatcher(Predicate)} instead.
    */
   @Deprecated(forRemoval = true)
-  public Route paramMatcher(Function<Map<String, List<String>>, Boolean> paramMatcher) {
+  public Route paramMatcher(Predicate<Map<String, List<String>>> paramMatcher) {
     return new Route(method, path, handler, headerMatcher, paramMatcher, trimPath);
   }
 
@@ -118,9 +118,9 @@ public final class Route {
 
     private HttpRequestHandler handler;
 
-    private Function<Map<String, String>, Boolean> headerMatcher;
+    private Predicate<Map<String, String>> headerMatcher;
 
-    private Function<Map<String, List<String>>, Boolean> paramMatcher;
+    private Predicate<Map<String, List<String>>> paramMatcher;
 
     public Builder method(HttpMethod method) {
       this.method = method;
@@ -132,12 +132,12 @@ public final class Route {
       return this;
     }
 
-    public Builder headerMatcher(Function<Map<String, String>, Boolean> headerMatcher) {
+    public Builder headerMatcher(Predicate<Map<String, String>> headerMatcher) {
       this.headerMatcher = headerMatcher;
       return this;
     }
 
-    public Builder paramMatcher(Function<Map<String, List<String>>, Boolean> paramMatcher) {
+    public Builder paramMatcher(Predicate<Map<String, List<String>>> paramMatcher) {
       this.paramMatcher = paramMatcher;
       return this;
     }

@@ -4,14 +4,14 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * The condition of a route on a header of a request, declared rather than coded, so that
  * {@linkplain LocalS3Router#verifyRoutes()} can tell which requests the route matches: that a header is present, or
  * that it is absent. Header names are compared ignoring case.
  */
-final class HeaderCondition implements Function<Map<String, String>, Boolean> {
+final class HeaderCondition implements Predicate<Map<String, String>> {
 
   private final String name;
 
@@ -43,7 +43,7 @@ final class HeaderCondition implements Function<Map<String, String>, Boolean> {
   }
 
   @Override
-  public Boolean apply(Map<String, String> headers) {
+  public boolean test(Map<String, String> headers) {
     boolean found = headers.containsKey(name)
         || headers.keySet().stream().anyMatch(name::equalsIgnoreCase);
     return found == present;
