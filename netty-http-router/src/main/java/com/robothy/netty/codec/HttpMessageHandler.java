@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -32,10 +33,37 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
    */
   private static final String TEXT_PLAIN_UTF8 = "text/plain; charset=utf-8";
 
+  /**
+   * Lower-case names of the request headers that carry credentials, masked in the debug log, which is often pasted
+   * into issues or chats.
+   */
+  private static final Set<String> SENSITIVE_HEADERS =
+      Set.of("authorization", "proxy-authorization", "cookie", "x-amz-security-token");
+
+  /**
+   * Number of leading characters of a sensitive header kept in the debug log, e.g. the scheme of an
+   * {@code Authorization} header.
+   */
+  private static final int UNMASKED_PREFIX_LENGTH = 8;
+
   private final Router router;
 
   public HttpMessageHandler(Router router) {
     this.router = router;
+  }
+
+  /**
+   * The value of a request header as the debug log shows it: only the first characters of a header carrying
+   * credentials.
+   *
+   * @param name lower-case header name.
+   */
+  static String headerValueForLog(String name, String value) {
+    if (!SENSITIVE_HEADERS.contains(name)) {
+      return value;
+    }
+    // A value no longer than the prefix is masked whole, as it would be shown whole otherwise.
+    return value.length() > UNMASKED_PREFIX_LENGTH ? value.substring(0, UNMASKED_PREFIX_LENGTH) + "***" : "***";
   }
 
   @Override
@@ -43,7 +71,8 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
     if (log.isDebugEnabled()) {
       log.debug("{} {}", request.getMethod(), request.getUri());
       StringBuilder headers = new StringBuilder();
-      request.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ").append(value));
+      request.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ")
+          .append(headerValueForLog(name, value)));
       log.debug(headers.toString());
     }
 
@@ -105,7 +134,8 @@ public class HttpMessageHandler extends SimpleChannelInboundHandler<HttpRequest>
       log.debug("Rendered {} to {} {}", response.getStatus().code(), request.getMethod(), request.getUri());
       if (log.isDebugEnabled()) {
         StringBuilder headers = new StringBuilder();
-        response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ").append(value));
+        response.getHeaders().forEach((name, value) -> headers.append("\n").append(name).append(": ")
+          .append(headerValueForLog(name, value)));
         log.debug(headers.toString());
       }
     } finally {

@@ -257,6 +257,18 @@ class HttpMessageHandlerTest {
         .build();
   }
 
+  @ParameterizedTest
+  @CsvSource(value = {
+      "authorization, AWS4-HMAC-SHA256 Credential=AKID/20260930/us-east-1/s3/aws4_request, AWS4-HMA***",
+      "proxy-authorization, Basic dXNlcjpwYXNz, Basic dX***",
+      "cookie, session=secret, session=***",
+      "x-amz-security-token, short, ***",
+      "host, localhost:8080, localhost:8080",
+  })
+  void sensitiveHeadersAreMaskedInLog(String name, String value, String logged) {
+    assertEquals(logged, HttpMessageHandler.headerValueForLog(name, value));
+  }
+
   @Test
   void ioExceptionClosesWithoutResponse() {
     EmbeddedChannel channel = new EmbeddedChannel(new HttpMessageHandler(Router.router()));
