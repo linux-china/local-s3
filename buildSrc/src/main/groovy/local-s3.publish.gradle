@@ -74,7 +74,8 @@ tasks.register('delombok', JavaExec) {
 javadoc {
     dependsOn delombok
     source = delombok.outputDir
-    //failOnError = false
+    failOnError = false
+    options.addStringOption('Xdoclint:-missing', '-quiet')
 }
 
 // Artifacts are signed for Maven Central, which requires signatures. A signing key is configured with the properties
