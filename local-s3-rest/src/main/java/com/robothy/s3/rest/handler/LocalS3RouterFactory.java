@@ -479,7 +479,8 @@ public class LocalS3RouterFactory {
     routes
         .add("AbortMultipartUpload", DELETE, BUCKET_KEY_PATH, has("uploadId"),
             new AbortMultipartUploadController(factory))
-        .add("CompleteMultipartUpload", POST, BUCKET_KEY_PATH, new CompleteMultipartUploadController(factory))
+        .add("CompleteMultipartUpload", POST, BUCKET_KEY_PATH, has("uploadId"),
+            new CompleteMultipartUploadController(factory))
         .add("CopyObject", PUT, BUCKET_KEY_PATH, copySource, new CopyObjectController(factory))
         .add("CreateMultipartUpload", POST, BUCKET_KEY_PATH, has("uploads"),
             new CreateMultipartUploadController(factory))

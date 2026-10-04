@@ -73,9 +73,12 @@ class AdminEndpointsTest {
       // The requests answered 501 tell which operations a client needs that LocalS3 lacks.
       assertEquals(501, send(localS3, "PATCH", "/bucket/a.txt", "x").statusCode());
       assertEquals(501, send(localS3, "GET", "/bucket/a.txt?torrent", null).statusCode());
-      JsonNode notImplemented = statsWithRequests(localS3, 5).get("notImplemented");
+      // A POST of an object that names no operation, e.g. without the uploadId of CompleteMultipartUpload.
+      assertEquals(501, send(localS3, "POST", "/bucket/a.txt", "x").statusCode());
+      JsonNode notImplemented = statsWithRequests(localS3, 6).get("notImplemented");
       assertEquals(1, notImplemented.path("PATCH /{bucket}/{key}").asLong(), notImplemented.toString());
       assertEquals(1, notImplemented.path("GetObjectTorrent").asLong(), notImplemented.toString());
+      assertEquals(1, notImplemented.path("POST /{bucket}/{key}").asLong(), notImplemented.toString());
     } finally {
       localS3.shutdown();
     }
