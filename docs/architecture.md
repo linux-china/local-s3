@@ -169,7 +169,10 @@ An `IN_MEMORY` service keeps the metadata of its S3 buckets and its vector bucke
 writes nothing (`HeapBucketMetadataStore`), so a change costs no serialization. The heap is then the only copy, and there
 is nothing to reload a bucket from after a failed change: an operation that fails after it changed the metadata keeps
 that change. This is a deliberate trade-off of a service for tests; the requests that clients get wrong are rejected
-before anything is changed. With initial data, the metadata is read once from the data directory's `buckets.mvstore`,
+before anything is changed. That is checked rather than assumed: `RejectedChangeLeavesMetadataUnchangedTest` runs the
+rejections of the operations that change a bucket in several steps, e.g. `CompleteMultipartUpload`, `CopyObject`,
+`RenameObject`, `DeleteObjects` and Object Lock, through `RejectionCheckingBucketGuard`, a guard of its tests that
+compares a snapshot of the bucket before and after every rejected change. With initial data, the metadata is read once from the data directory's `buckets.mvstore`,
 opened read-only, and never written back. The Iceberg REST catalog and S3 Tables of an `IN_MEMORY` service still use an
 in-memory `LocalS3Store`, i.e. an MVStore that never writes a file.
 
