@@ -27,7 +27,6 @@ test_s3.py::test_object_lock_put_obj_lock_invalid_days  # unverified: a default 
 test_s3.py::test_object_lock_put_obj_lock_invalid_mode  # unverified: a default retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
 test_s3.py::test_object_lock_put_obj_lock_invalid_years  # unverified: a default retention of negative Years is 400 InvalidArgument; the test expects 400 InvalidRetentionPeriod
 test_s3.py::test_object_lock_put_obj_retention_invalid_mode  # unverified: a retention Mode other than GOVERNANCE/COMPLIANCE, e.g. lower case, is 400 InvalidArgument; the test expects 400 MalformedXML
-test_s3.py::test_object_write_with_chunked_transfer_encoding  # consistent with AWS: a PutObject of Transfer-Encoding: chunked without a length is 411 MissingContentLength on Amazon S3 as well
 test_s3.py::test_post_object_success_redirect_action  # consistent with AWS: LocalS3 answers the 303 to success_action_redirect with bucket, key and etag; requests then follows it to the redirect URL, the bucket itself, with an unsigned GET, which is 403 like any anonymous request
 test_s3.py::test_post_object_upload_checksum  # consistent with AWS: POST Object denies (403) the form field x-amz-checksum-sha256, which the policy has no condition for; Amazon S3 requires a condition for every field but a few, e.g. file, policy, x-amz-signature
 test_s3.py::test_put_obj_with_tags  # unverified: expects GetObjectTagging to sort the tags by key, as RGW does; Amazon S3 documents no order

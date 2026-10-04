@@ -134,6 +134,11 @@ class SignatureCredentialsTest {
       }
 
       @Override
+      public boolean acceptChunkedUploads() {
+        return defaults.acceptChunkedUploads();
+      }
+
+      @Override
       public String[] virtualHostDomains() {
         return defaults.virtualHostDomains();
       }
