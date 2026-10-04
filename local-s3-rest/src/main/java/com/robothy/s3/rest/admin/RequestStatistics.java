@@ -30,8 +30,10 @@ import java.util.stream.Collectors;
  * sends.
  *
  * <p>The latency of a request is the time from when it was handed to the request executor, with its body received,
- * until its response was written. The percentiles are estimated from a histogram whose buckets double, so they are
- * accurate to a factor of two, which tells a 1 ms operation from a 100 ms one.
+ * until its response was written. The percentiles are estimated from a histogram whose buckets grow by a factor of
+ * 2<sup>1/4</sup>, about 19%, and interpolated linearly within the bucket they fall into, between the smallest and the
+ * largest latency recorded; they are therefore accurate to within a bucket, e.g. 1.0 to 1.19 ms, while the histogram
+ * stays a fixed array of about 120 counters per operation.
  *
  * <p>Thread-safe: requests are recorded by the event loops that write their responses.
  */
@@ -48,14 +50,19 @@ public final class RequestStatistics implements RequestRecorder {
   static final int RATE_WINDOW_SECONDS = 60;
 
   /**
-   * The upper bounds, in microseconds, of the buckets of the latency histogram: 0.1 ms, 0.2 ms, 0.4 ms, and so on up
-   * to about 1.8 hours; a last bucket takes the rest.
+   * The number of buckets of the latency histogram per doubling of the latency.
    */
-  private static final long[] LATENCY_BOUNDS_MICROS = new long[26];
+  private static final int BUCKETS_PER_DOUBLING = 4;
+
+  /**
+   * The upper bounds, in nanoseconds, of the buckets of the latency histogram: 10 µs, then each bound 2<sup>1/4</sup>
+   * times the previous one, up to about 3 hours; a last bucket takes the rest.
+   */
+  private static final long[] LATENCY_BOUNDS_NANOS = new long[30 * BUCKETS_PER_DOUBLING];
 
   static {
-    for (int i = 0; i < LATENCY_BOUNDS_MICROS.length; i++) {
-      LATENCY_BOUNDS_MICROS[i] = 100L << i;
+    for (int i = 0; i < LATENCY_BOUNDS_NANOS.length; i++) {
+      LATENCY_BOUNDS_NANOS[i] = Math.round(10_000 * Math.pow(2, (double) i / BUCKETS_PER_DOUBLING));
     }
   }
 
@@ -291,9 +298,11 @@ public final class RequestStatistics implements RequestRecorder {
 
     private long totalNanos;
 
+    private long minNanos = Long.MAX_VALUE;
+
     private long maxNanos;
 
-    private final long[] latencyBuckets = new long[LATENCY_BOUNDS_MICROS.length + 1];
+    private final long[] latencyBuckets = new long[LATENCY_BOUNDS_NANOS.length + 1];
 
     /**
      * The requests of each of the last seconds, by the second modulo the window, and the second they belong to.
@@ -311,8 +320,9 @@ public final class RequestStatistics implements RequestRecorder {
       }
       long nanos = Math.max(0, durationNanos);
       totalNanos += nanos;
+      minNanos = Math.min(minNanos, nanos);
       maxNanos = Math.max(maxNanos, nanos);
-      latencyBuckets[bucketOf(TimeUnit.NANOSECONDS.toMicros(nanos))]++;
+      latencyBuckets[bucketOf(nanos)]++;
 
       long second = TimeUnit.NANOSECONDS.toSeconds(nowNanos);
       int slot = (int) Math.floorMod(second, (long) RATE_WINDOW_SECONDS);
@@ -342,29 +352,38 @@ public final class RequestStatistics implements RequestRecorder {
     }
 
     /**
-     * The upper bound of the bucket that the percentile falls into, but at most the max latency.
+     * The latency below which the given fraction of the requests fall: found in the bucket that holds the request of
+     * that rank, and interpolated linearly between the bounds of the bucket by the position of the rank among the
+     * requests of the bucket, which are assumed to be spread evenly over it. The bounds are narrowed to the smallest and the largest latency recorded, so that a
+     * percentile is never outside them, and the requests of a single latency answer that latency.
      */
     private double percentile(double fraction) {
-      long rank = (long) Math.ceil(count * fraction);
+      if (count == 0) {
+        return 0;
+      }
+      long rank = Math.max(1, (long) Math.ceil(count * fraction));
       long seen = 0;
       for (int i = 0; i < latencyBuckets.length; i++) {
-        seen += latencyBuckets[i];
-        if (seen >= rank && seen > 0) {
-          long boundNanos = i < LATENCY_BOUNDS_MICROS.length
-              ? TimeUnit.MICROSECONDS.toNanos(LATENCY_BOUNDS_MICROS[i]) : maxNanos;
-          return toMillis(Math.min(boundNanos, maxNanos));
+        long inBucket = latencyBuckets[i];
+        if (inBucket > 0 && seen + inBucket >= rank) {
+          long lower = Math.max(i == 0 ? 0 : LATENCY_BOUNDS_NANOS[i - 1], minNanos);
+          long upper = Math.min(i < LATENCY_BOUNDS_NANOS.length ? LATENCY_BOUNDS_NANOS[i] : maxNanos, maxNanos);
+          // The middle of the share of the bucket that the request of the rank takes, so that the single request of
+          // a bucket is placed at its middle rather than at its upper bound.
+          double position = (rank - seen - 0.5) / inBucket;
+          return toMillis(Math.round(lower + (upper - lower) * position));
         }
+        seen += inBucket;
       }
-      return 0;
+      return toMillis(maxNanos);
     }
 
-    private static int bucketOf(long micros) {
-      for (int i = 0; i < LATENCY_BOUNDS_MICROS.length; i++) {
-        if (micros <= LATENCY_BOUNDS_MICROS[i]) {
-          return i;
-        }
-      }
-      return LATENCY_BOUNDS_MICROS.length;
+    /**
+     * The bucket of a latency: the first whose upper bound isn't below it, or the last one.
+     */
+    private static int bucketOf(long nanos) {
+      int index = Arrays.binarySearch(LATENCY_BOUNDS_NANOS, nanos);
+      return index >= 0 ? index : -index - 1;
     }
   }
 

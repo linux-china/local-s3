@@ -44,7 +44,8 @@ class RequestStatisticsTest {
   }
 
   /**
-   * The percentiles are the upper bounds of the histogram buckets, which double, but never more than the max.
+   * The percentiles are interpolated within buckets that grow by 2^(1/4), about 19%, so each is within a bucket of the
+   * latency it estimates, and never outside the smallest and the largest latency recorded.
    */
   @Test
   void estimatesThePercentilesOfTheLatency() {
@@ -55,10 +56,48 @@ class RequestStatisticsTest {
     record("GetObject", 200, 300);
 
     RequestStatistics.OperationStatistics getObject = statistics.operations().get("GetObject");
-    assertEquals(1.6, getObject.p50Millis(), "1 ms falls into the bucket up to 1.6 ms.");
-    assertEquals(1.6, getObject.p90Millis());
-    assertEquals(51.2, getObject.p99Millis());
+    assertWithinABucket(1.0, getObject.p50Millis());
+    assertWithinABucket(1.0, getObject.p90Millis());
+    assertWithinABucket(50.0, getObject.p99Millis());
     assertEquals(300.0, getObject.maxMillis());
+  }
+
+  /**
+   * Latencies spread over a few milliseconds, like those of reads of small objects, get percentiles that tell them
+   * apart: with buckets that doubled, the median, the 90th and the 99th percentile of these were all the max.
+   */
+  @Test
+  void tellsThePercentilesOfCloseLatenciesApart() {
+    // 0.5 ms to 3.0 ms, evenly: the median is about 1.75 ms, the 90th percentile about 2.75 ms.
+    for (int i = 0; i < 100; i++) {
+      recordNanos("GetObject", 200, 500_000 + i * 25_000L);
+    }
+
+    RequestStatistics.OperationStatistics getObject = statistics.operations().get("GetObject");
+    assertWithinABucket(1.75, getObject.p50Millis());
+    assertWithinABucket(2.75, getObject.p90Millis());
+    assertWithinABucket(2.975, getObject.p99Millis());
+    assertTrue(getObject.p50Millis() < getObject.p90Millis(), getObject.toString());
+    assertTrue(getObject.p90Millis() < getObject.maxMillis(), getObject.toString());
+  }
+
+  /**
+   * A single latency, or requests that all took the same time, answer that latency for every percentile.
+   */
+  @Test
+  void answersTheLatencyOfASingleRequest() {
+    record("GetObject", 200, 7);
+
+    RequestStatistics.OperationStatistics getObject = statistics.operations().get("GetObject");
+    assertEquals(7.0, getObject.p50Millis());
+    assertEquals(7.0, getObject.p99Millis());
+    assertEquals(7.0, getObject.maxMillis());
+  }
+
+  private static void assertWithinABucket(double expectedMillis, double actualMillis) {
+    double factor = Math.pow(2, 0.25);
+    assertTrue(actualMillis >= expectedMillis / factor && actualMillis <= expectedMillis * factor,
+        "Expected about " + expectedMillis + " ms, got " + actualMillis + " ms.");
   }
 
   /**
@@ -143,6 +182,10 @@ class RequestStatisticsTest {
   private void record(String operation, int status, long millis) {
     statistics.record(request(HttpMethod.PUT, "/bucket/key"), operation, status, null,
         TimeUnit.MILLISECONDS.toNanos(millis));
+  }
+
+  private void recordNanos(String operation, int status, long nanos) {
+    statistics.record(request(HttpMethod.PUT, "/bucket/key"), operation, status, null, nanos);
   }
 
   private static RouterHttpRequest request(HttpMethod method, String uri) {
