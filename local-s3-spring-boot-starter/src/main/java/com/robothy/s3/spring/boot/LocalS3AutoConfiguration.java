@@ -226,7 +226,8 @@ public class LocalS3AutoConfiguration {
     builder.storage(storage -> storage.initialDataCacheEnabled(properties.isInitialDataCacheEnabled()));
     applyIfSet(properties.getInMemory().getMaxSize(),
         size -> builder.storage(storage -> storage.maxInMemoryBytes(size.toBytes())));
-    builder.s3Api(s3 -> s3.compositeMultipartEtags(properties.isCompositeMultipartEtags()));
+    builder.s3Api(s3 -> s3.compositeMultipartEtags(properties.isCompositeMultipartEtags())
+        .acceptChunkedUploads(properties.isAcceptChunkedUploads()));
     applyIfSet(properties.getVirtualHostDomains(),
         domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.toArray(String[]::new))));
 

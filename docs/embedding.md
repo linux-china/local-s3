@@ -352,7 +352,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 |---|---|---|
 | Storage | `storage(storage -> ...)` | `mode`, `dataPath`, `persistencePolicy`, `maxInMemoryBytes`, `initialDataCacheEnabled` |
 | HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds`, `registerShutdownHook`, `requestRecorder` |
-| S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags` |
+| S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags`, `acceptChunkedUploads` |
 | Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
@@ -635,7 +635,7 @@ class AppTest {
 
 The attributes of `@LocalS3` configure the service like the builder does: `port`, `mode`, `dataPath` or
 `dataPathSupplier`, `buckets`, `initialDataCacheEnabled`, `maxInMemoryBytes` (e.g. `"512m"`),
-`compositeMultipartEtags`, `virtualHostDomains`, and `accessKey` with `secretKey`.
+`compositeMultipartEtags`, `acceptChunkedUploads`, `virtualHostDomains`, and `accessKey` with `secretKey`.
 
 ### Signed requests
 

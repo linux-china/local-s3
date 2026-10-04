@@ -51,6 +51,9 @@ import org.jspecify.annotations.Nullable;
  *     request line, positive.
  * @param idleConnectionTimeoutSeconds the seconds after which an idle connection is closed; {@code 0} for never.
  * @param compositeMultipartEtags whether a completed multipart upload gets the entity tag of Amazon S3.
+ * @param acceptChunkedUploads whether {@code PutObject} and {@code UploadPart} store a body sent with
+ *     {@code Transfer-Encoding: chunked} and no {@code Content-Length}, rather than answer {@code 411
+ *     MissingContentLength} like Amazon S3 does.
  * @param virtualHostDomains the base domains of virtual-hosted-style requests, besides the default ones.
  * @param requestRecorder receives every request once its response is written, besides the statistics of the service,
  *     e.g. to record metrics; {@code null} is {@linkplain RequestRecorder#NONE}.
@@ -90,6 +93,7 @@ public record LocalS3Config(
     int maxRequestHeaderSize,
     long idleConnectionTimeoutSeconds,
     boolean compositeMultipartEtags,
+    boolean acceptChunkedUploads,
     List<String> virtualHostDomains,
     RequestRecorder requestRecorder,
     @Nullable LocalS3Tls tls,
@@ -278,7 +282,8 @@ public record LocalS3Config(
         + ", maxRequestBodySize=" + maxRequestBodySize + ", requestBodyFileThreshold=" + requestBodyFileThreshold
         + ", maxRequestHeaderSize=" + maxRequestHeaderSize
         + ", idleConnectionTimeoutSeconds=" + idleConnectionTimeoutSeconds
-        + ", compositeMultipartEtags=" + compositeMultipartEtags + ", virtualHostDomains=" + virtualHostDomains
+        + ", compositeMultipartEtags=" + compositeMultipartEtags + ", acceptChunkedUploads=" + acceptChunkedUploads
+        + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
         + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors + "]";
   }

@@ -117,6 +117,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ **Uploads of undeclared length**: `PutObject` and `UploadPart` store a body sent with `Transfer-Encoding: chunked`
+  and no `Content-Length`, e.g. of `curl -T -` or a streaming `fetch`, which Amazon S3, and LocalS3 before, answer
+  with `411 MissingContentLength`. `s3Api(s3 -> s3.acceptChunkedUploads(false))`, `@LocalS3(acceptChunkedUploads =
+  false)`, `LOCAL_S3_ACCEPT_CHUNKED_UPLOADS=false` or `local-s3.accept-chunked-uploads=false` restore the `411`; see
+  [request validation](docs/semantics.md#request-validation).
 + `ListObjects` and `ListObjectsV2` answer the `RestoreStatus` of restored objects when the request sends
   `x-amz-optional-object-attributes: RestoreStatus`; see [storage classes and restores](docs/semantics.md#storage-classes-and-restores).
 + **Buckets created with versioning enabled**: `@LocalS3(buckets = "plain", versionedBuckets = "audit")`,

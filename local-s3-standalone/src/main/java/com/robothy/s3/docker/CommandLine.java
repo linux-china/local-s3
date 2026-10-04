@@ -100,6 +100,9 @@ final class CommandLine {
                     "Handle every request on a virtual thread of its own. Default true."),
             flag("--composite-multipart-etags", LocalS3Environment.LOCAL_S3_COMPOSITE_MULTIPART_ETAGS,
                     "Give a completed multipart upload the entity tag of Amazon S3. Default true."),
+            flag("--accept-chunked-uploads", LocalS3Environment.LOCAL_S3_ACCEPT_CHUNKED_UPLOADS,
+                    "Store an upload sent with Transfer-Encoding: chunked and no Content-Length, which Amazon S3 "
+                            + "answers 411. Default true."),
             option("--tls-cert", LocalS3Environment.LOCAL_S3_TLS_CERT, "<pem>",
                     "Serve HTTPS with this certificate chain: a PEM file, or the PEM content itself."),
             option("--tls-key", LocalS3Environment.LOCAL_S3_TLS_KEY, "<pem>",

@@ -26,8 +26,11 @@ class UploadPartController implements RouterHttpRequestHandler {
 
   private final UploadPartService uploadPartService;
 
+  private final boolean acceptChunkedUploads;
+
   UploadPartController(ServiceFactory serviceFactory) {
     this.uploadPartService = serviceFactory.getInstance(ObjectService.class);
+    this.acceptChunkedUploads = PutObjectController.acceptChunkedUploads(serviceFactory);
   }
 
   @Override
@@ -37,6 +40,7 @@ class UploadPartController implements RouterHttpRequestHandler {
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
     DecodedAmzRequestBody decodedBody = RequestUtils.getBody(request);
+    RequestUtils.assertContentLengthAccepted(decodedBody, acceptChunkedUploads);
     CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
     UploadPartAns uploadPartAns = uploadPartService.uploadPart(bucket, key, uploadId, partNumber, UploadPartOptions.builder()
         .contentLength(decodedBody.getDecodedContentLength())

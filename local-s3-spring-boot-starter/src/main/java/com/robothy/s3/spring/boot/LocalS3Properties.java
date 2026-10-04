@@ -77,6 +77,12 @@ public class LocalS3Properties {
   private boolean compositeMultipartEtags = true;
 
   /**
+   * Whether PutObject and UploadPart store a body sent with Transfer-Encoding: chunked and no Content-Length, which
+   * Amazon S3 answers with 411 MissingContentLength.
+   */
+  private boolean acceptChunkedUploads = true;
+
+  /**
    * Base domains of virtual-hosted-style requests besides the default ones, e.g. {@code s3.local}.
    */
   private List<String> virtualHostDomains = new ArrayList<>();
@@ -193,6 +199,14 @@ public class LocalS3Properties {
 
   public void setCompositeMultipartEtags(boolean compositeMultipartEtags) {
     this.compositeMultipartEtags = compositeMultipartEtags;
+  }
+
+  public boolean isAcceptChunkedUploads() {
+    return acceptChunkedUploads;
+  }
+
+  public void setAcceptChunkedUploads(boolean acceptChunkedUploads) {
+    this.acceptChunkedUploads = acceptChunkedUploads;
   }
 
   public List<String> getVirtualHostDomains() {

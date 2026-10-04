@@ -120,6 +120,8 @@ public class LocalS3Builder {
 
     private boolean compositeMultipartEtags = true;
 
+    private boolean acceptChunkedUploads = true;
+
     private final List<String> virtualHostDomains = new ArrayList<>();
 
     private RequestRecorder requestRecorder = RequestRecorder.NONE;
@@ -831,7 +833,7 @@ public class LocalS3Builder {
                 changeListenerExecutor, initialDataCacheEnabled, maxInMemoryBytes, daemonThreads, registerShutdownHook,
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
-                idleConnectionTimeoutSeconds, compositeMultipartEtags,
+                idleConnectionTimeoutSeconds, compositeMultipartEtags, acceptChunkedUploads,
                 virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website, cors);
     }
 
@@ -1213,6 +1215,26 @@ public class LocalS3Builder {
          */
         public S3ApiSettings compositeMultipartEtags(boolean compositeMultipartEtags) {
             LocalS3Builder.this.compositeMultipartEtags = compositeMultipartEtags;
+            return this;
+        }
+
+        /**
+         * Set whether {@code PutObject} and {@code UploadPart} store a body that is sent with
+         * {@code Transfer-Encoding: chunked} and no {@code Content-Length}, i.e. a stream whose length the client
+         * didn't know when it started, e.g. {@code curl -T -}, a streaming {@code fetch} of Node.js or Deno, or a
+         * lightweight S3 library that streams. The body is received whole, and stored with the number of bytes
+         * received as its length.
+         *
+         * <p>The default value is {@code true}, so that such a client works against LocalS3. Pass {@code false} to
+         * answer {@code 411 MissingContentLength}, like Amazon S3 does, e.g. to test that a client declares the
+         * length of what it uploads. An {@code aws-chunked} body, which the AWS SDKs send, declares its length in
+         * {@code x-amz-decoded-content-length} and isn't affected.
+         *
+         * @param acceptChunkedUploads whether to store a body of undeclared length.
+         * @return these settings.
+         */
+        public S3ApiSettings acceptChunkedUploads(boolean acceptChunkedUploads) {
+            LocalS3Builder.this.acceptChunkedUploads = acceptChunkedUploads;
             return this;
         }
 

@@ -29,6 +29,7 @@ class LocalS3ConfigTest {
     assertTrue(config.daemonThreads());
     assertTrue(config.registerShutdownHook());
     assertTrue(config.compositeMultipartEtags());
+    assertTrue(config.acceptChunkedUploads());
     assertFalse(config.authenticationEnabled());
     assertEquals(LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE, config.maxRequestBodySize());
     assertEquals(LocalS3Config.DEFAULT_REQUEST_BODY_FILE_THRESHOLD, config.requestBodyFileThreshold());
@@ -73,7 +74,7 @@ class LocalS3ConfigTest {
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
         valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
-        valid.compositeMultipartEtags(), valid.virtualHostDomains(), null, null, false, null, null, null));
+        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(), valid.virtualHostDomains(), null, null, false, null, null, null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
@@ -81,7 +82,7 @@ class LocalS3ConfigTest {
         valid.registerShutdownHook(), valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(),
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
-        valid.compositeMultipartEtags(),
+        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(),
         valid.virtualHostDomains(), null, null, false, null, null, null);
     buckets.add("b");
     assertEquals(List.of("a"), copied.buckets());
@@ -131,7 +132,7 @@ class LocalS3ConfigTest {
         config.nettyParentEventGroupThreadNum(), config.nettyChildEventGroupThreadNum(), config.s3ExecutorThreadNum(),
         config.virtualThreads(), config.accessKeyId(), config.secretAccessKey(), config.maxRequestBodySize(),
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),
-        config.compositeMultipartEtags(),
+        config.compositeMultipartEtags(), config.acceptChunkedUploads(),
         config.virtualHostDomains(), config.requestRecorder(), config.tls(), config.tlsRequired(),
         config.icebergCatalog(), config.website(), config.cors());
   }

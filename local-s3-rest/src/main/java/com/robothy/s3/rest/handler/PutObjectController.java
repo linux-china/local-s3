@@ -9,6 +9,7 @@ import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
@@ -29,8 +30,20 @@ import java.util.Objects;
  */
 class PutObjectController extends ObjectHttpRequestHandler {
 
+  private final boolean acceptChunkedUploads;
+
   PutObjectController(ServiceFactory serviceFactory) {
     super(serviceFactory);
+    this.acceptChunkedUploads = acceptChunkedUploads(serviceFactory);
+  }
+
+  /**
+   * Whether the service stores a body sent with {@code Transfer-Encoding: chunked} alone; a router of handlers alone,
+   * which has no configuration, does.
+   */
+  static boolean acceptChunkedUploads(ServiceFactory serviceFactory) {
+    return !serviceFactory.containsInstance(LocalS3Config.class)
+        || serviceFactory.getInstance(LocalS3Config.class).acceptChunkedUploads();
   }
 
   @Override
@@ -39,6 +52,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     String key = RequestAssertions.assertObjectKeyProvided(request);
 
     DecodedAmzRequestBody decodedBody = RequestUtils.getBody(request);
+    RequestUtils.assertContentLengthAccepted(decodedBody, acceptChunkedUploads);
     CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
     Long writeOffsetBytes = writeOffsetBytes(request);
 

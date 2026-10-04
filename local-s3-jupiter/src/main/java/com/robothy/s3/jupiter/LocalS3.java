@@ -154,6 +154,15 @@ public @interface LocalS3 {
   boolean compositeMultipartEtags() default true;
 
   /**
+   * Set whether {@code PutObject} and {@code UploadPart} store a body sent with {@code Transfer-Encoding: chunked}
+   * and no {@code Content-Length}, i.e. a stream of unknown length. The default is {@code true}; {@code false}
+   * answers {@code 411 MissingContentLength}, like Amazon S3 does.
+   *
+   * @return if uploads of undeclared length are accepted.
+   */
+  boolean acceptChunkedUploads() default true;
+
+  /**
    * Set base domains of virtual-hosted-style requests besides {@code localhost}, e.g. {@code s3.local}, so that
    * a request to the host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}.
    *

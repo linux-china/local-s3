@@ -47,6 +47,8 @@ public final class LocalS3Environment {
 
   public static final String LOCAL_S3_COMPOSITE_MULTIPART_ETAGS = "LOCAL_S3_COMPOSITE_MULTIPART_ETAGS";
 
+  public static final String LOCAL_S3_ACCEPT_CHUNKED_UPLOADS = "LOCAL_S3_ACCEPT_CHUNKED_UPLOADS";
+
   public static final String LOCAL_S3_VIRTUAL_HOST_DOMAINS = "LOCAL_S3_VIRTUAL_HOST_DOMAINS";
 
   /**
@@ -229,6 +231,8 @@ public final class LocalS3Environment {
         .ifPresent(virtual -> builder.netty(netty -> netty.virtualThreads(Boolean.parseBoolean(virtual))));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
         .ifPresent(composite -> builder.s3Api(s3 -> s3.compositeMultipartEtags(Boolean.parseBoolean(composite))));
+    variable(variables, LOCAL_S3_ACCEPT_CHUNKED_UPLOADS)
+        .ifPresent(accept -> builder.s3Api(s3 -> s3.acceptChunkedUploads(Boolean.parseBoolean(accept))));
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
         .ifPresent(domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.split(","))));
     variable(variables, AWS_BUCKETS).ifPresent(names -> builder.buckets(names.split(",")));

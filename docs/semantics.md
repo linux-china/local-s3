@@ -83,6 +83,14 @@ counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#kno
   (`POST Object`) larger than 2 GiB is rejected with `EntityTooLarge`.
 + If credentials are configured, the signature of a request with a body is verified before the body is received, so
   the body of a request that fails anyway is neither uploaded nor buffered.
++ `PutObject` and `UploadPart` **accept a body sent with `Transfer-Encoding: chunked` and no `Content-Length`**, i.e.
+  a stream whose length the client didn't know when it started, e.g. `curl -T -`, a streaming `fetch` of Node.js or
+  Deno, or a lightweight S3 library that streams. Amazon S3 answers such a request with `411 MissingContentLength`;
+  LocalS3 receives the body whole and stores it with the number of bytes received as its length, so that such a
+  client works locally. `s3Api(s3 -> s3.acceptChunkedUploads(false))`, `@LocalS3(acceptChunkedUploads = false)`,
+  `LOCAL_S3_ACCEPT_CHUNKED_UPLOADS=false` or `local-s3.accept-chunked-uploads=false` answer `411` like Amazon S3, e.g.
+  to test that a client declares the length of what it uploads. The `aws-chunked` bodies of the AWS SDKs declare their
+  length in `x-amz-decoded-content-length` and aren't affected.
 + `x-amz-expected-bucket-owner` and `x-amz-source-expected-bucket-owner` are **accepted and ignored**: LocalS3 has one
   account, which owns every bucket, so a request never fails with `403 AccessDenied` for naming another owner. A test
   that relies on that check must run against Amazon S3.

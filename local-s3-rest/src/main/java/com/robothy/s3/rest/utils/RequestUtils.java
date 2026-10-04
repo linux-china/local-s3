@@ -12,11 +12,13 @@ import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
 import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.DateFormatter;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import com.robothy.s3.core.util.Strings;
@@ -69,17 +71,49 @@ public class RequestUtils {
         // Taken before the body is read: the body is only the content of its file while it is unread.
         RequestBodies.file(request.getBody()).ifPresent(result::setBodyFile);
         RequestBodies.heapContent(request.getBody()).ifPresent(result::setHeapContent);
+        if (request.header(HttpHeaderNames.CONTENT_LENGTH.toString()).isEmpty() && isTransferEncodingChunked(request)) {
+          // A stream of unknown length, e.g. of `curl -T -` or a streaming fetch, which was received whole, so its
+          // length is known now. Whether the operation accepts it is up to the operation, see
+          // LocalS3Config#acceptChunkedUploads().
+          result.setContentLengthDeclared(false);
+          result.setDecodedContentLength(RequestBodies.length(request.getBody()));
+        } else {
+          result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
+        }
         result.setDecodedBody(RequestBodies.inputStream(request.getBody()));
-        result.setDecodedContentLength(contentLength(request, HttpHeaderNames.CONTENT_LENGTH.toString()));
     }
 
     return result;
   }
 
   /**
-   * Read the length of the content that a request stores, e.g. from {@code Content-Length}. Amazon S3 requires it,
-   * so a request that sends its body with {@code Transfer-Encoding: chunked} instead is rejected, like Amazon S3
-   * does.
+   * Whether a request sent its body with {@code Transfer-Encoding: chunked}, i.e. without declaring its length.
+   */
+  private static boolean isTransferEncodingChunked(RouterHttpRequest request) {
+    return request.header(HttpHeaderNames.TRANSFER_ENCODING.toString())
+        .map(value -> value.toLowerCase(Locale.ROOT).contains(HttpHeaderValues.CHUNKED.toString()))
+        .orElse(false);
+  }
+
+  /**
+   * Reject the body of a request that stores content, e.g. {@code PutObject}, if it was sent with
+   * {@code Transfer-Encoding: chunked} alone and the service answers such requests like Amazon S3 does.
+   *
+   * @param body the decoded body of the request.
+   * @param acceptChunkedUploads whether a body of undeclared length is stored; see
+   *     {@linkplain com.robothy.s3.rest.LocalS3Config#acceptChunkedUploads()}.
+   * @throws LocalS3RequestException {@code MissingContentLength} if the body is rejected.
+   */
+  public static void assertContentLengthAccepted(DecodedAmzRequestBody body, boolean acceptChunkedUploads) {
+    if (!body.isContentLengthDeclared() && !acceptChunkedUploads) {
+      throw new LocalS3RequestException(S3ErrorCode.MissingContentLength);
+    }
+  }
+
+  /**
+   * Read the length of the content that a request stores, e.g. from {@code Content-Length}. Amazon S3 requires it;
+   * a plain body sent with {@code Transfer-Encoding: chunked} instead is measured rather than read here, see
+   * {@linkplain #getBody(RouterHttpRequest)}.
    *
    * @throws LocalS3RequestException {@code MissingContentLength} if the request has no such header.
    * @throws LocalS3InvalidArgumentException if the header isn't a length.

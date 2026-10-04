@@ -24,6 +24,12 @@ public class DecodedAmzRequestBody {
   private long decodedContentLength;
 
   /**
+   * Whether the request declared the length of its content, e.g. with {@code Content-Length}; {@code false} for a body
+   * sent with {@code Transfer-Encoding: chunked} alone, whose length is the number of bytes received.
+   */
+  private boolean contentLengthDeclared = true;
+
+  /**
    * The temporary file that holds exactly the decoded body, which a storage may take over instead of copying the body;
    * {@code null} if the body is buffered on the heap, or is {@code aws-chunked} encoded and wasn't decoded while it was
    * received, so that the file holds the encoded body.

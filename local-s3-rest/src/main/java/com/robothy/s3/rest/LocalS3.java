@@ -984,6 +984,10 @@ public class LocalS3 implements AutoCloseable {
         return config.compositeMultipartEtags();
     }
 
+    public boolean isAcceptChunkedUploads() {
+        return config.acceptChunkedUploads();
+    }
+
     public boolean isDaemonThreads() {
         return config.daemonThreads();
     }

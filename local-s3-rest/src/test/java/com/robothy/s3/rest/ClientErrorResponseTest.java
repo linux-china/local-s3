@@ -52,14 +52,6 @@ class ClientErrorResponseTest {
   }
 
   @Test
-  void chunkedPutWithoutContentLengthIsMissingContentLength() throws Exception {
-    String response = exchange("PUT /errors/chunked.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
-        + "Transfer-Encoding: chunked\r\n\r\n5\r\nHello\r\n0\r\n\r\n");
-
-    assertError(response, 411, "MissingContentLength");
-  }
-
-  @Test
   void malformedCopySourceEncodingIsInvalidArgument() throws Exception {
     String response = exchange("PUT /errors/copy.txt HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
         + "x-amz-copy-source: /errors/%zz\r\nContent-Length: 0\r\n\r\n");

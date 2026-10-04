@@ -123,6 +123,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         .versionedBuckets(s3Config.versionedBuckets())
         .storage(storage -> storage.initialDataCacheEnabled(s3Config.initialDataCacheEnabled()))
         .s3Api(s3 -> s3.compositeMultipartEtags(s3Config.compositeMultipartEtags())
+            .acceptChunkedUploads(s3Config.acceptChunkedUploads())
             .virtualHostDomains(s3Config.virtualHostDomains()));
     // The data path supplier may return null.
     if (dataPath != null && !dataPath.isBlank()) {
