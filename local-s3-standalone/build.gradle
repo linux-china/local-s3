@@ -33,6 +33,12 @@ jar {
     var runtimeClasses = configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     from runtimeClasses
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // The native-image metadata of every jar is kept under META-INF/native-image/<group-id>/<artifact-id>, so two
+    // jars that share a path there are a mistake, and excluding one would silently drop its metadata from the native
+    // executable, e.g. the reflection of the models of local-s3-datatypes when it used the directory of local-s3-core.
+    filesMatching('META-INF/native-image/**') {
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+    }
     archiveFileName.set("s3.jar")
 }
 
