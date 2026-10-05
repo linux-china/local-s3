@@ -590,13 +590,15 @@ class UploadProcessor {
   }
 
   @EventListener(condition = "#change.type() == T(com.robothy.s3.core.event.S3ChangeType).OBJECT_CREATED "
-      + "and #change.bucketName() == 'uploads'")
+      + "and #change.bucketName() == 'uploads' and #change.contentType() == 'application/pdf'")
   void onUpload(S3Change change) {
-    // The change is committed, so the object can be read back: the version the change names in a versioned bucket,
-    // otherwise the current object, which a later put may already have replaced with an asynchronous executor.
+    // The content type and the x-amz-meta-* of the change are those of the committed version, so routing needs no
+    // HeadObject. The content is read back: the version the change names in a versioned bucket, otherwise the current
+    // object, which a later put may already have replaced with an asynchronous executor.
+    String owner = change.userMetadata().get("owner");
     try (ResponseInputStream<GetObjectResponse> content = s3.getObject(request -> request
         .bucket(change.bucketName()).key(change.key()).versionId(change.versionId()))) {
-      documents.save(Document.parse(change.key(), content));
+      documents.save(Document.parse(change.key(), owner, content));
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

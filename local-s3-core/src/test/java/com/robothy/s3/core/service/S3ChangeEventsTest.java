@@ -17,6 +17,7 @@ import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.model.request.RenameObjectOptions;
 import com.robothy.s3.core.model.request.UploadPartOptions;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.datatypes.AccessControlPolicy;
@@ -27,6 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -92,6 +94,63 @@ class S3ChangeEventsTest extends LocalS3ServiceTestBase {
     objectService.deleteObject(BUCKET, "b.txt");
     bucketService.deleteBucket(BUCKET);
     assertEquals(S3Change.bucketDeleted("DeleteBucket", BUCKET, "eu-west-1"), changes.get(1));
+  }
+
+  @MethodSource("localS3Managers")
+  @ParameterizedTest
+  void carriesTheContentTypeAndTheUserMetadataOfTheVersion(LocalS3Manager manager) {
+    List<S3Change> changes = new CopyOnWriteArrayList<>();
+    manager.addChangeListener(changes::add);
+    manager.bucketService().createBucket(BUCKET);
+    ObjectService objectService = manager.objectService();
+    changes.clear();
+
+    PutObjectAns put = objectService.putObject(BUCKET, "a.pdf", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("%PDF".getBytes(StandardCharsets.UTF_8)))
+        .size(4)
+        .contentType("application/pdf")
+        .userMetadata(Map.of("owner", "alice"))
+        .build());
+    S3Change created = changes.get(0);
+    assertEquals("application/pdf", created.contentType());
+    assertEquals(Map.of("owner", "alice"), created.userMetadata());
+    assertThrows(UnsupportedOperationException.class, () -> created.userMetadata().put("owner", "eve"));
+    assertEquals(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "PutObject", BUCKET, "a.pdf", null, 4,
+        put.getEtag()), created, "The content type and the user metadata aren't compared.");
+
+    changes.clear();
+    objectService.copyObject(BUCKET, "b.pdf", CopyObjectOptions.builder().sourceBucket(BUCKET).sourceKey("a.pdf").build());
+    objectService.putObjectTagging(BUCKET, "b.pdf", null, new String[][] {{"k", "v"}});
+    objectService.renameObject(BUCKET, "c.pdf", RenameObjectOptions.builder().sourceKey("b.pdf").build());
+    List<S3Change> versions = changes.stream().filter(change -> change.type() != S3ChangeType.OBJECT_DELETED).toList();
+    assertEquals(List.of("CopyObject", "PutObjectTagging", "RenameObject"),
+        versions.stream().map(S3Change::operation).toList());
+    assertEquals(List.of("application/pdf", "application/pdf", "application/pdf"),
+        versions.stream().map(S3Change::contentType).toList());
+    assertEquals(List.of(Map.of("owner", "alice"), Map.of("owner", "alice"), Map.of("owner", "alice")),
+        versions.stream().map(S3Change::userMetadata).toList());
+
+    String uploadId = objectService.createMultipartUpload(BUCKET, "big.csv", CreateMultipartUploadOptions.builder()
+        .contentType("text/csv")
+        .userMetadata(Map.of("rows", "1"))
+        .build());
+    uploadPart(objectService, "big.csv", uploadId);
+    changes.clear();
+    objectService.completeMultipartUpload(BUCKET, "big.csv", uploadId,
+        List.of(CompleteMultipartUploadPartOption.builder().partNumber(1).build()));
+    assertEquals("text/csv", changes.get(0).contentType());
+    assertEquals(Map.of("rows", "1"), changes.get(0).userMetadata());
+
+    changes.clear();
+    objectService.putObject(BUCKET, "untyped", PutObjectOptions.builder()
+        .content(new ByteArrayInputStream("Hello".getBytes(StandardCharsets.UTF_8)))
+        .size(5)
+        .build());
+    objectService.deleteObject(BUCKET, "c.pdf");
+    assertNull(changes.get(0).contentType(), "Stored without a content type.");
+    assertEquals(Map.of(), changes.get(0).userMetadata());
+    assertNull(changes.get(1).contentType());
+    assertEquals(Map.of(), changes.get(1).userMetadata());
   }
 
   @MethodSource("localS3Managers")

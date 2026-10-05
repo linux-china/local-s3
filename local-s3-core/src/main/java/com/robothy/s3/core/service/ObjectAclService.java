@@ -42,7 +42,8 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
       objectMetadata.markVersionChanged(VersionedObjectUtils.resolveVersionKey(objectMetadata, versionId));
       String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_ACL_PUT, "PutObjectAcl", bucketName, key,
-          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag(),
+          versionedObjectMetadata.getContentType(), versionedObjectMetadata.getUserMetadata()));
       return returnedVersion;
     });
   }

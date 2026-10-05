@@ -331,7 +331,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
   and for the domains of `s3Api(s3 -> s3.virtualHostDomains(...))` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
 + **Change listeners**: `changeListener` and `events(events -> events.listener(...).executor(...))` deliver an
-  `S3Change` for every committed change of a bucket or an object, with its `eventTime()` and `sequencer()`;
+  `S3Change` for every committed change of a bucket or an object, with its `eventTime()` and `sequencer()`, and the
+  `contentType()` and `userMetadata()` of the version, so a listener routes an upload without a `HeadObject`;
   `toS3EventJson()` / `S3EventNotification` map it to the Amazon S3 event notification JSON. See
   [semantics](docs/semantics.md#change-events).
 + **Operations endpoints**: the health check `GET /_health`, and `GET /_admin/stats`, `GET /_admin/requests` and

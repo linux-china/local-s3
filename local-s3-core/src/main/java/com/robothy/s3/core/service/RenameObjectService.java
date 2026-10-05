@@ -83,7 +83,7 @@ public interface RenameObjectService extends LocalS3MetadataApplicable, StorageA
       PutObjectAns ans = PutObjectService.addVersion(bucketMetadata, storage(), key, renamed);
       publishChange(S3Change.objectDeleted("RenameObject", bucketName, sourceKey, null, false));
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "RenameObject", bucketName, key,
-          ans.getVersionId(), ans.getSize(), ans.getEtag()));
+          ans.getVersionId(), ans.getSize(), ans.getEtag(), renamed.getContentType(), renamed.getUserMetadata()));
     });
   }
 

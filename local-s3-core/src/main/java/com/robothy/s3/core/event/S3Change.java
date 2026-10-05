@@ -2,6 +2,7 @@ package com.robothy.s3.core.event;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import tools.jackson.databind.node.ObjectNode;
@@ -10,8 +11,8 @@ import tools.jackson.databind.node.ObjectNode;
  * A change of a bucket or of an object that a service committed.
  *
  * <p>Two changes are equal when they change the same thing in the same way: {@code eventTime} and {@code sequencer}
- * tell apart when the change was made, and are not compared, so that a test may compare a received change to an
- * expected one.
+ * tell apart when the change was made, and {@code contentType} and {@code userMetadata} describe the version, so none
+ * of them is compared, and a test may compare a received change to an expected one.
  *
  * @param type what changed.
  * @param operation the S3 operation that made the change, e.g. {@code PutObject}. An operation that is made of others
@@ -28,6 +29,11 @@ import tools.jackson.databind.node.ObjectNode;
  *     for the other changes.
  * @param etag the unquoted entity tag of the created version, or of the version whose tagging or ACL changed;
  *     {@code null} for the other changes.
+ * @param contentType the content type that the created version, or the version whose tagging or ACL changed, was
+ *     stored with; {@code null} if it was stored without one, and for the other changes.
+ * @param userMetadata the user-defined metadata of the created version, or of the version whose tagging or ACL
+ *     changed, i.e. the {@code x-amz-meta-*} without the prefix; empty for the other changes. Never {@code null}, and
+ *     unmodifiable.
  * @param deleteMarker whether the deletion created a delete marker instead of removing a version.
  * @param uploadId the ID of the aborted multipart upload; {@code null} for the other changes.
  * @param eventTime when the change was made.
@@ -38,8 +44,8 @@ import tools.jackson.databind.node.ObjectNode;
  * @see #toS3EventJson()
  */
 public record S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
-                       String versionId, Long size, String etag, boolean deleteMarker, String uploadId,
-                       Instant eventTime, String sequencer) {
+                       String versionId, Long size, String etag, String contentType, Map<String, String> userMetadata,
+                       boolean deleteMarker, String uploadId, Instant eventTime, String sequencer) {
 
   /**
    * The next sequencer, starting from the time the class was loaded, so that the sequencers of a service that is
@@ -53,15 +59,36 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
     Objects.requireNonNull(bucketName, "bucketName");
     Objects.requireNonNull(eventTime, "eventTime");
     Objects.requireNonNull(sequencer, "sequencer");
+    // A copy, so that a listener on another thread never sees the map of the metadata model change under it.
+    userMetadata = userMetadata == null ? Map.of() : Map.copyOf(userMetadata);
+  }
+
+  /**
+   * A change without a content type and user-defined metadata, made at {@code eventTime}.
+   */
+  public S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
+                  String versionId, Long size, String etag, boolean deleteMarker, String uploadId,
+                  Instant eventTime, String sequencer) {
+    this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, null, null, deleteMarker, uploadId,
+        eventTime, sequencer);
   }
 
   /**
    * A change made now, with the next sequencer.
    */
   public S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
+                  String versionId, Long size, String etag, String contentType, Map<String, String> userMetadata,
+                  boolean deleteMarker, String uploadId) {
+    this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, contentType, userMetadata,
+        deleteMarker, uploadId, Instant.now(), String.format("%016X", NEXT_SEQUENCER.getAndIncrement()));
+  }
+
+  /**
+   * A change without a content type and user-defined metadata, made now, with the next sequencer.
+   */
+  public S3Change(S3ChangeType type, String operation, String bucketName, String bucketRegion, String key,
                   String versionId, Long size, String etag, boolean deleteMarker, String uploadId) {
-    this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId, Instant.now(),
-        String.format("%016X", NEXT_SEQUENCER.getAndIncrement()));
+    this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, null, null, deleteMarker, uploadId);
   }
 
   public static S3Change bucketCreated(String operation, String bucketName, String bucketRegion) {
@@ -81,8 +108,19 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
    */
   public static S3Change objectVersion(S3ChangeType type, String operation, String bucketName, String key,
                                        String versionId, long size, String etag) {
-    return new S3Change(type, operation, bucketName, null, Objects.requireNonNull(key), versionId, size, etag, false,
-        null);
+    return objectVersion(type, operation, bucketName, key, versionId, size, etag, null, null);
+  }
+
+  /**
+   * A change of an object version that still exists afterwards, like
+   * {@linkplain #objectVersion(S3ChangeType, String, String, String, String, long, String)}, with the content type and
+   * the user-defined metadata of the version.
+   */
+  public static S3Change objectVersion(S3ChangeType type, String operation, String bucketName, String key,
+                                       String versionId, long size, String etag, String contentType,
+                                       Map<String, String> userMetadata) {
+    return new S3Change(type, operation, bucketName, null, Objects.requireNonNull(key), versionId, size, etag,
+        contentType, userMetadata, false, null);
   }
 
   public static S3Change objectDeleted(String operation, String bucketName, String key, String versionId,
@@ -103,8 +141,8 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
    * @return a change that names {@code operation}.
    */
   public S3Change withOperation(String operation) {
-    return new S3Change(type, operation, bucketName, bucketRegion, key, versionId, size, etag, deleteMarker, uploadId,
-        eventTime, sequencer);
+    return new S3Change(type, operation, bucketName, bucketRegion, key, versionId, size, etag, contentType,
+        userMetadata, deleteMarker, uploadId, eventTime, sequencer);
   }
 
   @Override

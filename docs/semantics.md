@@ -735,20 +735,28 @@ doesn't notify of.
 | Change type | Operation | `s3EventName()` | Details |
 |---|---|---|---|
 | `BUCKET_CREATED`, `BUCKET_DELETED` | `CreateBucket`, `DeleteBucket` | `null` | `bucketName()`, `bucketRegion()`; `key()` is `null` |
-| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload`, `RenameObject` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `key()`, `size()`, `etag()`, `versionId()` |
-| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects`, `RenameObject` (the old key) | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `key()`, `versionId()`, `deleteMarker()`; `size()` and `etag()` are `null` |
+| `OBJECT_CREATED` | `PutObject`, `CopyObject`, `CompleteMultipartUpload`, `RenameObject` | `s3:ObjectCreated:Put`, `:Copy`, `:CompleteMultipartUpload` | `key()`, `size()`, `etag()`, `versionId()`, `contentType()`, `userMetadata()` |
+| `OBJECT_DELETED` | `DeleteObject`, `DeleteObjects`, `RenameObject` (the old key) | `s3:ObjectRemoved:Delete`, `:DeleteMarkerCreated` | `key()`, `versionId()`, `deleteMarker()`; `size()`, `etag()` and `contentType()` are `null`, `userMetadata()` is empty |
 | `OBJECT_DELETED` | `LifecycleExpiration` | `s3:LifecycleExpiration:Delete`, `:DeleteMarkerCreated` | as above, for what an [applied lifecycle rule](#lifecycle-configuration) expired |
-| `OBJECT_TAGGING_PUT`, `OBJECT_TAGGING_DELETED` | `PutObjectTagging`, `DeleteObjectTagging` | `s3:ObjectTagging:Put`, `:Delete` | `key()`, `versionId()`, `size()`, `etag()` of the version |
-| `OBJECT_ACL_PUT` | `PutObjectAcl` | `s3:ObjectAcl:Put` | `key()`, `versionId()`, `size()`, `etag()` of the version |
+| `OBJECT_TAGGING_PUT`, `OBJECT_TAGGING_DELETED` | `PutObjectTagging`, `DeleteObjectTagging` | `s3:ObjectTagging:Put`, `:Delete` | `key()`, `versionId()`, `size()`, `etag()`, `contentType()`, `userMetadata()` of the version |
+| `OBJECT_ACL_PUT` | `PutObjectAcl` | `s3:ObjectAcl:Put` | `key()`, `versionId()`, `size()`, `etag()`, `contentType()`, `userMetadata()` of the version |
 | `MULTIPART_UPLOAD_ABORTED` | `AbortMultipartUpload`, `LifecycleExpiration` | `null` | `key()`, `uploadId()`; fired only if the upload existed |
 
 Only a change of a bucket leaves `key()` `null`, which tells the two apart. `versionId()` is `null` if the bucket has
 never been versioned.
 
+`contentType()` and `userMetadata()` are those of the version as it was committed, so a listener can route an upload by
+its type or its `x-amz-meta-*` without a `HeadObject`, which, with an asynchronous executor, may already read a later
+version of the key. `contentType()` is the `Content-Type` the version was stored with, `null` if it was stored without
+one (it is then served as `binary/octet-stream`). `userMetadata()` is the user-defined metadata of the version: for a
+request of the HTTP API, the names of its `x-amz-meta-*` headers, without the prefix and in lower case, mapped to their
+values. It is never `null`, and can't be modified.
+
 Every change also carries `eventTime()` and `sequencer()`, a hexadecimal string of 16 digits that increases with every
 change, so the later of two changes of a key has the greater sequencer, compared as strings. Two changes are `equals`
-when they change the same thing in the same way: `eventTime()` and `sequencer()` are not compared, so a test can compare
-a received change to `S3Change.objectVersion(...)` and the like.
+when they change the same thing in the same way: `eventTime()` and `sequencer()` are not compared, and neither are
+`contentType()` and `userMetadata()`, which describe the version rather than the change, so a test can compare a
+received change to `S3Change.objectVersion(...)` and the like.
 
 ### Amazon S3 event notification JSON
 

@@ -40,7 +40,8 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
       objectMetadata.markVersionChanged(VersionedObjectUtils.resolveVersionKey(objectMetadata, versionId));
       String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_TAGGING_PUT, "PutObjectTagging", bucketName, key,
-          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+          returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag(),
+          versionedObjectMetadata.getContentType(), versionedObjectMetadata.getUserMetadata()));
       return returnedVersion;
     });
   }
@@ -89,7 +90,8 @@ public interface ObjectTaggingService extends LocalS3MetadataApplicable {
       objectMetadata.markVersionChanged(VersionedObjectUtils.resolveVersionKey(objectMetadata, versionId));
       String returnedVersion = VersionedObjectUtils.resolveReturnedVersion(bucketMetadata, objectMetadata, versionId);
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_TAGGING_DELETED, "DeleteObjectTagging", bucketName,
-          key, returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag()));
+          key, returnedVersion, versionedObjectMetadata.getSize(), versionedObjectMetadata.getEtag(),
+          versionedObjectMetadata.getContentType(), versionedObjectMetadata.getUserMetadata()));
       return returnedVersion;
     });
   }

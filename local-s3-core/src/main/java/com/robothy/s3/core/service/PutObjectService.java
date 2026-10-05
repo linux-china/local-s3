@@ -214,7 +214,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
               bucketMetadata.getObjectMetadata(key).orElse(null));
           PutObjectAns ans = addVersion(bucketMetadata, storage(), key, version);
           publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, options.getOperation(), bucketName, key,
-              ans.getVersionId(), ans.getSize(), ans.getEtag()));
+              ans.getVersionId(), ans.getSize(), ans.getEtag(), version.getContentType(), version.getUserMetadata()));
           return ans;
         });
       } catch (Throwable e) {
@@ -305,7 +305,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
           bucketMetadata.getObjectMetadata(key).orElse(null));
       PutObjectAns ans = addVersion(bucketMetadata, storage(), key, versionedObjectMetadata);
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, operation, bucketName, key,
-          ans.getVersionId(), ans.getSize(), ans.getEtag()));
+          ans.getVersionId(), ans.getSize(), ans.getEtag(), versionedObjectMetadata.getContentType(),
+          versionedObjectMetadata.getUserMetadata()));
       return ans;
     });
   }
