@@ -46,6 +46,7 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 所以安全方面只需要告知开发者这些潜在的风险，由开发者自行考量。
 
 Local S3 Spring Boot Starter，主要是将应用转换为一个S3 Server，接收文件保存和事件通知，不需要考虑 `prod` profile等场景。
+同时不用考虑 Spring Boot 3.x和 Java 25的兼容性问题。
 
 
 ## 注释与文档约定
