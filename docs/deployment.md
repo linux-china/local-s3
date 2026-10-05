@@ -14,7 +14,7 @@ them are configured by the same environment variables, and answer the same healt
 ## Docker
 
 The images are published to [DockerHub](https://hub.docker.com/r/luofuxiang/local-s3): `luofuxiang/local-s3`, for
-`linux/amd64` and `linux/arm64`, runs on a Java 21 JRE, and `luofuxiang/local-s3:native-<version>` is a much smaller
+`linux/amd64` and `linux/arm64`, runs on a Java 25 JRE, and `luofuxiang/local-s3:native-<version>` is a much smaller
 GraalVM native image.
 
 ```shell
@@ -70,7 +70,7 @@ and Spark and Trino that use it.
 ### JVM options
 
 The JVM based image starts in about half the time that a plain `java -jar` takes, thanks to an
-[AppCDS](https://docs.oracle.com/en/java/javase/21/vm/class-data-sharing.html) archive, `/app/app.jsa`, that the image
+[AppCDS](https://docs.oracle.com/en/java/javase/25/vm/class-data-sharing.html) archive, `/app/app.jsa`, that the image
 build creates by running the service the way the image runs it, in `PERSISTENCE` mode and with credentials, and
 sending it the common S3, S3 Vectors and Iceberg requests, signed with SigV4 like the requests of the AWS SDKs, DuckDB
 and s5cmd, including bodies larger than 4 MiB, `aws-chunked` bodies and a presigned URL. The image always
@@ -105,7 +105,7 @@ new LocalS3Container("latest")
 ## Executable jar
 
 The same service runs without Docker. `local-s3-standalone` is published to Maven Central as an executable
-jar that carries everything it needs, so a JRE 21 is the only requirement:
+jar that carries everything it needs, so a JRE 25 is the only requirement:
 
 ```shell
 curl -LO https://repo1.maven.org/maven2/io/github/robothy/local-s3-standalone/2.5.0/local-s3-standalone-2.5.0.jar

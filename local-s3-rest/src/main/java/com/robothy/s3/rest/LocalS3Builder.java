@@ -3,17 +3,12 @@ package com.robothy.s3.rest;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.event.S3ChangeListener;
 import com.robothy.s3.core.exception.InvalidBucketNameException;
-import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
-import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NonNull;
@@ -75,69 +70,33 @@ public class LocalS3Builder {
 
     private int port = 29090;
 
-    private Path dataPath;
-
-    private LocalS3Mode mode = LocalS3Mode.IN_MEMORY;
-
-    private PersistencePolicy persistencePolicy = PersistencePolicy.DURABLE;
-
     private final List<String> defaultBuckets = new ArrayList<>();
 
     private final List<String> versionedBuckets = new ArrayList<>();
 
-    private final List<S3ChangeListener> changeListeners = new ArrayList<>();
-
     private final List<LocalS3Seeder> seeders = new ArrayList<>();
-
-    private Executor changeListenerExecutor = Runnable::run;
-
-    private boolean initialDataCacheEnabled = true;
-
-    private long maxInMemoryBytes = LocalS3Config.DEFAULT_MAX_IN_MEMORY_BYTES;
-
-    private boolean daemonThreads = true;
-
-    private boolean registerShutdownHook = true;
-
-    private int nettyParentEventGroupThreadNum = LocalS3Config.DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM;
-
-    private int nettyChildEventGroupThreadNum = LocalS3Config.DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM;
-
-    private int s3ExecutorThreadNum = LocalS3Config.DEFAULT_S3_EXECUTOR_THREAD_NUM;
-
-    private boolean virtualThreads = true;
 
     private String accessKeyId;
 
     private String secretAccessKey;
 
-    private long maxRequestBodySize = LocalS3Config.DEFAULT_MAX_REQUEST_BODY_SIZE;
+    private final StorageSettings storageSettings = new StorageSettings();
 
-    private long requestBodyFileThreshold = LocalS3Config.DEFAULT_REQUEST_BODY_FILE_THRESHOLD;
+    private final NettySettings nettySettings = new NettySettings();
 
-    private int maxRequestHeaderSize = LocalS3Config.DEFAULT_MAX_REQUEST_HEADER_SIZE;
+    private final S3ApiSettings s3ApiSettings = new S3ApiSettings();
 
-    private long idleConnectionTimeoutSeconds = LocalS3Config.DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS;
+    private final EventSettings eventSettings = new EventSettings();
 
-    private boolean compositeMultipartEtags = true;
+    private final LifecycleSettings lifecycleSettings = new LifecycleSettings();
 
-    private boolean acceptChunkedUploads = true;
+    private final TlsSettings tlsSettings = new TlsSettings();
 
-    private final List<String> virtualHostDomains = new ArrayList<>();
+    private final WebsiteSettings websiteSettings = new WebsiteSettings();
 
-    private RequestRecorder requestRecorder = RequestRecorder.NONE;
+    private final CorsSettings corsSettings = new CorsSettings();
 
-    private LocalS3Tls tls;
-
-    private boolean tlsRequired = false;
-
-    private LocalS3IcebergCatalog icebergCatalog;
-
-    private LocalS3Website website = LocalS3Website.defaults();
-
-    private LocalS3Cors cors = LocalS3Cors.disabled();
-
-    private Duration lifecycleInterval;
+    private final IcebergCatalogSettings icebergCatalogSettings = new IcebergCatalogSettings();
 
     /**
      * Set the host that local-s3 service listens on.
@@ -372,15 +331,12 @@ public class LocalS3Builder {
      * <p>The two a service is usually built with, {@linkplain #mode(LocalS3Mode)} and
      * {@linkplain #dataPath(String)}, are methods of the builder as well.
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param storage configures the storage of the service.
      * @return builder.
      * @throws IllegalArgumentException if a setting has an invalid value.
      */
     public LocalS3Builder storage(@NonNull Consumer<StorageSettings> storage) {
-        storage.accept(new StorageSettings());
+        storage.accept(storageSettings);
         return this;
     }
 
@@ -399,15 +355,12 @@ public class LocalS3Builder {
      *      .build();
      * }</pre>
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param netty configures the HTTP server of the service.
      * @return builder.
      * @throws IllegalArgumentException if a setting has an invalid value.
      */
     public LocalS3Builder netty(@NonNull Consumer<NettySettings> netty) {
-        netty.accept(new NettySettings());
+        netty.accept(nettySettings);
         return this;
     }
 
@@ -422,14 +375,11 @@ public class LocalS3Builder {
      *      .build();
      * }</pre>
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param s3Api configures the S3 API of the service.
      * @return builder.
      */
     public LocalS3Builder s3Api(@NonNull Consumer<S3ApiSettings> s3Api) {
-        s3Api.accept(new S3ApiSettings());
+        s3Api.accept(s3ApiSettings);
         return this;
     }
 
@@ -447,14 +397,11 @@ public class LocalS3Builder {
      * <p>{@linkplain #changeListener(S3ChangeListener)}, the one-liner that subscribes a single listener, is a method
      * of the builder as well.
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param events configures the change listeners of the service.
      * @return builder.
      */
     public LocalS3Builder events(@NonNull Consumer<EventSettings> events) {
-        events.accept(new EventSettings());
+        events.accept(eventSettings);
         return this;
     }
 
@@ -471,15 +418,12 @@ public class LocalS3Builder {
      *      .build();
      * }</pre>
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param lifecycle configures when the lifecycle configurations are applied.
      * @return builder.
      * @throws IllegalArgumentException if the interval is negative.
      */
     public LocalS3Builder lifecycle(@NonNull Consumer<LifecycleSettings> lifecycle) {
-        lifecycle.accept(new LifecycleSettings());
+        lifecycle.accept(lifecycleSettings);
         return this;
     }
 
@@ -506,7 +450,7 @@ public class LocalS3Builder {
      * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
      */
     public LocalS3Builder tls(@NonNull String certPem, @NonNull String keyPem) {
-        this.tls = LocalS3Tls.of(certPem, keyPem);
+        tlsSettings.certificate(certPem, keyPem);
         return this;
     }
 
@@ -537,7 +481,7 @@ public class LocalS3Builder {
      * @return builder.
      */
     public LocalS3Builder tls(@NonNull LocalS3Tls tls) {
-        this.tls = tls;
+        tlsSettings.certificate(tls);
         return this;
     }
 
@@ -550,15 +494,12 @@ public class LocalS3Builder {
      *  LocalS3.builder().tls(tls -> tls.certificate(certPem, keyPem)).build();
      * }</pre>
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param tls configures the HTTPS of the service.
      * @return builder.
      * @throws IllegalArgumentException if a certificate file can't be read, or the certificate and key are invalid.
      */
     public LocalS3Builder tls(@NonNull Consumer<TlsSettings> tls) {
-        tls.accept(new TlsSettings());
+        tls.accept(tlsSettings);
         return this;
     }
 
@@ -575,7 +516,7 @@ public class LocalS3Builder {
      * @return builder.
      */
     public LocalS3Builder website(boolean enabled) {
-        this.website = this.website.withEnabled(enabled);
+        websiteSettings.enabled(enabled);
         return this;
     }
 
@@ -589,15 +530,12 @@ public class LocalS3Builder {
      *      .build();
      * }</pre>
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param website configures the static website hosting of the service.
      * @return builder.
      * @throws IllegalArgumentException if the index document is blank.
      */
     public LocalS3Builder website(@NonNull Consumer<WebsiteSettings> website) {
-        website.accept(new WebsiteSettings());
+        website.accept(websiteSettings);
         return this;
     }
 
@@ -618,15 +556,12 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Cors}. An allowed origin, and {@code *} above all, lets its pages reach the data of the
      * service from a browser, which is meant for local development.
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param cors configures the default CORS rule of the service.
      * @return builder.
      * @throws IllegalArgumentException if a method isn't one that Amazon S3 allows, or a value is blank.
      */
     public LocalS3Builder defaultCors(@NonNull Consumer<CorsSettings> cors) {
-        cors.accept(new CorsSettings());
+        cors.accept(corsSettings);
         return this;
     }
 
@@ -637,7 +572,7 @@ public class LocalS3Builder {
      * @return builder.
      */
     public LocalS3Builder defaultCors(LocalS3Cors cors) {
-        this.cors = Objects.requireNonNullElseGet(cors, LocalS3Cors::disabled);
+        corsSettings.settings(cors);
         return this;
     }
 
@@ -666,7 +601,7 @@ public class LocalS3Builder {
      * @return builder.
      */
     public LocalS3Builder icebergCatalog(boolean enabled) {
-        this.icebergCatalog = enabled ? LocalS3IcebergCatalog.enabled() : null;
+        icebergCatalogSettings.settings(enabled ? LocalS3IcebergCatalog.enabled() : null);
         return this;
     }
 
@@ -684,16 +619,13 @@ public class LocalS3Builder {
      * before the settings are applied, since configuring a catalog is asking for one;
      * {@code icebergCatalog(iceberg -> iceberg.enabled(false))} serves none after all.
      *
-     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
-     * beyond the call.
-     *
      * @param iceberg configures the Iceberg REST catalog of the service.
      * @return builder.
      * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
      */
     public LocalS3Builder icebergCatalog(@NonNull Consumer<IcebergCatalogSettings> iceberg) {
-        this.icebergCatalog = Objects.requireNonNullElseGet(this.icebergCatalog, LocalS3IcebergCatalog::enabled);
-        iceberg.accept(new IcebergCatalogSettings());
+        icebergCatalogSettings.enabled(true);
+        iceberg.accept(icebergCatalogSettings);
         return this;
     }
 
@@ -704,14 +636,19 @@ public class LocalS3Builder {
      * @return the configuration.
      */
     public LocalS3Config buildConfig() {
-        return new LocalS3Config(bindHost, port, dataPath, mode, persistencePolicy, defaultBuckets, versionedBuckets, seeders,
-                changeListeners,
-                changeListenerExecutor, initialDataCacheEnabled, maxInMemoryBytes, daemonThreads, registerShutdownHook,
-                nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
-                accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
-                idleConnectionTimeoutSeconds, compositeMultipartEtags, acceptChunkedUploads,
-                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website, cors,
-                lifecycleInterval);
+        StorageSettings storage = storageSettings;
+        NettySettings netty = nettySettings;
+        S3ApiSettings s3Api = s3ApiSettings;
+        return new LocalS3Config(bindHost, port, storage.dataPath, storage.mode, storage.persistencePolicy,
+                defaultBuckets, versionedBuckets, seeders, eventSettings.listeners, eventSettings.executor,
+                storage.initialDataCacheEnabled, storage.maxInMemoryBytes, netty.daemonThreads,
+                netty.registerShutdownHook, netty.parentEventGroupThreadNum, netty.childEventGroupThreadNum,
+                netty.s3ExecutorThreadNum, netty.virtualThreads, accessKeyId, secretAccessKey,
+                netty.maxRequestBodySize, netty.requestBodyFileThreshold, netty.maxRequestHeaderSize,
+                netty.idleConnectionTimeoutSeconds, s3Api.compositeMultipartEtags, s3Api.acceptChunkedUploads,
+                s3Api.virtualHostDomains, netty.requestRecorder, tlsSettings.tls, tlsSettings.required,
+                icebergCatalogSettings.icebergCatalog, websiteSettings.website, corsSettings.cors,
+                lifecycleSettings.interval);
     }
 
     /**
@@ -725,821 +662,6 @@ public class LocalS3Builder {
                 config.port(), config.mode(), config.dataPath(), config.authenticationEnabled() ? "enabled" : "disabled",
                 config.tlsEnabled() ? "enabled" : "disabled");
         return new LocalS3(config);
-    }
-
-    /**
-     * The storage settings of a service: the mode it runs in, the data directory it keeps, when its changes reach the
-     * disk and how much content it holds. {@linkplain LocalS3Builder#storage(Consumer)} hands one out; every method
-     * writes the setting through to the builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class StorageSettings {
-
-        private StorageSettings() {
-        }
-
-        /**
-         * Set the running mode of the service. Default value is {@code IN_MEMORY}, which holds everything in the Java
-         * heap; {@code PERSISTENCE} keeps it in the {@linkplain #dataPath(String) data directory}.
-         *
-         * @param mode LocalS3 service running mode.
-         * @return these settings.
-         */
-        public StorageSettings mode(@NonNull LocalS3Mode mode) {
-            LocalS3Builder.this.mode = mode;
-            return this;
-        }
-
-        /**
-         * Set the data directory of the service. The default value is {@code null}, while data is stored in the Java
-         * heap. A {@code PERSISTENCE} service stores everything there; an {@code IN_MEMORY} service reads the
-         * directory as the initial data it starts with.
-         *
-         * @param dataPath data path.
-         * @return these settings.
-         */
-        public StorageSettings dataPath(@NonNull String dataPath) {
-            return dataPath(Paths.get(dataPath));
-        }
-
-        /**
-         * Set the data directory of the service; see {@linkplain #dataPath(String)}.
-         *
-         * @param dataPath data path.
-         * @return these settings.
-         */
-        public StorageSettings dataPath(@NonNull Path dataPath) {
-            LocalS3Builder.this.dataPath = dataPath;
-            return this;
-        }
-
-        /**
-         * Set when the changes of a {@code PERSISTENCE} service reach the disk.
-         *
-         * <p>{@linkplain PersistencePolicy#DURABLE}, the default, commits the metadata of every change before its
-         * request is answered, so a process that is killed loses nothing. A commit writes the file without syncing it
-         * to the disk, so it doesn't protect against a power loss. Every commit appends a chunk to the file of the data
-         * directory; the requests that change a bucket at the same time share one, but a client that writes one object
-         * after the other gets one each: loading twenty thousand objects that way grows the file to about 630 MB for
-         * about 2 MB of metadata. The room is reclaimed while the service runs, once most of the file is unused, and
-         * when the store is closed.
-         *
-         * <p>{@linkplain PersistencePolicy#FAST} lets the store commit in the background instead, at most a second
-         * after a change, and commits what is left when the service is shut down. The same load then writes about 7 MB
-         * and takes about half the time. A killed process loses the changes of the last second, which is the trade a
-         * data directory built for a test, or the data of a service embedded in an application or an IDE, can usually
-         * make; the Spring Boot starter defaults to it.
-         *
-         * <p>An {@code IN_MEMORY} service writes nothing, so the policy doesn't apply to it.
-         *
-         * @param persistencePolicy when the changes reach the disk.
-         * @return these settings.
-         */
-        public StorageSettings persistencePolicy(@NonNull PersistencePolicy persistencePolicy) {
-            LocalS3Builder.this.persistencePolicy = persistencePolicy;
-            return this;
-        }
-
-        /**
-         * Set the max number of bytes of heap that the content of an {@code IN_MEMORY} service takes: the objects and
-         * the parts of multipart uploads stored in it. Storing content beyond the limit is answered with
-         * {@code 507 InsufficientStorage}, whose message suggests the {@code PERSISTENCE} mode, instead of running the
-         * JVM that embeds the service, e.g. an application or an IDE, out of heap. The space of deleted objects, and
-         * of a {@linkplain LocalS3#reset() reset} service, is available again. The initial data read from the
-         * {@linkplain #dataPath(String) data path} doesn't count; its copies are bounded by
-         * {@code LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES}. A {@code PERSISTENCE} service ignores the limit.
-         *
-         * <p>Default value is {@linkplain LocalS3Config#DEFAULT_MAX_IN_MEMORY_BYTES}, i.e. a quarter of the max heap;
-         * {@code Long.MAX_VALUE} for no limit.
-         *
-         * @param maxInMemoryBytes max number of bytes, positive.
-         * @return these settings.
-         * @throws IllegalArgumentException if the number of bytes isn't positive.
-         */
-        public StorageSettings maxInMemoryBytes(long maxInMemoryBytes) {
-            LocalS3Config.requireMaxInMemoryBytes(maxInMemoryBytes);
-            LocalS3Builder.this.maxInMemoryBytes = maxInMemoryBytes;
-            return this;
-        }
-
-        /**
-         * This option only available when running LocalS3 in {@code IN_MEMORY} mode
-         * with initial data. If initial data cache is enabled, LocalS3 caches the
-         * accessed initial data in memory. This could reduce disk I/O when running
-         * tests with initial data in the same path.
-         *
-         * <p> The default value is {@code true}.
-         *
-         * @param enabled is the initial data cache enabled.
-         * @return these settings.
-         */
-        public StorageSettings initialDataCacheEnabled(boolean enabled) {
-            LocalS3Builder.this.initialDataCacheEnabled = enabled;
-            return this;
-        }
-
-    }
-
-    /**
-     * The settings of the HTTP server of a service: the threads that serve the requests, the limits that a request is
-     * held to, how the server relates to the JVM it runs in, and the recorder of the requests it answered.
-     * {@linkplain LocalS3Builder#netty(Consumer)} hands one out; every method writes the setting through to
-     * the builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class NettySettings {
-
-        private NettySettings() {
-        }
-
-        /**
-         * Set the number of threads that accept connections. Default value is
-         * {@linkplain LocalS3Config#DEFAULT_NETTY_PARENT_EVENT_GROUP_THREAD_NUM}.
-         *
-         * @param threadNum netty parent event group thread number.
-         * @return these settings.
-         */
-        public NettySettings parentEventGroupThreadNum(int threadNum) {
-            LocalS3Builder.this.nettyParentEventGroupThreadNum = threadNum;
-            return this;
-        }
-
-        /**
-         * Set the number of threads that read and write the connections. Netty binds a connection to one
-         * thread of this group for its whole life, and the HTTP parsing of every connection bound to a thread
-         * waits while that thread works. The body of a {@code GetObject} response is read from the storage on
-         * this thread as it is written to the connection, so serving a large object holds it for a while;
-         * raise this value to serve more connections at once. Default value is
-         * {@linkplain LocalS3Config#DEFAULT_NETTY_CHILD_EVENT_GROUP_THREAD_NUM}.
-         *
-         * @param threadNum netty child event group thread number.
-         * @return these settings.
-         */
-        public NettySettings childEventGroupThreadNum(int threadNum) {
-            LocalS3Builder.this.nettyChildEventGroupThreadNum = threadNum;
-            return this;
-        }
-
-        /**
-         * Set the number of platform threads that handle the requests, where the S3 operations and their storage
-         * I/O run, when {@linkplain #virtualThreads(boolean) virtual threads} are disabled.
-         *
-         * <p>The threads form a pool shared by all connections: each request is handled by a free thread, so
-         * this is the number of requests handled at the same time. The requests of one connection are still
-         * handled one after another, in the order they were received. The threads also write the request bodies
-         * that are buffered in temporary files, see {@linkplain #requestBodyFileThreshold(long)}, one batch at a
-         * time, so the event loops never wait for the disk. Default value is
-         * {@linkplain LocalS3Config#DEFAULT_S3_EXECUTOR_THREAD_NUM}.
-         *
-         * @param threadNum local-s3 executor thread number.
-         * @return these settings.
-         */
-        public NettySettings s3ExecutorThreadNum(int threadNum) {
-            LocalS3Builder.this.s3ExecutorThreadNum = threadNum;
-            return this;
-        }
-
-        /**
-         * Set whether every request is handled on a virtual thread of its own, rather than on a pool of
-         * {@linkplain #s3ExecutorThreadNum(int) platform threads}.
-         *
-         * <p>Handling a request mostly waits, for the storage and for the locks of a bucket, so a virtual thread per
-         * request handles as many requests at once as there are connections, without a pool whose size depends on
-         * the processors of the machine, e.g. a CI machine with two of them. The requests of one connection are still
-         * handled one after another. Virtual threads are always daemon threads.
-         *
-         * <p>The default value is {@code true}.
-         *
-         * @param virtualThreads whether requests are handled on virtual threads.
-         * @return these settings.
-         */
-        public NettySettings virtualThreads(boolean virtualThreads) {
-            LocalS3Builder.this.virtualThreads = virtualThreads;
-            return this;
-        }
-
-        /**
-         * Set whether the threads that serve the requests are daemon threads.
-         *
-         * <p>The default value is {@code true}, so that a service that isn't {@linkplain LocalS3#shutdown() shut
-         * down}, e.g. by a test that forgets to, doesn't keep the JVM alive; the shutdown hook stops the
-         * service while the JVM exits. Set it to {@code false} to run LocalS3 as a standalone server, whose
-         * {@code main} starts the service and returns: only non-daemon threads keep such a JVM running.
-         *
-         * @param daemonThreads whether the threads that serve the requests are daemon threads.
-         * @return these settings.
-         */
-        public NettySettings daemonThreads(boolean daemonThreads) {
-            LocalS3Builder.this.daemonThreads = daemonThreads;
-            return this;
-        }
-
-        /**
-         * Set the max size in bytes of a request body. Request bodies are held in memory, or buffered in a temporary
-         * file above {@linkplain #requestBodyFileThreshold(long)}, which is memory-mapped up to 2 GiB, while a request
-         * is handled, so this bounds the memory and the disk space a single request can take. A request exceeding the
-         * limit is rejected with {@code EntityTooLarge} before its body is buffered; upload large objects with
-         * multipart upload instead. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}.
-         *
-         * @param maxRequestBodySize max request body size in bytes, between 1 and
-         *     {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_BODY_SIZE}, i.e. 5 GiB.
-         * @return these settings.
-         * @throws IllegalArgumentException if the size is outside that range.
-         */
-        public NettySettings maxRequestBodySize(long maxRequestBodySize) {
-            LocalS3Config.requireMaxRequestBodySize(maxRequestBodySize);
-            LocalS3Builder.this.maxRequestBodySize = maxRequestBodySize;
-            return this;
-        }
-
-        /**
-         * Set the size in bytes above which a request body is buffered in a temporary file instead of the
-         * Java heap. The file is memory-mapped while the request is handled, or only read from the file if the body is
-         * larger than 2 GiB, which no buffer holds, so large uploads take neither
-         * heap memory nor a copy of the body. In {@code PERSISTENCE} mode the file is created in the storage
-         * directory, and the body of an upload is stored by renaming the file, so that its content isn't written a
-         * second time; an {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded,
-         * and its chunk signatures verified, while it is written, so the file holds the decoded content. In
-         * {@code IN_MEMORY} mode the large body of a {@code PUT}, i.e. of {@code PutObject} and {@code UploadPart}, is
-         * received into the heap instead, in chunks that the storage takes over, reserved in its budget before the body
-         * is uploaded, so the upload neither touches the disk nor is held twice; the bodies of other requests, and
-         * the ones whose length isn't declared or is larger than 2 GiB, are buffered in files of the default temporary
-         * directory. The file is written on the request executor, not on
-         * the event loop that receives the body; while a disk writes slower than a client sends, the connection isn't
-         * read, so neither memory nor the other connections of the event loop are affected. Default value is
-         * {@linkplain LocalS3Config#DEFAULT_REQUEST_BODY_FILE_THRESHOLD}; {@code Long.MAX_VALUE} buffers all
-         * request bodies on the heap.
-         *
-         * @param requestBodyFileThreshold size in bytes, not negative.
-         * @return these settings.
-         * @throws IllegalArgumentException if the size is negative.
-         */
-        public NettySettings requestBodyFileThreshold(long requestBodyFileThreshold) {
-            LocalS3Config.requireRequestBodyFileThreshold(requestBodyFileThreshold);
-            LocalS3Builder.this.requestBodyFileThreshold = requestBodyFileThreshold;
-            return this;
-        }
-
-        /**
-         * Set the max size in bytes of the header section of a request, i.e. of all its header lines, which is also
-         * the max length of its request line. A request whose headers exceed it is answered with
-         * {@code 400 RequestHeaderSectionTooLarge}, one whose request line exceeds it with {@code 400 BadRequest}, and
-         * its connection is closed. Default value is {@linkplain LocalS3Config#DEFAULT_MAX_REQUEST_HEADER_SIZE}.
-         *
-         * @param maxRequestHeaderSize max request header size in bytes, positive.
-         * @return these settings.
-         * @throws IllegalArgumentException if the size isn't positive.
-         */
-        public NettySettings maxRequestHeaderSize(int maxRequestHeaderSize) {
-            LocalS3Config.requireMaxRequestHeaderSize(maxRequestHeaderSize);
-            LocalS3Builder.this.maxRequestHeaderSize = maxRequestHeaderSize;
-            return this;
-        }
-
-        /**
-         * Set the seconds after which a connection without reads or writes is closed. A connection with a
-         * request in flight is never closed. Default value is
-         * {@linkplain LocalS3Config#DEFAULT_IDLE_CONNECTION_TIMEOUT_SECONDS}; {@code 0} never closes idle
-         * connections.
-         *
-         * @param idleConnectionTimeoutSeconds idle connection timeout in seconds, not negative.
-         * @return these settings.
-         * @throws IllegalArgumentException if the timeout is negative.
-         */
-        public NettySettings idleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
-            LocalS3Config.requireIdleConnectionTimeoutSeconds(idleConnectionTimeoutSeconds);
-            LocalS3Builder.this.idleConnectionTimeoutSeconds = idleConnectionTimeoutSeconds;
-            return this;
-        }
-
-        /**
-         * Set whether {@linkplain LocalS3#start()} registers a JVM shutdown hook. The default is {@code true}.
-         * Disable it when the LocalS3 lifecycle is managed by a host such as an IDE plugin or Spring container,
-         * and ensure that the host calls {@linkplain LocalS3#shutdown()} or {@linkplain LocalS3#close()}.
-         *
-         * @param registerShutdownHook whether to register a JVM shutdown hook when the service starts.
-         * @return these settings.
-         */
-        public NettySettings registerShutdownHook(boolean registerShutdownHook) {
-            LocalS3Builder.this.registerShutdownHook = registerShutdownHook;
-            return this;
-        }
-
-        /**
-         * Set a recorder that receives every request that the service answered, once its response is written, e.g. to
-         * record metrics of the requests. It receives the requests that {@code GET /_admin/stats} counts, and the
-         * health checks and administration requests that it doesn't. It is called on the event loop of the
-         * connection, so it must be quick and thread-safe; an exception that it throws is logged.
-         *
-         * @param requestRecorder the recorder.
-         * @return these settings.
-         */
-        public NettySettings requestRecorder(@NonNull RequestRecorder requestRecorder) {
-            LocalS3Builder.this.requestRecorder = Objects.requireNonNull(requestRecorder);
-            return this;
-        }
-
-    }
-
-    /**
-     * The settings of the S3 API of a service: the domains that address a bucket by the host of a request, and the
-     * entity tags that the objects of completed multipart uploads get.
-     * {@linkplain LocalS3Builder#s3Api(Consumer)} hands one out; every method writes the setting through to the
-     * builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class S3ApiSettings {
-
-        private S3ApiSettings() {
-        }
-
-        /**
-         * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
-         * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
-         * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
-         * service name in docker-compose. {@code localhost}, {@code 127.0.0.1} and {@code 0.0.0.0} are always
-         * base domains; hosts of Amazon S3 ({@code amazonaws.com}), of Alibaba Cloud OSS ({@code aliyuncs.com},
-         * e.g. {@code my-bucket.oss-cn-hangzhou.aliyuncs.com}) and of Cloudflare R2 ({@code r2.cloudflarestorage.com},
-         * e.g. {@code my-bucket.<account-id>.r2.cloudflarestorage.com}) and of Tigris ({@code my-bucket.t3.storage.dev},
-         * {@code my-bucket.fly.storage.tigris.dev}) are supported as well.
-         *
-         * @param domains base domains, e.g. {@code s3} or {@code s3.local}.
-         * @return these settings.
-         */
-        public S3ApiSettings virtualHostDomains(String... domains) {
-            if (domains != null) {
-                for (String domain : domains) {
-                    if (domain != null && !domain.isBlank()) {
-                        LocalS3Builder.this.virtualHostDomains.add(domain.trim());
-                    }
-                }
-            }
-            return this;
-        }
-
-        /**
-         * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an
-         * object uploaded in parts: the MD5 digest of the concatenated MD5 digests of its parts, followed by
-         * {@code -} and the number of parts, e.g. {@code 3858f62230ac3c915f300c664312c11f-9}. The
-         * {@code -<parts>} suffix is what a client reads the part layout of an object off, so code that tells
-         * an object uploaded in parts from one uploaded at once, e.g. to decide whether the entity tag may be
-         * compared with the MD5 of a local file, takes the same branch as against Amazon S3.
-         *
-         * <p>The default value is {@code true}. Pass {@code false} to give the object the MD5 digest of its
-         * whole content instead, which is what LocalS3 gave it before 2.5, e.g. for a test that asserts that
-         * entity tag.
-         *
-         * @param compositeMultipartEtags whether to give the objects of completed uploads the entity tag of
-         *     Amazon S3.
-         * @return these settings.
-         */
-        public S3ApiSettings compositeMultipartEtags(boolean compositeMultipartEtags) {
-            LocalS3Builder.this.compositeMultipartEtags = compositeMultipartEtags;
-            return this;
-        }
-
-        /**
-         * Set whether {@code PutObject} and {@code UploadPart} store a body that is sent with
-         * {@code Transfer-Encoding: chunked} and no {@code Content-Length}, i.e. a stream whose length the client
-         * didn't know when it started, e.g. {@code curl -T -}, a streaming {@code fetch} of Node.js or Deno, or a
-         * lightweight S3 library that streams. The body is received whole, and stored with the number of bytes
-         * received as its length.
-         *
-         * <p>The default value is {@code true}, so that such a client works against LocalS3. Pass {@code false} to
-         * answer {@code 411 MissingContentLength}, like Amazon S3 does, e.g. to test that a client declares the
-         * length of what it uploads. An {@code aws-chunked} body, which the AWS SDKs send, declares its length in
-         * {@code x-amz-decoded-content-length} and isn't affected.
-         *
-         * @param acceptChunkedUploads whether to store a body of undeclared length.
-         * @return these settings.
-         */
-        public S3ApiSettings acceptChunkedUploads(boolean acceptChunkedUploads) {
-            LocalS3Builder.this.acceptChunkedUploads = acceptChunkedUploads;
-            return this;
-        }
-
-    }
-
-    /**
-     * The settings of the {@linkplain com.robothy.s3.core.event.S3Change changes} that a service publishes: the
-     * listeners that receive them, and the executor that delivers them.
-     * {@linkplain LocalS3Builder#events(Consumer)} hands one out; every method writes the setting through to the
-     * builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class EventSettings {
-
-        private EventSettings() {
-        }
-
-        /**
-         * Subscribe a listener to the {@linkplain com.robothy.s3.core.event.S3Change changes} that the services
-         * commit: buckets created and deleted, objects created and deleted, object tagging and ACLs changed, and
-         * multipart uploads aborted. The changes are delivered however the services are called, by an HTTP request or
-         * directly through {@linkplain LocalS3#getS3Manager()}. Several listeners may be subscribed; each receives
-         * every change.
-         *
-         * @param listener receives the committed changes.
-         * @return these settings.
-         */
-        public EventSettings listener(@NonNull S3ChangeListener listener) {
-            LocalS3Builder.this.changeListeners.add(Objects.requireNonNull(listener));
-            return this;
-        }
-
-        /**
-         * Set the executor that delivers the changes to the {@linkplain #listener(S3ChangeListener) listeners}.
-         *
-         * <p>By default, listeners run synchronously on the thread handling the request, so a change is
-         * delivered before the S3 response is sent. Pass an executor, e.g.
-         * {@code Executors.newSingleThreadExecutor()}, to deliver changes asynchronously so that slow listeners
-         * don't hold up request handling; a single-threaded executor keeps the changes in order. LocalS3 does not
-         * shut the executor down.
-         *
-         * <p>Either way, an exception thrown by a listener is logged and does not fail the S3 request.
-         *
-         * @param executor executor that runs the change listeners.
-         * @return these settings.
-         */
-        public EventSettings executor(@NonNull Executor executor) {
-            LocalS3Builder.this.changeListenerExecutor = Objects.requireNonNull(executor);
-            return this;
-        }
-
-    }
-
-    /**
-     * The settings of when a service applies the lifecycle configurations of its buckets by itself.
-     * {@linkplain LocalS3Builder#lifecycle(Consumer)} hands one out; every method writes the setting through to the
-     * builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class LifecycleSettings {
-
-        private LifecycleSettings() {
-        }
-
-        /**
-         * Apply the lifecycle configurations of the buckets once the service has started, and then every
-         * {@code interval} after a run ends, like {@linkplain LocalS3#applyLifecycle(java.time.Instant)} at the current
-         * time; see {@code docs/semantics.md#lifecycle-configuration}.
-         *
-         * @param interval the time between two runs; {@code null} or zero to never apply them, which is the default.
-         * @return these settings.
-         * @throws IllegalArgumentException if {@code interval} is negative.
-         */
-        public LifecycleSettings applyEvery(Duration interval) {
-            LocalS3Config.requireLifecycleInterval(interval);
-            LocalS3Builder.this.lifecycleInterval = interval;
-            return this;
-        }
-
-    }
-
-    /**
-     * The HTTPS settings of a service: the certificate it serves, and whether it serves HTTPS alone.
-     * {@linkplain LocalS3Builder#tls(Consumer)} hands one out; every method writes the setting through to the builder
-     * it came from, so a settings object is only good while that call runs.
-     */
-    public final class TlsSettings {
-
-        private TlsSettings() {
-        }
-
-        /**
-         * Serve HTTPS with a certificate and its private key in PEM format, each given either as PEM content or as
-         * the path of a PEM file; see {@linkplain LocalS3Builder#tls(String, String)} for where such a pair comes
-         * from and what the port then answers.
-         *
-         * @param certPem the certificate chain, as PEM content or as the path of a PEM file.
-         * @param keyPem the unencrypted PKCS#8 private key, as PEM content or as the path of a PEM file.
-         * @return these settings.
-         * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
-         */
-        public TlsSettings certificate(@NonNull String certPem, @NonNull String keyPem) {
-            LocalS3Builder.this.tls = LocalS3Tls.of(certPem, keyPem);
-            return this;
-        }
-
-        /**
-         * Serve HTTPS with the certificate and private key of PEM files; see
-         * {@linkplain LocalS3Builder#tls(String, String)}.
-         *
-         * @param certPemFile the PEM file of the certificate chain.
-         * @param keyPemFile the PEM file of the unencrypted PKCS#8 private key.
-         * @return these settings.
-         * @throws IllegalArgumentException if a file can't be read, or the certificate and key are invalid.
-         */
-        public TlsSettings certificate(@NonNull Path certPemFile, @NonNull Path keyPemFile) {
-            return certificate(certPemFile.toString(), keyPemFile.toString());
-        }
-
-        /**
-         * Serve HTTPS with a certificate and private key that the caller holds; see
-         * {@linkplain LocalS3Builder#tls(LocalS3Tls)}.
-         *
-         * @param tls the certificate and its private key.
-         * @return these settings.
-         */
-        public TlsSettings certificate(@NonNull LocalS3Tls tls) {
-            LocalS3Builder.this.tls = tls;
-            return this;
-        }
-
-        /**
-         * Serve HTTPS with a certificate generated for {@code localhost}, {@code 127.0.0.1} and {@code ::1}, i.e.
-         * {@code certificate(LocalS3Tls.selfSigned())}. A client that uses HTTPS by default then connects to a local
-         * service without a certificate of the machine, once it is given the certificate or told not to verify it.
-         *
-         * @return these settings.
-         * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
-         */
-        public TlsSettings selfSigned() {
-            return certificate(LocalS3Tls.selfSigned());
-        }
-
-        /**
-         * Serve HTTPS with a certificate generated for the given host names and IP addresses, e.g. the name a
-         * container is reached by; see {@linkplain LocalS3Tls#selfSigned(String...)}.
-         *
-         * @param hosts the host names and IP addresses to issue the certificate for, at least one.
-         * @return these settings.
-         * @throws IllegalArgumentException if {@code hosts} is empty, or a host is blank or an invalid IP address.
-         * @throws IllegalStateException if the JVM generates neither an EC nor an RSA key pair.
-         */
-        public TlsSettings selfSigned(String... hosts) {
-            return certificate(LocalS3Tls.selfSigned(hosts));
-        }
-
-        /**
-         * Serve HTTPS alone on the port, instead of answering both HTTP and HTTPS on it. A plain HTTP request to the
-         * service then fails, which is what a test asserts that its client really uses TLS with.
-         *
-         * <p>A service with a certificate accepts both by default, since a port that answers whatever a client speaks
-         * is one less thing to configure. Without a certificate this has no effect: there is nothing to serve HTTPS
-         * with.
-         *
-         * @param required {@code true} to refuse plain HTTP; {@code false}, the default, to answer HTTP and HTTPS on
-         *     the same port.
-         * @return these settings.
-         */
-        public TlsSettings required(boolean required) {
-            LocalS3Builder.this.tlsRequired = required;
-            return this;
-        }
-
-    }
-
-    /**
-     * The static website settings of a service; see {@linkplain LocalS3Website}.
-     * {@linkplain LocalS3Builder#website(Consumer)} hands one out; every method writes the setting through to the
-     * builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class WebsiteSettings {
-
-        private WebsiteSettings() {
-        }
-
-        /**
-         * Set whether the buckets are served as static websites to the requests that carry no credentials; see
-         * {@linkplain LocalS3Builder#website(boolean)}.
-         *
-         * @param enabled {@code true} to serve static websites; {@code false} to leave every request to the S3 API.
-         * @return these settings.
-         */
-        public WebsiteSettings enabled(boolean enabled) {
-            LocalS3Builder.this.website = LocalS3Builder.this.website.withEnabled(enabled);
-            return this;
-        }
-
-        /**
-         * Serve <b>every</b> bucket as a static website, rather than the public ones alone, which also lets an
-         * unsigned request read the objects of a private bucket. It is meant for local development and tests, where
-         * publishing a bucket to open a page in a browser is busywork, and is off by default.
-         *
-         * @param allBuckets {@code true} to serve every bucket without credentials.
-         * @return these settings.
-         */
-        public WebsiteSettings allBuckets(boolean allBuckets) {
-            LocalS3Builder.this.website = LocalS3Builder.this.website.withAllBuckets(allBuckets);
-            return this;
-        }
-
-        /**
-         * Set the index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
-         * {@code index.html}: the object that a request for a directory is answered with.
-         *
-         * @param indexDocument the index document.
-         * @return these settings.
-         * @throws IllegalArgumentException if it is blank.
-         */
-        public WebsiteSettings indexDocument(@NonNull String indexDocument) {
-            LocalS3Builder.this.website = LocalS3Builder.this.website.withIndexDocument(indexDocument);
-            return this;
-        }
-
-        /**
-         * Set the error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g.
-         * {@code error.html}: the object that a request for a key that isn't there is answered with.
-         *
-         * @param errorDocument the error document; {@code null} answers a generic error page.
-         * @return these settings.
-         */
-        public WebsiteSettings errorDocument(String errorDocument) {
-            LocalS3Builder.this.website = LocalS3Builder.this.website.withErrorDocument(errorDocument);
-            return this;
-        }
-
-        /**
-         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
-         * configuration.
-         *
-         * @param website the settings; {@code null} for the defaults.
-         * @return these settings.
-         */
-        public WebsiteSettings settings(LocalS3Website website) {
-            LocalS3Builder.this.website = Objects.requireNonNullElseGet(website, LocalS3Website::defaults);
-            return this;
-        }
-
-    }
-
-    /**
-     * The default CORS settings of a service; see {@linkplain LocalS3Cors}. {@linkplain LocalS3Builder#defaultCors(Consumer)}
-     * hands one out; every method writes the setting through to the builder it came from, so a settings object is only
-     * good while that call runs.
-     */
-    public final class CorsSettings {
-
-        private CorsSettings() {
-        }
-
-        /**
-         * Set the origins that are allowed, e.g. {@code http://localhost:5173}; each may contain one {@code *}
-         * wildcard, and {@code *} alone allows every origin. No origin turns the default rule off.
-         *
-         * @param origins the origins.
-         * @return these settings.
-         */
-        public CorsSettings allowedOrigins(String... origins) {
-            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedOrigins(List.of(origins));
-            return this;
-        }
-
-        /**
-         * Set the methods that are allowed, among {@code GET}, {@code PUT}, {@code POST}, {@code DELETE} and
-         * {@code HEAD}; none, the default, allows all of them.
-         *
-         * @param methods the methods.
-         * @return these settings.
-         * @throws IllegalArgumentException if a method isn't one of them.
-         */
-        public CorsSettings allowedMethods(String... methods) {
-            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedMethods(List.of(methods));
-            return this;
-        }
-
-        /**
-         * Set the request headers that are allowed, each may contain one {@code *} wildcard; none, the default, allows
-         * every header.
-         *
-         * @param headers the headers.
-         * @return these settings.
-         */
-        public CorsSettings allowedHeaders(String... headers) {
-            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withAllowedHeaders(List.of(headers));
-            return this;
-        }
-
-        /**
-         * Set the response headers that the pages may read; none, the default, exposes
-         * {@linkplain LocalS3Cors#DEFAULT_EXPOSE_HEADERS}.
-         *
-         * @param headers the headers.
-         * @return these settings.
-         */
-        public CorsSettings exposeHeaders(String... headers) {
-            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withExposeHeaders(List.of(headers));
-            return this;
-        }
-
-        /**
-         * Set the seconds that a browser may cache a preflight response.
-         *
-         * @param maxAgeSeconds the seconds; {@code null} for the browser's default.
-         * @return these settings.
-         */
-        public CorsSettings maxAgeSeconds(Integer maxAgeSeconds) {
-            LocalS3Builder.this.cors = LocalS3Builder.this.cors.withMaxAgeSeconds(maxAgeSeconds);
-            return this;
-        }
-
-        /**
-         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
-         * configuration.
-         *
-         * @param cors the settings; {@code null} for none.
-         * @return these settings.
-         */
-        public CorsSettings settings(LocalS3Cors cors) {
-            LocalS3Builder.this.cors = Objects.requireNonNullElseGet(cors, LocalS3Cors::disabled);
-            return this;
-        }
-
-    }
-
-    /**
-     * The settings of the Iceberg REST catalog of a service; see {@linkplain LocalS3IcebergCatalog}.
-     * {@linkplain LocalS3Builder#icebergCatalog(Consumer)} hands one out; every method writes the setting through to
-     * the builder it came from, so a settings object is only good while that call runs.
-     */
-    public final class IcebergCatalogSettings {
-
-        private IcebergCatalogSettings() {
-        }
-
-        /**
-         * Set whether the catalog is served at all, e.g. to turn off a catalog that a shared builder configured.
-         *
-         * @param enabled {@code true} to serve the catalog with the settings configured here; {@code false} to serve
-         *     none, which drops the settings.
-         * @return these settings.
-         */
-        public IcebergCatalogSettings enabled(boolean enabled) {
-            LocalS3Builder.this.icebergCatalog = enabled
-                    ? Objects.requireNonNullElseGet(LocalS3Builder.this.icebergCatalog, LocalS3IcebergCatalog::enabled)
-                    : null;
-            return this;
-        }
-
-        /**
-         * Set the warehouse of the catalog: the {@code s3://} location of a bucket of this service that the tables
-         * created without a location of their own are placed under.
-         *
-         * @param warehouse the warehouse location, e.g. {@code s3://lakehouse/}.
-         * @return these settings.
-         * @throws IllegalArgumentException if the warehouse isn't an {@code s3://} URI of a bucket.
-         */
-        public IcebergCatalogSettings warehouse(@NonNull String warehouse) {
-            return settings(catalog().withWarehouse(warehouse));
-        }
-
-        /**
-         * Set whether the bucket of the {@linkplain #warehouse(String) warehouse} is created when the service starts,
-         * if it doesn't exist. The default is {@code true}; {@code false} leaves that to the test, which then gets a
-         * clear failure if it forgot.
-         *
-         * @param createWarehouseBucket whether to create the warehouse bucket.
-         * @return these settings.
-         */
-        public IcebergCatalogSettings createWarehouseBucket(boolean createWarehouseBucket) {
-            return settings(catalog().withCreateWarehouseBucket(createWarehouseBucket));
-        }
-
-        /**
-         * Set whether a loaded table carries the settings to reach LocalS3 with — its endpoint, path-style access and
-         * the credentials of the service. The default is {@code true}, so an engine configured with the catalog URI
-         * alone reaches the storage too; {@code false} means the client is configured by hand.
-         *
-         * @param credentialVending whether a loaded table carries the settings of the service.
-         * @return these settings.
-         */
-        public IcebergCatalogSettings credentialVending(boolean credentialVending) {
-            return settings(catalog().withCredentialVending(credentialVending));
-        }
-
-        /**
-         * Set whether the default location of a table ends in a random suffix, e.g.
-         * {@code s3://warehouse/db/orders-8f1c...}, rather than in the name of the table. The default is {@code false},
-         * which is Iceberg's: the location of a table is then derived from its name, and a test can assert on it.
-         *
-         * <p>{@code true} is the {@code unique-table-location} of the Iceberg catalogs. It matters when a table is
-         * dropped, or renamed, and another is created under the old name: with locations derived from the name, the new
-         * table lives among the files of the old one, and purging one of them takes the other's files with it.
-         *
-         * @param uniqueTableLocation whether the default location of a table carries a random suffix.
-         * @return these settings.
-         */
-        public IcebergCatalogSettings uniqueTableLocation(boolean uniqueTableLocation) {
-            return settings(catalog().withUniqueTableLocation(uniqueTableLocation));
-        }
-
-        /**
-         * Replace the settings with ones the caller holds, e.g. the ones an application read from its own
-         * configuration.
-         *
-         * @param icebergCatalog the settings; {@code null} to serve no catalog.
-         * @return these settings.
-         */
-        public IcebergCatalogSettings settings(LocalS3IcebergCatalog icebergCatalog) {
-            LocalS3Builder.this.icebergCatalog = icebergCatalog;
-            return this;
-        }
-
-        /**
-         * The catalog being configured, which {@linkplain LocalS3Builder#icebergCatalog(Consumer)} turned on; the
-         * defaults again if {@linkplain #settings(LocalS3IcebergCatalog)} or {@linkplain #enabled(boolean)} dropped
-         * it, so that configuring a warehouse after that turns the catalog back on rather than failing.
-         */
-        private LocalS3IcebergCatalog catalog() {
-            return Objects.requireNonNullElseGet(LocalS3Builder.this.icebergCatalog, LocalS3IcebergCatalog::enabled);
-        }
-
     }
 
 }

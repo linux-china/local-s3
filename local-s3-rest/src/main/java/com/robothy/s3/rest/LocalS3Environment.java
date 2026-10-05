@@ -40,7 +40,7 @@ public final class LocalS3Environment {
    * The max number of bytes of heap that the content of an {@code IN_MEMORY} service takes, e.g. {@code 536870912} or
    * {@code 512m}, with an optional {@code k}, {@code m} or {@code g} suffix.
    *
-   * @see LocalS3Builder.StorageSettings#maxInMemoryBytes(long)
+   * @see StorageSettings#maxInMemoryBytes(long)
    */
   public static final String LOCAL_S3_IN_MEMORY_MAX_BYTES = "LOCAL_S3_IN_MEMORY_MAX_BYTES";
 
@@ -48,7 +48,7 @@ public final class LocalS3Environment {
    * How often the service applies the lifecycle configurations of its buckets by itself, e.g. {@code 1h}, {@code 30m}
    * or {@code PT1H}; {@code 0} for never, which is the default.
    *
-   * @see LocalS3Builder.LifecycleSettings#applyEvery(java.time.Duration)
+   * @see LifecycleSettings#applyEvery(java.time.Duration)
    */
   public static final String LOCAL_S3_LIFECYCLE_INTERVAL = "LOCAL_S3_LIFECYCLE_INTERVAL";
 
@@ -91,7 +91,7 @@ public final class LocalS3Environment {
    * Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port: {@code true} makes a plain HTTP request
    * to a service with a certificate fail. Without a certificate it has no effect.
    *
-   * @see LocalS3Builder.TlsSettings#required(boolean)
+   * @see TlsSettings#required(boolean)
    */
   public static final String LOCAL_S3_TLS_REQUIRED = "LOCAL_S3_TLS_REQUIRED";
 
@@ -107,7 +107,7 @@ public final class LocalS3Environment {
    * The warehouse of the Iceberg REST catalog, an {@code s3://} URI of a bucket of this service, e.g.
    * {@code s3://warehouse/}. Setting it turns the catalog on.
    *
-   * @see LocalS3Builder.IcebergCatalogSettings#warehouse(String)
+   * @see IcebergCatalogSettings#warehouse(String)
    */
   public static final String LOCAL_S3_ICEBERG_WAREHOUSE = "LOCAL_S3_ICEBERG_WAREHOUSE";
 
@@ -123,21 +123,21 @@ public final class LocalS3Environment {
    * Serve <b>every</b> bucket as a static website, not the public ones alone: {@code true} turns it on. It also lets
    * an unsigned request read the objects of a private bucket, so it is off by default.
    *
-   * @see LocalS3Builder.WebsiteSettings#allBuckets(boolean)
+   * @see WebsiteSettings#allBuckets(boolean)
    */
   public static final String LOCAL_S3_WEBSITE_ALL_BUCKETS = "LOCAL_S3_WEBSITE_ALL_BUCKETS";
 
   /**
    * The index document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code index.html}.
    *
-   * @see LocalS3Builder.WebsiteSettings#indexDocument(String)
+   * @see WebsiteSettings#indexDocument(String)
    */
   public static final String LOCAL_S3_WEBSITE_INDEX_DOCUMENT = "LOCAL_S3_WEBSITE_INDEX_DOCUMENT";
 
   /**
    * The error document of the buckets that have no {@code WebsiteConfiguration} of their own, e.g. {@code error.html}.
    *
-   * @see LocalS3Builder.WebsiteSettings#errorDocument(String)
+   * @see WebsiteSettings#errorDocument(String)
    */
   public static final String LOCAL_S3_WEBSITE_ERROR_DOCUMENT = "LOCAL_S3_WEBSITE_ERROR_DOCUMENT";
 
@@ -154,14 +154,14 @@ public final class LocalS3Environment {
    * The comma-separated methods that the default CORS rule allows, e.g. {@code GET,HEAD}; unset, all of
    * {@code GET}, {@code PUT}, {@code POST}, {@code DELETE} and {@code HEAD}.
    *
-   * @see LocalS3Builder.CorsSettings#allowedMethods(String...)
+   * @see CorsSettings#allowedMethods(String...)
    */
   public static final String LOCAL_S3_CORS_ALLOWED_METHODS = "LOCAL_S3_CORS_ALLOWED_METHODS";
 
   /**
    * The comma-separated request headers that the default CORS rule allows; unset, every header.
    *
-   * @see LocalS3Builder.CorsSettings#allowedHeaders(String...)
+   * @see CorsSettings#allowedHeaders(String...)
    */
   public static final String LOCAL_S3_CORS_ALLOWED_HEADERS = "LOCAL_S3_CORS_ALLOWED_HEADERS";
 
@@ -169,14 +169,14 @@ public final class LocalS3Environment {
    * The comma-separated response headers that the default CORS rule exposes; unset,
    * {@linkplain LocalS3Cors#DEFAULT_EXPOSE_HEADERS}.
    *
-   * @see LocalS3Builder.CorsSettings#exposeHeaders(String...)
+   * @see CorsSettings#exposeHeaders(String...)
    */
   public static final String LOCAL_S3_CORS_EXPOSE_HEADERS = "LOCAL_S3_CORS_EXPOSE_HEADERS";
 
   /**
    * The seconds that a browser may cache a preflight response of the default CORS rule.
    *
-   * @see LocalS3Builder.CorsSettings#maxAgeSeconds(Integer)
+   * @see CorsSettings#maxAgeSeconds(Integer)
    */
   public static final String LOCAL_S3_CORS_MAX_AGE_SECONDS = "LOCAL_S3_CORS_MAX_AGE_SECONDS";
 

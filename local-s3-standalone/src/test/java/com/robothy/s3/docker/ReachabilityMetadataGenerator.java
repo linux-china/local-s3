@@ -121,7 +121,7 @@ public class ReachabilityMetadataGenerator {
    * Register every constructor, method and field of the LocalS3 types that the agent recorded. GraalVM 25 lets a
    * program list all the members of a registered type, but throws {@code MissingReflectionRegistrationError} when it
    * invokes one that the agent didn't see invoked, e.g. the setter of a checksum that no request of this generator
-   * carries. Jackson finds such a setter and fails the request over it, where GraalVM 21 didn't list the member and
+   * carries. Jackson finds such a setter and fails the request over it, where GraalVM 25 didn't list the member and
    * Jackson ignored the property.
    */
   static void registerAllMembersOfLocalS3Types(Path metadataFile) throws IOException {

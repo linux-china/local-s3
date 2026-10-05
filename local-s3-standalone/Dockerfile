@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:25-jre-noble
 
 LABEL org.opencontainers.image.authors="Fuxiang Luo <robothyluo@gmail.com>"
 

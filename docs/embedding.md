@@ -2,7 +2,7 @@
 
 LocalS3 runs inside a JVM as well as on its own: started from Java code, by an IDE plugin for as long as the IDE runs,
 as a bean of a Spring Boot application, per test with a JUnit 5 annotation, or in a container managed by
-Testcontainers. All artifacts are published to Maven Central under the group `io.github.robothy`, and require Java 21.
+Testcontainers. All artifacts are published to Maven Central under the group `io.github.robothy`, and require Java 25.
 
 - [Java API](#java-api)
 - [JetBrains IDEs](#jetbrains-ides)

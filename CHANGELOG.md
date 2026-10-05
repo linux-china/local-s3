@@ -51,7 +51,7 @@ imported either.
 
 | | 2.4 | 2.5 |
 |---|---|---|
-| Java | 17 | **21** |
+| Java | 17 | **25** |
 | Port of an embedded service | `8080` | `29090` |
 | Host that an embedded service binds | all interfaces | `127.0.0.1`; use `acceptFromAnyHost()` or `bindHost("0.0.0.0")` |
 | Port of the Docker image | `80` | `29090` |

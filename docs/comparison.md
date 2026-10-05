@@ -29,7 +29,7 @@ documentation of whichever you shortlist; the links are in the table. This page 
 
 | Project | What it is | Runtime | License | How it runs |
 |---|---|---|---|---|
-| [LocalS3](https://github.com/Robothy/local-s3) | An S3 mock for testing and local development, made to be embedded in a JVM | Java 21, Netty | Apache 2.0 | Java API, JUnit 5, Spring Boot 3 and 4, Testcontainers, Docker (JVM or GraalVM native), executable jar |
+| [LocalS3](https://github.com/Robothy/local-s3) | An S3 mock for testing and local development, made to be embedded in a JVM | Java 25, Netty | Apache 2.0 | Java API, JUnit 5, Spring Boot 3 and 4, Testcontainers, Docker (JVM or GraalVM native), executable jar |
 | [Adobe S3Mock](https://github.com/adobe/S3Mock) | An S3 mock for testing | Java, Spring Boot | Apache 2.0 | JUnit 4 and 5, Testcontainers, Docker |
 | [s3proxy](https://github.com/gaul/s3proxy) | An S3 front end over other blob stores — filesystem, in-memory, Azure Blob, Google Cloud Storage and more — through Apache jclouds | Java | Apache 2.0 | Executable jar, Docker, embeddable |
 | [MinIO](https://github.com/minio/minio) | A production object storage server that speaks S3 | Go | AGPL-3.0 | Single binary, Docker, Kubernetes |
@@ -102,7 +102,7 @@ LocalS3.builder()
 ### Startup cost
 
 A mock that a test class starts is on the critical path of every build, so the numbers are worth measuring rather than
-asserting. On an Apple M5 Max with Temurin 21.0.9, with the standalone
+asserting. On an Apple M5 Max with Temurin 25.0.9, with the standalone
 [executable jar](deployment.md#executable-jar) (10 MB) in `IN_MEMORY` mode:
 
 | What | Measured |

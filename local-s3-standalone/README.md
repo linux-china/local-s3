@@ -1,6 +1,6 @@
 ## LocalS3 Docker Image
 
-LocalS3 provides two types of Docker images: `local-s3` and `local-s3-native`. The executable in `local-s3` is a Java application that runs on Java 21,
+LocalS3 provides two types of Docker images: `local-s3` and `local-s3-native`. The executable in `local-s3` is a Java application that runs on Java 25,
 while the executable in `local-s3-native` is built with GraalVM Community for JDK 25 LTS (`ghcr.io/graalvm/native-image-community:25i4-ol10`).
 The `local-s3-native` image is much smaller than the `local-s3` image.
 

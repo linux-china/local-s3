@@ -275,7 +275,7 @@ public final class ObjectMetadataRef {
    * Read the metadata from the store, and publish it unless another reader did first, whose instance is answered then.
    *
    * <p>The store is read without holding a lock: a monitor held across the read would pin the carrier thread of a
-   * virtual thread on JDK 21 while the store reads the disk, so that concurrent reads of cold keys would be limited to
+   * virtual thread on JDK 25 while the store reads the disk, so that concurrent reads of cold keys would be limited to
    * the number of carrier threads. Readers that race for a key may each read it, but all of them answer one instance.
    */
   private ObjectMetadata load() {

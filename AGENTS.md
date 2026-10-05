@@ -33,7 +33,7 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 ## 技术栈
 
 - Gradle 9.7
-- Java 21
+- Java 25
 - Netty 4.2: netty-http-router
 - Jackson 3.x（`tools.jackson`；注解仍是 `com.fasterxml.jackson.annotation`；mapper 使用 Jackson 2 默认配置构建）
 - Lombok

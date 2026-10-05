@@ -161,7 +161,7 @@ public class LocalS3 implements AutoCloseable {
      *
      * <p>If the service fails to start, the resources created so far are released and the original
      * exception is thrown. A stopped service can be started again. By default, starting registers a JVM
-     * shutdown hook; {@linkplain LocalS3Builder.NettySettings#registerShutdownHook(boolean)} can disable it for host-managed lifecycles.
+     * shutdown hook; {@linkplain NettySettings#registerShutdownHook(boolean)} can disable it for host-managed lifecycles.
      *
      * @throws IllegalStateException if the service is already started.
      * @throws com.robothy.s3.core.exception.DataPathLockedException if the service is in {@code PERSISTENCE} mode and

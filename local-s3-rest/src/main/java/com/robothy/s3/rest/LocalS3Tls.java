@@ -116,7 +116,7 @@ public record LocalS3Tls(String certificateChainPem, String privateKeyPem) {
   /**
    * Generate a certificate for the given host names and IP addresses, e.g.
    * {@code selfSigned("localhost", "127.0.0.1", "s3", "*.s3.local")} for a service that is also reached by the name of
-   * its container and by {@linkplain LocalS3Builder.S3ApiSettings#virtualHostDomains(String...) virtual-hosted-style} requests. A
+   * its container and by {@linkplain S3ApiSettings#virtualHostDomains(String...) virtual-hosted-style} requests. A
    * client verifies that the host it connects to is one of them, so every name that clients use has to be listed; see
    * {@linkplain #selfSigned()} for what a certificate is good for and what it isn't.
    *

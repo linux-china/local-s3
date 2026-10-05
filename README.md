@@ -165,7 +165,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   there can be looked at and changed, rather than listed with `aws s3 ls`. Guarded with HTTP Basic authentication when
   credentials are configured. [Details](docs/deployment.md#console).
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
-+ **Runs anywhere**: embedded in Java 21, JUnit 5, Spring Boot 3 and 4, Testcontainers, a Docker image (JVM or native), or an
++ **Runs anywhere**: embedded in Java 25, JUnit 5, Spring Boot 3 and 4, Testcontainers, a Docker image (JVM or native), or an
   executable jar.
 
 ## Documentation
