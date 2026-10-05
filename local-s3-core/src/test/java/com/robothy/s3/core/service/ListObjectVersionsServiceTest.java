@@ -314,7 +314,10 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
 
   private static List<String> keys(ListObjectVersionsAns ans) {
     return ans.getVersions().stream()
-        .map(item -> item instanceof ObjectVersion version ? version.getKey() : ((DeleteMarkerEntry) item).getKey())
+        .map(item -> switch (item) {
+          case ObjectVersion version -> version.getKey();
+          case DeleteMarkerEntry deleteMarker -> deleteMarker.getKey();
+        })
         .toList();
   }
 

@@ -53,19 +53,18 @@ public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<RouterHt
       HttpUtil.setTransferEncodingChunked(response, true);
     }
     out.add(response);
-    if (bodyStream instanceof CompositeInputStream composite && ctx.pipeline().get(SslHandler.class) == null) {
+    boolean plain = ctx.pipeline().get(SslHandler.class) == null;
+    switch (bodyStream) {
       // Sends one part at a time, and ends the message with a last chunk of its own.
-      out.add(CompositeContentChunkedInput.of(composite, ctx, STREAM_CHUNK_SIZE));
-    } else if (bodyStream instanceof FileRegionInputStream file) {
-      if (ctx.pipeline().get(SslHandler.class) == null) {
+      case CompositeInputStream composite when plain ->
+          out.add(CompositeContentChunkedInput.of(composite, ctx, STREAM_CHUNK_SIZE));
+      case FileRegionInputStream file when plain -> {
         out.add(new DefaultFileRegion(file.getChannel(), file.getPosition(), file.getCount()));
         out.add(LastHttpContent.EMPTY_LAST_CONTENT);
-      } else {
-        out.add(new HttpChunkedInput(new ChunkedNioFile(
-            file.getChannel(), file.getPosition(), file.getCount(), STREAM_CHUNK_SIZE)));
       }
-    } else {
-      out.add(new HttpChunkedInput(new ChunkedStream(bodyStream, STREAM_CHUNK_SIZE)));
+      case FileRegionInputStream file -> out.add(new HttpChunkedInput(new ChunkedNioFile(
+          file.getChannel(), file.getPosition(), file.getCount(), STREAM_CHUNK_SIZE)));
+      default -> out.add(new HttpChunkedInput(new ChunkedStream(bodyStream, STREAM_CHUNK_SIZE)));
     }
   }
 

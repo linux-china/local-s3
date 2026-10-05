@@ -13,7 +13,7 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 @Builder
 @Getter
 @JacksonXmlRootElement(localName = "DeleteMarker")
-public class DeleteMarkerEntry implements VersionItem {
+public final class DeleteMarkerEntry implements VersionItem {
 
   @JacksonXmlProperty(localName = "IsLatest")
   protected boolean latest;

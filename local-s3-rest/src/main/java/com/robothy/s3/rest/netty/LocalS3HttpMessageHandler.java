@@ -108,16 +108,15 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
-    ReceivedRequest received;
-    if (msg instanceof ReceivedRequest decoded) {
-      received = decoded;
-    } else if (msg instanceof RouterHttpRequest request) {
+    switch (msg) {
+      case ReceivedRequest received -> enqueue(ctx, received);
       // Nothing is known about a request that another decoder, or a test, hands on.
-      received = new ReceivedRequest(request, null, null);
-    } else {
-      ctx.fireChannelRead(msg);
-      return;
+      case RouterHttpRequest request -> enqueue(ctx, new ReceivedRequest(request, null, null));
+      default -> ctx.fireChannelRead(msg);
     }
+  }
+
+  private void enqueue(ChannelHandlerContext ctx, ReceivedRequest received) {
     // Received bytes may still hold pipelined requests, but no more is read until the connection is idle again.
     ReadSuspensions.suspend(ctx.channel(), this);
     pendingRequests.add(received);

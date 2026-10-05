@@ -28,18 +28,14 @@ final class HeapBodyByteBuf extends CompositeByteBuf {
   private final Map<String, String> awsChunkedTrailer;
 
   HeapBodyByteBuf(HeapContent content, Map<String, String> awsChunkedTrailer) {
-    super(UnpooledByteBufAllocator.DEFAULT, false, Integer.MAX_VALUE, views(content));
-    this.content = content;
-    this.awsChunkedTrailer = awsChunkedTrailer;
-  }
-
-  private static ByteBuf[] views(HeapContent content) {
     List<ByteBuffer> buffers = content.buffers();
     ByteBuf[] views = new ByteBuf[buffers.size()];
     for (int i = 0; i < views.length; i++) {
       views[i] = Unpooled.wrappedBuffer(buffers.get(i));
     }
-    return views;
+    super(UnpooledByteBufAllocator.DEFAULT, false, Integer.MAX_VALUE, views);
+    this.content = content;
+    this.awsChunkedTrailer = awsChunkedTrailer;
   }
 
   HeapContent content() {

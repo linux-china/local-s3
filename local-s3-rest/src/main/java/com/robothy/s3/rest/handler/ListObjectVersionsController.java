@@ -53,10 +53,9 @@ class ListObjectVersionsController implements RouterHttpRequestHandler {
     UnaryOperator<String> encode = "url".equalsIgnoreCase(encodingType)
         ? S3ObjectUtils::urlEncodeEscapeSlash : UnaryOperator.identity();
     ans.getVersions().forEach(versionItem -> {
-      if (versionItem instanceof ObjectVersion objectVersion) {
-        objectVersion.setKey(encode.apply(objectVersion.getKey()));
-      } else if (versionItem instanceof DeleteMarkerEntry deleteMarker) {
-        deleteMarker.setKey(encode.apply(deleteMarker.getKey()));
+      switch (versionItem) {
+        case ObjectVersion objectVersion -> objectVersion.setKey(encode.apply(objectVersion.getKey()));
+        case DeleteMarkerEntry deleteMarker -> deleteMarker.setKey(encode.apply(deleteMarker.getKey()));
       }
     });
 

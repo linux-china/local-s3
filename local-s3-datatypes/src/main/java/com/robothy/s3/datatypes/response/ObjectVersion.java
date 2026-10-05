@@ -18,7 +18,7 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 @Getter
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JacksonXmlRootElement(localName = "Version")
-public class ObjectVersion implements VersionItem {
+public final class ObjectVersion implements VersionItem {
 
   @JacksonXmlProperty(localName = "IsLatest")
   protected boolean latest;

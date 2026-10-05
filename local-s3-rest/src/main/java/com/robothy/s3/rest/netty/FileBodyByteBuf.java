@@ -33,10 +33,11 @@ final class FileBodyByteBuf extends UnpooledHeapByteBuf {
    * @param length the number of bytes of the file.
    */
   FileBodyByteBuf(Path file, long length) {
-    super(UnpooledByteBufAllocator.DEFAULT, 0, 0);
+    // Before super(...), so that a rejected body doesn't create a buffer that nobody releases.
     if (length < 0) {
       throw new IllegalArgumentException("length must not be negative.");
     }
+    super(UnpooledByteBufAllocator.DEFAULT, 0, 0);
     this.file = file;
     this.length = length;
   }

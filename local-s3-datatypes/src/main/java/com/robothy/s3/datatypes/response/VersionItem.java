@@ -1,8 +1,8 @@
 package com.robothy.s3.datatypes.response;
 
 /**
- * A marker interface.
+ * An entry of the versions of a {@code ListObjectVersions} answer: a version of an object, or a delete marker.
  */
-public interface VersionItem {
+public sealed interface VersionItem permits ObjectVersion, DeleteMarkerEntry {
 
 }

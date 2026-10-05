@@ -579,12 +579,12 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
    */
   private void rejectMalformed(ChannelHandlerContext ctx, Throwable cause) {
     log.debug("Rejecting a malformed request on connection {}: {}", ctx.channel().id(), String.valueOf(cause));
-    if (cause instanceof TooLongHttpHeaderException) {
-      reject(ctx, S3ErrorCode.RequestHeaderSectionTooLarge, S3ErrorCode.RequestHeaderSectionTooLarge.description());
-    } else if (cause instanceof TooLongHttpLineException) {
-      reject(ctx, S3ErrorCode.BadRequest, "The request line exceeds the maximum allowed length.");
-    } else {
-      reject(ctx, S3ErrorCode.BadRequest, "An error occurred when parsing the HTTP request.");
+    switch (cause) {
+      case TooLongHttpHeaderException _ ->
+          reject(ctx, S3ErrorCode.RequestHeaderSectionTooLarge, S3ErrorCode.RequestHeaderSectionTooLarge.description());
+      case TooLongHttpLineException _ ->
+          reject(ctx, S3ErrorCode.BadRequest, "The request line exceeds the maximum allowed length.");
+      default -> reject(ctx, S3ErrorCode.BadRequest, "An error occurred when parsing the HTTP request.");
     }
   }
 
