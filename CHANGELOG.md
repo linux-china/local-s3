@@ -458,6 +458,14 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ **LocalS3 embedded in a GraalVM native executable**, e.g. a Spring Boot application with the starter built with
+  `nativeCompile`, failed its first request: the jars carried a hand-written list of the classes that Jackson reads and
+  writes reflectively, which missed many, e.g. a getter of the error document, so the request failed, and so did the
+  error response to it, which left the client waiting for its read timeout. Only the Docker image, whose build adds the
+  metadata that the tracing agent collects, worked. `local-s3-datatypes`, `local-s3-core` and `local-s3-rest` now carry
+  a `reachability-metadata.json` generated from their classes when they are built, which registers every class of the
+  module, the JDK collections that the metadata of a `PERSISTENCE` service is read back into, and the page of the
+  console. A failure that can't be answered with an error response closes the connection instead.
 + The health check of the Docker images tries HTTPS before plain HTTP, so a container with `LOCAL_S3_TLS_REQUIRED=true`
   is no longer reported `unhealthy`, which held up a `depends_on: condition: service_healthy` of Docker Compose. The one
   of the native image also follows `LOCAL_S3_PORT` now, rather than always checking port 29090.

@@ -1,0 +1,64 @@
+// Generates the GraalVM reachability metadata of the module, so that an application that embeds LocalS3 in a native
+// executable, e.g. a Spring Boot application built with `nativeCompile`, works without metadata of its own.
+//
+// Every class of the module is registered for reflection with all its constructors, methods and fields: Jackson
+// serializes and deserializes the models of LocalS3 reflectively, and which of them a request reaches can't be told
+// from the code, so a list kept by hand, or collected by the tracing agent from the requests of one run, misses some,
+// e.g. a getter of an error response that only an error writes, and the request then fails in the native executable
+// alone. The metadata is generated from the compiled classes, so a class added to the module is registered with it.
+//
+// Metadata that isn't about the classes of the module is written by hand to
+// src/main/native-image/reachability-metadata.json, and merged into the generated file: e.g. the resources that
+// local-s3-rest reads from the class path, and the constructors of the JDK collections that local-s3-datatypes, which
+// every other module depends on, registers for Jackson, which instantiates the declared type of a field, e.g. the
+// ConcurrentSkipListMap of the metadata that a PERSISTENCE service reads back when it starts.
+//
+// The file is written to META-INF/native-image/io.github.robothy/<module>/reachability-metadata.json, the directory of
+// the module's own artifact, where native-image reads it from the jar, and where it can't collide with the metadata of
+// another module in the fat jar of local-s3-standalone.
+
+def metadataRoot = layout.buildDirectory.dir('generated/native-image-metadata')
+def metadataPath = "META-INF/native-image/${project.group}/${project.name}/reachability-metadata.json"
+
+def generateNativeImageMetadata = tasks.register('generateNativeImageMetadata') {
+    description = 'Registers every class of the module for reflection, for the native executables that embed it.'
+    group = 'build'
+
+    def classesDirs = sourceSets.main.output.classesDirs
+    def outputFile = metadataRoot.map { it.file(metadataPath) }
+    def handWritten = layout.projectDirectory.file('src/main/native-image/reachability-metadata.json').asFile
+    inputs.files(classesDirs).withPropertyName('classes').withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(handWritten).withPropertyName('handWritten').withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.file(outputFile).withPropertyName('metadata')
+
+    doLast {
+        def types = new TreeSet<String>()
+        classesDirs.each { dir ->
+            if (!dir.exists()) {
+                return
+            }
+            def root = dir.toPath()
+            java.nio.file.Files.walk(root).withCloseable { paths ->
+                paths.filter { it.toString().endsWith('.class') }.forEach { path ->
+                    def name = root.relativize(path).toString().replace(File.separatorChar, '.' as char)
+                    name = name.substring(0, name.length() - '.class'.length())
+                    if (!name.endsWith('module-info') && !name.endsWith('package-info')) {
+                        types.add(name)
+                    }
+                }
+            }
+        }
+        def metadata = handWritten.exists() ? new groovy.json.JsonSlurper().parse(handWritten) as Map : [:]
+        def reflection = (metadata.reflection ?: []) + types.collect { type ->
+            [type: type, allDeclaredConstructors: true, allDeclaredMethods: true, allDeclaredFields: true]
+        }
+        metadata.reflection = reflection
+        def file = outputFile.get().asFile
+        file.parentFile.mkdirs()
+        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)) + '\n'
+    }
+}
+
+// Part of the main output, like the resources: on the class path of the tests and of the modules that depend on this
+// one, and in its jar.
+sourceSets.main.output.dir(metadataRoot, builtBy: generateNativeImageMetadata)

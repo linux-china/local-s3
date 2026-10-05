@@ -2,6 +2,7 @@ plugins {
     id 'java-library'
     id 'local-s3.java-conventions'
     id 'local-s3.publish'
+    id 'local-s3.native-metadata'
 }
 
 dependencies {

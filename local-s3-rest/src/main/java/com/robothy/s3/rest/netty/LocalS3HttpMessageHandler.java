@@ -435,7 +435,17 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     }
     // The cause is logged above, and not revealed to the client.
     StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
-    ErrorResponses.internalError(null, response);
+    try {
+      ErrorResponses.internalError(null, response);
+    } catch (RuntimeException | Error e) {
+      // E.g. the error document can't be serialized, which a native executable without the metadata of the model
+      // fails at. Closing the connection tells the client at once, rather than leaving it to wait for a response that
+      // never comes until its read timeout.
+      log.error("Failed to answer the failure with an error response; closing connection {}.", ctx.channel().id(), e);
+      response.discard();
+      ctx.close();
+      return;
+    }
     response.putHeader(HttpHeaderNames.CONNECTION.toString(), HttpHeaderValues.CLOSE)
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), response.getBody().readableBytes());
     ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);

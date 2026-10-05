@@ -529,6 +529,17 @@ contexts that Spring caches side by side don't compete for port 29090; the clien
 `${local.s3.endpoint}` placeholder, name the port it listens on. `@AutoConfigureLocalS3` also resets the data after each
 test method.
 
+### Native images
+
+An application that embeds LocalS3, with the starter or with the Java API, can be built into a GraalVM native
+executable, e.g. with `./gradlew nativeCompile` of Spring Boot, without metadata of its own: `local-s3-datatypes`,
+`local-s3-core` and `local-s3-rest` each carry a `META-INF/native-image/io.github.robothy/<module>/reachability-metadata.json`,
+generated from their classes when they are built, that registers what LocalS3 reaches reflectively — the classes that
+Jackson reads and writes, the JDK collections that a `PERSISTENCE` service reads its metadata back into, and the page of
+the console. A Spring Boot 4 application with the starter, built with GraalVM 25, answers the S3, S3 Vectors, S3 Tables,
+STS, KMS and Iceberg REST requests that the JVM answers, and so does the executable jar built with `native-image` alone,
+which reads back the data directory of a `PERSISTENCE` service after a restart.
+
 ## JUnit 5
 
 `local-s3-jupiter` provides the annotation `@LocalS3`, which launches S3 services for your tests.

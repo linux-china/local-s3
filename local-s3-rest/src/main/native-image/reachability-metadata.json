@@ -1,0 +1,7 @@
+{
+  "resources": [
+    {
+      "glob": "com/robothy/s3/rest/handler/console.html"
+    }
+  ]
+}
