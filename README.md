@@ -118,7 +118,8 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   [Details](docs/semantics.md#browser-form-uploads-post-object).
 + **Lifecycle configurations are applied on demand**: they can be put, read back and deleted, so frameworks that
   configure one on startup work, but nothing expires by itself while a test runs and nothing ever transitions. A test applies them when it chooses,
-  as of any date, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle`. [Details](docs/semantics.md#lifecycle-configuration).
+  as of any date, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle`. A long-running service, e.g. in an IDE,
+  can apply them on a schedule instead (`LOCAL_S3_LIFECYCLE_INTERVAL=1h`). [Details](docs/semantics.md#lifecycle-configuration).
 + **A built-in Iceberg REST catalog**, off by default, served under `/iceberg/v1` on the same port: a lakehouse test
   needs one process rather than a catalog beside the object store. The tables are stored in LocalS3 itself, and the
   catalog vends the endpoint and credentials to reach it, so a client configured with the catalog URI alone works —

@@ -150,6 +150,8 @@ local-s3:
   in-memory:
     max-size: 256MB      # the heap the objects take; a quarter of the max heap if unset, see Memory
   persistence-policy: fast   # persistence mode; durable commits every change
+  lifecycle:
+    interval: 1h         # apply the lifecycle rules of the buckets every hour; off if unset
   seed:
     classpath: s3-fixtures   # the objects the service starts with
   events:

@@ -60,8 +60,8 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
       "NoncurrentVersionTransition", "AbortIncompleteMultipartUpload");
 
   /**
-   * Put the lifecycle configuration of a bucket, replacing the existing one. The configuration is stored, but its
-   * rules are never applied.
+   * Put the lifecycle configuration of a bucket, replacing the existing one. The configuration is stored; its rules
+   * are applied only by {@linkplain LifecycleExecutionService}, when it is asked to.
    *
    * @param bucketName the bucket name.
    * @param configuration the {@code LifecycleConfiguration} XML document.

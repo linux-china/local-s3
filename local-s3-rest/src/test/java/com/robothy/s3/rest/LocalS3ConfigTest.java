@@ -74,7 +74,7 @@ class LocalS3ConfigTest {
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
         valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
-        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(), valid.virtualHostDomains(), null, null, false, null, null, null));
+        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(), valid.virtualHostDomains(), null, null, false, null, null, null, null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
@@ -83,7 +83,7 @@ class LocalS3ConfigTest {
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
         valid.compositeMultipartEtags(), valid.acceptChunkedUploads(),
-        valid.virtualHostDomains(), null, null, false, null, null, null);
+        valid.virtualHostDomains(), null, null, false, null, null, null, null);
     buckets.add("b");
     assertEquals(List.of("a"), copied.buckets());
   }
@@ -134,7 +134,7 @@ class LocalS3ConfigTest {
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),
         config.compositeMultipartEtags(), config.acceptChunkedUploads(),
         config.virtualHostDomains(), config.requestRecorder(), config.tls(), config.tlsRequired(),
-        config.icebergCatalog(), config.website(), config.cors());
+        config.icebergCatalog(), config.website(), config.cors(), config.lifecycleInterval());
   }
 
 }

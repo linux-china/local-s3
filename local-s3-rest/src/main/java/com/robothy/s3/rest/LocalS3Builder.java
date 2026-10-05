@@ -8,6 +8,7 @@ import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -135,6 +136,8 @@ public class LocalS3Builder {
     private LocalS3Website website = LocalS3Website.defaults();
 
     private LocalS3Cors cors = LocalS3Cors.disabled();
+
+    private Duration lifecycleInterval;
 
     /**
      * Set the host that local-s3 service listens on.
@@ -318,6 +321,7 @@ public class LocalS3Builder {
      * {@linkplain LocalS3Environment#LOCAL_S3_PORT}, {@linkplain LocalS3Environment#LOCAL_S3_HOST},
      * {@linkplain LocalS3Environment#LOCAL_S3_MODE},
      * {@linkplain LocalS3Environment#LOCAL_S3_DATA_PATH}, {@linkplain LocalS3Environment#LOCAL_S3_IN_MEMORY_MAX_BYTES},
+     * {@linkplain LocalS3Environment#LOCAL_S3_LIFECYCLE_INTERVAL},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_THREADS},
      * {@linkplain LocalS3Environment#LOCAL_S3_COMPOSITE_MULTIPART_ETAGS},
      * {@linkplain LocalS3Environment#LOCAL_S3_VIRTUAL_HOST_DOMAINS}, {@linkplain LocalS3Environment#LOCAL_S3_TLS_CERT},
@@ -451,6 +455,31 @@ public class LocalS3Builder {
      */
     public LocalS3Builder events(@NonNull Consumer<EventSettings> events) {
         events.accept(new EventSettings());
+        return this;
+    }
+
+    /**
+     * Configure when the service applies the lifecycle configurations of its buckets by itself, which it never does by
+     * default, so that nothing expires while a test runs; a test applies them with
+     * {@linkplain LocalS3#applyLifecycle(java.time.Instant)} instead. A service that runs for a long time, e.g. one
+     * embedded in an IDE or holding the artifacts of an AI agent, applies them on a schedule, so that what the rules
+     * expire doesn't pile up:
+     *
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .lifecycle(lifecycle -> lifecycle.applyEvery(Duration.ofHours(1)))
+     *      .build();
+     * }</pre>
+     *
+     * <p>The settings object writes through to this builder, so it is applied as it is called; it must not be kept
+     * beyond the call.
+     *
+     * @param lifecycle configures when the lifecycle configurations are applied.
+     * @return builder.
+     * @throws IllegalArgumentException if the interval is negative.
+     */
+    public LocalS3Builder lifecycle(@NonNull Consumer<LifecycleSettings> lifecycle) {
+        lifecycle.accept(new LifecycleSettings());
         return this;
     }
 
@@ -681,7 +710,8 @@ public class LocalS3Builder {
                 nettyParentEventGroupThreadNum, nettyChildEventGroupThreadNum, s3ExecutorThreadNum, virtualThreads,
                 accessKeyId, secretAccessKey, maxRequestBodySize, requestBodyFileThreshold, maxRequestHeaderSize,
                 idleConnectionTimeoutSeconds, compositeMultipartEtags, acceptChunkedUploads,
-                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website, cors);
+                virtualHostDomains, requestRecorder, tls, tlsRequired, icebergCatalog, website, cors,
+                lifecycleInterval);
     }
 
     /**
@@ -1129,6 +1159,33 @@ public class LocalS3Builder {
          */
         public EventSettings executor(@NonNull Executor executor) {
             LocalS3Builder.this.changeListenerExecutor = Objects.requireNonNull(executor);
+            return this;
+        }
+
+    }
+
+    /**
+     * The settings of when a service applies the lifecycle configurations of its buckets by itself.
+     * {@linkplain LocalS3Builder#lifecycle(Consumer)} hands one out; every method writes the setting through to the
+     * builder it came from, so a settings object is only good while that call runs.
+     */
+    public final class LifecycleSettings {
+
+        private LifecycleSettings() {
+        }
+
+        /**
+         * Apply the lifecycle configurations of the buckets once the service has started, and then every
+         * {@code interval} after a run ends, like {@linkplain LocalS3#applyLifecycle(java.time.Instant)} at the current
+         * time; see {@code docs/semantics.md#lifecycle-configuration}.
+         *
+         * @param interval the time between two runs; {@code null} or zero to never apply them, which is the default.
+         * @return these settings.
+         * @throws IllegalArgumentException if {@code interval} is negative.
+         */
+        public LifecycleSettings applyEvery(Duration interval) {
+            LocalS3Config.requireLifecycleInterval(interval);
+            LocalS3Builder.this.lifecycleInterval = interval;
             return this;
         }
 

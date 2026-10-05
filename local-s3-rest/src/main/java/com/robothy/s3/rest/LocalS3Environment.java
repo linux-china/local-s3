@@ -2,6 +2,7 @@ package com.robothy.s3.rest;
 
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
@@ -42,6 +43,14 @@ public final class LocalS3Environment {
    * @see LocalS3Builder.StorageSettings#maxInMemoryBytes(long)
    */
   public static final String LOCAL_S3_IN_MEMORY_MAX_BYTES = "LOCAL_S3_IN_MEMORY_MAX_BYTES";
+
+  /**
+   * How often the service applies the lifecycle configurations of its buckets by itself, e.g. {@code 1h}, {@code 30m}
+   * or {@code PT1H}; {@code 0} for never, which is the default.
+   *
+   * @see LocalS3Builder.LifecycleSettings#applyEvery(java.time.Duration)
+   */
+  public static final String LOCAL_S3_LIFECYCLE_INTERVAL = "LOCAL_S3_LIFECYCLE_INTERVAL";
 
   public static final String LOCAL_S3_VIRTUAL_THREADS = "LOCAL_S3_VIRTUAL_THREADS";
 
@@ -227,6 +236,8 @@ public final class LocalS3Environment {
         .ifPresent(policy -> builder.storage(storage -> storage.persistencePolicy(parsePersistencePolicy(policy))));
     variable(variables, LOCAL_S3_IN_MEMORY_MAX_BYTES)
         .ifPresent(bytes -> builder.storage(storage -> storage.maxInMemoryBytes(parseMaxInMemoryBytes(bytes))));
+    variable(variables, LOCAL_S3_LIFECYCLE_INTERVAL)
+        .ifPresent(interval -> builder.lifecycle(lifecycle -> lifecycle.applyEvery(parseLifecycleInterval(interval))));
     variable(variables, LOCAL_S3_VIRTUAL_THREADS)
         .ifPresent(virtual -> builder.netty(netty -> netty.virtualThreads(Boolean.parseBoolean(virtual))));
     variable(variables, LOCAL_S3_COMPOSITE_MULTIPART_ETAGS)
@@ -404,6 +415,43 @@ public final class LocalS3Environment {
     }
     throw new IllegalArgumentException("\"" + bytes + "\" is not a valid " + LOCAL_S3_IN_MEMORY_MAX_BYTES
         + "; use a positive number of bytes, e.g. 536870912 or 512m.");
+  }
+
+  /**
+   * Parse a duration that isn't negative, as {@linkplain #LOCAL_S3_LIFECYCLE_INTERVAL} takes it: a whole number with
+   * the unit {@code s}, {@code m}, {@code h} or {@code d}, e.g. {@code 30m}, an ISO 8601 duration, e.g. {@code PT30M},
+   * or {@code 0}.
+   *
+   * @param interval the duration.
+   * @return the duration; zero for {@code 0}.
+   * @throws IllegalArgumentException if the value isn't such a duration.
+   */
+  public static Duration parseLifecycleInterval(String interval) {
+    String value = interval.trim().toLowerCase(Locale.ROOT);
+    try {
+      Duration parsed;
+      if (value.startsWith("p")) {
+        parsed = Duration.parse(value);
+      } else if (value.equals("0")) {
+        parsed = Duration.ZERO;
+      } else {
+        long amount = Long.parseLong(value.substring(0, value.length() - 1));
+        parsed = switch (value.charAt(value.length() - 1)) {
+          case 's' -> Duration.ofSeconds(amount);
+          case 'm' -> Duration.ofMinutes(amount);
+          case 'h' -> Duration.ofHours(amount);
+          case 'd' -> Duration.ofDays(amount);
+          default -> null;
+        };
+      }
+      if (parsed != null && !parsed.isNegative()) {
+        return parsed;
+      }
+    } catch (RuntimeException e) {
+      // Rejected below: a value without a number, a unit, or the form of ISO 8601.
+    }
+    throw new IllegalArgumentException("\"" + interval + "\" is not a valid " + LOCAL_S3_LIFECYCLE_INTERVAL
+        + "; use a duration, e.g. 30m, 1h, 1d or PT1H, or 0 for none.");
   }
 
   private static int parseCorsMaxAgeSeconds(String maxAge) {

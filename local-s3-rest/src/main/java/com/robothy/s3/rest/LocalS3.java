@@ -103,6 +103,8 @@ public class LocalS3 implements AutoCloseable {
 
     private Thread shutdownHook;
 
+    private LifecycleSchedule lifecycleSchedule;
+
     LocalS3(LocalS3Config config) {
         this.config = Objects.requireNonNull(config);
         this.port = config.port();
@@ -177,6 +179,10 @@ public class LocalS3 implements AutoCloseable {
             throw e;
         }
         running = true;
+        if (config.lifecycleInterval() != null) {
+            this.lifecycleSchedule = LifecycleSchedule.start(config.lifecycleInterval(),
+                    () -> applyLifecycle(Instant.now()));
+        }
         if (config.registerShutdownHook()) {
             this.shutdownHook = new Thread(this::shutdown, "locals3-shutdown-hook");
             Runtime.getRuntime().addShutdownHook(this.shutdownHook);
@@ -763,6 +769,7 @@ public class LocalS3 implements AutoCloseable {
 
         running = false;
         removeShutdownHook();
+        stopLifecycleSchedule();
         stopServer();
         closePersistentManagers();
     }
@@ -826,6 +833,14 @@ public class LocalS3 implements AutoCloseable {
     @Override
     public void close() {
         shutdown();
+    }
+
+    private void stopLifecycleSchedule() {
+        LifecycleSchedule schedule = this.lifecycleSchedule;
+        this.lifecycleSchedule = null;
+        if (schedule != null) {
+            schedule.stop();
+        }
     }
 
     private void stopServer() {

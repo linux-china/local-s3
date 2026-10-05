@@ -310,8 +310,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   See [semantics](docs/semantics.md#browser-form-uploads-post-object).
 + **Lifecycle configurations**: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration` and
   `DeleteBucketLifecycle` store, return and delete the configuration of a bucket instead of answering
-  `501 NotImplemented`. The configuration is validated like Amazon S3 validates its structure, but its rules are
-  **never applied**. See [semantics](docs/semantics.md#lifecycle-configuration).
+  `501 NotImplemented`. The configuration is validated like Amazon S3 validates its structure, and its rules are
+  applied only when asked: by a test with `applyLifecycle(...)` / `POST /_admin/lifecycle`, or, for a service that runs
+  for a long time, e.g. in an IDE, on a schedule that is off by default,
+  `lifecycle(lifecycle -> lifecycle.applyEvery(Duration.ofHours(1)))`, `LOCAL_S3_LIFECYCLE_INTERVAL=1h` or
+  `local-s3.lifecycle.interval=1h`. See [semantics](docs/semantics.md#lifecycle-configuration).
   Paginated `ListBuckets`. Operations that LocalS3 knows but doesn't implement answer `501 NotImplemented` naming the
   operation; see [the API list](docs/apis.md).
 + **Analytics, inventory and metrics configurations**: the `Put`, `Get`, `List` and `Delete` operations of

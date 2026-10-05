@@ -369,6 +369,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 | HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds`, `registerShutdownHook`, `requestRecorder` |
 | S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags`, `acceptChunkedUploads` |
 | Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
+| Lifecycle | `lifecycle(lifecycle -> ...)` | `applyEvery(Duration)`; see [lifecycle configuration](semantics.md#lifecycle-configuration) |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
 | Default CORS rule | `defaultCors(cors -> ...)` | `allowedOrigins`, `allowedMethods`, `allowedHeaders`, `exposeHeaders`, `maxAgeSeconds`, `settings(LocalS3Cors)`; see [CORS](semantics.md#cors) |
@@ -523,6 +524,14 @@ The IDE inherits the `AWS_*` variables of the shell it was launched from; a plug
 [Configure from the environment](#configure-from-the-environment). The [console](#look-at-what-is-in-the-service) at
 `endpoint() + "/_admin/ui"` gives the user a view of what the service holds, e.g. from an action that opens it in the
 browser.
+
+### Expiring old data
+
+A service that runs as long as the IDE never applies the lifecycle configurations of its buckets by itself, so the
+scratch data that a rule would expire, e.g. the intermediate files of a query or of an AI agent, piles up in the data
+directory. `lifecycle(lifecycle -> lifecycle.applyEvery(Duration.ofHours(1)))` applies them once the service has
+started and every hour after, on a daemon thread that `close()` stops; see
+[lifecycle configuration](semantics.md#lifecycle-configuration).
 
 ## Spring Boot
 

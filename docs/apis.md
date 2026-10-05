@@ -109,7 +109,8 @@ Many configurations below are stored and read back but never applied, e.g. notif
 + OPTIONS object (CORS preflight requests, answered without authentication)
 
 The lifecycle configuration of a bucket is **stored, and applied only when a test asks for it**, with
-`POST /_admin/lifecycle` or `LocalS3#applyLifecycle(Instant)`, at a time of its choosing, e.g. 30 days from now. See
+`POST /_admin/lifecycle` or `LocalS3#applyLifecycle(Instant)`, at a time of its choosing, e.g. 30 days from now, or on a
+schedule that a long-running service turns on, e.g. `LOCAL_S3_LIFECYCLE_INTERVAL=1h`. See
 [semantics.md](semantics.md#lifecycle-configuration). The deprecated `PutBucketLifecycle` and `GetBucketLifecycle`
 send the same requests, and are answered the same way.
 

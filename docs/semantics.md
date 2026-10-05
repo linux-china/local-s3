@@ -34,7 +34,7 @@ test relies on one of them; such a test has to run against Amazon S3.
 
 | API | What LocalS3 does | What differs from Amazon S3 |
 |---|---|---|
-| `PutBucketLifecycleConfiguration` | Stored; applied only when a test asks, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle` | Amazon S3 applies the rules by itself, once a day. See [lifecycle configuration](#lifecycle-configuration) |
+| `PutBucketLifecycleConfiguration` | Stored; applied when a test asks, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle`, or on a schedule that is off by default | Amazon S3 applies the rules by itself, once a day. See [lifecycle configuration](#lifecycle-configuration) |
 | `PutBucketNotificationConfiguration` | Stored and returned as put; the ARNs aren't checked | No event reaches SNS, SQS, Lambda or EventBridge; use a [change listener](#change-events) instead |
 | `PutBucketAcl`, `PutObjectAcl`, `x-amz-acl`, `x-amz-grant-*` | Stored and returned | Not enforced against signed requests; only a public `READ` opens a bucket to anonymous [website](#which-buckets-are-public) reads. See [access control lists](#access-control-lists) |
 | `PutBucketPolicy`, `PutPublicAccessBlock` | Stored and returned | Not enforced against signed requests; only an `Allow` of `s3:GetObject` to `*` opens a bucket to anonymous [website](#which-buckets-are-public) reads, and conditions aren't evaluated |
@@ -467,9 +467,9 @@ rather than a set of downloads. A content type that was chosen is never overridd
 delete the lifecycle configuration of a bucket, so that frameworks that set one when they start, e.g. to clean up
 temporary files, work against LocalS3 instead of failing with `501 NotImplemented`.
 
-**The configuration never takes effect by itself**: nothing expires while a test runs. A test that exercises
-expiration asks LocalS3 to apply the configurations at a time of its choosing, which may be in the future, so that it
-doesn't wait for days to pass:
+**By default the configuration never takes effect by itself**: nothing expires while a test runs. A test that
+exercises expiration asks LocalS3 to apply the configurations at a time of its choosing, which may be in the future, so
+that it doesn't wait for days to pass:
 
 ```shell
 # Apply every bucket's configuration as if it were 31 days from now.
@@ -484,6 +484,23 @@ List<LifecycleActionAns> actions = localS3.applyLifecycle(Instant.now().plus(Dur
 ```
 
 The answer lists the actions taken, each with the bucket, the rule `ID`, the type, the key and the version or upload.
+
+A service that runs for a long time, e.g. one embedded in an IDE or the store of the artifacts of an AI agent, can apply
+the configurations on a schedule instead, so that what a rule expires doesn't pile up. It is off by default, and is
+turned on with an interval:
+
+| Where | Setting |
+|---|---|
+| Java API | `LocalS3.builder().lifecycle(lifecycle -> lifecycle.applyEvery(Duration.ofHours(1)))` |
+| Executable jar, Docker | `LOCAL_S3_LIFECYCLE_INTERVAL=1h` / `--lifecycle-interval 1h` |
+| Spring Boot starter | `local-s3.lifecycle.interval=1h` |
+
+The interval is a number with the unit `s`, `m`, `h` or `d`, e.g. `30m`, or an ISO 8601 duration, e.g. `PT30M`; `0`
+turns the schedule off. The configurations are applied at the current time once the service has started, and then
+every interval after a run ends, on a daemon thread of the service; a run doesn't hold up the start of the service, and
+a run that fails is logged and tried again an interval later. Stopping the service waits for a run in progress. A run
+that took an action logs how many it took, and publishes its changes like any other application of the rules.
+
 The enabled rules are applied the way Amazon S3 applies them:
 
 | Rule | Action |

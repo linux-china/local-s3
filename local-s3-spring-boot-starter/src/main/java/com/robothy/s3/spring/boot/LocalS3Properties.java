@@ -89,6 +89,8 @@ public class LocalS3Properties {
 
   private final InMemory inMemory = new InMemory();
 
+  private final Lifecycle lifecycle = new Lifecycle();
+
   private final Credentials credentials = new Credentials();
 
   private final Threads threads = new Threads();
@@ -221,6 +223,10 @@ public class LocalS3Properties {
     return inMemory;
   }
 
+  public Lifecycle getLifecycle() {
+    return lifecycle;
+  }
+
   public Credentials getCredentials() {
     return credentials;
   }
@@ -288,6 +294,28 @@ public class LocalS3Properties {
 
     public void setMaxSize(DataSize maxSize) {
       this.maxSize = maxSize;
+    }
+
+  }
+
+  /**
+   * When the service applies the lifecycle configurations of its buckets by itself.
+   */
+  public static class Lifecycle {
+
+    /**
+     * How often the service applies the lifecycle configurations of its buckets, once it has started, e.g. 1h, so that
+     * what the rules expire doesn't pile up in a service that runs for a long time. Never if unset or 0, so that
+     * nothing expires while a test runs.
+     */
+    private Duration interval;
+
+    public Duration getInterval() {
+      return interval;
+    }
+
+    public void setInterval(Duration interval) {
+      this.interval = interval;
     }
 
   }

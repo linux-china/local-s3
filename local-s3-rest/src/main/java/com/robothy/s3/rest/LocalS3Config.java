@@ -7,6 +7,7 @@ import com.robothy.s3.rest.netty.RequestRecorder;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -66,6 +67,8 @@ import org.jspecify.annotations.Nullable;
  *     {@code null} is {@linkplain LocalS3Website#defaults()}, which serves the public buckets.
  * @param cors the default CORS rule of the buckets that have no CORS configuration of their own, and of the requests
  *     that address no bucket; {@code null} is {@linkplain LocalS3Cors#disabled()}, which is the default.
+ * @param lifecycleInterval how often the service applies the lifecycle configurations of its buckets by itself, once
+ *     it has started; {@code null} or zero for never, which is the default, and is {@code null} then.
  */
 public record LocalS3Config(
     String bindHost,
@@ -100,7 +103,8 @@ public record LocalS3Config(
     boolean tlsRequired,
     @Nullable LocalS3IcebergCatalog icebergCatalog,
     LocalS3Website website,
-    LocalS3Cors cors) {
+    LocalS3Cors cors,
+    @Nullable Duration lifecycleInterval) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -185,6 +189,8 @@ public record LocalS3Config(
     requestRecorder = requestRecorder == null ? RequestRecorder.NONE : requestRecorder;
     website = website == null ? LocalS3Website.defaults() : website;
     cors = cors == null ? LocalS3Cors.disabled() : cors;
+    requireLifecycleInterval(lifecycleInterval);
+    lifecycleInterval = lifecycleInterval == null || lifecycleInterval.isZero() ? null : lifecycleInterval;
   }
 
   /**
@@ -286,7 +292,8 @@ public record LocalS3Config(
         + ", compositeMultipartEtags=" + compositeMultipartEtags + ", acceptChunkedUploads=" + acceptChunkedUploads
         + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
-        + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors + "]";
+        + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors
+        + ", lifecycleInterval=" + lifecycleInterval + "]";
   }
 
   /*
@@ -308,6 +315,10 @@ public record LocalS3Config(
 
   static void requireMaxRequestHeaderSize(int maxRequestHeaderSize) {
     requireThat(maxRequestHeaderSize > 0, "maxRequestHeaderSize must be positive.");
+  }
+
+  static void requireLifecycleInterval(Duration lifecycleInterval) {
+    requireThat(lifecycleInterval == null || !lifecycleInterval.isNegative(), "lifecycleInterval must not be negative.");
   }
 
   static void requireIdleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {
