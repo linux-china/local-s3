@@ -102,6 +102,23 @@ new LocalS3Container("latest")
 | `-XX:MaxRAMPercentage=50` | Leaves half the memory limit of the container to the JVM beyond its heap and to the page cache. |
 | `-XX:TieredStopAtLevel=1` | Compiles with C1 alone, which warms up faster; the peak throughput is lower, so leave it out for large uploads or benchmarks. |
 
+#### Netty without `sun.misc.Unsafe`
+
+On Java 25, Netty 4.2 no longer uses `sun.misc.Unsafe` by default, and logs this only at `DEBUG` level. Its buffers
+use the `ByteBuffer` and memory segment APIs instead. LocalS3 doesn't need it either. The content of a stored file is
+sent with zero-copy `FileRegion`s, and a large request body is memory-mapped and unmapped with the FFM API, so this
+fallback only affects small buffers. In our runs of small-object uploads and large GETs, the two settings showed no
+difference beyond run-to-run noise.
+
+LocalS3 therefore runs with the JVM default and doesn't ask for `--sun-misc-unsafe-memory-access=allow`, which goes
+against [JEP 471](https://openjdk.org/jeps/471) and [JEP 498](https://openjdk.org/jeps/498): the memory-access
+methods of `Unsafe` are deprecated for removal. To compare
+throughput, add it to `JAVA_OPTS` or to the JVM that embeds LocalS3. The flag applies to the whole JVM, including the
+host application. `-Dio.netty.noUnsafe=false` also turns Unsafe back on for Netty, but then the JVM prints the JEP 498
+warning about the memory-access methods of `Unsafe`. With `DEBUG` logging for
+`io.netty.util.internal.PlatformDependent0`, Netty logs which one it picked, e.g.
+`sun.misc.Unsafe: unavailable (io.netty.noUnsafe=true by default on Java 25+)`.
+
 ## Executable jar
 
 The same service runs without Docker. `local-s3-standalone` is published to Maven Central as an executable
