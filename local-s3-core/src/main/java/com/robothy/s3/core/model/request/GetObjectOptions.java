@@ -20,6 +20,12 @@ public class GetObjectOptions {
   private Range range;
 
   /**
+   * The {@code If-Range} of the request, which the {@linkplain #range} is served under; {@code null} if the request
+   * doesn't carry one.
+   */
+  private IfRange ifRange;
+
+  /**
    * The {@code partNumber} of the request: the part of an object uploaded in parts to read, counted from 1 in the
    * order of the content; {@code null} to read the object, or the range, rather than a part.
    */
@@ -43,6 +49,10 @@ public class GetObjectOptions {
 
   public Optional<Range> getRange() {
     return Optional.ofNullable(range);
+  }
+
+  public Optional<IfRange> getIfRange() {
+    return Optional.ofNullable(ifRange);
   }
 
   public Optional<Integer> getPartNumber() {

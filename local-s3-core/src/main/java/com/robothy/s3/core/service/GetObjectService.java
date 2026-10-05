@@ -253,7 +253,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       if (contentLength > 0) {
         answer.contentRange("bytes " + start + "-" + (start + contentLength - 1) + "/" + fullSize);
       }
-    } else if (options.getRange().isPresent()) {
+    } else if (options.getRange().isPresent() && PreconditionAssertions.ifRangeHolds(
+        options.getIfRange().orElse(null), version.getEtag(), version.getCreationDate())) {
       long[] range = options.getRange().get().resolve(fullSize);
       start = range[0];
       contentLength = range[1] - start + 1;

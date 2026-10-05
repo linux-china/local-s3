@@ -10,6 +10,7 @@ import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.request.IfRange;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -117,6 +118,35 @@ class PreconditionAssertionsTest {
     version.setEtag(etag);
     version.setDeleted(deleted);
     return new ObjectMetadata("1", version);
+  }
+
+  @Test
+  void aRangeWithoutIfRangeIsServed() {
+    assertTrue(PreconditionAssertions.ifRangeHolds(null, ETAG, LAST_MODIFIED));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\"" + ETAG + "\"", " \"" + ETAG + "\" "})
+  void ifRangeWithTheEntityTagOfTheObjectServesTheRange(String entityTag) {
+    assertTrue(PreconditionAssertions.ifRangeHolds(IfRange.entityTag(entityTag), ETAG, LAST_MODIFIED));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"\"nope\"", "W/\"" + ETAG + "\""})
+  void ifRangeWithAnotherOrAWeakEntityTagServesTheWholeObject(String entityTag) {
+    assertFalse(PreconditionAssertions.ifRangeHolds(IfRange.entityTag(entityTag), ETAG, LAST_MODIFIED));
+  }
+
+  @Test
+  void ifRangeWithADateIsComparedBySecond() {
+    assertTrue(PreconditionAssertions.ifRangeHolds(IfRange.date(1_700_000_000_000L), ETAG, LAST_MODIFIED));
+    assertFalse(PreconditionAssertions.ifRangeHolds(IfRange.date(1_699_999_999_000L), ETAG, LAST_MODIFIED));
+    assertFalse(PreconditionAssertions.ifRangeHolds(IfRange.date(1_700_000_001_000L), ETAG, LAST_MODIFIED));
+  }
+
+  @Test
+  void ifRangeThatIsNeitherAnEntityTagNorADateServesTheWholeObject() {
+    assertFalse(PreconditionAssertions.ifRangeHolds(IfRange.unmatchable(), ETAG, LAST_MODIFIED));
   }
 
   private static void assertWriteHolds(ObjectPreconditions preconditions, ObjectMetadata objectMetadata) {

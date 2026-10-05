@@ -4,6 +4,7 @@ import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.internal.VersionedObjectMetadata;
+import com.robothy.s3.core.model.request.IfRange;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import java.util.Locale;
 import java.util.Objects;
@@ -77,6 +78,31 @@ public class PreconditionAssertions {
     }
     return Objects.nonNull(preconditions.getIfModifiedSince())
         && toSeconds(lastModified) <= toSeconds(preconditions.getIfModifiedSince());
+  }
+
+  /**
+   * Evaluate the {@code If-Range} of a read against the version of the object that the request resolved to.
+   *
+   * <p>Unlike {@code If-Match}, an entity tag is compared strongly, so a weak one never matches: a range is only
+   * served if the bytes are the very ones the client already holds the rest of. A date is compared by the second,
+   * for the reason {@linkplain #assertReadPreconditionsHold} gives.
+   *
+   * @param ifRange the {@code If-Range} of the request; {@code null} if it carries none.
+   * @param etag the entity tag of the resolved version of the object.
+   * @param lastModified the epoch milliseconds that the resolved version was stored at.
+   * @return {@code true} if the range of the request is to be served; {@code false} to serve the whole object.
+   */
+  public static boolean ifRangeHolds(IfRange ifRange, String etag, long lastModified) {
+    if (Objects.isNull(ifRange)) {
+      return true;
+    }
+    String entityTag = ifRange.getEntityTag();
+    if (Objects.nonNull(entityTag)) {
+      return !entityTag.trim().startsWith("W/") && Objects.nonNull(etag)
+          && normalizeEtag(entityTag).equals(normalizeEtag(etag));
+    }
+    return Objects.nonNull(ifRange.getLastModified())
+        && toSeconds(ifRange.getLastModified()) == toSeconds(lastModified);
   }
 
   /**

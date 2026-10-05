@@ -44,6 +44,7 @@ class GetObjectController implements RouterHttpRequestHandler {
     GetObjectOptions options = GetObjectOptions.builder()
         .versionId(request.parameter("versionId").orElse(null))
         .range(request.header(HttpHeaderNames.RANGE.toString()).flatMap(Range::tryParse).orElse(null))
+        .ifRange(RequestUtils.extractIfRange(request))
         .partNumber(RequestAssertions.assertPartNumberIsValidIfPresent(request))
         .preconditions(RequestUtils.extractPreconditions(request))
         .customerEncryption(CustomerEncryptionHeaders.fromRequest(request))

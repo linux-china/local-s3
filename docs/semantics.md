@@ -153,6 +153,19 @@ single valid byte range is ignored, as RFC 9110 allows. `RangeEdgeCaseIntegratio
 the same scenarios against Amazon S3 with `./gradlew :local-s3-integration-test:realS3Test` and the credentials of an
 AWS account.
 
+`If-Range` makes the range conditional, as [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-13.1.5)
+defines it: the range is served only if the object is still the one the client read it from, otherwise the whole
+object is answered `200`, so a resumed download, e.g. of a browser, never splices an old and a new object together.
+
+| `If-Range` | Object matches | Object doesn't match |
+|---|---|---|
+| an entity tag, e.g. `"9a0364b9e99bb480dd25e1f0284c8555"` | `206`, the range | `200`, the whole object |
+| an HTTP date, compared with the second of `Last-Modified` | `206`, the range | `200`, the whole object |
+| a weak entity tag, `W/"..."`, or a value that is neither | – | `200`, the whole object |
+
+It is evaluated after the other conditions of a read, so a `304` or a `412` still wins, and it is ignored without a
+`Range`, e.g. with a `partNumber`. `HeadObject` evaluates it like `GetObject`.
+
 ## Versioning
 
 A bucket is in one of three states, as in Amazon S3: never versioned, versioning enabled, or versioning suspended.

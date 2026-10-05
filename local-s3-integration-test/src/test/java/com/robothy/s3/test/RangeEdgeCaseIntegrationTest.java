@@ -8,8 +8,12 @@ import com.robothy.s3.rest.LocalS3;
 import io.github.robothy.s3.RealS3;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -20,6 +24,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
@@ -31,6 +36,9 @@ import software.amazon.awssdk.services.s3.model.S3Object;
  * credentials of an AWS account in {@code AWS_ACCESS_KEY_ID} and {@code AWS_SECRET_ACCESS_KEY}, against Amazon S3, in a
  * bucket of its own that is deleted afterwards. Every scenario is checked, so a run against Amazon S3 reports each one
  * that LocalS3 answers differently.
+ *
+ * <p>{@code If-Range}, which the AWS SDK has no field for, is sent as a header of its own: a range is served only while
+ * the object is the one the validator names, otherwise the whole object is.
  */
 class RangeEdgeCaseIntegrationTest {
 
@@ -115,6 +123,7 @@ class RangeEdgeCaseIntegrationTest {
       // HeadObject answers a range like GetObject, without the content.
       checks.add(() -> assertEquals(416, assertThrows(S3Exception.class, () -> s3.headObject(request -> request
           .bucket(bucket).key(EMPTY).range("bytes=0-"))).statusCode(), "HeadObject of " + EMPTY + " with bytes=0-"));
+      checks.addAll(ifRangeChecks(s3, bucket));
       assertAll(checks);
     } finally {
       for (S3Object object : s3.listObjectsV2(request -> request.bucket(bucket)).contents()) {
@@ -122,6 +131,40 @@ class RangeEdgeCaseIntegrationTest {
       }
       s3.deleteBucket(request -> request.bucket(bucket));
     }
+  }
+
+  private static List<Executable> ifRangeChecks(S3Client s3, String bucket) {
+    HeadObjectResponse head = s3.headObject(request -> request.bucket(bucket).key(TEN));
+    String etag = head.eTag();
+    Instant lastModified = head.lastModified();
+    List<Executable> checks = new ArrayList<>();
+    checks.add(() -> assertIfRange(s3, bucket, etag, 206, "23"));
+    checks.add(() -> assertIfRange(s3, bucket, "\"0123456789abcdef0123456789abcdef\"", 200, TEN_BYTES));
+    checks.add(() -> assertIfRange(s3, bucket, httpDate(lastModified), 206, "23"));
+    checks.add(() -> assertIfRange(s3, bucket, httpDate(lastModified.minusSeconds(3600)), 200, TEN_BYTES));
+    checks.add(() -> {
+      HeadObjectResponse response = s3.headObject(request -> request.bucket(bucket).key(TEN).range("bytes=2-3")
+          .overrideConfiguration(config -> config.putHeader("If-Range", "\"0123456789abcdef0123456789abcdef\"")));
+      assertEquals(200, response.sdkHttpResponse().statusCode(), "HeadObject with an If-Range of another object");
+      assertEquals(10L, response.contentLength(), "HeadObject with an If-Range of another object");
+    });
+    return checks;
+  }
+
+  private static void assertIfRange(S3Client s3, String bucket, String ifRange, int status, String content) {
+    String scenario = TEN + " with Range: bytes=2-3 and If-Range: " + ifRange;
+    ResponseBytes<GetObjectResponse> read = s3.getObjectAsBytes(request -> request.bucket(bucket).key(TEN)
+        .range("bytes=2-3").overrideConfiguration(config -> config.putHeader("If-Range", ifRange)));
+    assertEquals(status, read.response().sdkHttpResponse().statusCode(), scenario);
+    assertEquals(content, new String(read.asByteArray(), StandardCharsets.US_ASCII), scenario);
+  }
+
+  /** The IMF-fixdate of RFC 9110, whose day has two digits, unlike {@code RFC_1123_DATE_TIME}. */
+  private static final DateTimeFormatter IMF_FIXDATE =
+      DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).withZone(ZoneOffset.UTC);
+
+  private static String httpDate(Instant instant) {
+    return IMF_FIXDATE.format(instant);
   }
 
   private static void assertScenario(S3Client s3, String bucket, Scenario scenario) {

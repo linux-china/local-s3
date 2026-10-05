@@ -4,6 +4,7 @@ import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
+import com.robothy.s3.core.model.request.IfRange;
 import com.robothy.s3.core.model.request.ObjectPreconditions;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -207,6 +208,22 @@ public class RequestUtils {
         .ifModifiedSince(httpDate(request, HttpHeaderNames.IF_MODIFIED_SINCE))
         .ifUnmodifiedSince(httpDate(request, HttpHeaderNames.IF_UNMODIFIED_SINCE))
         .build();
+  }
+
+  /**
+   * Extract the {@code If-Range} of a read: an entity tag if it is quoted, possibly weak, otherwise an HTTP date.
+   *
+   * @param request HTTP request.
+   * @return the validator; {@code null} if the request doesn't carry the header.
+   */
+  public static IfRange extractIfRange(RouterHttpRequest request) {
+    return request.header(HttpHeaderNames.IF_RANGE).map(String::trim).map(value -> {
+      if (value.startsWith("\"") || value.startsWith("W/")) {
+        return IfRange.entityTag(value);
+      }
+      Date date = DateFormatter.parseHttpDate(value);
+      return date == null ? IfRange.unmatchable() : IfRange.date(date.getTime());
+    }).orElse(null);
   }
 
   /**
