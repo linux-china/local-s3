@@ -21,8 +21,8 @@ class ObjectMetadataRefTest {
   private static final String JSON = JsonUtils.toJson(objectMetadata());
 
   /**
-   * The store is read without holding a lock of the reference, which would pin the carrier thread of a virtual thread
-   * on JDK 25 while the store reads the disk: two readers of a cold key are both inside the store at once.
+   * The store is read without holding a lock of the reference, which would make the readers of a cold key wait for each
+   * other's disk read: two readers of a cold key are both inside the store at once.
    */
   @Test
   void readsTheStoreWithoutHoldingALock() throws Exception {
