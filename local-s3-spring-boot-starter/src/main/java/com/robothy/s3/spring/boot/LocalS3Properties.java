@@ -28,7 +28,7 @@ public class LocalS3Properties {
   /**
    * Host or IP address that LocalS3 listens on; {@code 0.0.0.0} for every interface.
    */
-  private String bindHost = "0.0.0.0";
+  private String bindHost = "127.0.0.1";
 
   /**
    * Port that LocalS3 listens on; {@code 0} or {@code -1} for a random free port. Unless it is set, the service of a
