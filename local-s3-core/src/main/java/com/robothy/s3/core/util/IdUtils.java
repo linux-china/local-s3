@@ -62,10 +62,10 @@ public class IdUtils {
 
   public IdUtils(long datacenterId, long workerId) {
     if (datacenterId > MAX_DATACENTER_ID || datacenterId < 0) {
-      throw new IllegalArgumentException(String.format("datacenterId can't be greater than %d or less than 0", MAX_DATACENTER_ID));
+      throw new IllegalArgumentException("datacenterId can't be greater than " + MAX_DATACENTER_ID + " or less than 0");
     }
     if (workerId > MAX_WORKER_ID || workerId < 0) {
-      throw new IllegalArgumentException(String.format("workerId can't be greater than %d or less than 0", MAX_WORKER_ID));
+      throw new IllegalArgumentException("workerId can't be greater than " + MAX_WORKER_ID + " or less than 0");
     }
     this.nodeBits = datacenterId << DATACENTER_ID_SHIFT | workerId << SEQUENCE_SHIFT;
   }

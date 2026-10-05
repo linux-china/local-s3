@@ -65,8 +65,8 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
     }
     float[] values = inputVector.getData().getValues();
     if (values.length != dimension) {
-      throw invalid(String.format("Vector dimension %d of key '%s' does not match index dimension %d",
-          values.length, key, dimension));
+      throw invalid("Vector dimension " + values.length + " of key '" + key
+          + "' does not match index dimension " + dimension);
     }
     for (int i = 0; i < values.length; i++) {
       if (!Float.isFinite(values[i])) {

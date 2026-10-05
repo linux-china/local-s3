@@ -67,8 +67,8 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
 
         if (queryVectorData.length != indexDimension) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
-                String.format("Query vector dimension %d does not match index dimension %d", 
-                             queryVectorData.length, indexDimension));
+                "Query vector dimension " + queryVectorData.length
+                    + " does not match index dimension " + indexDimension);
         }
 
         return queryVectorData;

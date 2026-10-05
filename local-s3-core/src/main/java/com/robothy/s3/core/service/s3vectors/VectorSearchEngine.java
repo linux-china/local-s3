@@ -5,6 +5,7 @@ import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Vector search engine interface for S3 Vectors similarity search operations.
@@ -69,7 +70,7 @@ public interface VectorSearchEngine {
 
     @Override
     public String toString() {
-      return String.format("VectorSearchResult{vectorId='%s', distance=%.6f}",
+      return String.format(Locale.ROOT, "VectorSearchResult{vectorId='%s', distance=%.6f}",
           vectorMetadata.getVectorId(), distance);
     }
   }

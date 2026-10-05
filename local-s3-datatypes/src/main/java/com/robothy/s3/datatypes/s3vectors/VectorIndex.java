@@ -107,7 +107,7 @@ public class VectorIndex {
    * @return the ARN string
    */
   public static String generateArn(String bucketName, String indexName) {
-    return String.format("arn:aws:s3vectors:::vector-bucket/%s/index/%s", bucketName, indexName);
+    return "arn:aws:s3vectors:::vector-bucket/" + bucketName + "/index/" + indexName;
   }
 
   /**

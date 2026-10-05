@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HexFormat;
 
 /**
  * The layout of a directory that keeps one file per ID, e.g. the objects of a storage or the vectors of a vector
@@ -27,7 +28,7 @@ public final class ShardedFileLayout {
 
   static {
     for (int i = 0; i < SHARD_NAMES.length; i++) {
-      SHARD_NAMES[i] = String.format("%02x", i);
+      SHARD_NAMES[i] = HexFormat.of().toHexDigits((byte) i);
     }
   }
 

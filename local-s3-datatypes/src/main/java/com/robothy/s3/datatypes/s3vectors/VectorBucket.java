@@ -59,6 +59,6 @@ public class VectorBucket {
    * @return the ARN string
    */
   public static String generateArn(String bucketName) {
-    return String.format("arn:aws:s3vectors:::vector-bucket/%s", bucketName);
+    return "arn:aws:s3vectors:::vector-bucket/" + bucketName;
   }
 }

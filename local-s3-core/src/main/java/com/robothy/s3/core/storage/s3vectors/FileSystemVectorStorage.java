@@ -379,8 +379,8 @@ class FileSystemVectorStorage implements VectorStorage {
       int version = header.getInt();
       int headerDimension = header.getInt();
       if (!Arrays.equals(MAGIC, magic) || version != FORMAT_VERSION || headerDimension != dimension) {
-        throw new IllegalStateException(String.format(
-            "%s is not a vector file of %d dimensions of format version %d.", file, dimension, FORMAT_VERSION));
+        throw new IllegalStateException(file + " is not a vector file of " + dimension + " dimensions of format version "
+            + FORMAT_VERSION + ".");
       }
 
       long recordsBytes = channel.size() - HEADER_BYTES;

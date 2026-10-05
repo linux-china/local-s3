@@ -1,6 +1,7 @@
 package com.robothy.s3.core.event;
 
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -80,7 +81,7 @@ public record S3Change(S3ChangeType type, String operation, String bucketName, S
                   String versionId, Long size, String etag, String contentType, Map<String, String> userMetadata,
                   boolean deleteMarker, String uploadId) {
     this(type, operation, bucketName, bucketRegion, key, versionId, size, etag, contentType, userMetadata,
-        deleteMarker, uploadId, Instant.now(), String.format("%016X", NEXT_SEQUENCER.getAndIncrement()));
+        deleteMarker, uploadId, Instant.now(), HexFormat.of().withUpperCase().toHexDigits(NEXT_SEQUENCER.getAndIncrement()));
   }
 
   /**

@@ -41,7 +41,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     }
     if (vector1.length != vector2.length) {
       throw new IllegalArgumentException(
-          String.format("Vector dimensions must match: %d vs %d", vector1.length, vector2.length));
+          "Vector dimensions must match: " + vector1.length + " vs " + vector2.length);
     }
     if (vector1.length == 0) {
       throw new IllegalArgumentException("Vectors cannot be empty");
@@ -133,13 +133,12 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     }
     FloatBuffer data = vectorStorage.getVectorDataView(storageId);
     if (data == null) {
-      throw new IllegalStateException(String.format("The data of the vector '%s' (storage ID %d) is missing.",
-          vectorMetadata.getVectorId(), storageId));
+      throw new IllegalStateException("The data of the vector '" + vectorMetadata.getVectorId() + "' (storage ID "
+          + storageId + ") is missing.");
     }
     if (data.limit() != dimension) {
-      throw new IllegalStateException(String.format(
-          "The data of the vector '%s' (storage ID %d) has %d dimensions, but the query vector has %d.",
-          vectorMetadata.getVectorId(), storageId, data.limit(), dimension));
+      throw new IllegalStateException("The data of the vector '" + vectorMetadata.getVectorId() + "' (storage ID "
+          + storageId + ") has " + data.limit() + " dimensions, but the query vector has " + dimension + ".");
     }
     return data;
   }

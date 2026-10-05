@@ -71,7 +71,7 @@ public class VectorObjectMetadata {
   public void validateDimension(int expectedDimension) {
     if (this.dimension != expectedDimension) {
       throw new IllegalArgumentException(
-          String.format("Vector dimension mismatch. Expected: %d, got: %d", expectedDimension, this.dimension)
+          "Vector dimension mismatch. Expected: " + expectedDimension + ", got: " + this.dimension
       );
     }
   }

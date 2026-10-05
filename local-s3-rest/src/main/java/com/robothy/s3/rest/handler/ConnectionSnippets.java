@@ -7,6 +7,7 @@ import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -505,7 +506,7 @@ final class ConnectionSnippets {
         case '\t' -> quoted.append("\\t");
         default -> {
           if (c < 0x20) {
-            quoted.append(String.format("\\x%02x", c));
+            quoted.append("\\x").append(HexFormat.of().toHexDigits((byte) c));
           } else {
             quoted.appendCodePoint(c);
           }
