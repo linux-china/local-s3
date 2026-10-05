@@ -147,6 +147,8 @@ local-s3:
   buckets: [uploads, reports]
   versioned-buckets: [audit]   # created with versioning enabled, like the production bucket
   mode: in-memory        # or persistence, with data-path
+  in-memory:
+    max-size: 256MB      # the heap the objects take; a quarter of the max heap if unset, see Memory
   persistence-policy: fast   # persistence mode; durable commits every change
   seed:
     classpath: s3-fixtures   # the objects the service starts with
@@ -199,6 +201,34 @@ class UploadIndexer {
   }
 }
 ```
+
+## Memory
+
+An `IN_MEMORY` service, the default, keeps the objects in the heap of the application: up to a quarter of the max
+heap unless `local-s3.in-memory.max-size` is set. A standalone service has its heap to itself, but an embedded one
+shares it with the application, so a few large uploads can put the application under GC pressure, or out of memory,
+well before the service answers `507 InsufficientStorage`. Size the limit for what the application can spare:
+
+```yaml
+# Tests and local runs with small objects: a limit of its own, apart from the heap of the application.
+local-s3:
+  in-memory:
+    max-size: 256MB
+```
+
+An application that receives files from other processes, or whatever is larger than the limit can spare, keeps them on
+disk instead. Only the metadata stays in the heap, and the data outlives a restart:
+
+```yaml
+local-s3:
+  mode: persistence
+  data-path: ./data/local-s3   # a directory of its own; not java.io.tmpdir, which the OS may clean
+```
+
+The limit covers the uploads in flight too: an `IN_MEMORY` service receives the body of a `PutObject` or `UploadPart`
+into the heap, and reserves its length in the limit before the body is sent, so an upload that can't fit is refused
+up front. A `PERSISTENCE` service buffers a body larger than `local-s3.requests.body-file-threshold` (4 MB) in a file
+under its data path. See [the path of a request](../docs/architecture.md#the-path-of-a-request).
 
 ## Initial data
 

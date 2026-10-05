@@ -527,7 +527,10 @@ browser.
 `local-s3-spring-boot-starter` embeds LocalS3 in a Spring Boot 3/4 application, configured by `local-s3.*` properties,
 and, when the application has the AWS SDK, which is an optional dependency, defines an `S3Client`, an `S3AsyncClient`
 and an `S3Presigner` that point at it. `local-s3.seed.classpath` names a directory tree of the classpath that the
-service starts with, as `<bucket>/<key>`. `local-s3.website.*` configures
+service starts with, as `<bucket>/<key>`. The objects of the default `IN_MEMORY` mode take up to a quarter of the
+heap that the service shares with the application; set `local-s3.in-memory.max-size`, or `local-s3.mode=persistence`
+with a `local-s3.data-path` for an application that receives large files, see
+[Memory](../local-s3-spring-boot-starter/README.md#memory). `local-s3.website.*` configures
 [static website hosting](semantics.md#static-website-hosting): `enabled`, `all-buckets`, `index-document` and
 `error-document`. `local-s3.cors.*` configures the [default CORS rule](semantics.md#cors) of the buckets without one
 of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-headers` and `max-age`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
