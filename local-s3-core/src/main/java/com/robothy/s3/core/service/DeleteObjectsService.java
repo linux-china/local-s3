@@ -71,14 +71,9 @@ public interface DeleteObjectsService extends DeleteObjectService {
             continue;
           }
 
-          DeleteResult.Deleted deleted = new DeleteResult.Deleted();
-          deleted.setKey(key);
-          deleted.setVersionId(versionId);
-          if (deleteObjectAns.isDeleteMarker()) {
-            deleted.setDeleteMarker(true);
-            deleted.setDeleteMarkerVersionId(deleteObjectAns.getVersionId());
-          }
-          results.add(deleted);
+          boolean deleteMarker = deleteObjectAns.isDeleteMarker();
+          results.add(new DeleteResult.Deleted(deleteMarker, deleteMarker ? deleteObjectAns.getVersionId() : null,
+              key, versionId));
         } catch (LocalS3Exception e) {
           results.add(deleteError(bucketName, key, versionId, e.getS3ErrorCode(), e.getMessage()));
         } catch (RuntimeException e) {

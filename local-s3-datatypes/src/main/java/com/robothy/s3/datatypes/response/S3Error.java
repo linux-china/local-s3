@@ -1,12 +1,6 @@
 package com.robothy.s3.datatypes.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
 import tools.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
@@ -18,63 +12,119 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
  * empty element: an error of Amazon S3 names only what is relevant to it, e.g. {@code <Key>} and
  * {@code <BucketName>} for a {@code NoSuchKey}. LocalS3 wrote every field, empty when it had no value,
  * through 2.4.
+ *
+ * @param condition                   the name of the header whose condition didn't hold, which a
+ *                                    {@code PreconditionFailed} error reports, e.g. {@code If-None-Match}.
+ * @param clientComputedContentSha256 the {@code x-amz-content-sha256} that the client sent, which an
+ *                                    {@code XAmzContentSHA256Mismatch} error reports.
+ * @param s3ComputedContentSha256     the SHA-256 of the body that was received, which an
+ *                                    {@code XAmzContentSHA256Mismatch} error reports.
+ * @param hostId                      the {@code x-amz-id-2} of the response, which the body repeats, like Amazon S3
+ *                                    does.
  */
-@AllArgsConstructor
-@NoArgsConstructor
-@Getter
-@Setter
-@Builder
 @JacksonXmlRootElement(localName = "Error")
-@EqualsAndHashCode
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class S3Error {
+public record S3Error(
+    @JacksonXmlProperty(localName = "Code") String code,
+    @JacksonXmlProperty(localName = "Message") String message,
+    @JacksonXmlProperty(localName = "ArgumentName") String argumentName,
+    @JacksonXmlProperty(localName = "ArgumentValue") String argumentValue,
+    @JacksonXmlProperty(localName = "Condition") String condition,
+    @JacksonXmlProperty(localName = "BucketName") String bucketName,
+    @JacksonXmlProperty(localName = "Key") String key,
+    @JacksonXmlProperty(localName = "VersionId") String versionId,
+    @JacksonXmlProperty(localName = "ClientComputedContentSHA256") String clientComputedContentSha256,
+    @JacksonXmlProperty(localName = "S3ComputedContentSHA256") String s3ComputedContentSha256,
+    @JacksonXmlProperty(localName = "RequestId") String requestId,
+    @JacksonXmlProperty(localName = "HostId") String hostId) {
 
-  @JacksonXmlProperty(localName = "Code")
-  private String code;
+  public static Builder builder() {
+    return new Builder();
+  }
 
-  @JacksonXmlProperty(localName = "Message")
-  private String message;
+  public static final class Builder {
 
-  @JacksonXmlProperty(localName = "ArgumentName")
-  private String argumentName;
+    private String code;
+    private String message;
+    private String argumentName;
+    private String argumentValue;
+    private String condition;
+    private String bucketName;
+    private String key;
+    private String versionId;
+    private String clientComputedContentSha256;
+    private String s3ComputedContentSha256;
+    private String requestId;
+    private String hostId;
 
-  @JacksonXmlProperty(localName = "ArgumentValue")
-  private String argumentValue;
+    private Builder() {
+    }
 
-  /**
-   * The name of the header whose condition didn't hold, which a {@code PreconditionFailed} error reports,
-   * e.g. {@code If-None-Match}.
-   */
-  @JacksonXmlProperty(localName = "Condition")
-  private String condition;
+    public Builder code(String code) {
+      this.code = code;
+      return this;
+    }
 
-  @JacksonXmlProperty(localName = "BucketName")
-  private String bucketName;
+    public Builder message(String message) {
+      this.message = message;
+      return this;
+    }
 
-  @JacksonXmlProperty(localName = "Key")
-  private String key;
+    public Builder argumentName(String argumentName) {
+      this.argumentName = argumentName;
+      return this;
+    }
 
-  @JacksonXmlProperty(localName = "VersionId")
-  private String versionId;
+    public Builder argumentValue(String argumentValue) {
+      this.argumentValue = argumentValue;
+      return this;
+    }
 
-  /**
-   * The {@code x-amz-content-sha256} that the client sent, which an {@code XAmzContentSHA256Mismatch} error reports.
-   */
-  @JacksonXmlProperty(localName = "ClientComputedContentSHA256")
-  private String clientComputedContentSha256;
+    public Builder condition(String condition) {
+      this.condition = condition;
+      return this;
+    }
 
-  /**
-   * The SHA-256 of the body that was received, which an {@code XAmzContentSHA256Mismatch} error reports.
-   */
-  @JacksonXmlProperty(localName = "S3ComputedContentSHA256")
-  private String s3ComputedContentSha256;
+    public Builder bucketName(String bucketName) {
+      this.bucketName = bucketName;
+      return this;
+    }
 
-  @JacksonXmlProperty(localName = "RequestId")
-  private String requestId;
+    public Builder key(String key) {
+      this.key = key;
+      return this;
+    }
 
-  /**
-   * The {@code x-amz-id-2} of the response, which the body repeats, like Amazon S3 does.
-   */
-  @JacksonXmlProperty(localName = "HostId")
-  private String hostId;
+    public Builder versionId(String versionId) {
+      this.versionId = versionId;
+      return this;
+    }
+
+    public Builder clientComputedContentSha256(String clientComputedContentSha256) {
+      this.clientComputedContentSha256 = clientComputedContentSha256;
+      return this;
+    }
+
+    public Builder s3ComputedContentSha256(String s3ComputedContentSha256) {
+      this.s3ComputedContentSha256 = s3ComputedContentSha256;
+      return this;
+    }
+
+    public Builder requestId(String requestId) {
+      this.requestId = requestId;
+      return this;
+    }
+
+    public Builder hostId(String hostId) {
+      this.hostId = hostId;
+      return this;
+    }
+
+    public S3Error build() {
+      return new S3Error(code, message, argumentName, argumentValue, condition, bucketName, key, versionId,
+          clientComputedContentSha256, s3ComputedContentSha256, requestId, hostId);
+    }
+
+  }
+
 }

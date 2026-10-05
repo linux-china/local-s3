@@ -108,7 +108,7 @@ class LifecycleScheduleTest {
 
   private static List<String> keys(ObjectService objects) {
     return objects.listObjectsV2(BUCKET, null, null, null, false, 1000, null, null).getObjects().stream()
-        .map(S3Object::getKey)
+        .map(S3Object::key)
         .toList();
   }
 

@@ -36,7 +36,7 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
       for (PutInputVector inputVector : vectors) {
         putVector(inputVector, indexMetadata);
       }
-      return new PutVectorsResponse();
+      return new PutVectorsResponse(null);
     });
   }
 

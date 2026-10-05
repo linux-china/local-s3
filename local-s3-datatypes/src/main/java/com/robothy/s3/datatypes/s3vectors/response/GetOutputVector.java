@@ -2,43 +2,20 @@ package com.robothy.s3.datatypes.s3vectors.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import tools.jackson.databind.JsonNode;
 
 /**
  * Represents an output vector for GetVectors operation.
  * Contains vector key and optional data/metadata based on request parameters.
- * 
+ *
+ * @param data     the vector data (included if returnData was true in request).
+ * @param key      the unique identifier for this vector.
+ * @param metadata user-defined metadata associated with this vector (included if returnMetadata was true in request).
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_S3VectorBuckets_GetOutputVector.html">GetOutputVector</a>
  */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class GetOutputVector {
-
-  /**
-   * The vector data (included if returnData was true in request).
-   * Required: No
-   */
-  @JsonProperty("data")
-  private PutInputVector.VectorData data;
-
-  /**
-   * The unique identifier for this vector.
-   * Required: Yes
-   */
-  @JsonProperty("key")
-  private String key;
-
-  /**
-   * User-defined metadata associated with this vector (included if returnMetadata was true in request).
-   * Required: No
-   */
-  @JsonProperty("metadata")
-  private JsonNode metadata;
+public record GetOutputVector(
+    @JsonProperty("data") PutInputVector.VectorData data,
+    @JsonProperty("key") String key,
+    @JsonProperty("metadata") JsonNode metadata) {
 
 }

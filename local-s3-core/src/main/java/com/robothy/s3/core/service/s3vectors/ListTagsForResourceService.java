@@ -8,9 +8,8 @@ import java.util.TreeMap;
 public interface ListTagsForResourceService extends S3VectorsMetadataAware {
 
   default ListTagsForResourceResponse listTagsForResource(VectorResourceIdentifier resource) {
-    return ListTagsForResourceResponse.builder()
-        .tags(new TreeMap<>(VectorResourceAssertions.assertResourceExists(this, resource)))
-        .build();
+    return new ListTagsForResourceResponse(
+        new TreeMap<>(VectorResourceAssertions.assertResourceExists(this, resource)));
   }
 
 }

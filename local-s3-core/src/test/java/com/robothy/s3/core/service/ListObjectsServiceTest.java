@@ -50,14 +50,14 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(2, listObjectsAns.getObjects().size());
 
     S3Object dir1Key1 = listObjectsAns.getObjects().get(0);
-    assertEquals("\"" + Digests.md5Hex("Hello") + "\"", dir1Key1.getEtag());
-    assertEquals("dir1/key1", dir1Key1.getKey());
-    assertEquals(5, dir1Key1.getSize());
+    assertEquals("\"" + Digests.md5Hex("Hello") + "\"", dir1Key1.etag());
+    assertEquals("dir1/key1", dir1Key1.key());
+    assertEquals(5, dir1Key1.size());
 
     S3Object dir1Key2 = listObjectsAns.getObjects().get(1);
-    assertEquals("\"" + Digests.md5Hex("Hello") + "\"", dir1Key2.getEtag());
-    assertEquals("dir1/key2", dir1Key2.getKey());
-    assertEquals(5, dir1Key2.getSize());
+    assertEquals("\"" + Digests.md5Hex("Hello") + "\"", dir1Key2.etag());
+    assertEquals("dir1/key2", dir1Key2.key());
+    assertEquals(5, dir1Key2.size());
 
     assertEquals(0, listObjectsAns.getCommonPrefixes().size());
     assertTrue(listObjectsAns.getNextMarker().isPresent());
@@ -105,11 +105,11 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
 
     ListObjectsAns listObjectsAns = objectService.listObjects(bucketName, null, "url", null, 2, null);
     assertEquals(1, listObjectsAns.getObjects().size());
-    assertEquals("dir1%40/key1%40", listObjectsAns.getObjects().get(0).getKey());
+    assertEquals("dir1%40/key1%40", listObjectsAns.getObjects().get(0).key());
 
     ListObjectsAns listObjectsAns1 = objectService.listObjects(bucketName, null, null, null, 2, null);
     assertEquals(1, listObjectsAns1.getObjects().size());
-    assertEquals("dir1@/key1@", listObjectsAns1.getObjects().get(0).getKey());
+    assertEquals("dir1@/key1@", listObjectsAns1.getObjects().get(0).key());
 
     ListObjectsAns listObjectsAns2 = objectService.listObjects(bucketName, "/", "url", null, 2, null);
     assertEquals(0, listObjectsAns2.getObjects().size());
@@ -145,7 +145,7 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     objects.put("z/2", countingObject(visits, false));
 
     ListObjectsAns all = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 10);
-    assertEquals(List.of("a.txt", "logs0"), all.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("a.txt", "logs0"), all.getObjects().stream().map(S3Object::key).toList());
     assertEquals(List.of("logs/", "z/"), all.getCommonPrefixes());
     assertTrue(all.getNextMarker().isEmpty());
     assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
@@ -159,7 +159,7 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     visits[0] = 0;
     ListObjectsAns secondPage = ListObjectsService.listObjectsAndCommonPrefixes(
         ListItemUtils.filterByKeyMarkerAndDelimiterForListObjects(objects, "logs/", "", "/"), "", "/", 2);
-    assertEquals(List.of("logs0"), secondPage.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("logs0"), secondPage.getObjects().stream().map(S3Object::key).toList());
     assertEquals(List.of("z/"), secondPage.getCommonPrefixes());
     assertTrue(secondPage.getNextMarker().isEmpty());
     assertTrue(visits[0] < 10, "Visited " + visits[0] + " objects.");
@@ -178,7 +178,7 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     objects.put("d/1", countingObject(visits, true));
 
     ListObjectsAns endsAtObject = ListObjectsService.listObjectsAndCommonPrefixes(objects, "", "/", 2);
-    assertEquals(List.of("a.txt", "b.txt"), endsAtObject.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("a.txt", "b.txt"), endsAtObject.getObjects().stream().map(S3Object::key).toList());
     assertTrue(endsAtObject.getNextMarker().isEmpty());
     assertFalse(endsAtObject.isTruncated());
 
@@ -212,11 +212,11 @@ class ListObjectsServiceTest extends LocalS3ServiceTestBase {
     objectService.deleteObject(bucketName, "d");
 
     ListObjectsAns v1 = objectService.listObjects(bucketName, null, null, null, 2, null);
-    assertEquals(List.of("a", "b"), v1.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("a", "b"), v1.getObjects().stream().map(S3Object::key).toList());
     assertFalse(v1.isTruncated());
 
     ListObjectsV2Ans v2 = objectService.listObjectsV2(bucketName, null, null, null, false, 2, null, null);
-    assertEquals(List.of("a", "b"), v2.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("a", "b"), v2.getObjects().stream().map(S3Object::key).toList());
     assertFalse(v2.isTruncated());
     assertTrue(v2.getNextContinuationToken().isEmpty());
   }

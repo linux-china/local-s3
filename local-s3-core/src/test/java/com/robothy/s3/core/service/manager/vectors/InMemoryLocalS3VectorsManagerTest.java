@@ -46,13 +46,13 @@ class InMemoryLocalS3VectorsManagerTest {
 
     S3VectorsService inMemory = LocalS3VectorsManager.createInMemory(dataPath).s3VectorsService();
 
-    assertEquals(1, inMemory.listVectorBuckets(null, null, null).getVectorBuckets().size());
+    assertEquals(1, inMemory.listVectorBuckets(null, null, null).vectorBuckets().size());
     Map<String, float[]> vectors = getVectors(inMemory, "a", "b");
     assertArrayEquals(new float[] {1.0f, 0.0f}, vectors.get("a"));
     assertArrayEquals(new float[] {0.0f, 1.0f}, vectors.get("b"));
     List<QueryOutputVector> nearest = inMemory.queryVectors(BUCKET, INDEX, data(0.9f, 0.1f), 1, true, false, null)
-        .getVectors();
-    assertEquals("a", nearest.get(0).getKey());
+        .vectors();
+    assertEquals("a", nearest.get(0).key());
   }
 
   @Test
@@ -72,7 +72,7 @@ class InMemoryLocalS3VectorsManagerTest {
     assertArrayEquals(new float[] {2.0f, 2.0f}, changed.get("a"));
     assertFalse(changed.containsKey("b"));
     assertArrayEquals(new float[] {1.0f, 1.0f}, changed.get("c"));
-    assertEquals(2, inMemory.listVectorBuckets(null, null, null).getVectorBuckets().size());
+    assertEquals(2, inMemory.listVectorBuckets(null, null, null).vectorBuckets().size());
 
     assertEquals(before.keySet(), snapshot(dataPath).keySet(), "No file of the data path is added or removed.");
     snapshot(dataPath).forEach((file, content) -> assertArrayEquals(before.get(file), content, file));
@@ -88,15 +88,15 @@ class InMemoryLocalS3VectorsManagerTest {
     Path missing = dataPath.resolve("missing");
     LocalS3VectorsManager manager = LocalS3VectorsManager.createInMemory(missing);
     assertFalse(Files.exists(missing));
-    assertTrue(manager.s3VectorsService().listVectorBuckets(null, null, null).getVectorBuckets().isEmpty());
+    assertTrue(manager.s3VectorsService().listVectorBuckets(null, null, null).vectorBuckets().isEmpty());
 
     // A service that is started again serves the vectors it held.
     manager.s3VectorsService().createVectorBucket(BUCKET, null);
     assertSame(manager.s3VectorsService(), manager.s3VectorsService());
-    assertEquals(1, manager.s3VectorsService().listVectorBuckets(null, null, null).getVectorBuckets().size());
+    assertEquals(1, manager.s3VectorsService().listVectorBuckets(null, null, null).vectorBuckets().size());
 
     assertTrue(LocalS3VectorsManager.createInMemory().s3VectorsService().listVectorBuckets(null, null, null)
-        .getVectorBuckets().isEmpty());
+        .vectorBuckets().isEmpty());
   }
 
   @Test
@@ -109,7 +109,7 @@ class InMemoryLocalS3VectorsManagerTest {
 
     assertThrows(Exception.class, () -> inMemory.getVectorBucket(BUCKET));
     assertEquals(1, LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService()
-        .listVectorBuckets(null, null, null).getVectorBuckets().size());
+        .listVectorBuckets(null, null, null).vectorBuckets().size());
   }
 
   /**
@@ -154,8 +154,8 @@ class InMemoryLocalS3VectorsManagerTest {
 
   private static Map<String, float[]> getVectors(S3VectorsService service, String... keys) {
     Map<String, float[]> vectors = new TreeMap<>();
-    for (GetOutputVector vector : service.getVectors(BUCKET, INDEX, List.of(keys), true, false).getVectors()) {
-      vectors.put(vector.getKey(), vector.getData().getValues());
+    for (GetOutputVector vector : service.getVectors(BUCKET, INDEX, List.of(keys), true, false).vectors()) {
+      vectors.put(vector.key(), vector.data().getValues());
     }
     return vectors;
   }

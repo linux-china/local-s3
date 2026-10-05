@@ -57,10 +57,10 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertInstanceOf(DeleteMarkerEntry.class, listObjectVersionsAns.getVersions().get(0));
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns.getVersions().get(1));
 
-    assertEquals(deleteObjectAns.getVersionId(), ((DeleteMarkerEntry)listObjectVersionsAns.getVersions().get(0)).getVersionId());
+    assertEquals(deleteObjectAns.getVersionId(), ((DeleteMarkerEntry)listObjectVersionsAns.getVersions().get(0)).versionId());
     ObjectVersion key1Version2 = (ObjectVersion) listObjectVersionsAns.getVersions().get(1);
-    assertEquals(putObjectAns2.getVersionId(), key1Version2.getVersionId());
-    assertEquals("\"" + Digests.md5Hex("Robothy") + "\"", key1Version2.getEtag());
+    assertEquals(putObjectAns2.getVersionId(), key1Version2.versionId());
+    assertEquals("\"" + Digests.md5Hex("Robothy") + "\"", key1Version2.etag());
     assertTrue(listObjectVersionsAns.getNextKeyMarker().isPresent());
     assertEquals(key1, listObjectVersionsAns.getNextKeyMarker().get());
     assertTrue(listObjectVersionsAns.getNextVersionIdMarker().isPresent());
@@ -73,8 +73,8 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(0, listObjectVersionsAns1.getCommonPrefixes().size());
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns1.getVersions().get(0));
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns1.getVersions().get(1));
-    assertEquals(putObjectAns1.getVersionId(), ((ObjectVersion)listObjectVersionsAns1.getVersions().get(0)).getVersionId());
-    assertEquals(putObjectAns4.getVersionId(), ((ObjectVersion)listObjectVersionsAns1.getVersions().get(1)).getVersionId());
+    assertEquals(putObjectAns1.getVersionId(), ((ObjectVersion)listObjectVersionsAns1.getVersions().get(0)).versionId());
+    assertEquals(putObjectAns4.getVersionId(), ((ObjectVersion)listObjectVersionsAns1.getVersions().get(1)).versionId());
     assertTrue(listObjectVersionsAns1.getNextKeyMarker().isPresent());
     assertEquals(key2, listObjectVersionsAns1.getNextKeyMarker().get());
     assertTrue(listObjectVersionsAns1.getNextVersionIdMarker().isPresent());
@@ -86,7 +86,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(1, listObjectVersionsAns2.getVersions().size());
     assertEquals(0, listObjectVersionsAns2.getCommonPrefixes().size());
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns2.getVersions().get(0));
-    assertEquals(putObjectAns3.getVersionId(), ((ObjectVersion) listObjectVersionsAns2.getVersions().get(0)).getVersionId());
+    assertEquals(putObjectAns3.getVersionId(), ((ObjectVersion) listObjectVersionsAns2.getVersions().get(0)).versionId());
     assertTrue(listObjectVersionsAns2.getNextKeyMarker().isEmpty());
     assertTrue(listObjectVersionsAns2.getNextVersionIdMarker().isEmpty());
 
@@ -96,9 +96,9 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(2, listObjectVersionsAns3.getVersions().size());
     assertEquals(0, listObjectVersionsAns3.getCommonPrefixes().size());
     assertInstanceOf(DeleteMarkerEntry.class, listObjectVersionsAns3.getVersions().get(0));
-    assertEquals(deleteObjectAns.getVersionId(), ((DeleteMarkerEntry)listObjectVersionsAns3.getVersions().get(0)).getVersionId());
+    assertEquals(deleteObjectAns.getVersionId(), ((DeleteMarkerEntry)listObjectVersionsAns3.getVersions().get(0)).versionId());
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns3.getVersions().get(1));
-    assertEquals(putObjectAns2.getVersionId(), ((ObjectVersion) listObjectVersionsAns3.getVersions().get(1)).getVersionId());
+    assertEquals(putObjectAns2.getVersionId(), ((ObjectVersion) listObjectVersionsAns3.getVersions().get(1)).versionId());
     assertTrue(listObjectVersionsAns3.getNextKeyMarker().isPresent());
     assertEquals(key1, listObjectVersionsAns3.getNextKeyMarker().get());
     assertTrue(listObjectVersionsAns3.getNextVersionIdMarker().isPresent());
@@ -109,7 +109,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(1, listObjectVersionsAns4.getVersions().size());
     assertEquals(0, listObjectVersionsAns4.getCommonPrefixes().size());
     assertInstanceOf(ObjectVersion.class, listObjectVersionsAns4.getVersions().get(0));
-    assertEquals(putObjectAns1.getVersionId(), ((ObjectVersion) listObjectVersionsAns4.getVersions().get(0)).getVersionId());
+    assertEquals(putObjectAns1.getVersionId(), ((ObjectVersion) listObjectVersionsAns4.getVersions().get(0)).versionId());
     assertTrue(listObjectVersionsAns4.getNextKeyMarker().isEmpty());
     assertTrue(listObjectVersionsAns4.getNextVersionIdMarker().isEmpty());
 
@@ -198,7 +198,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
         ListObjectVersionsAns ans = objectService.listObjectVersions(bucket, null, keyMarker, 3, null, versionIdMarker);
         for (VersionItem item : ans.getVersions()) {
           ObjectVersion version = (ObjectVersion) item;
-          objectService.deleteObject(bucket, version.getKey(), version.getVersionId());
+          objectService.deleteObject(bucket, version.key(), version.versionId());
           deleted++;
         }
         if (ans.getNextKeyMarker().isEmpty()) {
@@ -227,12 +227,12 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     put(objectService, bucket, "b");
 
     ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 1, null, null);
-    assertEquals("null", ((ObjectVersion) first.getVersions().get(0)).getVersionId());
+    assertEquals("null", ((ObjectVersion) first.getVersions().get(0)).versionId());
     assertEquals("a", first.getNextKeyMarker().orElseThrow());
     assertEquals("null", first.getNextVersionIdMarker().orElseThrow());
 
     ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null, "a", 1, null, "null");
-    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).getVersionId());
+    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).versionId());
     assertEquals(older, second.getNextVersionIdMarker().orElseThrow());
 
     ListObjectVersionsAns third = objectService.listObjectVersions(bucket, null, "a", 1, null, older);
@@ -256,7 +256,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
 
     ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null,
         first.getNextKeyMarker().orElseThrow(), 1, null, first.getNextVersionIdMarker().orElseThrow());
-    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).getVersionId());
+    assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).versionId());
   }
 
   @ParameterizedTest
@@ -298,10 +298,10 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals("a", truncated.getNextKeyMarker().orElseThrow());
 
     // The page of the key marker is full, and nothing is left after it.
-    String last = ((ObjectVersion) truncated.getVersions().get(1)).getVersionId();
+    String last = ((ObjectVersion) truncated.getVersions().get(1)).versionId();
     ListObjectVersionsAns rest = objectService.listObjectVersions(bucket, null, "a", 1, null,
-        ((ObjectVersion) truncated.getVersions().get(0)).getVersionId());
-    assertEquals(last, ((ObjectVersion) rest.getVersions().get(0)).getVersionId());
+        ((ObjectVersion) truncated.getVersions().get(0)).versionId());
+    assertEquals(last, ((ObjectVersion) rest.getVersions().get(0)).versionId());
     assertEquals("a", rest.getNextKeyMarker().orElseThrow(), "dir/b is left");
   }
 
@@ -315,8 +315,8 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
   private static List<String> keys(ListObjectVersionsAns ans) {
     return ans.getVersions().stream()
         .map(item -> switch (item) {
-          case ObjectVersion version -> version.getKey();
-          case DeleteMarkerEntry deleteMarker -> deleteMarker.getKey();
+          case ObjectVersion version -> version.key();
+          case DeleteMarkerEntry deleteMarker -> deleteMarker.key();
         })
         .toList();
   }

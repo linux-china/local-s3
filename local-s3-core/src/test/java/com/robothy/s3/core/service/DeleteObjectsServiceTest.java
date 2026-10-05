@@ -54,13 +54,13 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
     // A version of a key that holds none is reported as deleted, like Amazon S3 reports it.
     assertInstanceOf(DeleteResult.Deleted.class, results.get(0));
     DeleteResult.Deleted deletedVersion = (DeleteResult.Deleted) results.get(0);
-    assertEquals("a.txt", deletedVersion.getKey());
-    assertEquals("123", deletedVersion.getVersionId());
+    assertEquals("a.txt", deletedVersion.key());
+    assertEquals("123", deletedVersion.versionId());
 
     assertInstanceOf(DeleteResult.Deleted.class, results.get(1));
     DeleteResult.Deleted deleted = (DeleteResult.Deleted) results.get(1);
-    assertTrue(deleted.isDeleteMarker());
-    assertEquals(ObjectMetadata.NULL_VERSION, deleted.getDeleteMarkerVersionId());
+    assertTrue(deleted.deleteMarker());
+    assertEquals(ObjectMetadata.NULL_VERSION, deleted.deleteMarkerVersionId());
 
     DeleteObjectsRequest request2 = new DeleteObjectsRequest(objectsToDelete, true);
     List<Object> results2 = objectService.deleteObjects(bucketName, request2);
@@ -80,17 +80,17 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
     ), false));
 
     DeleteResult.Deleted deleted = assertInstanceOf(DeleteResult.Deleted.class, results.get(0));
-    assertEquals("a.txt", deleted.getKey());
-    assertEquals(ObjectMetadata.NULL_VERSION, deleted.getVersionId());
-    assertFalse(deleted.isDeleteMarker());
-    assertNull(deleted.getDeleteMarkerVersionId());
+    assertEquals("a.txt", deleted.key());
+    assertEquals(ObjectMetadata.NULL_VERSION, deleted.versionId());
+    assertFalse(deleted.deleteMarker());
+    assertNull(deleted.deleteMarkerVersionId());
 
     S3Error s3Error = assertInstanceOf(S3Error.class, results.get(1));
     // AmazonS3 returns NoSuchVersion code.
-    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.getCode());
+    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.code());
 
     assertInstanceOf(S3Error.class, results.get(2));
-    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.getCode());
+    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.code());
 
 
     objectService.putObject(bucketName, "a.txt", PutObjectOptions.builder()
@@ -103,10 +103,10 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
     ), false));
     assertEquals(1, results1.size());
     DeleteResult.Deleted deleted1 = assertInstanceOf(DeleteResult.Deleted.class, results1.get(0));
-    assertEquals("a.txt", deleted1.getKey());
-    assertNull(deleted1.getVersionId());
-    assertFalse(deleted1.isDeleteMarker());
-    assertNull(deleted1.getDeleteMarkerVersionId());
+    assertEquals("a.txt", deleted1.key());
+    assertNull(deleted1.versionId());
+    assertFalse(deleted1.deleteMarker());
+    assertNull(deleted1.deleteMarkerVersionId());
     assertDoesNotThrow(() -> bucketService.deleteBucket(bucketName));
   }
 
@@ -159,13 +159,13 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
         new ObjectIdentifier("ok.txt", null)), false));
 
     S3Error internal = assertInstanceOf(S3Error.class, results.get(0));
-    assertEquals(S3ErrorCode.InternalError.code(), internal.getCode());
-    assertEquals(S3ErrorCode.InternalError.description(), internal.getMessage());
-    assertEquals("broken.txt", internal.getKey());
+    assertEquals(S3ErrorCode.InternalError.code(), internal.code());
+    assertEquals(S3ErrorCode.InternalError.description(), internal.message());
+    assertEquals("broken.txt", internal.key());
     S3Error notFound = assertInstanceOf(S3Error.class, results.get(1));
-    assertEquals(S3ErrorCode.NoSuchKey.code(), notFound.getCode());
-    assertEquals("v1", notFound.getVersionId());
-    assertEquals("ok.txt", assertInstanceOf(DeleteResult.Deleted.class, results.get(2)).getKey());
+    assertEquals(S3ErrorCode.NoSuchKey.code(), notFound.code());
+    assertEquals("v1", notFound.versionId());
+    assertEquals("ok.txt", assertInstanceOf(DeleteResult.Deleted.class, results.get(2)).key());
   }
 
   /**

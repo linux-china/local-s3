@@ -24,8 +24,6 @@ public interface GetVectorBucketPolicyService extends S3VectorsMetadataAware {
   }
 
   private GetVectorBucketPolicyResponse buildResponse(String policy) {
-    return GetVectorBucketPolicyResponse.builder()
-        .policy(policy)
-        .build();
+    return new GetVectorBucketPolicyResponse(policy);
   }
 }

@@ -9,8 +9,8 @@ class DeleteResultTest {
 
   @Test
   void testSerialization() {
-    DeleteResult deleteResult = new DeleteResult();
-    deleteResult.setDeletedList(List.of(new S3Error(), new DeleteResult.Deleted()));
+    DeleteResult deleteResult = new DeleteResult(
+        List.of(S3Error.builder().build(), new DeleteResult.Deleted(false, null, null, null)));
 
     XmlMapper xmlMapper = new XmlMapper();
     Assertions.assertDoesNotThrow(() -> xmlMapper.writerWithDefaultPrettyPrinter()

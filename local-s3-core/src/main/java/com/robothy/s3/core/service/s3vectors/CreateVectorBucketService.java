@@ -69,11 +69,10 @@ public interface CreateVectorBucketService extends S3VectorsMetadataAware {
   }
 
   private CreateVectorBucketResponse buildResponse(VectorBucketMetadata bucketMetadata) {
-    return CreateVectorBucketResponse.builder()
-        .vectorBucketName(bucketMetadata.getVectorBucketName())
-        .vectorBucketArn(VectorBucket.generateArn(bucketMetadata.getVectorBucketName()))
-        .creationDate(DateTimeUtils.formatTimestamp(bucketMetadata.getCreationDate()))
-        .build();
+    return new CreateVectorBucketResponse(
+        bucketMetadata.getVectorBucketName(),
+        VectorBucket.generateArn(bucketMetadata.getVectorBucketName()),
+        DateTimeUtils.formatTimestamp(bucketMetadata.getCreationDate()));
   }
 
 }

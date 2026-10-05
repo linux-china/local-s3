@@ -42,7 +42,7 @@ public class ListObjectsV2Controller implements RouterHttpRequestHandler {
         boolean fetchOwner = request.parameter("fetch-owner").map(Boolean::valueOf).orElse(false);
         ListObjectsV2Ans listObjectsV2Ans = this.objectService.listObjectsV2(bucket, continuationToken, delimiter, encodingType, fetchOwner, maxKeys, prefix, startAfter);
 
-        OptionalObjectAttributes.apply(request, listObjectsV2Ans.getObjects());
+        listObjectsV2Ans.setObjects(OptionalObjectAttributes.apply(request, listObjectsV2Ans.getObjects()));
 
         ListBucketV2Result listBucketV2Result = ListBucketV2Result.builder()
             .isTruncated(listObjectsV2Ans.isTruncated())

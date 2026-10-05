@@ -79,16 +79,8 @@ public interface DeleteVectorsService extends S3VectorsMetadataAware, S3VectorsS
   }
 
   private DeleteVectorsResponse buildResponse(List<String> deletedVectorKeys, List<String> errorVectorKeys) {
-    DeleteVectorsResponse response = new DeleteVectorsResponse();
-
-    if (!deletedVectorKeys.isEmpty()) {
-      response.setDeletedVectorKeys(deletedVectorKeys);
-    }
-
-    if (!errorVectorKeys.isEmpty()) {
-      response.setErrorVectorKeys(errorVectorKeys);
-    }
-
-    return response;
+    return new DeleteVectorsResponse(
+        deletedVectorKeys.isEmpty() ? null : deletedVectorKeys,
+        errorVectorKeys.isEmpty() ? null : errorVectorKeys);
   }
 }

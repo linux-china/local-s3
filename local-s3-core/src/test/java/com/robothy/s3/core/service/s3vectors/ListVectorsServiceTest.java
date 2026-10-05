@@ -41,10 +41,10 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
     assertNotNull(response);
-    assertNotNull(response.getVectors());
-    assertEquals(2, response.getVectors().size());
-    assertEquals("vector1", response.getVectors().get(0).getKey());
-    assertEquals("vector2", response.getVectors().get(1).getKey());
+    assertNotNull(response.vectors());
+    assertEquals(2, response.vectors().size());
+    assertEquals("vector1", response.vectors().get(0).getKey());
+    assertEquals("vector2", response.vectors().get(1).getKey());
   }
 
   @Test
@@ -85,7 +85,7 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", 3, null, false, false, null, null);
     
-    assertEquals(3, response.getVectors().size());
+    assertEquals(3, response.vectors().size());
   }
 
   @Test
@@ -106,7 +106,7 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", 2000, null, false, false, null, null);
     
     // Should still return all available vectors (1) despite high maxResults
-    assertEquals(1, response.getVectors().size());
+    assertEquals(1, response.vectors().size());
   }
 
   @Test
@@ -127,7 +127,7 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
     assertNotNull(response);
-    assertEquals(1, response.getVectors().size());
+    assertEquals(1, response.vectors().size());
   }
 
   @Test
@@ -150,9 +150,9 @@ class ListVectorsServiceTest {
     String nextToken = Base64.getEncoder().encodeToString("2".getBytes());
     ListVectorsResponse response = service.listVectors("bucket", "index", 2, nextToken, false, false, null, null);
     
-    assertEquals(2, response.getVectors().size());
-    assertEquals("vector3", response.getVectors().get(0).getKey());
-    assertEquals("vector4", response.getVectors().get(1).getKey());
+    assertEquals(2, response.vectors().size());
+    assertEquals("vector3", response.vectors().get(0).getKey());
+    assertEquals("vector4", response.vectors().get(1).getKey());
   }
 
   @Test
@@ -187,8 +187,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, "", false, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    assertEquals("vector1", response.getVectors().get(0).getKey());
+    assertEquals(1, response.vectors().size());
+    assertEquals("vector1", response.vectors().get(0).getKey());
   }
 
   @Test
@@ -209,8 +209,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, true, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    ListOutputVector vector = response.getVectors().get(0);
+    assertEquals(1, response.vectors().size());
+    ListOutputVector vector = response.vectors().get(0);
     assertNotNull(vector.getData());
     assertArrayEquals(new float[]{1.0f, 2.0f}, vector.getData().getValues());
   }
@@ -232,8 +232,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    assertNull(response.getVectors().get(0).getData());
+    assertEquals(1, response.vectors().size());
+    assertNull(response.vectors().get(0).getData());
   }
 
   @Test
@@ -256,8 +256,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, true, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    assertEquals(metadata, response.getVectors().get(0).getMetadata());
+    assertEquals(1, response.vectors().size());
+    assertEquals(metadata, response.vectors().get(0).getMetadata());
   }
 
   @Test
@@ -277,8 +277,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    assertNull(response.getVectors().get(0).getMetadata());
+    assertEquals(1, response.vectors().size());
+    assertNull(response.vectors().get(0).getMetadata());
   }
 
   @Test
@@ -301,9 +301,9 @@ class ListVectorsServiceTest {
     // segmentCount=3, segmentIndex=1 should return vectors at positions 1, 4 (0-indexed)
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, 3, 1);
     
-    assertEquals(2, response.getVectors().size());
-    assertEquals("vector2", response.getVectors().get(0).getKey());
-    assertEquals("vector5", response.getVectors().get(1).getKey());
+    assertEquals(2, response.vectors().size());
+    assertEquals("vector2", response.vectors().get(0).getKey());
+    assertEquals("vector5", response.vectors().get(1).getKey());
   }
 
   @Test
@@ -391,9 +391,9 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", 2, null, false, false, null, null);
     
-    assertNotNull(response.getNextToken());
+    assertNotNull(response.nextToken());
     String expectedToken = Base64.getEncoder().encodeToString("2".getBytes());
-    assertEquals(expectedToken, response.getNextToken());
+    assertEquals(expectedToken, response.nextToken());
   }
 
   @Test
@@ -413,7 +413,7 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", 10, null, false, false, null, null);
     
-    assertNull(response.getNextToken());
+    assertNull(response.nextToken());
   }
 
   @Test
@@ -432,9 +432,9 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
     assertNotNull(response);
-    assertNotNull(response.getVectors());
-    assertTrue(response.getVectors().isEmpty());
-    assertNull(response.getNextToken());
+    assertNotNull(response.vectors());
+    assertTrue(response.vectors().isEmpty());
+    assertNull(response.nextToken());
   }
 
   @Test
@@ -455,8 +455,8 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, true, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
-    assertNull(response.getVectors().get(0).getData());
+    assertEquals(1, response.vectors().size());
+    assertNull(response.vectors().get(0).getData());
   }
 
   @Test
@@ -478,10 +478,10 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, null, null);
     
-    assertEquals(3, response.getVectors().size());
-    assertEquals("vectorA", response.getVectors().get(0).getKey());
-    assertEquals("vectorB", response.getVectors().get(1).getKey());
-    assertEquals("vectorC", response.getVectors().get(2).getKey());
+    assertEquals(3, response.vectors().size());
+    assertEquals("vectorA", response.vectors().get(0).getKey());
+    assertEquals("vectorB", response.vectors().get(1).getKey());
+    assertEquals("vectorC", response.vectors().get(2).getKey());
   }
 
   @Test
@@ -501,7 +501,7 @@ class ListVectorsServiceTest {
     
     ListVectorsResponse response = service.listVectors("bucket", "index", -5, null, false, false, null, null);
     
-    assertEquals(1, response.getVectors().size());
+    assertEquals(1, response.vectors().size());
   }
 
   private VectorObjectMetadata createVectorMetadata(String vectorId, Long storageId) {

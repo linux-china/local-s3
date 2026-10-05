@@ -151,7 +151,7 @@ public final class IcebergMetadataFiles {
         ListObjectsV2Ans page = objectService.listObjectsV2(parsed.bucket(), continuationToken, null, null,
             false, PURGE_PAGE_SIZE, prefix, null);
         for (S3Object object : page.getObjects()) {
-          objectService.deleteObject(parsed.bucket(), object.getKey());
+          objectService.deleteObject(parsed.bucket(), object.key());
         }
         continuationToken = page.isTruncated() ? page.getNextContinuationToken().orElse(null) : null;
       } while (continuationToken != null);

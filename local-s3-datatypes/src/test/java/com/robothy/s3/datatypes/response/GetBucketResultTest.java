@@ -14,11 +14,7 @@ class GetBucketResultTest {
   public void test() {
 
     XmlMapper xmlMapper = new XmlMapper();
-    GetBucketResult getBucketResult = GetBucketResult.builder()
-        .bucket("test")
-        .creationDate(Instant.EPOCH)
-        .publicAccessBlockEnabled(false)
-        .build();
+    GetBucketResult getBucketResult = new GetBucketResult("test", false, Instant.EPOCH);
     String xml = xmlMapper.writeValueAsString(getBucketResult);
     GetBucketResult deserialized = xmlMapper.readValue(xml, GetBucketResult.class);
     assertEquals(getBucketResult, deserialized);

@@ -63,12 +63,11 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
   }
 
   private IndexSummary createIndexSummary(VectorIndexMetadata indexMetadata, String bucketName) {
-    return IndexSummary.builder()
-        .indexName(indexMetadata.getIndexName())
-        .indexArn(VectorIndex.generateArn(bucketName, indexMetadata.getIndexName()))
-        .vectorBucketName(bucketName)
-        .creationTime(indexMetadata.getCreationDate() / 1000)
-        .build();
+    return new IndexSummary(
+        indexMetadata.getCreationDate() / 1000,
+        VectorIndex.generateArn(bucketName, indexMetadata.getIndexName()),
+        indexMetadata.getIndexName(),
+        bucketName);
   }
 
   private String generateNextTokenIfNeeded(int startIndex, int pageSize, int totalSize) {
@@ -76,10 +75,7 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
   }
 
   private ListIndexesResponse buildResponse(List<IndexSummary> summaries, String nextToken) {
-    return ListIndexesResponse.builder()
-        .indexes(summaries)
-        .nextToken(nextToken)
-        .build();
+    return new ListIndexesResponse(summaries, nextToken);
   }
 
 }

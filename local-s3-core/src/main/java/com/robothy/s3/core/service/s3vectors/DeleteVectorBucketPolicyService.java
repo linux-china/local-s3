@@ -30,6 +30,6 @@ public interface DeleteVectorBucketPolicyService extends S3VectorsMetadataAware 
   }
 
   private DeleteVectorBucketPolicyResponse buildResponse() {
-    return DeleteVectorBucketPolicyResponse.builder().build();
+    return new DeleteVectorBucketPolicyResponse();
   }
 }

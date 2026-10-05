@@ -9,9 +9,7 @@ class LocationConstraintTest {
   @Test
   void serialization() throws Exception {
     XmlMapper xmlMapper = new XmlMapper();
-    LocationConstraint locationConstraint = LocationConstraint.builder()
-        .locationConstraint("eu-west-1")
-        .build();
+    LocationConstraint locationConstraint = new LocationConstraint("eu-west-1");
     assertEquals("<LocationConstraint>eu-west-1</LocationConstraint>", xmlMapper.writeValueAsString(locationConstraint));
   }
 

@@ -50,8 +50,8 @@ class DefaultFileSystemS3MetadataLoaderTest {
     ListObjectVersionsAns versions = objectService.listObjectVersions(bucketName, null, null, 10, null, null);
     assertEquals(2, versions.getVersions().size());
     ObjectVersion latest = (ObjectVersion) versions.getVersions().get(0);
-    assertEquals(putObjectAns.getVersionId(), latest.getVersionId());
-    assertTrue(latest.isLatest());
+    assertEquals(putObjectAns.getVersionId(), latest.versionId());
+    assertTrue(latest.latest());
 
     TestFiles.deleteDirectory(dataPath);
   }

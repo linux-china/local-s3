@@ -15,7 +15,7 @@ class ListBucketResultTest {
         .maxKeys(100)
         .encodingType("url")
         .prefix("dir")
-        .contents(List.of(new S3Object(), new S3Object()))
+        .contents(List.of(S3Object.builder().build(), S3Object.builder().build()))
         .commonPrefixes(List.of(new CommonPrefix("a/"), new CommonPrefix("b/")))
         .build();
 

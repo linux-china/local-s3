@@ -40,10 +40,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNotNull(response.getDeletedVectorKeys());
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals("vector1", response.getDeletedVectorKeys().get(0));
-    assertNull(response.getErrorVectorKeys());
+    assertNotNull(response.deletedVectorKeys());
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals("vector1", response.deletedVectorKeys().get(0));
+    assertNull(response.errorVectorKeys());
 
     verify(service.mockVectorStorage).deleteVectorData(1L);
   }
@@ -116,10 +116,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNull(response.getDeletedVectorKeys());
-    assertNotNull(response.getErrorVectorKeys());
-    assertEquals(1, response.getErrorVectorKeys().size());
-    assertEquals("nonexistent", response.getErrorVectorKeys().get(0));
+    assertNull(response.deletedVectorKeys());
+    assertNotNull(response.errorVectorKeys());
+    assertEquals(1, response.errorVectorKeys().size());
+    assertEquals("nonexistent", response.errorVectorKeys().get(0));
   }
 
   @Test
@@ -141,14 +141,14 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNotNull(response.getDeletedVectorKeys());
-    assertNotNull(response.getErrorVectorKeys());
+    assertNotNull(response.deletedVectorKeys());
+    assertNotNull(response.errorVectorKeys());
 
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals("vector1", response.getDeletedVectorKeys().get(0));
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals("vector1", response.deletedVectorKeys().get(0));
 
-    assertEquals(1, response.getErrorVectorKeys().size());
-    assertEquals("nonexistent", response.getErrorVectorKeys().get(0));
+    assertEquals(1, response.errorVectorKeys().size());
+    assertEquals("nonexistent", response.errorVectorKeys().get(0));
   }
 
   @Test
@@ -170,8 +170,8 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals("vector1", response.getDeletedVectorKeys().get(0));
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals("vector1", response.deletedVectorKeys().get(0));
 
     // Should still remove from metadata even if storage deletion fails
     assertNull(indexMetadata.getVectorObject("vector1"));
@@ -195,8 +195,8 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals("vector1", response.getDeletedVectorKeys().get(0));
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals("vector1", response.deletedVectorKeys().get(0));
 
     verify(service.mockVectorStorage, never()).deleteVectorData(anyLong());
     assertNull(indexMetadata.getVectorObject("vector1"));
@@ -223,9 +223,9 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(2, response.getDeletedVectorKeys().size());
-    assertTrue(response.getDeletedVectorKeys().contains("vector1"));
-    assertTrue(response.getDeletedVectorKeys().contains("vector2"));
+    assertEquals(2, response.deletedVectorKeys().size());
+    assertTrue(response.deletedVectorKeys().contains("vector1"));
+    assertTrue(response.deletedVectorKeys().contains("vector2"));
 
     verify(service.mockVectorStorage).deleteVectorData(1L);
     verify(service.mockVectorStorage).deleteVectorData(2L);
@@ -257,8 +257,8 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(500, response.getDeletedVectorKeys().size());
-    assertNull(response.getErrorVectorKeys());
+    assertEquals(500, response.deletedVectorKeys().size());
+    assertNull(response.errorVectorKeys());
   }
 
   @Test
@@ -280,10 +280,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNull(response.getDeletedVectorKeys());
-    assertNotNull(response.getErrorVectorKeys());
-    assertEquals(1, response.getErrorVectorKeys().size());
-    assertEquals("vector1", response.getErrorVectorKeys().get(0));
+    assertNull(response.deletedVectorKeys());
+    assertNotNull(response.errorVectorKeys());
+    assertEquals(1, response.errorVectorKeys().size());
+    assertEquals("vector1", response.errorVectorKeys().get(0));
   }
 
   @Test
@@ -306,10 +306,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNull(response.getDeletedVectorKeys());
-    assertNotNull(response.getErrorVectorKeys());
-    assertEquals(1, response.getErrorVectorKeys().size());
-    assertEquals("vector1", response.getErrorVectorKeys().get(0));
+    assertNull(response.deletedVectorKeys());
+    assertNotNull(response.errorVectorKeys());
+    assertEquals(1, response.errorVectorKeys().size());
+    assertEquals("vector1", response.errorVectorKeys().get(0));
   }
 
   @Test
@@ -336,12 +336,12 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals("vector1", response.getDeletedVectorKeys().get(0));
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals("vector1", response.deletedVectorKeys().get(0));
 
-    assertEquals(2, response.getErrorVectorKeys().size());
-    assertTrue(response.getErrorVectorKeys().contains("vector2"));
-    assertTrue(response.getErrorVectorKeys().contains("nonexistent"));
+    assertEquals(2, response.errorVectorKeys().size());
+    assertTrue(response.errorVectorKeys().contains("vector2"));
+    assertTrue(response.errorVectorKeys().contains("nonexistent"));
   }
 
   @Test
@@ -365,8 +365,8 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(2, response.getDeletedVectorKeys().size());
-    assertNull(response.getErrorVectorKeys());
+    assertEquals(2, response.deletedVectorKeys().size());
+    assertNull(response.errorVectorKeys());
   }
 
   @Test
@@ -384,10 +384,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertNull(response.getDeletedVectorKeys());
-    assertEquals(2, response.getErrorVectorKeys().size());
-    assertTrue(response.getErrorVectorKeys().contains("nonexistent1"));
-    assertTrue(response.getErrorVectorKeys().contains("nonexistent2"));
+    assertNull(response.deletedVectorKeys());
+    assertEquals(2, response.errorVectorKeys().size());
+    assertTrue(response.errorVectorKeys().contains("nonexistent1"));
+    assertTrue(response.errorVectorKeys().contains("nonexistent2"));
   }
 
   @Test
@@ -413,10 +413,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(3, response.getDeletedVectorKeys().size());
-    assertEquals("vector3", response.getDeletedVectorKeys().get(0));
-    assertEquals("vector1", response.getDeletedVectorKeys().get(1));
-    assertEquals("vector2", response.getDeletedVectorKeys().get(2));
+    assertEquals(3, response.deletedVectorKeys().size());
+    assertEquals("vector3", response.deletedVectorKeys().get(0));
+    assertEquals("vector1", response.deletedVectorKeys().get(1));
+    assertEquals("vector2", response.deletedVectorKeys().get(2));
   }
 
   @Test
@@ -438,10 +438,10 @@ class DeleteVectorsServiceTest {
     DeleteVectorsResponse response = service.deleteVectors("bucket", "index", keys);
 
     assertNotNull(response);
-    assertEquals(1, response.getDeletedVectorKeys().size());
-    assertEquals(1, response.getErrorVectorKeys().size());
-    assertTrue(response.getDeletedVectorKeys().contains("vector1"));
-    assertTrue(response.getErrorVectorKeys().contains("vector1"));
+    assertEquals(1, response.deletedVectorKeys().size());
+    assertEquals(1, response.errorVectorKeys().size());
+    assertTrue(response.deletedVectorKeys().contains("vector1"));
+    assertTrue(response.errorVectorKeys().contains("vector1"));
   }
 
   private VectorObjectMetadata createVectorMetadata(String vectorId, Long storageId) {

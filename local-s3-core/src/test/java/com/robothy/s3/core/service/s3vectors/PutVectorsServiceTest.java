@@ -90,7 +90,7 @@ class PutVectorsServiceTest {
     assertEquals(1, storage.getStoredVectorCount(), "The vectors written by the failed put are deleted.");
     assertEquals(replaced, storageId(metadata, "a"), "The in-memory metadata is reloaded from the store.");
     assertArrayEquals(new float[] {1.0f, 0.0f}, getVector(service, "a"));
-    assertTrue(service.getVectors(BUCKET, INDEX, List.of("b"), true, false).getVectors().isEmpty());
+    assertTrue(service.getVectors(BUCKET, INDEX, List.of("b"), true, false).vectors().isEmpty());
 
     store.failing = false;
     service.putVectors(BUCKET, INDEX, List.of(vector("a", 3.0f, 3.0f)));
@@ -121,7 +121,7 @@ class PutVectorsServiceTest {
 
     assertEquals(1, storage.getStoredVectorCount(), "No vector of a rejected request is stored.");
     assertArrayEquals(new float[] {1.0f, 0.0f}, getVector(service, "a"));
-    assertTrue(service.getVectors(BUCKET, INDEX, List.of("b"), true, false).getVectors().isEmpty());
+    assertTrue(service.getVectors(BUCKET, INDEX, List.of("b"), true, false).vectors().isEmpty());
   }
 
   @Test
@@ -136,7 +136,7 @@ class PutVectorsServiceTest {
     assertEquals(1, vectorFileCount());
     S3VectorsService restarted = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     assertArrayEquals(new float[] {1.0f, 0.0f}, getVector(restarted, "a"));
-    assertTrue(restarted.getVectors(BUCKET, INDEX, List.of("b", "c"), true, false).getVectors().isEmpty());
+    assertTrue(restarted.getVectors(BUCKET, INDEX, List.of("b", "c"), true, false).vectors().isEmpty());
   }
 
   private static void createIndex(S3VectorsService service) {
@@ -149,7 +149,7 @@ class PutVectorsServiceTest {
   }
 
   private static float[] getVector(S3VectorsService service, String key) {
-    return service.getVectors(BUCKET, INDEX, List.of(key), true, false).getVectors().get(0).getData().getValues();
+    return service.getVectors(BUCKET, INDEX, List.of(key), true, false).vectors().get(0).data().getValues();
   }
 
   private static Long storageId(LocalS3VectorsMetadata metadata, String key) {

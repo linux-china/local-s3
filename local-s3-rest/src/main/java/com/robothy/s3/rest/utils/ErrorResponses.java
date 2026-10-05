@@ -99,7 +99,7 @@ public final class ErrorResponses {
         .putHeader(AmzHeaderNames.X_AMZN_ERRORTYPE, errorType.getCode())
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
     try {
-      response.write(JSON.writeValueAsString(S3VectorsError.builder().message(message).build()));
+      response.write(JSON.writeValueAsString(new S3VectorsError(message)));
     } catch (JacksonException e) {
       throw new IllegalStateException(e);
     }

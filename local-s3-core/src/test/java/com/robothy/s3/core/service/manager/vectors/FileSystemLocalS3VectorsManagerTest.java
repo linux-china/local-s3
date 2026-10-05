@@ -70,15 +70,15 @@ class FileSystemLocalS3VectorsManagerTest {
 
       // Verify creation responses
       assertNotNull(response1);
-      assertEquals(bucket1Name, response1.getVectorBucketName());
-      assertNotNull(response1.getVectorBucketArn());
-      assertNotNull(response1.getCreationDate());
+      assertEquals(bucket1Name, response1.vectorBucketName());
+      assertNotNull(response1.vectorBucketArn());
+      assertNotNull(response1.creationDate());
 
       assertNotNull(response2);
-      assertEquals(bucket2Name, response2.getVectorBucketName());
+      assertEquals(bucket2Name, response2.vectorBucketName());
 
       assertNotNull(response3);
-      assertEquals(bucket3Name, response3.getVectorBucketName());
+      assertEquals(bucket3Name, response3.vectorBucketName());
 
       // Verify buckets exist and can be retrieved
       VectorBucket bucket1 = service1.getVectorBucket(bucket1Name);
@@ -104,8 +104,8 @@ class FileSystemLocalS3VectorsManagerTest {
       // Verify list operation shows all buckets
       ListVectorBucketsResponse listResponse1 = service1.listVectorBuckets(null, null, null);
       assertNotNull(listResponse1);
-      assertNotNull(listResponse1.getVectorBuckets());
-      assertEquals(3, listResponse1.getVectorBuckets().size());
+      assertNotNull(listResponse1.vectorBuckets());
+      assertEquals(3, listResponse1.vectorBuckets().size());
 
       // Test duplicate bucket creation fails
       assertThrows(BucketAlreadyExistsException.class, 
@@ -151,15 +151,15 @@ class FileSystemLocalS3VectorsManagerTest {
       // Verify list operation shows only remaining buckets
       ListVectorBucketsResponse listResponse2 = service2.listVectorBuckets(null, null, null);
       assertNotNull(listResponse2);
-      assertNotNull(listResponse2.getVectorBuckets());
-      assertEquals(2, listResponse2.getVectorBuckets().size());
+      assertNotNull(listResponse2.vectorBuckets());
+      assertEquals(2, listResponse2.vectorBuckets().size());
 
       // Verify we can still perform operations with the new manager
       // Test creating a new bucket with the new manager instance
       String newBucketName = "new-bucket-after-restart";
       CreateVectorBucketResponse newResponse = service2.createVectorBucket(newBucketName, null);
       assertNotNull(newResponse);
-      assertEquals(newBucketName, newResponse.getVectorBucketName());
+      assertEquals(newBucketName, newResponse.vectorBucketName());
 
       // Test duplicate creation still fails
       assertThrows(BucketAlreadyExistsException.class, 
@@ -180,7 +180,7 @@ class FileSystemLocalS3VectorsManagerTest {
       assertThrows(Exception.class, () -> service3.getVectorBucket(bucket3Name));
 
       ListVectorBucketsResponse finalListResponse = service3.listVectorBuckets(null, null, null);
-      assertEquals(2, finalListResponse.getVectorBuckets().size());
+      assertEquals(2, finalListResponse.vectorBuckets().size());
 
     } finally {
       // Cleanup: Delete temporary directory
@@ -209,7 +209,7 @@ class FileSystemLocalS3VectorsManagerTest {
 
     assertThrows(InvalidBucketNameException.class, () -> service.createVectorBucket("blocked/bucket", null));
 
-    assertTrue(service.listVectorBuckets(null, null, null).getVectorBuckets().isEmpty(),
+    assertTrue(service.listVectorBuckets(null, null, null).vectorBuckets().isEmpty(),
         "The in-memory metadata is reloaded from the store, which doesn't have the bucket.");
   }
 
@@ -241,7 +241,7 @@ class FileSystemLocalS3VectorsManagerTest {
     LocalS3VectorsManager restartedVectors = LocalS3VectorsManager.createFileSystem(dataPath);
     assertEquals("objects", restartedS3.bucketService().getBucket("objects").getName());
     assertEquals(List.of("vectors"), restartedVectors.s3VectorsService().listVectorBuckets(null, null, null)
-        .getVectorBuckets().stream().map(VectorBucketSummary::getVectorBucketName).toList());
+        .vectorBuckets().stream().map(VectorBucketSummary::vectorBucketName).toList());
   }
 
   /**
@@ -266,8 +266,8 @@ class FileSystemLocalS3VectorsManagerTest {
     S3VectorsService restarted = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     List<QueryOutputVector> nearest = restarted.queryVectors("bucket", "index",
         PutInputVector.VectorData.builder().values(new float[] {4321.2f, 0.0f, 1.0f}).build(), 3, true, false, null)
-        .getVectors();
-    assertEquals(List.of("v4321", "v4322", "v4320"), nearest.stream().map(QueryOutputVector::getKey).toList());
+        .vectors();
+    assertEquals(List.of("v4321", "v4322", "v4320"), nearest.stream().map(QueryOutputVector::key).toList());
 
     restarted.deleteIndex("bucket", "index");
     assertEquals(0, VectorStorage.createReadOnlyFileSystem(
@@ -289,8 +289,8 @@ class FileSystemLocalS3VectorsManagerTest {
 
     S3VectorsService restarted = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     assertEquals(Map.of("team", "search", "env", "test"),
-        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", null)).getTags());
+        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", null)).tags());
     assertEquals(Map.of("owner", "me"),
-        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", "index")).getTags());
+        restarted.listTagsForResource(new VectorResourceIdentifier("bucket", "index")).tags());
   }
 }

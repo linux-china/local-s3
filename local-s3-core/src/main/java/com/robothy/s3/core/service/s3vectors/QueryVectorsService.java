@@ -86,10 +86,7 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
     }
 
     private QueryVectorsResponse buildEmptyResponse(DistanceMetric distanceMetric) {
-        return QueryVectorsResponse.builder()
-            .vectors(new ArrayList<>())
-            .distanceMetric(distanceMetric)
-            .build();
+        return new QueryVectorsResponse(new ArrayList<>(), distanceMetric);
     }
 
     private List<VectorSearchEngine.VectorSearchResult> performVectorSearch(
@@ -126,18 +123,11 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
                                                 Boolean returnDistance, Boolean returnMetadata) {
         VectorObjectMetadata vectorMetadata = result.vectorMetadata();
         
-        QueryOutputVector.QueryOutputVectorBuilder builder = QueryOutputVector.builder()
-            .key(vectorMetadata.getVectorId());
-
-        if (shouldReturnDistance(returnDistance)) {
-            builder.distance(result.distance());
-        }
-
-        if (shouldReturnMetadata(returnMetadata, vectorMetadata)) {
-            builder.metadata(vectorMetadata.getMetadata());
-        }
-
-        return builder.build();
+        return new QueryOutputVector(
+            null,
+            shouldReturnDistance(returnDistance) ? result.distance() : null,
+            vectorMetadata.getVectorId(),
+            shouldReturnMetadata(returnMetadata, vectorMetadata) ? vectorMetadata.getMetadata() : null);
     }
 
     private boolean shouldReturnDistance(Boolean returnDistance) {
@@ -149,9 +139,6 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
     }
 
     private QueryVectorsResponse buildResponse(List<QueryOutputVector> outputVectors, DistanceMetric distanceMetric) {
-        return QueryVectorsResponse.builder()
-            .vectors(outputVectors)
-            .distanceMetric(distanceMetric)
-            .build();
+        return new QueryVectorsResponse(outputVectors, distanceMetric);
     }
 }

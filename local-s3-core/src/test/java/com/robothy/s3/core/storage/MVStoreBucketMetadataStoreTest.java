@@ -254,13 +254,13 @@ class MVStoreBucketMetadataStoreTest {
 
     BucketMetadata loaded = store.fetch("my-bucket");
     ListObjectsAns page = ListObjectsService.listObjectsAndCommonPrefixes(loaded.getObjectMap(), "", null, 10);
-    assertEquals(List.of("live"), page.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("live"), page.getObjects().stream().map(S3Object::key).toList());
     assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count(),
         "Only the object that is listed has been read.");
 
     ListObjectsAns delimited = ListObjectsService.listObjectsAndCommonPrefixes(loaded.getObjectMap(), "", "-", 1);
     assertTrue(delimited.getCommonPrefixes().isEmpty(), "A prefix that rolls up only deleted objects isn't listed.");
-    assertEquals(List.of("live"), delimited.getObjects().stream().map(S3Object::getKey).toList());
+    assertEquals(List.of("live"), delimited.getObjects().stream().map(S3Object::key).toList());
     assertTrue(delimited.getNextMarker().isEmpty());
     assertEquals(1, loaded.getObjectMap().values().stream().filter(ObjectMetadataRef::isLoaded).count());
   }

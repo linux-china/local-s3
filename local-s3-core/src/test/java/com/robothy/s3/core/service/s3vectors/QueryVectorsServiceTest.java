@@ -46,13 +46,13 @@ class QueryVectorsServiceTest {
         queryVector, 2, true, false, null);
 
     assertNotNull(response);
-    assertEquals(2, response.getVectors().size());
-    assertEquals(DistanceMetric.EUCLIDEAN, response.getDistanceMetric());
+    assertEquals(2, response.vectors().size());
+    assertEquals(DistanceMetric.EUCLIDEAN, response.distanceMetric());
     
-    QueryOutputVector firstResult = response.getVectors().get(0);
-    assertEquals("vector1", firstResult.getKey());
-    assertNotNull(firstResult.getDistance());
-    assertTrue(firstResult.getDistance() < 1.0); // Should be close to query vector
+    QueryOutputVector firstResult = response.vectors().get(0);
+    assertEquals("vector1", firstResult.key());
+    assertNotNull(firstResult.distance());
+    assertTrue(firstResult.distance() < 1.0); // Should be close to query vector
   }
 
   @Test
@@ -74,14 +74,14 @@ class QueryVectorsServiceTest {
         queryVector, 1, false, true, null);
 
     assertNotNull(response);
-    assertEquals(1, response.getVectors().size());
-    assertEquals(DistanceMetric.COSINE, response.getDistanceMetric());
+    assertEquals(1, response.vectors().size());
+    assertEquals(DistanceMetric.COSINE, response.distanceMetric());
     
-    QueryOutputVector result = response.getVectors().get(0);
-    assertEquals("vector1", result.getKey());
-    assertNotNull(result.getMetadata());
-    assertEquals("test", result.getMetadata().get("category").asText());
-    assertNull(result.getDistance()); // returnDistance was false
+    QueryOutputVector result = response.vectors().get(0);
+    assertEquals("vector1", result.key());
+    assertNotNull(result.metadata());
+    assertEquals("test", result.metadata().get("category").asText());
+    assertNull(result.distance()); // returnDistance was false
   }
 
   @Test
@@ -98,8 +98,8 @@ class QueryVectorsServiceTest {
         queryVector, 1, true, true, null);
 
     assertNotNull(response);
-    assertTrue(response.getVectors().isEmpty());
-    assertEquals(DistanceMetric.EUCLIDEAN, response.getDistanceMetric());
+    assertTrue(response.vectors().isEmpty());
+    assertEquals(DistanceMetric.EUCLIDEAN, response.distanceMetric());
   }
 
   @Test
@@ -244,7 +244,7 @@ class QueryVectorsServiceTest {
         queryVector, 10, true, false, null); // topK=10 but only 1 vector
 
     assertNotNull(response);
-    assertEquals(1, response.getVectors().size());
+    assertEquals(1, response.vectors().size());
   }
 
   @Test
@@ -271,8 +271,8 @@ class QueryVectorsServiceTest {
         queryVector, 2, false, true, MetadataFilterExpression.fromJson(filter));
 
     assertNotNull(response);
-    assertEquals(1, response.getVectors().size()); // Only vector1 should match filter
-    assertEquals("vector1", response.getVectors().get(0).getKey());
+    assertEquals(1, response.vectors().size()); // Only vector1 should match filter
+    assertEquals("vector1", response.vectors().get(0).key());
   }
 
   @Test

@@ -44,7 +44,7 @@ public interface CreateIndexService extends S3VectorsMetadataAware {
       }
       bucketMetadata.putIndexMetadata(indexName, indexMetadata);
 
-      return CreateIndexResponse.builder().build();
+      return new CreateIndexResponse();
     });
   }
 

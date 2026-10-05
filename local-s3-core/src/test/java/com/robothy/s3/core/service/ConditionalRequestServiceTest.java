@@ -319,9 +319,9 @@ class ConditionalRequestServiceTest extends LocalS3ServiceTestBase {
     List<Object> results = objectService.deleteObjects(BUCKET,
         new DeleteObjectsRequest(List.of(matching, changed, absent, unconditional), false));
 
-    assertEquals("matching.json", assertInstanceOf(DeleteResult.Deleted.class, results.get(0)).getKey());
-    assertEquals(S3ErrorCode.PreconditionFailed.code(), assertInstanceOf(S3Error.class, results.get(1)).getCode());
-    assertEquals(S3ErrorCode.NoSuchKey.code(), assertInstanceOf(S3Error.class, results.get(2)).getCode());
+    assertEquals("matching.json", assertInstanceOf(DeleteResult.Deleted.class, results.get(0)).key());
+    assertEquals(S3ErrorCode.PreconditionFailed.code(), assertInstanceOf(S3Error.class, results.get(1)).code());
+    assertEquals(S3ErrorCode.NoSuchKey.code(), assertInstanceOf(S3Error.class, results.get(2)).code());
     assertInstanceOf(DeleteResult.Deleted.class, results.get(3));
     assertTrue(!exists(objectService, "matching.json"));
     assertTrue(exists(objectService, "changed.json"));

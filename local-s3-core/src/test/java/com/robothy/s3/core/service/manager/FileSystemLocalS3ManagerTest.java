@@ -237,7 +237,7 @@ class FileSystemLocalS3ManagerTest {
       String marker = null;
       do {
         var page = restartedObjects.listObjects(BUCKET, null, null, marker, 50, null);
-        page.getObjects().forEach(object -> listed.add(object.getKey()));
+        page.getObjects().forEach(object -> listed.add(object.key()));
         marker = page.getNextMarker().orElse(null);
       } while (marker != null);
 
@@ -252,7 +252,7 @@ class FileSystemLocalS3ManagerTest {
       // The rolled up listing takes the same route through the keys.
       var rolledUp = restartedObjects.listObjects(BUCKET, "/", null, null, 10, null);
       assertEquals(List.of("a.txt", "z.txt"),
-          rolledUp.getObjects().stream().map(object -> object.getKey()).toList());
+          rolledUp.getObjects().stream().map(object -> object.key()).toList());
       assertEquals(List.of("logs/"), rolledUp.getCommonPrefixes());
 
       // The content of an object is still served, whatever was evicted.
@@ -305,7 +305,7 @@ class FileSystemLocalS3ManagerTest {
     manager.bucketService().setVersioningEnabled(BUCKET, true);
     putObject(manager.objectService(), KEY, "v1");
     String version = ((ObjectVersion) manager.objectService()
-        .listObjectVersions(BUCKET, null, null, 10, null, null).getVersions().get(0)).getVersionId();
+        .listObjectVersions(BUCKET, null, null, 10, null, null).getVersions().get(0)).versionId();
     manager.close();
 
     LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(dataPath);

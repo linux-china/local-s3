@@ -22,12 +22,14 @@ final class OptionalObjectAttributes {
    *
    * @param request the request of the listing.
    * @param objects the objects of the listing, whose restore status the service filled in.
+   * @return the objects to answer.
    * @throws LocalS3InvalidArgumentException if the header names an attribute other than {@code RestoreStatus}.
    */
-  static void apply(RouterHttpRequest request, List<S3Object> objects) {
-    if (!restoreStatusRequested(request)) {
-      objects.forEach(object -> object.setRestoreStatus(null));
+  static List<S3Object> apply(RouterHttpRequest request, List<S3Object> objects) {
+    if (restoreStatusRequested(request)) {
+      return objects;
     }
+    return objects.stream().map(object -> object.withRestoreStatus(null)).toList();
   }
 
   static boolean restoreStatusRequested(RouterHttpRequest request) {

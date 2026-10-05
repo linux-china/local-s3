@@ -34,7 +34,7 @@ public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3Ve
     ObjectMapper objectMapper = this.serviceFactory.getInstance(ObjectMapper.class);
     try {
       httpResponse.write(objectMapper.writer()
-          .writeValueAsString(S3VectorsError.builder().message(e.getMessage()).build()));
+          .writeValueAsString(new S3VectorsError(e.getMessage())));
     } catch (JacksonException _) {
       httpResponse.status(HttpResponseStatus.INTERNAL_SERVER_ERROR);
       httpResponse.write("Internal Server Error");

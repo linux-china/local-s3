@@ -30,11 +30,8 @@ class GetBucketController implements RouterHttpRequestHandler {
   public void handle(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     Bucket bucket = bucketService.getBucket(bucketName);
-    GetBucketResult getBucketResult = GetBucketResult.builder()
-        .bucket(bucket.getName())
-        .creationDate(Instant.ofEpochMilli(bucket.getCreationDate()))
-        .publicAccessBlockEnabled(false)
-        .build();
+    GetBucketResult getBucketResult =
+        new GetBucketResult(bucket.getName(), false, Instant.ofEpochMilli(bucket.getCreationDate()));
     response.write(xmlMapper.writeValueAsString(getBucketResult));
   }
 

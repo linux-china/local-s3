@@ -59,9 +59,7 @@ class CreateBucketController extends BucketHttpRequestHandler {
       }
     }
     String bucketArn = "arn:aws:s3:::" + bucketName;
-    CreateBucketResult createBucketResult = CreateBucketResult.builder()
-        .bucketArn(bucketArn)
-        .build();
+    CreateBucketResult createBucketResult = new CreateBucketResult(bucketArn);
     response.putHeader("Location", "/" + bucketName)
         .putHeader(AmzHeaderNames.X_AMZ_BUCKET_ARN, bucketArn)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)

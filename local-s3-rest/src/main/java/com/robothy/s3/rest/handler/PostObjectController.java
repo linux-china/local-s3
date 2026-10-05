@@ -167,12 +167,7 @@ class PostObjectController implements RouterHttpRequestHandler {
       case "200" -> response.status(HttpResponseStatus.OK);
       case "201" -> response.status(HttpResponseStatus.CREATED)
           .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML)
-          .write(xmlMapper.writeValueAsString(PostResponse.builder()
-              .location(location)
-              .bucket(bucketName)
-              .key(key)
-              .etag(etag)
-              .build()));
+          .write(xmlMapper.writeValueAsString(new PostResponse(location, bucketName, key, etag)));
       default -> response.status(HttpResponseStatus.NO_CONTENT);
     }
   }

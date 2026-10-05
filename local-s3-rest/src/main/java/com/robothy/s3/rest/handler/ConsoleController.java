@@ -333,8 +333,8 @@ class ConsoleController implements RouterHttpRequestHandler {
         prefix, null);
 
     List<ConsoleObject> objects = listing.getObjects().stream()
-        .map(object -> new ConsoleObject(object.getKey(), object.getSize(),
-            object.getLastModified() == null ? null : object.getLastModified().toString(), object.getEtag()))
+        .map(object -> new ConsoleObject(object.key(), object.size(),
+            object.lastModified() == null ? null : object.lastModified().toString(), object.etag()))
         .toList();
     json(response, HttpResponseStatus.OK, new ConsoleObjects(bucket, prefix, listing.getCommonPrefixes(), objects,
         listing.isTruncated(), listing.getNextContinuationToken().orElse(null)));

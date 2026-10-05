@@ -32,9 +32,8 @@ class GetBucketLocationController implements RouterHttpRequestHandler {
     Bucket bucket = bucketService.getBucket(bucketName);
     String region = bucket.regionOrDefault();
     // Amazon S3 answers an empty location constraint for the buckets in us-east-1.
-    LocationConstraint locationConstraint = LocationConstraint.builder()
-        .locationConstraint(ServiceConstants.DEFAULT_REGION.equals(region) ? "" : region)
-        .build();
+    LocationConstraint locationConstraint =
+        new LocationConstraint(ServiceConstants.DEFAULT_REGION.equals(region) ? "" : region);
     response.write(xmlMapper.writeValueAsString(locationConstraint));
     ResponseUtils.addCommonHeaders(response);
   }

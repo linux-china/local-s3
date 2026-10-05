@@ -49,8 +49,6 @@ public interface GetIndexService extends S3VectorsMetadataAware {
   }
 
   private GetIndexResponse buildResponse(VectorIndex vectorIndex) {
-    return GetIndexResponse.builder()
-        .index(vectorIndex)
-        .build();
+    return new GetIndexResponse(vectorIndex);
   }
 }

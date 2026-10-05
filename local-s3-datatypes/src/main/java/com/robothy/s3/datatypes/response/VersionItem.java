@@ -5,4 +5,11 @@ package com.robothy.s3.datatypes.response;
  */
 public sealed interface VersionItem permits ObjectVersion, DeleteMarkerEntry {
 
+  String key();
+
+  /**
+   * A copy of the entry with another key, e.g. the key encoded for {@code encoding-type=url}.
+   */
+  VersionItem withKey(String key);
+
 }

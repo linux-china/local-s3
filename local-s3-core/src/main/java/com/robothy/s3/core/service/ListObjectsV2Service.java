@@ -85,7 +85,9 @@ public interface ListObjectsV2Service extends ListObjectsService {
     }
 
     static void removeOwner(ListObjectsV2Ans listObjectsV2Ans) {
-        listObjectsV2Ans.getObjects().forEach(s3Object -> s3Object.setOwner(null));
+        listObjectsV2Ans.setObjects(listObjectsV2Ans.getObjects().stream()
+            .map(s3Object -> s3Object.withOwner(null))
+            .toList());
     }
 
 }

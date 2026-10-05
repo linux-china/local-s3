@@ -39,10 +39,7 @@ public interface ListVectorsService extends S3VectorsMetadataAware, S3VectorsSto
         List<ListOutputVector> outputVectors = buildOutputVectors(pageVectors, returnData, returnMetadata);
         String responseNextToken = calculateNextToken(startIndex, pageVectors.size(), segmentVectors.size());
         
-        return ListVectorsResponse.builder()
-            .vectors(outputVectors)
-            .nextToken(responseNextToken)
-            .build();
+        return new ListVectorsResponse(outputVectors, responseNextToken);
     }
 
     private int validateAndSetMaxResults(Integer maxResults) {

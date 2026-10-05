@@ -7,8 +7,7 @@ import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.service.ListObjectVersionsService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.util.S3ObjectUtils;
-import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
-import com.robothy.s3.datatypes.response.ObjectVersion;
+import com.robothy.s3.datatypes.response.VersionItem;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.model.response.CommonPrefix;
 import com.robothy.s3.rest.model.response.ListVersionsResult;
@@ -17,6 +16,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.List;
 import java.util.function.UnaryOperator;
 import tools.jackson.dataformat.xml.XmlMapper;
 
@@ -51,12 +51,9 @@ class ListObjectVersionsController implements RouterHttpRequestHandler {
     // what a client decodes; the version IDs are never encoded.
     UnaryOperator<String> encode = "url".equalsIgnoreCase(encodingType)
         ? S3ObjectUtils::urlEncodeEscapeSlash : UnaryOperator.identity();
-    ans.getVersions().forEach(versionItem -> {
-      switch (versionItem) {
-        case ObjectVersion objectVersion -> objectVersion.setKey(encode.apply(objectVersion.getKey()));
-        case DeleteMarkerEntry deleteMarker -> deleteMarker.setKey(encode.apply(deleteMarker.getKey()));
-      }
-    });
+    List<VersionItem> versions = ans.getVersions().stream()
+        .map(versionItem -> versionItem.withKey(encode.apply(versionItem.key())))
+        .toList();
 
     ListVersionsResult result = ListVersionsResult.builder()
         .isTruncated(ans.getNextKeyMarker().isPresent())
@@ -64,7 +61,7 @@ class ListObjectVersionsController implements RouterHttpRequestHandler {
         .versionIdMarker(versionIdMarker)
         .nextKeyMarker(encode.apply(ans.getNextKeyMarker().orElse(null)))
         .nextVersionIdMarker(ans.getNextVersionIdMarker().orElse(null))
-        .versions(ans.getVersions())
+        .versions(versions)
         .name(bucketName)
         .prefix(encode.apply(prefix))
         .delimiter(encode.apply(delimiter))

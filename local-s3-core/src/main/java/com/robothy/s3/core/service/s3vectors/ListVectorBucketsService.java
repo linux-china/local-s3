@@ -53,11 +53,10 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
   }
 
   private VectorBucketSummary createVectorBucketSummary(VectorBucketMetadata bucketMetadata) {
-    return VectorBucketSummary.builder()
-        .vectorBucketName(bucketMetadata.getVectorBucketName())
-        .vectorBucketArn(VectorBucket.generateArn(bucketMetadata.getVectorBucketName()))
-        .creationTime(bucketMetadata.getCreationDate() / 1000)
-        .build();
+    return new VectorBucketSummary(
+        bucketMetadata.getCreationDate() / 1000,
+        VectorBucket.generateArn(bucketMetadata.getVectorBucketName()),
+        bucketMetadata.getVectorBucketName());
   }
 
   private String generateNextTokenIfNeeded(int startIndex, int pageSize, int totalSize) {
@@ -65,10 +64,7 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
   }
 
   private ListVectorBucketsResponse buildResponse(List<VectorBucketSummary> summaries, String nextToken) {
-    return ListVectorBucketsResponse.builder()
-        .vectorBuckets(summaries)
-        .nextToken(nextToken)
-        .build();
+    return new ListVectorBucketsResponse(nextToken, summaries);
   }
 
 }

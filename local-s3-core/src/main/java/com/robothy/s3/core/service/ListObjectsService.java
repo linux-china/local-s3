@@ -142,23 +142,23 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
 
   static S3Object fetchLatestObject(String key, ObjectMetadata objectMetadata) {
     VersionedObjectMetadata latest = objectMetadata.getLatest();
-    S3Object object = new S3Object();
-    object.setKey(key);
-    object.setSize(latest.getSize());
-    object.setLastModified(Instant.ofEpochMilli(latest.getCreationDate()));
-    object.setEtag(S3ObjectUtils.quoteEtag(latest.getEtag()));
-    object.setOwner(Owner.DEFAULT_OWNER);
-    object.setStorageClass(SystemMetadata.storageClassOf(latest.getSystemMetadata()));
+    S3Object.Builder object = S3Object.builder()
+        .key(key)
+        .size(latest.getSize())
+        .lastModified(Instant.ofEpochMilli(latest.getCreationDate()))
+        .etag(S3ObjectUtils.quoteEtag(latest.getEtag()))
+        .owner(Owner.DEFAULT_OWNER)
+        .storageClass(SystemMetadata.storageClassOf(latest.getSystemMetadata()));
     if (Objects.nonNull(latest.getChecksum())) {
-      object.setCheckSumAlgorithm(latest.getChecksum().getAlgorithm());
-      object.setChecksumType(latest.getChecksum().getType());
+      object.checkSumAlgorithm(latest.getChecksum().getAlgorithm())
+          .checksumType(latest.getChecksum().getType());
     }
     // Answered only if the request asks for it, see x-amz-optional-object-attributes; the controller drops it otherwise.
     Long restoreExpiryDate = RestoreObjectService.activeRestoreExpiryDate(latest);
     if (Objects.nonNull(restoreExpiryDate)) {
-      object.setRestoreStatus(new RestoreStatus(false, Instant.ofEpochMilli(restoreExpiryDate)));
+      object.restoreStatus(new RestoreStatus(false, Instant.ofEpochMilli(restoreExpiryDate)));
     }
-    return object;
+    return object.build();
   }
 
   /**
@@ -176,8 +176,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
     }
 
     listObjectsAns.setEncodingType(encodingType);
-    listObjectsAns.getObjects()
-      .forEach(object -> object.setKey(S3ObjectUtils.urlEncodeEscapeSlash(object.getKey())));
+    listObjectsAns.setObjects(listObjectsAns.getObjects().stream()
+      .map(object -> object.withKey(S3ObjectUtils.urlEncodeEscapeSlash(object.key())))
+      .toList());
     List<String> encodedPrefixes = new ArrayList<>(listObjectsAns.getCommonPrefixes().size());
     listObjectsAns.getCommonPrefixes().forEach(commonPrefix ->
       encodedPrefixes.add(S3ObjectUtils.urlEncodeEscapeSlash(commonPrefix)));

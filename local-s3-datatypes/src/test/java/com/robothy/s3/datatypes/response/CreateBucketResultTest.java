@@ -16,9 +16,7 @@ class CreateBucketResultTest {
     ObjectWriter writer = mapper.writer();
     ObjectReader reader = mapper.reader();
 
-    CreateBucketResult createBucketResult = CreateBucketResult.builder()
-        .bucketArn("abc")
-        .build();
+    CreateBucketResult createBucketResult = new CreateBucketResult("abc");
 
     String serialized = writer.with(StreamWriteFeature.WRITE_BIGDECIMAL_AS_PLAIN).writeValueAsString(createBucketResult);
     CreateBucketResult deserialized = reader.forType(CreateBucketResult.class).readValue(serialized);

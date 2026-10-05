@@ -41,6 +41,6 @@ public interface PutVectorBucketPolicyService extends S3VectorsMetadataAware {
   }
 
   private PutVectorBucketPolicyResponse buildResponse() {
-    return PutVectorBucketPolicyResponse.builder().build();
+    return new PutVectorBucketPolicyResponse();
   }
 }

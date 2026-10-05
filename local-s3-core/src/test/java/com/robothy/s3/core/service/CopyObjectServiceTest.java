@@ -97,8 +97,8 @@ class CopyObjectServiceTest extends LocalS3ServiceTestBase {
     assertNotEquals(ObjectMetadata.NULL_VERSION, copyObjectAns2.getVersionId());
     ListObjectVersionsAns versions1 = objectService.listObjectVersions(bucket1, null, null, 1000, key1, null);
     assertEquals(2, versions1.getVersions().size());
-    assertEquals(copyObjectAns2.getVersionId(), ((ObjectVersion)versions1.getVersions().get(0)).getVersionId());
-    assertEquals(ObjectMetadata.NULL_VERSION, ((ObjectVersion)versions1.getVersions().get(1)).getVersionId());
+    assertEquals(copyObjectAns2.getVersionId(), ((ObjectVersion)versions1.getVersions().get(0)).versionId());
+    assertEquals(ObjectMetadata.NULL_VERSION, ((ObjectVersion)versions1.getVersions().get(1)).versionId());
 
     // Cannot copy a delete marker
     DeleteObjectAns deleteObjectAns = objectService.deleteObject(bucket1, key1, null);

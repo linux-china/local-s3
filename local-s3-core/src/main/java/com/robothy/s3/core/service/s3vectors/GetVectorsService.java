@@ -12,6 +12,7 @@ import com.robothy.s3.core.util.vectors.ValidationUtils;
 import com.robothy.s3.datatypes.s3vectors.response.GetVectorsResponse;
 import com.robothy.s3.datatypes.s3vectors.response.GetOutputVector;
 import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
+import tools.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -68,18 +69,9 @@ public interface GetVectorsService extends S3VectorsMetadataAware, S3VectorsStor
 
     private GetOutputVector createOutputVector(String key, VectorObjectMetadata vectorMetadata,
                                               Boolean returnData, Boolean returnMetadata) {
-        GetOutputVector vector = new GetOutputVector();
-        vector.setKey(key);
-
-        if (shouldIncludeData(returnData)) {
-            addVectorData(vector, vectorMetadata);
-        }
-
-        if (shouldIncludeMetadata(returnMetadata)) {
-            addVectorMetadata(vector, vectorMetadata);
-        }
-
-        return vector;
+        PutInputVector.VectorData data = shouldIncludeData(returnData) ? vectorData(vectorMetadata) : null;
+        JsonNode metadata = shouldIncludeMetadata(returnMetadata) ? vectorMetadata.getMetadata() : null;
+        return new GetOutputVector(data, key, metadata);
     }
 
     private boolean shouldIncludeData(Boolean returnData) {
@@ -90,32 +82,21 @@ public interface GetVectorsService extends S3VectorsMetadataAware, S3VectorsStor
         return Boolean.TRUE.equals(returnMetadata);
     }
 
-    private void addVectorData(GetOutputVector vector, VectorObjectMetadata vectorMetadata) {
+    private PutInputVector.VectorData vectorData(VectorObjectMetadata vectorMetadata) {
         Long storageId = vectorMetadata.getStorageId();
-        if (storageId != null) {
-            float[] vectorData = vectorStorage().getVectorData(storageId);
-            if (vectorData != null) {
-                PutInputVector.VectorData data = new PutInputVector.VectorData();
-                data.setValues(vectorData);
-                vector.setData(data);
-            }
+        if (storageId == null) {
+            return null;
         }
-    }
-
-    private void addVectorMetadata(GetOutputVector vector, VectorObjectMetadata vectorMetadata) {
-        if (vectorMetadata.getMetadata() != null) {
-            vector.setMetadata(vectorMetadata.getMetadata());
+        float[] vectorData = vectorStorage().getVectorData(storageId);
+        if (vectorData == null) {
+            return null;
         }
+        PutInputVector.VectorData data = new PutInputVector.VectorData();
+        data.setValues(vectorData);
+        return data;
     }
 
     private GetVectorsResponse buildResponse(List<GetOutputVector> vectors, List<String> errorVectorKeys) {
-        GetVectorsResponse response = new GetVectorsResponse();
-        response.setVectors(vectors);
-
-        if (!errorVectorKeys.isEmpty()) {
-            response.setErrorVectorKeys(errorVectorKeys);
-        }
-
-        return response;
+        return new GetVectorsResponse(vectors, errorVectorKeys.isEmpty() ? null : errorVectorKeys);
     }
 }

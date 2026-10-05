@@ -40,9 +40,7 @@ public class GetVectorBucketController implements RouterHttpRequestHandler {
 
   private GetVectorBucketResponse processRequest(GetVectorBucketRequest getRequest) {
     VectorBucket vectorBucket = s3VectorsService.getVectorBucket(getRequest.getVectorBucketName());
-    return GetVectorBucketResponse.builder()
-        .vectorBucket(vectorBucket)
-        .build();
+    return new GetVectorBucketResponse(vectorBucket);
   }
 
 }
