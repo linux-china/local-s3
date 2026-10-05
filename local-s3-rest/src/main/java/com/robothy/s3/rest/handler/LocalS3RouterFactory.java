@@ -179,7 +179,7 @@ public class LocalS3RouterFactory {
         .exceptionHandler(LocalS3InvalidArgumentException.class, new LocalS3InvalidArgumentExceptionHandler())
         .exceptionHandler(LocalS3VectorException.class, new LocalS3VectorExceptionHandler(serviceFactory))
         .exceptionHandler(JacksonException.class, new MalformedRequestBodyExceptionHandler())
-        .exceptionHandler(Exception.class, new ExceptionHandler());
+        .exceptionHandler(Throwable.class, new ExceptionHandler());
   }
 
   /**

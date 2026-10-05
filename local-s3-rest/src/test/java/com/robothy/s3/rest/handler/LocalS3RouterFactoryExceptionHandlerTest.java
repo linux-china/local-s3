@@ -37,7 +37,7 @@ class LocalS3RouterFactoryExceptionHandlerTest {
    */
   private static final Pattern REQUEST_ID = Pattern.compile("<RequestId>[^<]*</RequestId>");
 
-  private static StreamingRouterHttpResponse handle(Exception exception) {
+  private static StreamingRouterHttpResponse handle(Throwable exception) {
     RouterHttpRequest request = RouterHttpRequest.builder().method(HttpMethod.PUT).path("/bucket/key").build();
     StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     ROUTER.findExceptionHandler(exception.getClass()).handle(exception, request, response);
@@ -115,6 +115,21 @@ class LocalS3RouterFactoryExceptionHandlerTest {
     assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
     String body = bodyWithoutTheRequestId(response);
     assertFalse(body.contains("abc"), body);
+  }
+
+  /**
+   * An {@linkplain Error}, e.g. the {@code NoClassDefFoundError} of a native executable that misses metadata, is an
+   * {@code InternalError} document too, rather than the stack trace that the default handler of the router writes.
+   */
+  @Test
+  void anErrorIsAnInternalErrorThatDoesNotRevealItsStackTrace() {
+    StreamingRouterHttpResponse response = handle(new NoClassDefFoundError("com/example/Missing42"));
+
+    assertEquals(HttpResponseStatus.INTERNAL_SERVER_ERROR, response.getStatus());
+    String body = bodyWithoutTheRequestId(response);
+    assertTrue(body.contains("<Code>InternalError</Code>"), body);
+    assertFalse(body.contains("Missing42"), body);
+    assertFalse(body.contains("NoClassDefFoundError"), body);
   }
 
 }
