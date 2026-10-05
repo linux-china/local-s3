@@ -8,7 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The deferred deletions of a {@linkplain Storage}: the content that a reader {@linkplain
@@ -23,8 +24,9 @@ import lombok.extern.slf4j.Slf4j;
  * content that the metadata doesn't reference anymore; {@linkplain UnreferencedContentSweeper} deletes it when the
  * data directory is opened again.
  */
-@Slf4j
 final class DeferredDeletions {
+
+  private static final Logger log = LoggerFactory.getLogger(DeferredDeletions.class);
 
   /**
    * Deletes the content of an object, which is what a storage does when nothing retains it.

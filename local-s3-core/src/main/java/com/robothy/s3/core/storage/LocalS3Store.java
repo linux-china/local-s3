@@ -12,7 +12,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.MVStore;
 import org.h2.mvstore.MVStoreException;
@@ -31,8 +32,9 @@ import org.h2.mvstore.MVStoreException;
  * ({@linkplain #compactIfWasteful()}), so that a long-running service, e.g. in an IDE, doesn't keep the room of every
  * write it took.
  */
-@Slf4j
 public final class LocalS3Store implements AutoCloseable {
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3Store.class);
 
   /**
    * The name of the metadata file of a data directory.

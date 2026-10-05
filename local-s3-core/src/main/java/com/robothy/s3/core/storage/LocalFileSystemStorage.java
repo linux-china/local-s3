@@ -14,7 +14,8 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * An implementation of {@linkplain Storage} based on a local directory.
@@ -32,8 +33,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
  * anything in its directory: it reads objects in either layout, and rejects writes.
  */
-@Slf4j
 class LocalFileSystemStorage implements Storage {
+
+  private static final Logger log = LoggerFactory.getLogger(LocalFileSystemStorage.class);
 
   /**
    * Suffix of the temporary files that objects are written to, which are named {@code .<id>.<uuid>.tmp} in the

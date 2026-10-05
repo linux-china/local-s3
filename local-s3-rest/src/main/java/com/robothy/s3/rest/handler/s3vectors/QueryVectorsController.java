@@ -10,12 +10,14 @@ import com.robothy.s3.datatypes.s3vectors.request.QueryVectorsRequest;
 import com.robothy.s3.datatypes.s3vectors.response.QueryVectorsResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.robothy.s3.core.service.s3vectors.MetadataFilterExpression;
 import tools.jackson.databind.ObjectMapper;
 
-@Slf4j
 public class QueryVectorsController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(QueryVectorsController.class);
 
   private final S3VectorsService vectorsService;
   private final ObjectMapper objectMapper;

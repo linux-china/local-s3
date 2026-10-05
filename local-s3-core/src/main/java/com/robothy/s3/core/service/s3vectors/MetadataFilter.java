@@ -5,7 +5,8 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -20,8 +21,9 @@ import tools.jackson.databind.node.ObjectNode;
  * - Array operations: {"genre": {"$in": ["comedy", "documentary"]}}
  * - Logical operations: {"$and": [{"genre": {"$eq": "drama"}}, {"year": {"$gte": 2020}}]}
  */
-@Slf4j
 public class MetadataFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(MetadataFilter.class);
 
     /**
      * Apply a metadata condition to a list of vector candidates.

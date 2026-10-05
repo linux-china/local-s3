@@ -9,15 +9,17 @@ import com.robothy.s3.core.service.s3vectors.S3VectorsService;
 import com.robothy.s3.datatypes.s3vectors.request.DeleteIndexRequest;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * HTTP controller for deleting vector indexes.
  * Handles DELETE requests to remove vector indexes from a vector bucket.
  */
-@Slf4j
 public class DeleteIndexController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(DeleteIndexController.class);
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;

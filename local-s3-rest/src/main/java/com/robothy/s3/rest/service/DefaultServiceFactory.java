@@ -3,7 +3,8 @@ package com.robothy.s3.rest.service;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Holds the services of one LocalS3 service.
@@ -13,8 +14,9 @@ import lombok.extern.slf4j.Slf4j;
  * their builder set. It is a {@linkplain ConcurrentHashMap} because the registry is filled while the service
  * starts and read afterwards by the threads that handle the requests.
  */
-@Slf4j
 public class DefaultServiceFactory implements ServiceFactory {
+
+  private static final Logger log = LoggerFactory.getLogger(DefaultServiceFactory.class);
 
   private final Map<Class<?>, Supplier<?>> factoryMap = new ConcurrentHashMap<>();
 

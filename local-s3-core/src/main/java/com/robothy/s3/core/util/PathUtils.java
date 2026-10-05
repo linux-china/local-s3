@@ -11,10 +11,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Locale;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 public class PathUtils {
+
+  private static final Logger log = LoggerFactory.getLogger(PathUtils.class);
 
   private static final boolean IS_WINDOWS =
       System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");

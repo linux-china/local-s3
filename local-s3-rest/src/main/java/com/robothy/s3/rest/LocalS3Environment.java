@@ -7,7 +7,8 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The environment variables that the Docker image is configured with, and that
@@ -18,8 +19,9 @@ import lombok.extern.slf4j.Slf4j;
  * its own default for it: a container applies the defaults of a container, e.g. binding every interface,
  * before reading the environment, while an embedded service keeps the defaults of the builder.
  */
-@Slf4j
 public final class LocalS3Environment {
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3Environment.class);
 
   public static final String LOCAL_S3_PORT = "LOCAL_S3_PORT";
 

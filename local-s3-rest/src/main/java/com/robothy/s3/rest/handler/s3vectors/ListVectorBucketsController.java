@@ -8,15 +8,17 @@ import com.robothy.s3.datatypes.s3vectors.request.ListVectorBucketsRequest;
 import com.robothy.s3.datatypes.s3vectors.response.ListVectorBucketsResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * HTTP controller for listing vector buckets.
  * Handles POST requests to list all vector buckets owned by the authenticated sender.
  */
-@Slf4j
 public class ListVectorBucketsController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(ListVectorBucketsController.class);
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;

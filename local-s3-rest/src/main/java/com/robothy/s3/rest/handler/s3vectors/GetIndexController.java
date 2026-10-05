@@ -10,15 +10,17 @@ import com.robothy.s3.datatypes.s3vectors.request.GetIndexRequest;
 import com.robothy.s3.datatypes.s3vectors.response.GetIndexResponse;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
  * HTTP controller for retrieving vector index details.
  * Handles GET requests to retrieve information about a specific vector index.
  */
-@Slf4j
 public class GetIndexController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(GetIndexController.class);
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;

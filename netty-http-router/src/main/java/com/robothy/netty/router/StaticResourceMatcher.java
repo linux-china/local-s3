@@ -32,7 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.jar.JarEntry;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Serves the files under a root directory or classpath resource path to {@code GET} and {@code HEAD} requests.
@@ -47,8 +48,9 @@ import lombok.extern.slf4j.Slf4j;
  * {@code If-None-Match}, or else an {@code If-Modified-Since} not before the modification time, is answered with
  * {@code 304 Not Modified} and no content.
  */
-@Slf4j
 abstract class StaticResourceMatcher {
+
+  private static final Logger log = LoggerFactory.getLogger(StaticResourceMatcher.class);
 
   static final int CHUNK_SIZE = 64 * 1024;
 

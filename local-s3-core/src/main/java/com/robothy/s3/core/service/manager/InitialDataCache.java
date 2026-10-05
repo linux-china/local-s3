@@ -15,7 +15,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.util.TokenBuffer;
 
 /**
@@ -30,8 +31,9 @@ import tools.jackson.databind.util.TokenBuffer;
  * path is loaded again when a manager is created for it; the managers that already use it keep working, and copy its
  * objects again as far as the budget allows.
  */
-@Slf4j
 final class InitialDataCache implements CopyBudget {
+
+  private static final Logger log = LoggerFactory.getLogger(InitialDataCache.class);
 
   /**
    * The default max number of data paths.

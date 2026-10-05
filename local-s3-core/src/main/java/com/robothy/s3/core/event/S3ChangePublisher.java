@@ -13,7 +13,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Supplier;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Delivers the {@linkplain S3Change}s of the services of a LocalS3 service to its {@linkplain S3ChangeListener}s,
@@ -25,8 +26,9 @@ import lombok.extern.slf4j.Slf4j;
  * the services again. A listener slower than {@linkplain #SLOW_LISTENER_THRESHOLD} on the thread that made the change is
  * logged once, as a hint to set another {@linkplain #executor(Executor) executor}.
  */
-@Slf4j
 public final class S3ChangePublisher {
+
+  private static final Logger log = LoggerFactory.getLogger(S3ChangePublisher.class);
 
   /**
    * How long a listener may run on the thread that made the change before it is logged as slow.

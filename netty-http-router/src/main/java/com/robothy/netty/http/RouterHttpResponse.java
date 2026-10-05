@@ -18,11 +18,13 @@ import java.util.Set;
 import java.util.TreeMap;
 import lombok.AccessLevel;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Slf4j
 @Getter
 public class RouterHttpResponse {
+
+  private static final Logger log = LoggerFactory.getLogger(RouterHttpResponse.class);
 
   // Header names are case-insensitive (RFC 9110); a case-sensitive map would let "Content-Length" and
   // "content-length" both be emitted.

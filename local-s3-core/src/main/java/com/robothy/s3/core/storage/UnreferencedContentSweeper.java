@@ -10,7 +10,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CancellationException;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 
@@ -34,8 +35,9 @@ import org.h2.mvstore.MVStore;
  * e.g. a replaced store; or in a directory of a LocalS3 before 2.5, whose metadata isn't read; and files of the flat
  * layout are never considered.
  */
-@Slf4j
 final class UnreferencedContentSweeper {
+
+  private static final Logger log = LoggerFactory.getLogger(UnreferencedContentSweeper.class);
 
   /**
    * The directory of the content of a data directory; see

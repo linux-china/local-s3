@@ -7,7 +7,8 @@ import com.robothy.s3.core.service.loader.vectors.S3VectorsMetadataLoader;
 import com.robothy.s3.core.storage.s3vectors.VectorStorage;
 import java.nio.file.Path;
 import java.util.Objects;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * In-memory implementation of {@linkplain LocalS3VectorsManager}, optionally starting from the vectors of a data path.
@@ -19,8 +20,9 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>The service is created once, so that a service that is started again serves the vectors it held.
  */
-@Slf4j
 final class InMemoryLocalS3VectorsManager implements LocalS3VectorsManager {
+
+  private static final Logger log = LoggerFactory.getLogger(InMemoryLocalS3VectorsManager.class);
 
   private final Path initialDataDirectory;
 

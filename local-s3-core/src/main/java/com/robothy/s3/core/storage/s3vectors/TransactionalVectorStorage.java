@@ -5,7 +5,8 @@ import java.nio.FloatBuffer;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@linkplain VectorStorage} whose changes can be grouped into a transaction, so that the vectors stay consistent
@@ -19,8 +20,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>Committing after the metadata is persisted means that the persisted metadata never references a deleted vector,
  * even if the process dies in between; at worst, an unreferenced vector is left behind.
  */
-@Slf4j
 public final class TransactionalVectorStorage implements VectorStorage, StorageTransactions {
+
+  private static final Logger log = LoggerFactory.getLogger(TransactionalVectorStorage.class);
 
   private final VectorStorage delegate;
 

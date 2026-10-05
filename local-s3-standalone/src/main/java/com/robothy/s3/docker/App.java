@@ -5,7 +5,8 @@ import com.robothy.s3.rest.LocalS3Builder;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3Environment;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.BindException;
 import java.nio.file.Files;
@@ -19,8 +20,9 @@ import java.util.function.UnaryOperator;
  * Runs LocalS3 in a container or from the executable jar, configured by the options of {@linkplain CommandLine},
  * by environment variables, or by system properties of the same names, in that order of precedence.
  */
-@Slf4j
 public class App {
+
+    private static final Logger log = LoggerFactory.getLogger(App.class);
 
     static final int DEFAULT_PORT = 29090;
     static final String DEFAULT_HOST = "127.0.0.1";

@@ -8,7 +8,8 @@ import com.robothy.s3.core.util.S3VectorsArnUtils;
 import com.robothy.s3.datatypes.s3vectors.request.CreateIndexRequest;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.HttpRequestUtils;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.List;
 import tools.jackson.databind.ObjectMapper;
 
@@ -16,8 +17,9 @@ import tools.jackson.databind.ObjectMapper;
  * HTTP controller for creating vector indexes.
  * Handles POST requests to create new vector indexes in a vector bucket.
  */
-@Slf4j
 public class CreateIndexController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(CreateIndexController.class);
 
   private final S3VectorsService s3VectorsService;
   private final ObjectMapper objectMapper;

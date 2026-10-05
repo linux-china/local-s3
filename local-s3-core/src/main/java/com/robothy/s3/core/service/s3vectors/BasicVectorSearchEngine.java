@@ -9,7 +9,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Basic implementation of {@linkplain VectorSearchEngine} using brute-force search.
@@ -17,8 +18,9 @@ import lombok.extern.slf4j.Slf4j;
  * then returns the K nearest neighbors using a heap-based approach for efficiency. The candidates are
  * read through {@linkplain VectorStorage#getVectorDataView(Long)}, so that they aren't copied.
  */
-@Slf4j
 class BasicVectorSearchEngine implements VectorSearchEngine {
+
+  private static final Logger log = LoggerFactory.getLogger(BasicVectorSearchEngine.class);
 
   static final BasicVectorSearchEngine INSTANCE = new BasicVectorSearchEngine();
 

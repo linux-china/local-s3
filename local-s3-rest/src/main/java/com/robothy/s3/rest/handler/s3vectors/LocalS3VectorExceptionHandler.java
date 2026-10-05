@@ -9,12 +9,14 @@ import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-@Slf4j
 public class LocalS3VectorExceptionHandler implements ExceptionHandler<LocalS3VectorException> {
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3VectorExceptionHandler.class);
 
   private final ServiceFactory serviceFactory;
 

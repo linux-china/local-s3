@@ -7,7 +7,8 @@ import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A {@linkplain Storage} whose changes can be grouped into a transaction, so that the stored objects
@@ -21,8 +22,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>Committing after the metadata is persisted means that the persisted metadata never references a
  * deleted object, even if the process dies in between; at worst, an unreferenced object is left behind.
  */
-@Slf4j
 public final class TransactionalStorage implements Storage, StorageTransactions {
+
+  private static final Logger log = LoggerFactory.getLogger(TransactionalStorage.class);
 
   private final Storage delegate;
 

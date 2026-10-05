@@ -28,7 +28,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Aggregates netty HTTP messages into a {@linkplain RouterHttpRequest}. It also accepts
@@ -39,8 +40,9 @@ import lombok.extern.slf4j.Slf4j;
  * connection is closed in both cases. When the declared {@code Content-Length} is already too large, the request is
  * rejected before {@code 100 Continue} is sent, so clients that expect it never upload the body.
  */
-@Slf4j
 public class RouterHttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
+
+  private static final Logger log = LoggerFactory.getLogger(RouterHttpRequestDecoder.class);
 
   /**
    * The default max request body size, 64 MiB.

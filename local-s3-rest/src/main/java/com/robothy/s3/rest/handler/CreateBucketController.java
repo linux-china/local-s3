@@ -16,13 +16,15 @@ import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import java.io.InputStream;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html">CreateBucket</a>.
  */
-@Slf4j
 class CreateBucketController extends BucketHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(CreateBucketController.class);
 
   private final BucketNameValidator bucketNameValidator;
 

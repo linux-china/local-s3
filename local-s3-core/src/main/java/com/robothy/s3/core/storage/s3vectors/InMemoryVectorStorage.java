@@ -8,15 +8,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * In-memory implementation of {@linkplain VectorStorage}.
  * Stores vector data in Java heap memory using concurrent data structures.
  * This implementation only handles raw vector data storage and retrieval.
  */
-@Slf4j
 class InMemoryVectorStorage implements VectorStorage {
+
+  private static final Logger log = LoggerFactory.getLogger(InMemoryVectorStorage.class);
 
   private final Map<Long, float[]> vectorStore = new ConcurrentHashMap<>();
   private final AtomicLong totalSize = new AtomicLong(0);

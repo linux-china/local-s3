@@ -20,7 +20,8 @@ import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.util.Locale;
 import java.util.Set;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dispatches {@linkplain RouterHttpRequest}s to the {@linkplain Router} and writes the responses.
@@ -28,8 +29,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p>The request body is released once the handler has returned. A handler that keeps the body, or writes it to the
  * response, must {@linkplain ByteBuf#retain() retain} it.
  */
-@Slf4j
 public class HttpMessageHandler extends SimpleChannelInboundHandler<RouterHttpRequest> {
+
+  private static final Logger log = LoggerFactory.getLogger(HttpMessageHandler.class);
 
   /**
    * Error bodies echo client input, e.g. the request path, so they are plain text rather than HTML to avoid XSS.

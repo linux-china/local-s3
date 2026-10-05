@@ -16,13 +16,15 @@ import com.robothy.s3.rest.utils.CustomerEncryptionHeaders;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html">UploadPart</a>
  */
-@Slf4j
 class UploadPartController implements RouterHttpRequestHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(UploadPartController.class);
 
   private final UploadPartService uploadPartService;
 

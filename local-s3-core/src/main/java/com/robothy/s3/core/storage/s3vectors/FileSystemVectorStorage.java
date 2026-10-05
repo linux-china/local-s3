@@ -29,7 +29,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * File system implementation of {@linkplain VectorStorage}: the vectors of each dimension in one file of fixed-length
@@ -48,8 +49,9 @@ import lombok.extern.slf4j.Slf4j;
  *   nothing.</li>
  * </ul>
  */
-@Slf4j
 class FileSystemVectorStorage implements VectorStorage {
+
+  private static final Logger log = LoggerFactory.getLogger(FileSystemVectorStorage.class);
 
   /**
    * Suffix of the temporary files that files are written to.
