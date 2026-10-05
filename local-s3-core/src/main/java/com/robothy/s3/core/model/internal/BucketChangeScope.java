@@ -2,6 +2,7 @@ package com.robothy.s3.core.model.internal;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * The buckets that the current thread is changing, which tells the metadata of a bucket whether an object it hands out
@@ -14,56 +15,61 @@ import java.util.Set;
  * so reading a bucket doesn't make its store write anything.
  *
  * <p>{@linkplain com.robothy.s3.core.service.BucketGuard#change} opens the scope of a change, around the operation that
- * makes it and the persistence that follows it.
+ * makes it and the persistence that follows it, and asks it whether the bucket is already changing, in which case the
+ * outer change persists it. A change is recorded with its owner, the guard, since the S3 and the vector buckets of a
+ * service are guarded apart and may share a name.
  */
 public final class BucketChangeScope {
 
-  private static final ThreadLocal<Set<String>> CHANGING = new ThreadLocal<>();
+  private record Changing(Object owner, String bucketName) {
+  }
+
+  private static final ScopedValue<Set<Changing>> CHANGING = ScopedValue.newInstance();
 
   private BucketChangeScope() {
   }
 
   /**
-   * Whether the current thread is changing a bucket.
+   * Whether the current thread is changing a bucket of that name, whoever changes it.
    *
    * @param bucketName the bucket name.
    * @return {@code true} if a change of the bucket is running on this thread.
    */
   public static boolean isChanging(String bucketName) {
-    Set<String> changing = CHANGING.get();
-    return changing != null && changing.contains(bucketName);
+    if (!CHANGING.isBound()) {
+      return false;
+    }
+    for (Changing changing : CHANGING.get()) {
+      if (changing.bucketName().equals(bucketName)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Begin the scope of a change of a bucket on the current thread.
+   * Whether the current thread runs a change of the bucket that {@code owner} began.
    *
+   * @param owner the owner of the change, e.g. a guard.
    * @param bucketName the bucket name.
-   * @return {@code true} if the scope was begun, and must be {@linkplain #end ended}; {@code false} if the thread is
-   *     already changing the bucket, i.e. this change is nested in another one, which ends the scope.
+   * @return {@code true} if such a change is running on this thread.
    */
-  public static boolean begin(String bucketName) {
-    Set<String> changing = CHANGING.get();
-    if (changing == null) {
-      changing = new HashSet<>();
-      CHANGING.set(changing);
-    }
-    return changing.add(bucketName);
+  public static boolean isChanging(Object owner, String bucketName) {
+    return CHANGING.isBound() && CHANGING.get().contains(new Changing(owner, bucketName));
   }
 
   /**
-   * End the scope of a change that {@linkplain #begin} begun.
+   * Run {@code operation} within the scope of a change of a bucket on the current thread.
    *
+   * @param owner the owner of the change, e.g. a guard.
    * @param bucketName the bucket name.
+   * @param operation the operation.
+   * @return what the operation answers.
    */
-  public static void end(String bucketName) {
-    Set<String> changing = CHANGING.get();
-    if (changing == null) {
-      return;
-    }
-    changing.remove(bucketName);
-    if (changing.isEmpty()) {
-      CHANGING.remove();
-    }
+  public static <T> T change(Object owner, String bucketName, Supplier<T> operation) {
+    Set<Changing> changing = new HashSet<>(CHANGING.isBound() ? CHANGING.get() : Set.of());
+    changing.add(new Changing(owner, bucketName));
+    return ScopedValue.where(CHANGING, Set.copyOf(changing)).call(operation::get);
   }
 
 }

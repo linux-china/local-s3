@@ -8,9 +8,7 @@ import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.service.locks.ServiceLock;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.StorageTransactions;
-import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -40,12 +38,6 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
    * {@linkplain #exclusive} operation.
    */
   private final ServiceLock serviceLock = new ServiceLock();
-
-  /**
-   * The buckets that the current thread is changing, so that a change nested in a change of the same bucket runs
-   * within the outer one, which persists the bucket once.
-   */
-  private final ThreadLocal<Set<String>> changingBuckets = ThreadLocal.withInitial(HashSet::new);
 
   private final S3ChangePublisher changePublisher = new S3ChangePublisher();
 
@@ -85,8 +77,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   @Override
   public <T> T change(String bucketName, Change change, Supplier<T> operation) {
-    Set<String> changing = changingBuckets.get();
-    if (changing.contains(bucketName)) {
+    if (BucketChangeScope.isChanging(this, bucketName)) {
       // The outer change holds the write lock, and persists the bucket once it is done.
       return operation.get();
     }
@@ -94,32 +85,21 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     // durable.
     return changePublisher.withinChange(() -> {
       if (Objects.isNull(bucketMetaStore)) {
-        return write(bucketName, () -> changing(bucketName, changing, operation));
+        return write(bucketName, () -> changing(bucketName, operation));
       }
       boolean ownsTransaction = storage != null && storage.begin();
       T result = write(bucketName,
-          () -> changing(bucketName, changing, () -> invokeAndPersist(bucketName, change, operation, ownsTransaction)));
+          () -> changing(bucketName, () -> invokeAndPersist(bucketName, change, operation, ownsTransaction)));
       sync(ownsTransaction);
       return result;
     });
   }
 
-  private <T> T changing(String bucketName, Set<String> changing, Supplier<T> operation) {
-    changing.add(bucketName);
-    // Within the scope, the metadata of the bucket records the objects it hands out as changed, so that the store
-    // only writes those. It spans the persistence too, which drains what the operation recorded.
-    boolean ownsScope = BucketChangeScope.begin(bucketName);
-    try {
-      return operation.get();
-    } finally {
-      if (ownsScope) {
-        BucketChangeScope.end(bucketName);
-      }
-      changing.remove(bucketName);
-      if (changing.isEmpty()) {
-        changingBuckets.remove();
-      }
-    }
+  private <T> T changing(String bucketName, Supplier<T> operation) {
+    // Within the scope, a change nested in this one runs within it, and the metadata of the bucket records the objects
+    // it hands out as changed, so that the store only writes those. It spans the persistence too, which drains what the
+    // operation recorded.
+    return BucketChangeScope.change(this, bucketName, operation);
   }
 
   /**

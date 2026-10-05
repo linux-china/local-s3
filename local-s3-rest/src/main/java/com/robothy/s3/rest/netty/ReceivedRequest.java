@@ -23,7 +23,7 @@ import java.util.function.Supplier;
  */
 public record ReceivedRequest(RouterHttpRequest request, String scheme, Object verification) {
 
-  private static final ThreadLocal<ReceivedRequest> CURRENT = new ThreadLocal<>();
+  private static final ScopedValue<ReceivedRequest> CURRENT = ScopedValue.newInstance();
 
   public ReceivedRequest {
     Objects.requireNonNull(request, "request");
@@ -37,8 +37,7 @@ public record ReceivedRequest(RouterHttpRequest request, String scheme, Object v
    *     built and routed itself.
    */
   public static Optional<ReceivedRequest> of(RouterHttpRequest request) {
-    ReceivedRequest current = CURRENT.get();
-    return current != null && current.request == request ? Optional.of(current) : Optional.empty();
+    return CURRENT.isBound() && CURRENT.get().request == request ? Optional.of(CURRENT.get()) : Optional.empty();
   }
 
   /**
@@ -48,17 +47,7 @@ public record ReceivedRequest(RouterHttpRequest request, String scheme, Object v
    * @return what the action answers.
    */
   public <T> T handle(Supplier<T> action) {
-    ReceivedRequest previous = CURRENT.get();
-    CURRENT.set(this);
-    try {
-      return action.get();
-    } finally {
-      if (previous == null) {
-        CURRENT.remove();
-      } else {
-        CURRENT.set(previous);
-      }
-    }
+    return ScopedValue.where(CURRENT, this).call(action::get);
   }
 
 }

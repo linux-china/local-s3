@@ -26,6 +26,10 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
 
   private final Storage delegate;
 
+  /**
+   * A thread local rather than a scoped value: a transaction isn't one lexical scope, since the guard begins it before
+   * it locks the bucket, and commits it once the lock is released and the metadata is durable.
+   */
   private final ThreadLocal<Transaction> transaction = new ThreadLocal<>();
 
   /**

@@ -379,12 +379,10 @@ class MVStoreBucketMetadataStoreTest {
   }
 
   private static void changing(String bucketName, Runnable change) {
-    BucketChangeScope.begin(bucketName);
-    try {
+    BucketChangeScope.change(MVStoreBucketMetadataStoreTest.class, bucketName, () -> {
       change.run();
-    } finally {
-      BucketChangeScope.end(bucketName);
-    }
+      return null;
+    });
   }
 
   private static VersionedObjectMetadata version(String etag) {

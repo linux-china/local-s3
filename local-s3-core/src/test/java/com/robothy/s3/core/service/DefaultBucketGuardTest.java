@@ -352,6 +352,50 @@ class DefaultBucketGuardTest {
     }
   }
 
+  /**
+   * The S3 and the vector buckets of a service are guarded apart, and may share a name: a change of a bucket nested in a
+   * change of the bucket of the same name of another guard persists its bucket itself.
+   */
+  @Test
+  void aChangeOfAnotherGuardIsntRunWithinTheOuterChangeOfTheSameBucketName() {
+    RecordingStore otherStore = new RecordingStore();
+    DefaultBucketGuard<String> other = new DefaultBucketGuard<>(BucketLock.create(),
+        bucketName -> "metadata of " + bucketName, otherStore, null, reloaded::add);
+
+    guard.change("same", BucketGuard.Change.UPDATE,
+        () -> other.change("same", BucketGuard.Change.UPDATE, () -> null));
+
+    assertEquals(List.of("store same", "sync"), otherStore.operations);
+    assertEquals(List.of("store same", "sync"), store.operations);
+  }
+
+  /**
+   * A listener runs once the change has ended, so a change that it makes on the thread that delivers it is a change of
+   * its own, delivered too, and named by its own operation.
+   */
+  @Test
+  void aChangeMadeByAListenerIsAChangeOfItsOwn() {
+    List<String> delivered = new ArrayList<>();
+    S3ChangePublisher publisher = guard.changePublisher();
+    publisher.addListener(change -> {
+      delivered.add(change.operation() + " " + change.key());
+      if ("a.txt".equals(change.key())) {
+        guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+          publisher.publish(objectCreated("PutObject", "b.txt"));
+          return null;
+        });
+      }
+    });
+
+    guard.change("bucket", BucketGuard.Change.UPDATE, () -> {
+      publisher.publish(objectCreated("CopyObject", "a.txt"));
+      return null;
+    });
+
+    assertEquals(List.of("CopyObject a.txt", "PutObject b.txt"), delivered);
+    assertEquals(List.of("store bucket", "sync", "store bucket", "sync"), store.operations);
+  }
+
   @Test
   void aChangeNestedInAnotherOneIsSyncedByTheOuterOne() {
     guard.change("a", BucketGuard.Change.UPDATE,

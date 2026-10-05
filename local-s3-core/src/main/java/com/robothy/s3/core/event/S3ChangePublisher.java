@@ -49,12 +49,12 @@ public final class S3ChangePublisher {
   /**
    * The changes of the thread that are held back, while it runs a change.
    */
-  private final ThreadLocal<Pending> pending = new ThreadLocal<>();
+  private final ScopedValue<Pending> pending = ScopedValue.newInstance();
 
   /**
    * The outermost operation that the thread runs {@linkplain #asOperation as}, which the changes it publishes name.
    */
-  private final ThreadLocal<String> operation = new ThreadLocal<>();
+  private final ScopedValue<String> operation = ScopedValue.newInstance();
 
   public void addListener(S3ChangeListener listener) {
     listeners.add(Objects.requireNonNull(listener));
@@ -107,13 +107,11 @@ public final class S3ChangePublisher {
     if (listeners.isEmpty()) {
       return;
     }
-    String outerOperation = operation.get();
-    S3Change named = outerOperation == null ? change : change.withOperation(outerOperation);
-    Pending current = pending.get();
-    if (current == null) {
-      deliver(List.of(named));
+    S3Change named = operation.isBound() ? change.withOperation(operation.get()) : change;
+    if (pending.isBound()) {
+      pending.get().scopes.peek().add(named);
     } else {
-      current.scopes.peek().add(named);
+      deliver(List.of(named));
     }
   }
 
@@ -126,28 +124,15 @@ public final class S3ChangePublisher {
    * @return the result of the change.
    */
   public <T> T withinChange(Supplier<T> change) {
-    Pending current = pending.get();
-    boolean outermost = current == null;
-    if (outermost) {
-      current = new Pending();
-      pending.set(current);
+    if (pending.isBound()) {
+      return pending.get().run(change);
     }
-    List<S3Change> published = new ArrayList<>();
-    current.scopes.push(published);
-    boolean succeeded = false;
+    Pending outermost = new Pending();
     try {
-      T result = change.get();
-      succeeded = true;
-      return result;
+      return ScopedValue.where(pending, outermost).call(() -> outermost.run(change));
     } finally {
-      current.scopes.pop();
-      if (succeeded) {
-        current.committed.addAll(published);
-      }
-      if (outermost) {
-        pending.remove();
-        deliver(current.committed);
-      }
+      // Out of the scope, so that a listener that runs on this thread and changes a bucket starts a change of its own.
+      deliver(outermost.committed);
     }
   }
 
@@ -162,15 +147,7 @@ public final class S3ChangePublisher {
    */
   public <T> T asOperation(String operationName, Supplier<T> action) {
     Objects.requireNonNull(operationName);
-    if (operation.get() != null) {
-      return action.get();
-    }
-    operation.set(operationName);
-    try {
-      return action.get();
-    } finally {
-      operation.remove();
-    }
+    return operation.isBound() ? action.get() : ScopedValue.where(operation, operationName).call(action::get);
   }
 
   private void deliver(List<S3Change> changes) {
@@ -232,6 +209,25 @@ public final class S3ChangePublisher {
      * The changes of the changes that succeeded, in the order they were committed.
      */
     private final List<S3Change> committed = new ArrayList<>();
+
+    /**
+     * Run a change, keeping the changes published within it if it succeeds.
+     */
+    private <T> T run(Supplier<T> change) {
+      List<S3Change> published = new ArrayList<>();
+      scopes.push(published);
+      boolean succeeded = false;
+      try {
+        T result = change.get();
+        succeeded = true;
+        return result;
+      } finally {
+        scopes.pop();
+        if (succeeded) {
+          committed.addAll(published);
+        }
+      }
+    }
 
   }
 
