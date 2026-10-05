@@ -102,7 +102,7 @@ LocalS3.builder()
 ### Startup cost
 
 A mock that a test class starts is on the critical path of every build, so the numbers are worth measuring rather than
-asserting. On an Apple M5 Max with Temurin 25.0.9, with the standalone
+asserting. On an Apple M5 Max with Temurin 25.0.2, with the standalone
 [executable jar](deployment.md#executable-jar) (10 MB) in `IN_MEMORY` mode:
 
 | What | Measured |
