@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Creates the AppCDS archive of the JVM based image: starts the service with -XX:ArchiveClassesAtExit, sends it the
-# common requests, so that the classes they load (Netty, Jackson, the controllers) are archived too, and stops it.
-# The JVM writes the archive when it exits. Run by the Dockerfile, with the JDK and the jar path of the image, which an
-# archive is only valid for.
+# Creates the AOT cache of the JVM based image: starts the service with -XX:AOTCacheOutput, sends it the common
+# requests, so that the classes they load (Netty, Jackson, the controllers) are loaded and linked ahead of time and
+# their methods profiled too, and stops it. The JVM writes the cache when it exits. Run by the Dockerfile, with the JDK,
+# the jar path and the JVM options of the image, which a cache is only valid for: the Dockerfile passes the options that
+# the image always runs with, e.g. -XX:+UseCompactObjectHeaders, which a cache must be created with to be used.
 #
 # The service is trained the way the image runs it and clients reach it: PERSISTENCE mode, the default of the image,
 # so that the classes of the store and the file system storage are archived, and with credentials, since the clients
@@ -10,26 +11,27 @@
 # image reads as the credentials of the service. The requests are signed with SigV4 by curl, and cover a body larger
 # than the 4 MiB held in memory, the aws-chunked bodies, signed and unsigned, and a presigned URL.
 #
-# Usage: cds-training.sh <jar> <archive>
+# Usage: aot-training.sh <jar> <cache> [<JVM option>...]
 set -euo pipefail
 
 JAR="$1"
 ARCHIVE="$2"
+shift 2
 PORT=29199
 HOST="127.0.0.1:${PORT}"
 ENDPOINT="http://${HOST}"
 REGION="us-east-1"
-ACCESS_KEY="cds"
-SECRET_KEY="cds"
+ACCESS_KEY="aot"
+SECRET_KEY="aot"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# The "Skipping ...: Unsupported location" warnings of the dynamic proxies and lambda forms are expected.
+# The "Skipping ..." warnings of the classes that can't be cached, e.g. dynamic proxies and JFR events, are expected.
 env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
   LOCAL_S3_MODE=PERSISTENCE LOCAL_S3_DATA_PATH="$WORK_DIR/data" \
   LOCAL_S3_ACCESS_KEY_ID="$ACCESS_KEY" LOCAL_S3_SECRET_ACCESS_KEY="$SECRET_KEY" \
   LOCAL_S3_ICEBERG_CATALOG=true LOCAL_S3_HOST=127.0.0.1 LOCAL_S3_PORT="$PORT" \
-  java -XX:ArchiveClassesAtExit="$ARCHIVE" -Xlog:cds=error -jar "$JAR" >"$WORK_DIR/service.log" 2>&1 &
+  java "$@" -XX:AOTCacheOutput="$ARCHIVE" -Xlog:aot=error -jar "$JAR" >"$WORK_DIR/service.log" 2>&1 &
 PID=$!
 
 for _ in $(seq 1 300); do

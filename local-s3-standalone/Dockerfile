@@ -10,10 +10,14 @@ COPY --chown=locals3:locals3 build/libs/s3.jar /app/s3.jar
 
 WORKDIR /app
 
-# AppCDS: archive the classes that the service loads to start and to answer the common requests, which about halves
-# its startup time. The archive is only valid for this JDK and this jar at this path; a JVM that can't use it, e.g.
-# with another jar mounted over /app/s3.jar, warns and starts without it.
-RUN --mount=type=bind,source=cds-training.sh,target=/tmp/cds-training.sh bash /tmp/cds-training.sh /app/s3.jar /app/app.jsa
+# AOT cache: load and link the classes that the service loads to start and to answer the common requests, and profile
+# their methods, ahead of time, which more than halves its startup time. The cache is only valid for this JDK, this jar
+# at this path, and compact object headers, which the CMD enables before JAVA_OPTS for that reason; a JVM that can't use
+# it, e.g. with another jar mounted over /app/s3.jar, or with -XX:-UseCompactObjectHeaders or ZGC in JAVA_OPTS, warns
+# and starts without it. Compact object headers take 4 bytes less per object, which the many small objects of the
+# metadata make up for.
+RUN --mount=type=bind,source=aot-training.sh,target=/tmp/aot-training.sh \
+    bash /tmp/aot-training.sh /app/s3.jar /app/app.aot -XX:+UseCompactObjectHeaders -XX:+UseSerialGC
 
 # The data directory of a PERSISTENCE service, which this image runs by default. It has to belong to the user
 # the service runs as, and before VOLUME: an anonymous volume, i.e. the one that `docker run` without a bind
@@ -42,7 +46,8 @@ ENV LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true
 
 # Size the heap by the memory limit of the container, and collect it with the Serial GC, which takes the least memory
 # and CPU for the heaps of a few GB that a test or development service has. Override JAVA_OPTS to tune the JVM, e.g.
-# with -XX:+UseG1GC for a large heap. The AppCDS archive is used whatever JAVA_OPTS says.
+# with -XX:+UseG1GC for a large heap. The AOT cache is used whatever JAVA_OPTS says, unless it disables compact object
+# headers or selects ZGC.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC"
 
-CMD exec java -XX:SharedArchiveFile=/app/app.jsa $JAVA_OPTS -jar s3.jar
+CMD exec java -XX:AOTCache=/app/app.aot -XX:+UseCompactObjectHeaders $JAVA_OPTS -jar s3.jar

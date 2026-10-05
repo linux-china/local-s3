@@ -70,12 +70,18 @@ and Spark and Trino that use it.
 ### JVM options
 
 The JVM based image starts in about half the time that a plain `java -jar` takes, thanks to an
-[AppCDS](https://docs.oracle.com/en/java/javase/25/vm/class-data-sharing.html) archive, `/app/app.jsa`, that the image
-build creates by running the service the way the image runs it, in `PERSISTENCE` mode and with credentials, and
-sending it the common S3, S3 Vectors and Iceberg requests, signed with SigV4 like the requests of the AWS SDKs, DuckDB
-and s5cmd, including bodies larger than 4 MiB, `aws-chunked` bodies and a presigned URL. The image always
-starts with `-XX:SharedArchiveFile=/app/app.jsa`, whatever `JAVA_OPTS` says; a JVM that can't use the archive, e.g.
-because another jar is mounted over `/app/s3.jar`, warns and starts without it.
+[AOT cache](https://openjdk.org/jeps/514), `/app/app.aot`, that the image build creates by running the service the way
+the image runs it, in `PERSISTENCE` mode and with credentials, and sending it the common S3, S3 Vectors and Iceberg
+requests, signed with SigV4 like the requests of the AWS SDKs, DuckDB and s5cmd, including bodies larger than 4 MiB,
+`aws-chunked` bodies and a presigned URL. The cache holds the classes that the service loads, already loaded and
+linked, and the profiles of their methods, so that the JIT compiles the hot ones sooner.
+
+The image always starts with `-XX:AOTCache=/app/app.aot -XX:+UseCompactObjectHeaders`, whatever `JAVA_OPTS` says.
+[Compact object headers](https://openjdk.org/jeps/519) take 4 bytes less per object, which adds up for the many small
+objects of the metadata, and the cache was created with them: a JVM only uses a cache that was created with the same
+setting. A JVM that can't use the cache warns `Unable to use AOT cache` and starts without it, in about twice the time.
+This happens with another jar mounted over `/app/s3.jar`, `-XX:-UseCompactObjectHeaders` or `-XX:+UseZGC` in
+`JAVA_OPTS`. Other GCs, e.g. `-XX:+UseG1GC`, and the options below use the cache.
 
 `JAVA_OPTS` defaults to `-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC`: the heap is sized by the memory limit of the
 container, and the Serial GC takes less memory and CPU than G1 for the heaps below a few GB that a test or development

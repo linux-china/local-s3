@@ -385,10 +385,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Changed
 
-+ The JVM based Docker image starts with an AppCDS archive, `/app/app.jsa`, which its build creates by training the
++ The JVM based Docker image starts with an AOT cache, `/app/app.aot`, which its build creates by training the
   service in `PERSISTENCE` mode, the default of the image, with credentials and SigV4 signed requests, e.g. large and
   `aws-chunked` uploads and a presigned URL, so that the classes of the store and of the signature verification that a
-  container loads on startup and on its first requests are in the archive too.
+  container loads on startup and on its first requests are in the cache too, loaded, linked and profiled. The image
+  always runs with compact object headers, `-XX:+UseCompactObjectHeaders`, which the cache is created with; see
+  [JVM options](docs/deployment.md#jvm-options).
 + The log of the jar and the Docker images is timestamped in the time zone of the process, with its offset, e.g.
   `2026-09-30T13:31:01.319+02:00`, rather than always in `Asia/Shanghai`; set `TZ` to change it. It is no longer colored
   unless `LOCAL_S3_LOG_COLOR=true`, so `docker logs`, CI logs and log files hold no escape sequences, and no longer

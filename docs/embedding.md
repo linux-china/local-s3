@@ -401,6 +401,26 @@ for one.
 
 A settings object writes through to the builder as it is called, so it must not be kept beyond the call.
 
+### Start faster with an AOT cache
+
+Most of the time that the first service of a JVM takes to start goes to loading classes. On Java 25, an
+[AOT cache](https://openjdk.org/jeps/514) of the application loads and links them ahead of time: create it with one
+training run of the application, then start it with the cache.
+
+```shell
+java -XX:AOTCacheOutput=app.aot -cp app.jar:local-s3-rest.jar:... com.example.App   # training run; writes app.aot on exit
+java -XX:AOTCache=app.aot       -cp app.jar:local-s3-rest.jar:... com.example.App
+```
+
+With a classpath of jars, e.g. an IDE plugin or an application started from its jars, the first
+`LocalS3.builder().port(0).build().start()` takes about 65 ms instead of 230 ms on an Apple Silicon laptop.
+
+The JVM only uses the cache with the same JDK, the same classpath and the same object header setting, e.g.
+`-XX:+UseCompactObjectHeaders`; otherwise it warns and starts without it. Java 25 can't create a cache for a classpath
+that has a non-empty directory on it (`Error: non-empty directory`), which rules out the test JVMs of Gradle and Maven,
+whose classpath has `build/classes` or `target/classes` on it. For a Spring Boot executable jar, extract it first, see
+the CDS and AOT cache sections of the Spring Boot documentation.
+
 ## JetBrains IDEs
 
 A plugin of IntelliJ IDEA, PyCharm, DataGrip or another JetBrains IDE can embed LocalS3 as the S3 service of the IDE,
