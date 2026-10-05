@@ -277,7 +277,7 @@ public class LocalS3Properties {
 
     /**
      * Max size of the content, i.e. the objects and parts, that an IN_MEMORY service stores in the heap; storing more
-     * is answered with 507 InsufficientStorage. Defaults to half the max heap.
+     * is answered with 507 InsufficientStorage. Defaults to a quarter of the max heap.
      */
     private DataSize maxSize;
 

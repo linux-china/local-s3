@@ -212,7 +212,7 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
 
   /**
    * The max heap that the content of an {@code IN_MEMORY} service takes, beyond which an upload is answered with
-   * {@code 507 InsufficientStorage}; the default is half the max heap of the container.
+   * {@code 507 InsufficientStorage}; the default is a quarter of the max heap of the container.
    *
    * @param bytes a positive number of bytes with an optional {@code k}, {@code m} or {@code g} suffix, e.g.
    *     {@code 512m}.

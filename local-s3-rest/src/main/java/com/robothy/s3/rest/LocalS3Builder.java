@@ -931,7 +931,7 @@ public class LocalS3Builder {
          * {@linkplain #dataPath(String) data path} doesn't count; its copies are bounded by
          * {@code LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES}. A {@code PERSISTENCE} service ignores the limit.
          *
-         * <p>Default value is {@linkplain LocalS3Config#DEFAULT_MAX_IN_MEMORY_BYTES}, i.e. half the max heap;
+         * <p>Default value is {@linkplain LocalS3Config#DEFAULT_MAX_IN_MEMORY_BYTES}, i.e. a quarter of the max heap;
          * {@code Long.MAX_VALUE} for no limit.
          *
          * @param maxInMemoryBytes max number of bytes, positive.

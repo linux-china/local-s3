@@ -64,7 +64,7 @@ imported either.
 | Part size of a multipart upload | not validated | at least 5 MiB except the last part; otherwise `EntityTooSmall` |
 | Object keys and user-defined metadata | not validated | at most 1024 bytes and 2 KB in UTF-8, like Amazon S3; otherwise `KeyTooLongError` and `MetadataTooLarge` |
 | Credentials variables of the jar and `fromEnvironment()` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `LOCAL_S3_ACCESS_KEY_ID`, `LOCAL_S3_SECRET_ACCESS_KEY`; `AWS_*` only with `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true`, which the Docker images set |
-| Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most half the max heap; beyond it `507 InsufficientStorage` (`storage(storage -> storage.maxInMemoryBytes(...))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
+| Content of an `IN_MEMORY` service | unbounded, until the JVM runs out of heap | at most a quarter of the max heap; beyond it `507 InsufficientStorage` (`storage(storage -> storage.maxInMemoryBytes(...))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES`, `local-s3.in-memory.max-size`) |
 
 `LocalS3Container` of 2.5 expects port `29090` and `LOCAL_S3_MODE`, so use it with an image of 2.5 or later.
 Docker allocates its host port now, so `getPort()` is answered once the container has started, and raises an
@@ -254,8 +254,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
 
 + **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,
-  `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`), `local-s3.in-memory.max-size` and `@LocalS3(maxInMemoryBytes)` limit the heap that the objects and parts of an `IN_MEMORY` service take, half the max
-  heap by default. An upload or a copy beyond it is answered with `507 InsufficientStorage`, whose message suggests the
+  `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`), `local-s3.in-memory.max-size` and `@LocalS3(maxInMemoryBytes)` limit the heap that the objects and parts of an `IN_MEMORY` service take, a quarter of
+  the max heap by default. An upload or a copy beyond it is answered with `507 InsufficientStorage`, whose message suggests the
   `PERSISTENCE` mode, instead of an `OutOfMemoryError` that takes the embedding application or IDE down.
 + **Signed requests**: `credentials(accessKeyId, secretAccessKey)`, `LOCAL_S3_ACCESS_KEY_ID` /
   `LOCAL_S3_SECRET_ACCESS_KEY` and `@LocalS3(accessKey, secretKey)` verify AWS Signature Version 4, before the body of

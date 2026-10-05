@@ -135,7 +135,7 @@ public @interface LocalS3 {
    * Set the max heap that the objects and parts stored in an {@code IN_MEMORY} service take, as a number of bytes with
    * an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}. An upload or a copy beyond it is answered
    * with {@code 507 InsufficientStorage} instead of running the JVM out of heap. The initial data of
-   * {@linkplain #dataPath()} doesn't count. The default, the empty string, is half the max heap.
+   * {@linkplain #dataPath()} doesn't count. The default, the empty string, is a quarter of the max heap.
    *
    * @return the max number of bytes; empty for the default.
    */

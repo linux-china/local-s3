@@ -24,9 +24,9 @@ Testcontainers. All artifacts are published to Maven Central under the group `io
 
 By default, LocalS3 runs in `IN_MEMORY` mode and listens on `127.0.0.1:29090`; all data and metadata are kept in memory.
 
-The objects of an `IN_MEMORY` service take at most half the max heap by default, so that tests which write large files,
-e.g. Parquet files of DuckDB or Iceberg, don't run the application or IDE that embeds LocalS3 out of heap: an upload
-beyond the limit is answered with `507 InsufficientStorage`. Set the limit with
+The objects of an `IN_MEMORY` service take at most a quarter of the max heap by default, so that tests which write
+large files, e.g. Parquet files of DuckDB or Iceberg, don't run the application or IDE that embeds LocalS3 out of
+heap: an upload beyond the limit is answered with `507 InsufficientStorage`. Set the limit with
 `storage(storage -> storage.maxInMemoryBytes(bytes))`, `LOCAL_S3_IN_MEMORY_MAX_BYTES` or
 `local-s3.in-memory.max-size`, or use `PERSISTENCE` mode for data that large.
 
@@ -466,9 +466,9 @@ that a user or a tool writes into the IDE's service, e.g. the Parquet files of a
 crashes; an IDE that exits normally shuts the service down and loses nothing. See
 [Persistence policy](deployment.md#persistence-policy) for the numbers.
 
-An `IN_MEMORY` service suits a plugin whose data is scratch, but its objects take up to half the max heap by default,
-i.e. half of the IDE's heap. Give it a limit of its own, e.g. `storage(storage -> storage.maxInMemoryBytes(256L * 1024
-* 1024))`, beyond which uploads are answered `507 InsufficientStorage` rather than taking memory from the IDE.
+An `IN_MEMORY` service suits a plugin whose data is scratch, but its objects take up to a quarter of the max heap by
+default, i.e. a quarter of the IDE's heap. Give it a limit of its own, e.g.
+`storage(storage -> storage.maxInMemoryBytes(256L * 1024 * 1024))`, beyond which uploads are answered `507 InsufficientStorage` rather than taking memory from the IDE.
 
 ### Stopping with the IDE
 

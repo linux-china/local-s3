@@ -86,7 +86,7 @@ final class CommandLine {
                     "PERSISTENCE mode: DURABLE, the default, commits every change, so a killed process loses"
                             + " nothing (no fsync); FAST commits in the background, at most a second later."),
             option("--in-memory-max-bytes", LocalS3Environment.LOCAL_S3_IN_MEMORY_MAX_BYTES, "<size>",
-                    "IN_MEMORY mode: the max heap the stored content takes, e.g. 512m. Default half the max heap."),
+                    "IN_MEMORY mode: the max heap the stored content takes, e.g. 512m. Default a quarter of the max heap."),
             option("--buckets", List.of("--bucket"), LocalS3Environment.AWS_BUCKETS, "<names>",
                     "Comma-separated buckets to create on startup; repeat the option to add more. A name"
                             + " suffixed with :versioned, e.g. audit:versioned, gets versioning enabled."),

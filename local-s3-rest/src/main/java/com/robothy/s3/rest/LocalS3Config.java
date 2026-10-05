@@ -109,12 +109,13 @@ public record LocalS3Config(
   public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 5L * 1024 * 1024 * 1024;
 
   /**
-   * Default max number of bytes(half the max heap) that the content stored by an {@code IN_MEMORY} service takes, so
-   * that uploading more than the heap holds is answered with {@code 507 InsufficientStorage} rather than taking the
-   * JVM that embeds the service down with an {@code OutOfMemoryError}.
+   * Default max number of bytes(a quarter of the max heap) that the content stored by an {@code IN_MEMORY} service
+   * takes, so that uploading more than the heap holds is answered with {@code 507 InsufficientStorage} rather than
+   * taking the JVM that embeds the service down with an {@code OutOfMemoryError}. A quarter rather than a half, as the
+   * service usually shares the heap with the Spring Boot application or IDE that embeds it.
    */
   public static final long DEFAULT_MAX_IN_MEMORY_BYTES = Runtime.getRuntime().maxMemory() == Long.MAX_VALUE
-      ? Long.MAX_VALUE : Runtime.getRuntime().maxMemory() / 2;
+      ? Long.MAX_VALUE : Runtime.getRuntime().maxMemory() / 4;
 
   /**
    * Default size(4M) above which a request body is buffered in a temporary file instead of the Java heap, or, for the

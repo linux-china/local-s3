@@ -76,7 +76,7 @@ LocalS3 implements the [Amazon S3 Vectors API](apis.md#supported-amazon-s3-vecto
 
 Three different things, and tests use all three:
 
-+ **`IN_MEMORY`**, the default: nothing touches the disk. The content is bounded — half the max heap by default — so a
++ **`IN_MEMORY`**, the default: nothing touches the disk. The content is bounded — a quarter of the max heap by default — so a
   test that writes large Parquet files gets `507 InsufficientStorage` instead of taking the JVM that embeds the service
   down with an `OutOfMemoryError`.
 + **`PERSISTENCE`**: metadata in an [H2 MVStore](https://h2database.com/html/mvstore.html) file, object content in a
