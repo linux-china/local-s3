@@ -152,6 +152,8 @@ local-s3:
   persistence-policy: fast   # persistence mode; durable commits every change
   seed:
     classpath: s3-fixtures   # the objects the service starts with
+  events:
+    executor: virtual    # direct (default), virtual or application; see the events below
   # credentials:
   #   access-key-id: ...
   #   secret-access-key: ...
@@ -176,10 +178,14 @@ The starter defines:
   [Spring Cloud AWS](https://github.com/awspring/spring-cloud-aws) (`spring-cloud-aws-starter-s3`), so these back off
   from the clients of the starter, and `S3Template` uses them. Its `s3VectorsClient`, which it defines whatever the
   application defines, is built with the `S3VectorsClientBuilder` of the starter, so it points at the service too;
-+ the `S3Change`s that the service commits as application events. They are published on the thread that
++ the `S3Change`s that the service commits as application events. By default they are published on the thread that
   made the change, so a change that the application makes through `localS3.getS3Manager()` in a transaction reaches a
-  `@TransactionalEventListener` once the transaction commits. Changes made while the context is refreshed,
-  e.g. of the default buckets, are published once it is refreshed;
+  `@TransactionalEventListener` once the transaction commits, and a slow listener holds up the S3 response:
+  `local-s3.events.executor=virtual` delivers them in order on a virtual thread instead, and `application` on the
+  `applicationTaskExecutor` of Spring Boot, in no particular order. See
+  [Events of the Spring Boot starter](../docs/embedding.md#events-of-the-spring-boot-starter), with how a
+  `@TransactionalEventListener` behaves then. Changes made while the context is refreshed, e.g. of the default buckets,
+  are published once it is refreshed;
 + with Actuator, a `localS3` health indicator (`management.health.local-s3.enabled`), which checks `/_health` and
   reports the endpoint and the amount of data;
 + with Actuator, a `locals3` endpoint, `GET /actuator/locals3`, which reports the configuration of the service (mode,

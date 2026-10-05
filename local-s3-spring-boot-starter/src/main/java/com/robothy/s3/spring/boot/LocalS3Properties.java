@@ -537,6 +537,14 @@ public class LocalS3Properties {
      */
     private boolean enabled = true;
 
+    /**
+     * The executor that delivers the changes to the listeners of the service: direct, on the thread that made the
+     * change, which a listener holds up; virtual, on a virtual thread of its own, one change after the other in the
+     * order they were committed; or application, on the applicationTaskExecutor of Spring, which may deliver them out
+     * of order.
+     */
+    private EventExecutor executor = EventExecutor.DIRECT;
+
     public boolean isEnabled() {
       return enabled;
     }
@@ -544,6 +552,36 @@ public class LocalS3Properties {
     public void setEnabled(boolean enabled) {
       this.enabled = enabled;
     }
+
+    public EventExecutor getExecutor() {
+      return executor;
+    }
+
+    public void setExecutor(EventExecutor executor) {
+      this.executor = executor;
+    }
+
+  }
+
+  /**
+   * The executor that delivers the changes of LocalS3 to its listeners, see {@code local-s3.events.executor}.
+   */
+  public enum EventExecutor {
+
+    /**
+     * On the thread that made the change, before the S3 response is sent.
+     */
+    DIRECT,
+
+    /**
+     * On a virtual thread of its own, in the order the changes were committed.
+     */
+    VIRTUAL,
+
+    /**
+     * On the {@code applicationTaskExecutor} of Spring, in no particular order.
+     */
+    APPLICATION
 
   }
 

@@ -545,6 +545,75 @@ contexts that Spring caches side by side don't compete for port 29090; the clien
 `${local.s3.endpoint}` placeholder, name the port it listens on. `@AutoConfigureLocalS3` also resets the data after each
 test method.
 
+### Events of the Spring Boot starter
+
+The starter publishes every `S3Change` that the service commits to the application context, where `@EventListener` and
+`@TransactionalEventListener` methods receive it (`local-s3.events.enabled=false` turns it off).
+`local-s3.events.executor` chooses the thread a listener runs on:
+
+| `local-s3.events.executor` | Where the listeners run | Order | The S3 response waits for the listeners |
+|----------------------------|-------------------------|-------|-----------------------------------------|
+| `direct` (default)         | the thread that made the change, e.g. the one handling the `PutObject` request | committed order | yes |
+| `virtual`                  | one virtual thread of the starter, `local-s3-events-0` | committed order | no |
+| `application`              | Spring Boot's `applicationTaskExecutor` (or the application's only `Executor` bean) | **none**: changes of the same key may be handled concurrently, a delete before its create | no |
+
+With `direct`, **the time a listener takes adds to the latency of the request that made the change**: a client that
+uploads a file waits until its listener has parsed it, stored it or called a model. That suits tests that assert on
+what a listener did right after the upload, but not a listener that does real work. Choose `virtual` for that; choose
+`application` only when the listeners don't depend on the order of the changes, e.g. each handles its own key once,
+and to share the pool, its size and its metrics with the `@Async` methods of the application. The executor applies to
+every listener of the service, the `listener(...)` of a `LocalS3BuilderCustomizer` included; a customizer that calls
+`events(events -> events.executor(...))` overrides it. When the context closes, the service stops first, then `virtual`
+delivers the changes still queued, waiting up to 10 seconds.
+
+A complete "process each upload" listener:
+
+```yaml
+local-s3:
+  buckets: [uploads]
+  events:
+    executor: virtual   # the PutObject response doesn't wait for the processing
+```
+
+```java
+@Component
+class UploadProcessor {
+
+  private final S3Client s3;
+  private final DocumentRepository documents;
+
+  UploadProcessor(S3Client s3, DocumentRepository documents) {
+    this.s3 = s3;
+    this.documents = documents;
+  }
+
+  @EventListener(condition = "#change.type() == T(com.robothy.s3.core.event.S3ChangeType).OBJECT_CREATED "
+      + "and #change.bucketName() == 'uploads'")
+  void onUpload(S3Change change) {
+    // The change is committed, so the object can be read back: the version the change names in a versioned bucket,
+    // otherwise the current object, which a later put may already have replaced with an asynchronous executor.
+    try (ResponseInputStream<GetObjectResponse> content = s3.getObject(request -> request
+        .bucket(change.bucketName()).key(change.key()).versionId(change.versionId()))) {
+      documents.save(Document.parse(change.key(), content));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+}
+```
+
+An exception thrown by a listener is logged, whichever the executor; it doesn't fail the request, and the change isn't
+delivered again. A listener that has to retry does it itself.
+
+**`@TransactionalEventListener` with an asynchronous executor.** A transactional listener is bound to the transaction
+of the thread that publishes the event. With `direct`, a change that the application makes through
+`localS3.getS3Manager()` in a `@Transactional` method is published on that thread, so the listener runs once the
+transaction commits, and not at all if it rolls back. With `virtual` or `application`, the change is published on
+another thread, which has no transaction: by default a `@TransactionalEventListener` **ignores the event entirely**, and
+with `fallbackExecution = true` it runs right away, whether the transaction of the change commits or rolls back. Use
+`@EventListener` with those executors, or keep `direct` for the changes that have to follow a transaction. A request of a
+client is never part of a transaction of the application, so this only concerns changes made through the Java API.
+
 ### Native images
 
 An application that embeds LocalS3, with the starter or with the Java API, can be built into a GraalVM native

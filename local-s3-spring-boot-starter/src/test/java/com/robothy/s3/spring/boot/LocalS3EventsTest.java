@@ -8,8 +8,12 @@ import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.rest.LocalS3;
 import java.io.ByteArrayInputStream;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
@@ -118,6 +124,103 @@ class LocalS3EventsTest {
     });
   }
 
+  /**
+   * With {@code local-s3.events.executor=virtual}, a slow listener doesn't hold up the request that made the change, and
+   * the changes are still delivered in the order they were committed.
+   */
+  @Test
+  void theVirtualExecutorDeliversInOrderWithoutHoldingUpTheRequests() {
+    runner.withPropertyValues("local-s3.events.executor=virtual").withUserConfiguration(BlockingListener.class)
+        .run(context -> {
+          BlockingListener blocking = context.getBean(BlockingListener.class);
+          S3Client s3 = context.getBean(S3Client.class);
+          for (int i = 0; i < 5; i++) {
+            int n = i;
+            s3.putObject(request -> request.bucket("events").key("key-" + n), RequestBody.fromString("Hello"));
+          }
+          assertTrue(blocking.keys.isEmpty(), "The requests are answered while the listener waits.");
+
+          blocking.release.countDown();
+          List<S3Change> objects = context.getBean(Listeners.class).objects;
+          awaitSize(objects, 5);
+          assertEquals(List.of("key-0", "key-1", "key-2", "key-3", "key-4"),
+              objects.stream().map(S3Change::key).toList());
+          assertTrue(blocking.threads.stream().allMatch(thread -> thread.startsWith("local-s3-events-")),
+              blocking.threads.toString());
+        });
+  }
+
+  /**
+   * A change published on another thread is outside the transaction that made it: a
+   * {@code @TransactionalEventListener} ignores it, while an {@code @EventListener} receives it.
+   */
+  @Test
+  void aTransactionalEventListenerIgnoresTheChangesOfAnAsynchronousExecutor() {
+    runner.withPropertyValues("local-s3.events.executor=virtual").withUserConfiguration(Transactions.class)
+        .run(context -> {
+          Listeners listeners = context.getBean(Listeners.class);
+          new TransactionTemplate(context.getBean(PlatformTransactionManager.class))
+              .executeWithoutResult(status -> put(context.getBean(LocalS3.class), "committed.txt"));
+          awaitSize(listeners.objects, 1);
+          // The delivery to both listeners is done once the @EventListener has received it.
+          Thread.sleep(100);
+          assertTrue(listeners.committed.isEmpty());
+        });
+  }
+
+  @Test
+  void theApplicationExecutorDeliversOnTheApplicationTaskExecutor() {
+    runner.withPropertyValues("local-s3.events.executor=application")
+        .withUserConfiguration(ApplicationTaskExecutor.class).run(context -> {
+          put(context.getBean(LocalS3.class), "on-application-executor.txt");
+          Listeners listeners = context.getBean(Listeners.class);
+          awaitSize(listeners.objects, 1);
+          assertEquals("application-task", listeners.objectThreads.getFirst());
+        });
+  }
+
+  @Test
+  void theApplicationExecutorNeedsAnExecutorBean() {
+    runner.withPropertyValues("local-s3.events.executor=application").run(context -> {
+      assertTrue(context.getStartupFailure() != null);
+      assertTrue(context.getStartupFailure().getMessage().contains("local-s3.events.executor=application"),
+          context.getStartupFailure().getMessage());
+    });
+  }
+
+  /**
+   * Closing the context delivers the changes that are still queued.
+   */
+  @Test
+  void closingTheContextDeliversTheQueuedChanges() {
+    List<S3Change> objects = new CopyOnWriteArrayList<>();
+    runner.withPropertyValues("local-s3.events.executor=virtual").withUserConfiguration(BlockingListener.class)
+        .run(context -> {
+          put(context.getBean(LocalS3.class), "queued.txt");
+          BlockingListener blocking = context.getBean(BlockingListener.class);
+          // Released once the context is closing, while the change is still queued.
+          new Thread(() -> {
+            try {
+              Thread.sleep(200);
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
+            blocking.release.countDown();
+          }).start();
+          objects.addAll(context.getBean(Listeners.class).objects);
+          context.getBean(Listeners.class).sink = objects;
+        });
+    assertEquals(List.of("queued.txt"), objects.stream().map(S3Change::key).distinct().toList());
+  }
+
+  private static void awaitSize(List<?> list, int size) throws InterruptedException {
+    long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+    while (list.size() < size && System.nanoTime() < deadline) {
+      Thread.sleep(10);
+    }
+    assertEquals(size, list.size(), list.toString());
+  }
+
   private static void put(LocalS3 localS3, String key) {
     localS3.getS3Manager().objectService().putObject("events", key, PutObjectOptions.builder()
         .content(new ByteArrayInputStream("Hello".getBytes()))
@@ -133,9 +236,23 @@ class LocalS3EventsTest {
 
     final List<S3Change> committed = new CopyOnWriteArrayList<>();
 
+    final List<String> objectThreads = new CopyOnWriteArrayList<>();
+
+    /**
+     * Also receives the changes of objects, when set: a test reads it after the context is closed.
+     */
+    volatile List<S3Change> sink;
+
     @EventListener
     void onChange(S3Change change) {
       // A change of a bucket names no object key.
+      if (change.key() != null) {
+        objectThreads.add(Thread.currentThread().getName());
+        List<S3Change> current = sink;
+        if (current != null) {
+          current.add(change);
+        }
+      }
       (change.key() == null ? buckets : objects).add(change);
     }
 
@@ -144,6 +261,41 @@ class LocalS3EventsTest {
       if (change.key() != null) {
         committed.add(change);
       }
+    }
+
+  }
+
+  /**
+   * Holds up the delivery of the changes of objects until it is released.
+   */
+  @Configuration(proxyBeanMethods = false)
+  static class BlockingListener {
+
+    final CountDownLatch release = new CountDownLatch(1);
+
+    final List<String> keys = new CopyOnWriteArrayList<>();
+
+    final List<String> threads = new CopyOnWriteArrayList<>();
+
+    // Before the listener of Listeners, which only sees a change once this one has let it through.
+    @EventListener
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    void onChange(S3Change change) throws InterruptedException {
+      if (change.key() != null) {
+        release.await();
+        keys.add(change.key());
+        threads.add(Thread.currentThread().getName());
+      }
+    }
+
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  static class ApplicationTaskExecutor {
+
+    @Bean(destroyMethod = "shutdown")
+    ExecutorService applicationTaskExecutor() {
+      return Executors.newSingleThreadExecutor(runnable -> new Thread(runnable, "application-task"));
     }
 
   }

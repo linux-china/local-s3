@@ -211,7 +211,8 @@ public final class S3ChangePublisher {
       log.warn("Change listener {} took {} ms to handle {} of {}/{} on the thread that made the change, which held up "
               + "the operation, e.g. its HTTP request. Deliver the changes on another executor, e.g. "
               + "LocalS3.builder().events(e -> e.executor(Executors.newSingleThreadExecutor())), or "
-              + "LocalS3Manager#changeListenerExecutor. This is logged once per listener.",
+              + "LocalS3Manager#changeListenerExecutor, or local-s3.events.executor=virtual with the Spring Boot "
+              + "starter. This is logged once per listener.",
           listener, Duration.ofNanos(elapsedNanos).toMillis(), change.type(), change.bucketName(),
           Objects.toString(change.key(), ""));
     }

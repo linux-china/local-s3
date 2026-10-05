@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -97,7 +98,8 @@ public class LocalS3AutoConfiguration {
   public LocalS3 localS3(LocalS3Properties properties, ObjectProvider<LocalS3ApplicationEventPublisher> eventPublisher,
                          ObjectProvider<LocalS3BuilderCustomizer> customizers,
                          ObjectProvider<RequestRecorder> requestRecorders,
-                         ObjectProvider<LocalS3Seeder> seeders, Environment environment) {
+                         ObjectProvider<LocalS3Seeder> seeders, LocalS3EventExecutor eventExecutor,
+                         Environment environment) {
     LocalS3Builder builder = LocalS3.builder()
         // The application context stops the service; a hook of its own would stop it before the beans that use it.
         .netty(netty -> netty.registerShutdownHook(false));
@@ -107,10 +109,12 @@ public class LocalS3AutoConfiguration {
           + "${local.s3.endpoint} names it. Set local-s3.port to listen on a fixed one.");
       builder.port(0);
     }
+    // The direct executor publishes on the thread that made the change, so that a listener of a change made in a
+    // transaction takes part in it, e.g. a @TransactionalEventListener of a put through getS3Manager() in a
+    // @Transactional method; the others trade that for requests that listeners don't hold up.
+    builder.events(settings -> settings.executor(eventExecutor.executor()));
     LocalS3ApplicationEventPublisher events = eventPublisher.getIfAvailable();
     if (events != null) {
-      // Published on the thread that made the change, so that a listener of a change made in a transaction takes part
-      // in it, e.g. a @TransactionalEventListener of a put through getS3Manager() in a @Transactional method.
       builder.events(listeners -> listeners.listener(events));
     }
     List<RequestRecorder> recorders = requestRecorders.orderedStream().toList();
@@ -147,6 +151,20 @@ public class LocalS3AutoConfiguration {
   @ConditionalOnProperty(name = "local-s3.events.enabled", havingValue = "true", matchIfMissing = true)
   public LocalS3ApplicationEventPublisher localS3ApplicationEventPublisher(ApplicationContext applicationContext) {
     return new LocalS3ApplicationEventPublisher(applicationContext);
+  }
+
+  /**
+   * The executor that delivers the changes of the service to its listeners, {@code local-s3.events.executor}. A
+   * {@linkplain LocalS3BuilderCustomizer} that sets one of its own overrides it.
+   *
+   * @param properties the configuration, whose {@code events.executor} selects the executor.
+   * @param beanFactory provides the {@code applicationTaskExecutor} of Spring Boot.
+   * @return the executor.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public LocalS3EventExecutor localS3EventExecutor(LocalS3Properties properties, ListableBeanFactory beanFactory) {
+    return LocalS3EventExecutor.of(properties.getEvents().getExecutor(), beanFactory);
   }
 
   /**
