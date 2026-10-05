@@ -252,6 +252,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   signatures names it in `client.refresh-credentials-endpoint`, so the `S3FileIO` of Iceberg refreshes its credentials
   before they expire.
   See [the built-in Iceberg REST catalog](docs/data-tools.md#the-built-in-iceberg-rest-catalog).
+  [`examples/lakehouse`](examples/lakehouse/README.md) is a Docker Compose setup of LocalS3 with the catalog on, and
+  Spark and Trino that write and read the same tables through it.
 
 + **Bounded in-memory storage**: `storage(storage -> storage.maxInMemoryBytes(bytes))`,
   `LOCAL_S3_IN_MEMORY_MAX_BYTES` (e.g. `512m`), `local-s3.in-memory.max-size` and `@LocalS3(maxInMemoryBytes)` limit the heap that the objects and parts of an `IN_MEMORY` service take, a quarter of

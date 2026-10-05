@@ -240,6 +240,7 @@ Elsewhere:
 | JUnit 5 | `@LocalS3(icebergCatalog = true)` |
 | Spring Boot | `local-s3.iceberg-catalog.enabled=true`, `local-s3.iceberg-catalog.warehouse=s3://warehouse/` |
 | Docker / jar | `LOCAL_S3_ICEBERG_CATALOG=true`, `LOCAL_S3_ICEBERG_WAREHOUSE=s3://warehouse/` |
+| Docker Compose, with Spark and Trino | [`examples/lakehouse`](../examples/lakehouse/README.md): `docker compose up`, then `spark-sql` and `trino` on the same tables |
 
 PyIceberg reaches it the same way:
 

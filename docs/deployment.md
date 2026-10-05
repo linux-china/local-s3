@@ -64,6 +64,8 @@ your own user instead, and keep the ownership of the directory, start the contai
 > configure the engines with the keys by hand, or publish the port to the loopback address of the host alone.
 
 `local-s3-standalone/docker-compose.yaml` starts both images side by side, on ports `29090` and `39090`.
+[`examples/lakehouse`](../examples/lakehouse/README.md) is a Compose file of LocalS3 with its Iceberg REST catalog on,
+and Spark and Trino that use it.
 
 ### JVM options
 
