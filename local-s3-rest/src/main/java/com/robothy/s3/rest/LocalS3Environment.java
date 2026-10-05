@@ -39,7 +39,7 @@ public final class LocalS3Environment {
    * The max number of bytes of heap that the content of an {@code IN_MEMORY} service takes, e.g. {@code 536870912} or
    * {@code 512m}, with an optional {@code k}, {@code m} or {@code g} suffix.
    *
-   * @see LocalS3Builder#maxInMemoryBytes(long)
+   * @see LocalS3Builder.StorageSettings#maxInMemoryBytes(long)
    */
   public static final String LOCAL_S3_IN_MEMORY_MAX_BYTES = "LOCAL_S3_IN_MEMORY_MAX_BYTES";
 

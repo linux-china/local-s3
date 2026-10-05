@@ -93,8 +93,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   | `websiteAllBuckets(b)`, `websiteIndexDocument(s)`, `websiteErrorDocument(s)`, `website(LocalS3Website)` | `website(website -> website.allBuckets(b).indexDocument(s).errorDocument(s))`, `website(website -> website.settings(...))` |
   | `icebergWarehouse(s)`, `icebergCatalog(LocalS3IcebergCatalog)` | `icebergCatalog(iceberg -> iceberg.warehouse(s))`, `icebergCatalog(iceberg -> iceberg.settings(...))` |
 
-  The methods that 2.4 had are kept as deprecated delegates, so code of 2.4 still compiles and behaves the same; the
-  ones added during 2.5 are gone. What every service is built with stays a method of the builder itself: `bindHost`,
+  **The methods of the left column are removed**, those of 2.4 included: code of 2.4 that calls one of them no longer
+  compiles, and moves it under its domain as the table shows. What every service is built with stays a method of the builder itself: `bindHost`,
   `acceptFromAnyHost`, `port`, `mode`, `dataPath`, `buckets`, `credentials`, `seeder`, `changeListener` and
   `fromEnvironment`, beside the one-liners that turn a domain on with its defaults, `tls(certPem, keyPem)`,
   `tls(LocalS3Tls)`, `website(true)` and `icebergCatalog(true)`. The environment variables and the `local-s3.*`

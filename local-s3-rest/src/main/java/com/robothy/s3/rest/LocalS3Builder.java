@@ -381,49 +381,6 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set when the changes of a {@code PERSISTENCE} service reach the disk; see
-     * {@linkplain StorageSettings#persistencePolicy(PersistencePolicy)}.
-     *
-     * @param persistencePolicy when the changes reach the disk.
-     * @return builder.
-     * @deprecated use {@code storage(storage -> storage.persistencePolicy(...))}, which groups the settings of the
-     *     storage.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder persistencePolicy(@NonNull PersistencePolicy persistencePolicy) {
-        return storage(storage -> storage.persistencePolicy(persistencePolicy));
-    }
-
-    /**
-     * Set the max number of bytes of heap that the content of an {@code IN_MEMORY} service takes; see
-     * {@linkplain StorageSettings#maxInMemoryBytes(long)}.
-     *
-     * @param maxInMemoryBytes max number of bytes, positive.
-     * @return builder.
-     * @throws IllegalArgumentException if the number of bytes isn't positive.
-     * @deprecated use {@code storage(storage -> storage.maxInMemoryBytes(...))}, which groups the settings of the
-     *     storage.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder maxInMemoryBytes(long maxInMemoryBytes) {
-        return storage(storage -> storage.maxInMemoryBytes(maxInMemoryBytes));
-    }
-
-    /**
-     * Set whether the initial data read from the data path is cached in memory; see
-     * {@linkplain StorageSettings#initialDataCacheEnabled(boolean)}.
-     *
-     * @param enabled is the initial data cache enabled.
-     * @return builder.
-     * @deprecated use {@code storage(storage -> storage.initialDataCacheEnabled(...))}, which groups the settings of
-     *     the storage.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder initialDataCacheEnabled(boolean enabled) {
-        return storage(storage -> storage.initialDataCacheEnabled(enabled));
-    }
-
-    /**
      * Configure the HTTP server: the threads that serve the requests, the limits that a request is held to, how the
      * server relates to the JVM it runs in, and the recorder of the requests it answered. The settings of this domain
      * are grouped, rather than spread over the builder, so that the knobs a service is rarely tuned with stay out of
@@ -451,76 +408,6 @@ public class LocalS3Builder {
     }
 
     /**
-     * Set the number of threads that accept connections; see
-     * {@linkplain NettySettings#parentEventGroupThreadNum(int)}.
-     *
-     * @param nettyParentEventGroupThreadNum netty parent event group thread number.
-     * @return builder.
-     * @deprecated use {@code netty(netty -> netty.parentEventGroupThreadNum(...))}, which groups the settings of the
-     *     HTTP server.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder nettyParentEventGroupThreadNum(int nettyParentEventGroupThreadNum) {
-        return netty(netty -> netty.parentEventGroupThreadNum(nettyParentEventGroupThreadNum));
-    }
-
-    /**
-     * Set the number of threads that read and write the connections; see
-     * {@linkplain NettySettings#childEventGroupThreadNum(int)}.
-     *
-     * @param nettyChildEventGroupThreadNum netty child event group thread number.
-     * @return builder.
-     * @deprecated use {@code netty(netty -> netty.childEventGroupThreadNum(...))}, which groups the settings of the
-     *     HTTP server.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder nettyChildEventGroupThreadNum(int nettyChildEventGroupThreadNum) {
-        return netty(netty -> netty.childEventGroupThreadNum(nettyChildEventGroupThreadNum));
-    }
-
-    /**
-     * Set the number of platform threads that handle the requests; see
-     * {@linkplain NettySettings#s3ExecutorThreadNum(int)}.
-     *
-     * @param s3ExecutorThreadNum local-s3 executor thread number.
-     * @return builder.
-     * @deprecated use {@code netty(netty -> netty.s3ExecutorThreadNum(...))}, which groups the settings of the HTTP
-     *     server.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder s3ExecutorThreadNum(int s3ExecutorThreadNum) {
-        return netty(netty -> netty.s3ExecutorThreadNum(s3ExecutorThreadNum));
-    }
-
-    /**
-     * Set whether {@linkplain LocalS3#start()} registers a JVM shutdown hook; see
-     * {@linkplain NettySettings#registerShutdownHook(boolean)}.
-     *
-     * @param registerShutdownHook whether to register a JVM shutdown hook when the service starts.
-     * @return builder.
-     * @deprecated use {@code netty(netty -> netty.registerShutdownHook(...))}, which groups the settings of the HTTP
-     *     server.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder registerShutdownHook(boolean registerShutdownHook) {
-        return netty(netty -> netty.registerShutdownHook(registerShutdownHook));
-    }
-
-    /**
-     * Set a recorder that receives every request that the service answered; see
-     * {@linkplain NettySettings#requestRecorder(RequestRecorder)}.
-     *
-     * @param requestRecorder the recorder.
-     * @return builder.
-     * @deprecated use {@code netty(netty -> netty.requestRecorder(...))}, which groups the settings of the HTTP
-     *     server.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder requestRecorder(@NonNull RequestRecorder requestRecorder) {
-        return netty(netty -> netty.requestRecorder(requestRecorder));
-    }
-
-    /**
      * Configure how the S3 API itself answers: the domains that address a bucket by the host of a request, and the
      * entity tags that the objects of completed multipart uploads get. The settings of this domain are grouped, so
      * that the knobs a service is rarely tuned with stay out of the way of the ones it is usually built with:
@@ -540,33 +427,6 @@ public class LocalS3Builder {
     public LocalS3Builder s3Api(@NonNull Consumer<S3ApiSettings> s3Api) {
         s3Api.accept(new S3ApiSettings());
         return this;
-    }
-
-    /**
-     * Add base domains of virtual-hosted-style requests; see
-     * {@linkplain S3ApiSettings#virtualHostDomains(String...)}.
-     *
-     * @param domains base domains, e.g. {@code s3} or {@code s3.local}.
-     * @return builder.
-     * @deprecated use {@code s3Api(s3 -> s3.virtualHostDomains(...))}, which groups the settings of the S3 API.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder virtualHostDomains(String... domains) {
-        return s3Api(s3 -> s3.virtualHostDomains(domains));
-    }
-
-    /**
-     * Set whether the object of a completed multipart upload gets the entity tag that Amazon S3 gives an object
-     * uploaded in parts; see {@linkplain S3ApiSettings#compositeMultipartEtags(boolean)}.
-     *
-     * @param compositeMultipartEtags whether to give the objects of completed uploads the entity tag of
-     *     Amazon S3.
-     * @return builder.
-     * @deprecated use {@code s3Api(s3 -> s3.compositeMultipartEtags(...))}, which groups the settings of the S3 API.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder compositeMultipartEtags(boolean compositeMultipartEtags) {
-        return s3Api(s3 -> s3.compositeMultipartEtags(compositeMultipartEtags));
     }
 
     /**
@@ -592,19 +452,6 @@ public class LocalS3Builder {
     public LocalS3Builder events(@NonNull Consumer<EventSettings> events) {
         events.accept(new EventSettings());
         return this;
-    }
-
-    /**
-     * Set the executor that delivers the changes to the {@linkplain #changeListener change listeners}; see
-     * {@linkplain EventSettings#executor(Executor)}.
-     *
-     * @param changeListenerExecutor executor that runs the change listeners.
-     * @return builder.
-     * @deprecated use {@code events(events -> events.executor(...))}, which groups the settings of the changes.
-     */
-    @Deprecated(since = "2.5.0")
-    public LocalS3Builder changeListenerExecutor(@NonNull Executor changeListenerExecutor) {
-        return events(events -> events.executor(changeListenerExecutor));
     }
 
     /**

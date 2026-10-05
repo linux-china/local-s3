@@ -186,7 +186,6 @@ class LocalS3Test {
    * as they are called; the one-liners that turn a domain on with its defaults stay beside it.
    */
   @Test
-  @SuppressWarnings("deprecation") // The deprecated delegates are part of what this test covers.
   void groupsTheSettingsOfADomain() {
     LocalS3Config config = LocalS3.builder()
         .netty(netty -> netty.parentEventGroupThreadNum(3)
@@ -228,13 +227,6 @@ class LocalS3Test {
     assertNull(LocalS3.builder().icebergCatalog(iceberg -> iceberg.warehouse("s3://lakehouse/").enabled(false))
         .buildConfig().icebergCatalog(), "The catalog is dropped by enabled(false).");
     assertFalse(LocalS3.builder().website(website -> website.enabled(false)).buildConfig().website().enabled());
-
-    // The deprecated thread-count methods of 2.4 write the same settings as the netty(...) domain.
-    LocalS3Config flat = LocalS3.builder().nettyParentEventGroupThreadNum(3).nettyChildEventGroupThreadNum(5)
-        .s3ExecutorThreadNum(7).buildConfig();
-    assertEquals(3, flat.nettyParentEventGroupThreadNum());
-    assertEquals(5, flat.nettyChildEventGroupThreadNum());
-    assertEquals(7, flat.s3ExecutorThreadNum());
   }
 
   @Test
