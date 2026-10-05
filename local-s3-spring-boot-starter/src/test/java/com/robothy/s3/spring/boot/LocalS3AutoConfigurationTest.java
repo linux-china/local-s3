@@ -88,6 +88,28 @@ class LocalS3AutoConfigurationTest {
     });
   }
 
+  /**
+   * An application that embeds the service on purpose, e.g. to receive the files of other processes, gets one line at
+   * INFO that names the clients, rather than a warning per client.
+   */
+  @Test
+  @ExtendWith(OutputCaptureExtension.class)
+  void logsOneSummaryThatNamesTheClients(CapturedOutput output) {
+    runner.run(context -> assertTrue(context.getBean(LocalS3.class).isRunning()));
+    String out = output.getOut();
+    assertEquals(1, out.split("Embedded LocalS3: ", -1).length - 1, out);
+    // In the order the clients are created.
+    String summary = out.substring(out.indexOf("Embedded LocalS3: "));
+    summary = summary.substring(0, summary.indexOf(System.lineSeparator()));
+    assertTrue(summary.endsWith(" point at it."), summary);
+    for (String client : List.of("S3Client", "S3AsyncClient", "S3Presigner", "S3VectorsClient", "S3TablesClient",
+        "S3TransferManager")) {
+      assertTrue(summary.contains(client), summary);
+    }
+    assertFalse(out.contains("points at the embedded LocalS3"), out);
+    assertFalse(out.contains("WARN"), out);
+  }
+
   @Test
   void createsVersionedBuckets() {
     runner.withPropertyValues("local-s3.buckets=plain", "local-s3.versioned-buckets=audit").run(context -> {

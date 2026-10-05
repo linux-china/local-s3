@@ -11,8 +11,10 @@ Spring Boot 4**: see [Spring Boot 3](#spring-boot-3) for what an application on 
 > `local-s3.enabled=false` in the production configuration (see
 > [LocalS3 locally, Amazon S3 in production](#locals3-locally-amazon-s3-in-production)).
 
-Once started, the service logs a one-line summary (`Embedded LocalS3: endpoint ..., bound to ..., signed requests ...,
-mode ..., data path ...`), and warns when it binds an address other than loopback, e.g. `local-s3.bind-host=0.0.0.0`,
+Once the application context starts, the service logs a one-line summary at `INFO` (`Embedded LocalS3: endpoint ...,
+bound to ..., signed requests ..., mode ..., data path ...; S3Client, S3Presigner point at it`), which names the client
+beans of the starter that point at it; a client bean created later, e.g. a `@Lazy` one, is logged on a line of its own
+when it is created. It warns when it binds an address other than loopback, e.g. `local-s3.bind-host=0.0.0.0`,
 without `local-s3.credentials.*`: every host that reaches the port can then read, write and delete the data. It only
 warns; an application that embeds the service for other processes on purpose may keep it that way.
 

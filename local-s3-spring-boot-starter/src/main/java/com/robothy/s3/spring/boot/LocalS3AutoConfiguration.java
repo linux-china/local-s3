@@ -137,8 +137,8 @@ public class LocalS3AutoConfiguration {
     }
     ExternalS3Endpoint.find(environment).ifPresent(external -> log.warn("The LocalS3 starter defines no S3 clients: {} "
         + "is {}, which isn't the embedded LocalS3, so the clients of the application reach that endpoint. The "
-        + "embedded LocalS3 still runs; the starter is meant for development and tests only, so set "
-        + "local-s3.enabled=false to leave it out, or local-s3.clients.enabled=true to point the clients at it anyway.",
+        + "embedded LocalS3 still runs; set local-s3.enabled=false to leave it out, or local-s3.clients.enabled=true "
+        + "to point the clients at it anyway.",
         external.property(), external.endpoint()));
   }
 
@@ -321,16 +321,12 @@ public class LocalS3AutoConfiguration {
     }
 
     /**
-     * The endpoint of the service, logged loudly: the starter is meant for development and tests, and one that ends up
-     * on the classpath of a production build by mistake, e.g. as an {@code implementation} rather than a
-     * {@code developmentOnly} dependency, silently points the clients of the application at the embedded service.
+     * The endpoint of the service, named by the summary that {@linkplain LocalS3Lifecycle} logs once: an application
+     * that embeds the service on purpose, e.g. to receive the files of other processes, gets one line at {@code INFO}
+     * rather than a warning per client.
      */
     private static URI pointAtLocalS3(Class<?> clientType, LocalS3Lifecycle lifecycle) {
-      URI endpoint = lifecycle.endpoint();
-      log.warn("The {} bean points at the embedded LocalS3 at {}, not at Amazon S3. The LocalS3 starter is meant for "
-              + "development and tests only; set local-s3.enabled=false, or local-s3.clients.enabled=false, to leave it "
-              + "out.", clientType.getSimpleName(), endpoint);
-      return endpoint;
+      return lifecycle.endpointFor(clientType.getSimpleName());
     }
 
     /**
