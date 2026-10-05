@@ -39,7 +39,7 @@ final class InitialDataCache implements CopyBudget {
   static final int DEFAULT_MAX_ENTRIES = 1024;
 
   /**
-   * The default max number of bytes of the copies of objects: a quarter of the max heap.
+   * The default max number of bytes of the copies of objects
    */
   static final long DEFAULT_MAX_BYTES = 128 * 1024 * 1024; // Runtime.getRuntime().maxMemory() / 4;
 
