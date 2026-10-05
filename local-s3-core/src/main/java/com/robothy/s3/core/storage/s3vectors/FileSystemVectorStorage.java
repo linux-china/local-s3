@@ -32,32 +32,21 @@ import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * File system implementation of {@linkplain VectorStorage}, which keeps the vectors of each dimension in one file of
- * fixed-length records, and every vector in memory, in contiguous {@code float} arrays.
+ * File system implementation of {@linkplain VectorStorage}: the vectors of each dimension in one file of fixed-length
+ * records, {@code vectors-<d>.vec}, whose format is described in {@code docs/architecture.md#persistence-layout}, and every
+ * vector in memory, in contiguous {@code float} arrays, so a query reads no file, see {@linkplain #getVectorDataView(Long)}.
  *
- * <p>The file of the vectors of dimension {@code d} is {@code vectors-<d>.vec}: a header of {@value #HEADER_BYTES}
- * bytes, the magic {@code LS3VECTS}, the version of the format and the dimension, followed by records of
- * {@code 8 + 4 * d} bytes each, the storage ID of the vector and its values as {@code float32}, all little-endian. The
- * record of a vector is found by its offset, and a record whose storage ID is {@code 0} is free: deleting a vector
- * overwrites its storage ID, and a new vector of the same dimension reuses the record. A query thus reads its vectors
- * from memory, without a file or an object per vector, and without copying them, see
- * {@linkplain #getVectorDataView(Long)}.
- *
- * <p>The vectors are read into memory when the storage is created, rather than memory-mapped: a mapped file can't be
- * deleted on Windows until the mapping is garbage collected, and the storage is never closed, so the data directory of
- * a stopped service couldn't be deleted. The memory used is about the size of the files.
- *
- * <p>A vector is written as a free record first, and then its storage ID is written, so that a process that dies while
- * writing leaves either the whole vector or a free record, never a partial vector. The files are written one record
- * at a time and are never rewritten as a whole.
- *
- * <p>A LocalS3 before 2.5 kept every vector in a file of its own, {@code <id>} or {@code ab/cd/<id>}, see
- * {@linkplain ShardedFileLayout}. A writable storage imports such files into the files of their dimensions and deletes
- * them when it is created, so that a process that dies meanwhile leaves every vector in one place or both, and the next
- * storage finishes the import. The temporary files left behind by a process are deleted too.
- *
- * <p>A read-only storage, e.g. over the initial data of an {@code IN_MEMORY} service, neither creates nor changes
- * anything in its directory, which may not even exist: it reads the vectors of either layout, and rejects writes.
+ * <p>Why:
+ * <ul>
+ *   <li>The files are read into memory rather than memory-mapped: on Windows a mapped file can't be deleted until the
+ *   mapping is garbage collected, and the storage is never closed, so the data directory of a stopped service couldn't
+ *   be deleted.</li>
+ *   <li>A vector is written as a free record first and its storage ID last, so a crash leaves the whole vector or a free
+ *   record, never a partial one.</li>
+ *   <li>The per-vector files of a LocalS3 before 2.5 are imported, then deleted, so a crash meanwhile leaves every vector
+ *   in one place or both, and the next storage finishes the import. A read-only storage reads either layout and changes
+ *   nothing.</li>
+ * </ul>
  */
 @Slf4j
 class FileSystemVectorStorage implements VectorStorage {

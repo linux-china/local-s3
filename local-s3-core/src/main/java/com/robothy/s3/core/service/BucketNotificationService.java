@@ -6,16 +6,9 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.util.XmlConfigurations;
 
 /**
- * Bucket notification configuration service.
- *
- * <p>The configuration is <b>stored but never delivered to</b>: LocalS3 doesn't send events to the SNS topics, SQS
- * queues, Lambda functions or EventBridge that it names, and doesn't check that their ARNs exist. Applications and
- * infrastructure code that configure notifications when they start thus work against LocalS3; an application that
- * wants to hear of changes registers an {@code S3ChangeListener} instead.
- *
- * <p>The document must be well-formed XML whose root element is {@code NotificationConfiguration}; its contents
- * aren't checked, since nothing reads them. It is stored as it was put, and returned as is. Putting an empty
- * {@code NotificationConfiguration} turns notifications off, like it does on Amazon S3.
+ * Bucket notification configuration service. The configuration is stored and returned as put, but no event is sent to
+ * the destinations it names; see {@code docs/semantics.md#stored-not-applied}. Its contents aren't checked beyond a
+ * {@code NotificationConfiguration} root, since nothing reads them.
  *
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketNotificationConfiguration.html">PutBucketNotificationConfiguration</a>
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html">GetBucketNotificationConfiguration</a>

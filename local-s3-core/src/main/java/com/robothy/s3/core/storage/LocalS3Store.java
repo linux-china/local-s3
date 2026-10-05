@@ -18,34 +18,18 @@ import org.h2.mvstore.MVStore;
 import org.h2.mvstore.MVStoreException;
 
 /**
- * The key-value store of one LocalS3 service, which holds the metadata of its buckets.
+ * The key-value store of one LocalS3 service, {@value #FILE_NAME}, which holds the metadata of all its buckets; which
+ * mode uses which store is described in {@code docs/architecture.md#metadata-locals3store}.
  *
- * <p>A service has a single store, so all of its metadata lives in one file rather than in a file per bucket: the
- * writes of a change go to one place, and a data directory is a directory with one {@value #FILE_NAME} in it.
+ * <p>MVStore locks the file it opens, so the services of a JVM that use the same data directory share one open store,
+ * reference-counted, which also keeps them from overwriting each other's metadata. A shared store stays open for reading
+ * or for writing as it was first opened: {@linkplain #readOnly(Path)} shares a writable store, but
+ * {@linkplain #persistent(Path)} rejects one that is open read-only.
  *
- * <p>A {@code PERSISTENCE} service opens {@value #FILE_NAME} of its data directory. An {@code IN_MEMORY} service keeps
- * the metadata of its S3 and vector buckets only in the heap, and reads a store only for its initial data,
- * {@linkplain #readOnly(Path) read-only}; its Iceberg catalog and S3 Tables use an {@linkplain #inMemory() in-memory}
- * store, which is never written to a file.
- *
- * <p>MVStore locks the file it opens, so the services of a JVM that use the same data directory, e.g. a persistent
- * service and another one that starts from its directory, share one open store, which is closed once they all
- * {@linkplain #close()} it. Sharing it is also what keeps them consistent: they read and write the same metadata
- * rather than overwrite each other's.
- *
- * <p>When the first holder opens the store of a data directory for writing, the content files that its metadata doesn't
- * reference are deleted in the background, see {@linkplain UnreferencedContentSweeper}.
- *
- * <p>The file is compacted when its last holder closes the store, so that a data directory rests at the size of the
- * metadata it holds rather than of everything that was ever written to it; see {@linkplain PersistencePolicy}. A store
- * open for writing is also compacted while it runs, once its file is mostly room that no metadata uses anymore, so that
- * a service that runs for long, e.g. in an IDE, doesn't keep the room of every write it took; see
- * {@linkplain #compactIfWasteful()}.
- *
- * <p>The one store of a file is open either for reading or for writing, and stays that way while a holder still reads
- * it. {@linkplain #readOnly(Path)} therefore shares a store that {@linkplain #persistent(Path)} opened, but not the
- * other way around: opening a data directory for writing while it is open read-only is rejected, see
- * {@linkplain #persistent(Path)}.
+ * <p>The first holder that opens a directory for writing starts the {@linkplain UnreferencedContentSweeper}. The file is
+ * compacted when the last holder closes it, and while it runs once it is mostly superseded chunks
+ * ({@linkplain #compactIfWasteful()}), so that a long-running service, e.g. in an IDE, doesn't keep the room of every
+ * write it took.
  */
 @Slf4j
 public final class LocalS3Store implements AutoCloseable {
@@ -206,13 +190,8 @@ public final class LocalS3Store implements AutoCloseable {
   }
 
   /**
-   * Open the store of a file, or share the one that is already open.
-   *
-   * <p>MVStore locks the file it opens, so a file has a single open store, which every holder shares. The store was
-   * opened for reading or for writing, and can't become the other afterwards while a holder still reads it: a caller
-   * that needs to write a store that is open read-only is rejected here, where the reason is known, rather than by
-   * MVStore at the first write, long after the store was handed out. A caller that only reads shares a writable store,
-   * which reads the same metadata.
+   * Open the store of a file, or share the one that is already open. Writing a store that is open read-only is rejected
+   * here, where the reason is known, rather than by MVStore at the first write, long after the store was handed out.
    *
    * @param file the file of the store.
    * @param readOnly whether the caller only reads the store.

@@ -19,26 +19,17 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Decides whether a bucket lets anonymous requests read an object, which is what the
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteAccessPermissionsReqd.html">static website
- * endpoint</a> serves an object by: a request that carries no credentials is answered only from a bucket that was
- * made public, by its ACL or by its bucket policy.
+ * endpoint</a> serves an object by; the rules (ACL, bucket policy, public access block) are described in
+ * {@code docs/semantics.md#which-buckets-are-public}.
  *
  * <p>Amazon S3 evaluates the policies of the account, the bucket and the object together; LocalS3 has no accounts, so
- * only the bucket is evaluated, with the rules that decide a public bucket:
- *
- * <ul>
- *   <li>a bucket policy that allows {@code s3:GetObject} of the object to every principal makes it readable, and one
- *       that denies it to every principal makes it unreadable whatever else allows it;</li>
- *   <li>a bucket ACL that grants {@code READ} to the {@code AllUsers} group makes every object of the bucket
- *       readable;</li>
- *   <li>the {@linkplain PublicAccessBlockConfiguration public access block} of the bucket takes both away:
- *       {@code IgnorePublicAcls} the ACL, {@code BlockPublicPolicy} the policy, and {@code RestrictPublicBuckets}
- *       either of them.</li>
- * </ul>
+ * only the bucket is evaluated.
  */
 public final class BucketPublicAccess {
 
   /**
-   * The group of every request, whatever its credentials, which a bucket that grants it {@code READ} is public by.
+   * The group of every request, whatever its credentials, which a bucket that grants it {@code READ} or
+   * {@code FULL_CONTROL} is public by.
    */
   public static final String ALL_USERS_GROUP = "http://acs.amazonaws.com/groups/global/AllUsers";
 

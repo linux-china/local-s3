@@ -5,18 +5,11 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A table bucket, as {@linkplain S3TablesStore} keeps it.
+ * A table bucket, as {@linkplain S3TablesStore} keeps it. Its tables live in an ordinary bucket of the same service,
+ * {@link #warehouse()}, see {@code docs/data-tools.md#what-it-stores-and-where}.
  *
- * <p>A table bucket of Amazon S3 is a bucket of its own kind: it holds tables rather than objects, and its files are
- * not reachable through the S3 API at all. LocalS3 keeps it simpler, and truer to what a test needs — the tables of a
- * table bucket live in an ordinary bucket of the same service, named by {@link #warehouse()}. The engine that loaded a
- * table then reads and writes its data files with its own {@code S3FileIO} against the same endpoint, with the same
- * credentials, and a test can look at what was written with an {@code S3Client}.
- *
- * <p>What the API can be configured with — encryption, storage class, a resource policy, maintenance, metrics,
- * replication — is kept as one map of JSON documents rather than as a field each, see {@linkplain #configuration()}.
- * None of it changes how LocalS3 behaves, so none of it deserves a field: what a client stores is what it reads back,
- * whatever Amazon would have done with it.
+ * <p>The configurations of the API (encryption, storage class, policy, maintenance, metrics, replication) are one map of
+ * JSON documents rather than a field each, since none of them changes how LocalS3 behaves.
  *
  * @param name the name of the table bucket, which is unique in the service.
  * @param tableBucketId the ID that the service assigned it.

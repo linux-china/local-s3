@@ -20,25 +20,9 @@ import java.util.Set;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Answers the administration endpoints of a LocalS3 service with JSON, for local development and tests:
- * <ul>
- *   <li>{@code GET /_admin/stats}: the statistics of the data and of the requests, see
- *   {@linkplain com.robothy.s3.rest.admin.ServiceStatistics};</li>
- *   <li>{@code GET /_admin/requests?limit=n}: the last requests, the most recent first;</li>
- *   <li>{@code POST /_admin/reset}: replace the data of an {@code IN_MEMORY} service with the data it started with,
- *   which is much quicker than restarting it between tests; a {@code PERSISTENCE} service answers
- *   {@code 409 Conflict}.</li>
- *   <li>{@code POST /_admin/lifecycle?bucket=name&now=2030-01-01T00:00:00Z}: apply the lifecycle configurations of the
- *   buckets, which LocalS3 never does by itself, at a time: {@code now} is an ISO 8601 instant, or {@code days} a number
- *   of days from the current time, and neither for the current time; without {@code bucket}, every bucket that has a
- *   configuration. It answers the actions taken.</li>
- *   <li>{@code GET /_admin/snippets?bucket=name&key=k}: the configuration that DuckDB, the AWS CLI, boto3, PyIceberg
- *   and Spark need to reach this service, as JSON, see {@linkplain ConnectionSnippets};
- *   {@code GET /_admin/snippets/duckdb} answers one of them as text, to paste or to hand to its client, e.g.
- *   {@code duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)}.</li>
- * </ul>
- * Like the operations of Amazon S3, and unlike the health check, the endpoints must be signed if the service requires
- * credentials.
+ * Answers the administration endpoints of a LocalS3 service ({@code /_admin/stats}, {@code requests}, {@code reset},
+ * {@code lifecycle} and {@code snippets}) with JSON; see {@code docs/deployment.md#admin-endpoints}. Like the S3
+ * operations, and unlike the health check, they must be signed if the service requires credentials.
  */
 class AdminController {
 

@@ -29,21 +29,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Dispatches {@linkplain RouterHttpRequest}s to the {@linkplain Router} and writes the responses.
+ * Dispatches {@linkplain RouterHttpRequest}s to the {@linkplain Router} on {@code executor} and writes the responses;
+ * handlers get a {@linkplain StreamingRouterHttpResponse}, and the body is released once the handler returns.
  *
- * <p>Handlers receive a {@linkplain StreamingRouterHttpResponse}, so they can stream large bodies.
- * The request body is released once the handler has returned.
- *
- * <p>The handler sits on the channel's event loop and runs the router on {@code executor}, a pool shared by all
- * connections, so that a slow request only holds up the requests of its own connection. The requests of a
- * connection are handled one at a time, in the order they were received, and each response is written on the
- * event loop before the next request is handled. While a request is in flight the channel stops reading, so that
- * the bodies of further requests are not received, and pile up, before the request has been answered.
- *
- * <p>Every request is counted in {@linkplain InFlightRequests} from the moment it is handed to the executor until its
- * response is written, so that a server that shuts down can wait for the responses in flight. Once its response is
- * written, the request is handed to the {@linkplain RequestRecorder}, with the operation that the router named, see
- * {@linkplain OperationHandler}, and the time since it was handed to the executor.
+ * <p>The requests of a connection are handled one at a time, in order, and the channel stops reading while one is in
+ * flight, so further bodies don't pile up; a slow request only holds up its own connection. A request is counted in
+ * {@linkplain InFlightRequests} until its response is written, which a shutdown waits for, and then handed to the
+ * {@linkplain RequestRecorder} with the operation the router named ({@linkplain OperationHandler}).
  */
 public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 

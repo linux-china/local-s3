@@ -6,19 +6,14 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
 /**
- * The preconditions of a conditional request: the {@code If-Match}, {@code If-None-Match},
- * {@code If-Modified-Since} and {@code If-Unmodified-Since} headers that
- * <a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-13">RFC 9110, section 13</a> defines.
- * Amazon S3 evaluates them on a read, i.e. {@code GetObject} and {@code HeadObject}, and evaluates the two
- * entity tag conditions on {@code PutObject} as a
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-requests.html">conditional
- * write</a>: {@code If-None-Match: *} stores an object only if the key holds none, and {@code If-Match}
- * only if it holds the one that the given entity tag identifies, which makes a put a compare-and-swap.
+ * The preconditions of a conditional request, the {@code If-*} headers of
+ * <a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-13">RFC 9110, section 13</a>; which operation evaluates
+ * which is described in {@code docs/semantics.md#conditional-requests}, and
+ * {@linkplain com.robothy.s3.core.assertions.PreconditionAssertions} evaluates them.
  *
- * <p>The entity tag conditions are held as the value of the header, i.e. a comma separated list of entity
- * tags, e.g. {@code "a", "b"}, or {@code *}. {@linkplain com.robothy.s3.core.assertions.PreconditionAssertions}
- * evaluates them. The dates are held as epoch milliseconds; a date that isn't a valid HTTP date is not a
- * precondition at all and must be left out, like RFC 9110 requires.
+ * <p>The entity tag conditions are held as the value of the header, e.g. {@code "a", "b"} or {@code *}; the dates as
+ * epoch milliseconds. A date that isn't a valid HTTP date is no precondition at all and must be left out, as RFC 9110
+ * requires.
  */
 @Builder
 @Getter

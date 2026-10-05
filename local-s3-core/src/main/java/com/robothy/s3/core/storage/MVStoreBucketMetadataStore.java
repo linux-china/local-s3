@@ -34,39 +34,18 @@ import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Keeps the metadata of the buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values.
+ * Keeps the metadata of the buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values, spread over
+ * the maps listed in {@code docs/architecture.md#metadata-locals3store} so that a change writes only what it changed.
  *
- * <p>The metadata of a bucket is spread over four kinds of map, so that a change writes only what it changed rather
- * than the whole bucket. A put of one object into a bucket of a million objects writes one record, and a put of a
- * version of a key that holds a thousand versions writes that version rather than all of them.
+ * <p>{@linkplain #store} and {@linkplain #delete} write into the key-value store without committing, so every request
+ * sees a change at once; {@linkplain #sync()} commits it as the {@linkplain PersistencePolicy} says. {@linkplain #store}
+ * writes the keys the bucket recorded as changed, see {@linkplain BucketMetadata#drainChangedObjectKeys()}, and always
+ * the small settings of the bucket.
  *
- * <ul>
- *   <li>{@value #BUCKETS_MAP}: the name of a bucket to its own settings, e.g. its region, versioning, ACL and CORS,
- *   without the objects and uploads it holds;</li>
- *   <li>{@code objects/&lt;bucket&gt;}: an object key to the metadata of the object without its versions, e.g. its
- *   virtual version, which is small; a store written before the versions had a map of their own holds every version
- *   of the key here, which is still read, and is replaced the first time the key is written;</li>
- *   <li>{@code versions/&lt;bucket&gt;}: an object key, {@code '\0'} and a version ID to the metadata of that version
- *   of the object. The versions of a key are adjacent, so they are read by a range scan;</li>
- *   <li>{@code uploads/&lt;bucket&gt;}: an object key to the multipart uploads in progress for that key.</li>
- * </ul>
- *
- * <p>{@linkplain #store} and {@linkplain #delete} write a change into the key-value store, so every request sees it,
- * without committing it; whether {@linkplain #sync()} then commits it is the {@linkplain PersistencePolicy} of the
- * store.
- *
- * <p>The values are JSON, written by the same Jackson mapper that reads them, so the metadata model needs no
- * {@code Serializable} of its own and a store can be read by a later version that added fields.
- *
- * <p>{@linkplain #store} writes the objects and uploads that the bucket recorded as changed, see
- * {@linkplain BucketMetadata#drainChangedObjectKeys()}, and always writes the settings of the bucket, which are small.
- *
- * <p>{@linkplain #fetch} reads the keys of the objects of a bucket, not their metadata: each key gets an
- * {@linkplain ObjectMetadataRef} that reads its metadata from the {@code objects/} map when something needs it, and an
- * {@linkplain ObjectMetadataCache} bounds how many of them keep it in heap. Opening a data directory therefore costs
- * the keys it holds rather than the metadata of every version of every object, and a service that serves a few keys of
- * a large bucket holds a few keys' metadata. A store that keeps its metadata in memory has nothing to read a bucket
- * back from, so its references are loaded and its cache keeps everything.
+ * <p>{@linkplain #fetch} reads the keys of the objects, not their metadata: an {@linkplain ObjectMetadataRef} reads it on
+ * first use and an {@linkplain ObjectMetadataCache} bounds what stays in heap, so opening a large directory costs its
+ * keys only. A store in memory has nothing to read back from, so its references are loaded and its cache keeps all.
+ * JSON rather than {@code Serializable} lets a later version that adds fields read the store.
  */
 public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata> {
 

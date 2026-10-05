@@ -22,34 +22,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The temporary file that the body of a request is written to, off the event loop.
+ * The temporary file that the body of a request is written to, off the event loop; see
+ * {@code docs/architecture.md#the-path-of-a-request}.
  *
- * <p>The event loop that receives the body only queues its chunks. Every operation on the file, creating, writing,
- * memory-mapping, closing and deleting it, runs on {@code executor}, one at a time and in order, so that a slow disk
- * holds up neither the event loop nor the other connections it serves. The chunks queued at once are written with a
- * single gathering write.
+ * <p>The event loop only queues chunks; every operation on the file runs on {@code executor}, one at a time and in order,
+ * with the chunks queued at once written by one gathering write. {@linkplain #write(ByteBuf)} reports more than
+ * {@value #HIGH_WATER_MARK} queued bytes, so the receiver stops reading until {@linkplain Listener#drained()} reports
+ * {@value #LOW_WATER_MARK}. A body up to {@value #MAX_MAPPED_BYTES} bytes is memory-mapped
+ * ({@linkplain MappedFileByteBuf}); a larger one can't be, since no {@code ByteBuf} holds more, and is read from the file
+ * ({@linkplain FileBodyByteBuf}).
  *
- * <p>A complete body of up to {@value #MAX_MAPPED_BYTES} bytes is memory-mapped, see {@linkplain MappedFileByteBuf}. A
- * larger one can't be: no {@code ByteBuf} holds more bytes. It is handed on as a {@linkplain FileBodyByteBuf}, whose
- * content is only read from the file.
- *
- * <p>The bytes that are queued but not written yet are bounded by the receiver: {@linkplain #write(ByteBuf)} reports
- * when they exceed {@value #HIGH_WATER_MARK} bytes, and the receiver then stops reading the connection until
- * {@linkplain Listener#drained()} reports that they dropped to {@value #LOW_WATER_MARK} bytes.
- *
- * <p>An {@code aws-chunked} body can be decoded while it is written, see {@linkplain AwsChunkedBodyDecoder}, so that the
- * file holds the decoded content, which a storage can take over like the body of any other upload. A body that fails to
- * decode, e.g. whose chunk signatures don't match, fails the file like a write does, with a
- * {@linkplain RequestBodyRejection}.
- *
- * <p>A body of an {@code IN_MEMORY} service can be received into the heap instead of a file, see
- * {@linkplain #RequestBodyFile(Executor, EventExecutor, Listener, AwsChunkedBodyDecoder, HeapContent.Writer)}: its
- * chunks, decoded or not, are written to a {@linkplain HeapContent} that the in-memory storage takes over, and the body
- * is handed on as a {@linkplain HeapBodyByteBuf}. Everything else, the queue, its water marks, decoding and the order of
- * the operations, is the same. A body that doesn't fit the budget of the storage fails with a
- * {@linkplain RequestBodyRejection} of {@code InsufficientStorage}.
- *
- * <p>The listener is called on the event loop, and not at all once the file is {@linkplain #discard() discarded}.
+ * <p>The same machinery decodes an {@code aws-chunked} body while writing ({@linkplain AwsChunkedBodyDecoder}), and, for
+ * an {@code IN_MEMORY} service, writes into a {@linkplain HeapContent} that the storage takes over instead of a file, see
+ * {@linkplain #RequestBodyFile(Executor, EventExecutor, Listener, AwsChunkedBodyDecoder, HeapContent.Writer)}. A failure
+ * of either fails the body with a {@linkplain RequestBodyRejection}. The listener is called on the event loop, and not at
+ * all once the file is {@linkplain #discard() discarded}.
  */
 final class RequestBodyFile {
 

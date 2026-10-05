@@ -20,19 +20,11 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Bucket lifecycle configuration service.
+ * Bucket lifecycle configuration service: stores, returns and deletes the configuration, validating its structure the
+ * way Amazon S3 does, so a configuration Amazon S3 rejects isn't accepted. It is applied only on demand, by
+ * {@linkplain LifecycleExecutionService}; see {@code docs/semantics.md#lifecycle-configuration} for what is checked.
  *
- * <p>The configuration is <b>stored but never applied</b>: LocalS3 doesn't expire, transition or abort anything
- * because of it. Frameworks that set a lifecycle configuration when they start, e.g. to clean up a temporary
- * directory, thus work against LocalS3, while a test that waits for an object to expire doesn't.
- *
- * <p>A configuration is validated the way Amazon S3 validates the structure of one, so that a configuration that
- * Amazon S3 rejects isn't accepted: the document must be a {@code LifecycleConfiguration} of 1 to
- * {@value #MAX_RULES} {@code Rule}s, each with a {@code Status} of {@code Enabled} or {@code Disabled}, at least one
- * action, and a unique {@code ID} of at most {@value #MAX_RULE_ID_LENGTH} characters; the {@code Date} of an
- * {@code Expiration} or a {@code Transition} must be an ISO 8601 date at midnight UTC. The other contents of the
- * actions and filters aren't checked. The document is stored as it was put, and returned as is, except that a rule
- * put without an {@code ID} gets a generated one, like on Amazon S3, which tools such as Terraform rely on.
+ * <p>A rule put without an {@code ID} gets a generated one, like on Amazon S3, since tools such as Terraform rely on it.
  *
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
  * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>

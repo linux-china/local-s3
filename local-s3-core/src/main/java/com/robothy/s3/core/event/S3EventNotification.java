@@ -52,26 +52,8 @@ public final class S3EventNotification {
   }
 
   /**
-   * The record of a change, an element of the {@code Records} of a notification:
-   *
-   * <pre>{@code
-   * {
-   *   "eventVersion": "2.1", "eventSource": "aws:s3", "awsRegion": "us-east-1",
-   *   "eventTime": "2026-09-25T08:30:00.123Z", "eventName": "ObjectCreated:Put",
-   *   "userIdentity": {"principalId": "LocalS3"},
-   *   "requestParameters": {"sourceIPAddress": "127.0.0.1"},
-   *   "responseElements": {"x-amz-request-id": "...", "x-amz-id-2": "..."},
-   *   "s3": {
-   *     "s3SchemaVersion": "1.0", "configurationId": "...",
-   *     "bucket": {"name": "bucket", "ownerIdentity": {"principalId": "LocalS3"}, "arn": "arn:aws:s3:::bucket"},
-   *     "object": {"key": "a+b.txt", "size": 5, "eTag": "...", "versionId": "...", "sequencer": "..."}
-   *   }
-   * }
-   * }</pre>
-   *
-   * <p>As in Amazon S3, the {@code eventName} has no {@code s3:} prefix, the key is URL-encoded, with spaces as
-   * {@code +}, and {@code size}, {@code eTag} and {@code versionId} are left out when the change has none, e.g.
-   * {@code size} and {@code eTag} of a deletion.
+   * The record of a change, an element of the {@code Records} of a notification, shaped like the one of Amazon S3; see
+   * {@code docs/semantics.md#amazon-s3-event-notification-json} for an example and the values LocalS3 fixes.
    *
    * @param change the change.
    * @param configurationId the ID of the notification configuration the record is sent for; {@code null} leaves it out.

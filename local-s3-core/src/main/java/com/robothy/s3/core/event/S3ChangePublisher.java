@@ -17,19 +17,13 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Delivers the {@linkplain S3Change}s of the services of a LocalS3 service to its {@linkplain S3ChangeListener}s,
- * however an operation was called: through an HTTP request, or directly on a service.
+ * however an operation was called; see {@code docs/semantics.md#change-events}.
  *
- * <p>A change is only delivered once it is committed. The {@linkplain com.robothy.s3.core.service.BucketGuard} runs
- * every operation that changes a bucket {@linkplain #withinChange within a change}, and the changes that the
- * operation {@linkplain #publish publishes} are held back until the outermost change of the thread has ended: those of
- * a change that succeeded, i.e. was persisted, are then delivered, and those of a change that failed are dropped. So a
- * listener never hears of a change that didn't happen, and runs once the locks of the buckets are released, which lets
- * it call the services again.
- *
- * <p>The listeners run on the {@linkplain #executor(Executor) executor}, which delivers on the thread that made the
- * change by default: the time a listener takes then adds to the latency of the operation, e.g. of the HTTP request that
- * made the change. A listener that takes longer than {@linkplain #SLOW_LISTENER_THRESHOLD} on that thread is logged
- * once, as a hint to set another executor.
+ * <p>The changes an operation {@linkplain #publish publishes} are held back until the outermost
+ * {@linkplain #withinChange change} of the thread has ended, then delivered if it was persisted and dropped if it failed:
+ * a listener never hears of a change that didn't happen, and runs after the bucket locks are released, so it may call
+ * the services again. A listener slower than {@linkplain #SLOW_LISTENER_THRESHOLD} on the thread that made the change is
+ * logged once, as a hint to set another {@linkplain #executor(Executor) executor}.
  */
 @Slf4j
 public final class S3ChangePublisher {

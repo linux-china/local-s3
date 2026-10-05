@@ -12,21 +12,17 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
- *
- * Example Response Body:
+ * Answers a {@linkplain LocalS3InvalidArgumentException} with the {@code InvalidArgument} error of Amazon S3, which names
+ * the argument and its value:
  *
  * <pre>{@code
- * <?xml version="1.0" encoding="UTF-8"?>
  * <Error>
  *     <Code>InvalidArgument</Code>
  *     <Message>Invalid Encoding Method specified in Request</Message>
  *     <ArgumentName>encoding-type</ArgumentName>
  *     <ArgumentValue>aa</ArgumentValue>
  *     <RequestId>VGEKQFPHD810M604</RequestId>
- *     <HostId>vieD/O9bf+rcr4eiwzXGKIrgaohTsdEiK5A3KJqreJj608+WphNzw4N0qmrQJyxnH/fuza9BEbw=</HostId>
  * </Error>
- *
- *
  * }</pre>
  */
 public class LocalS3InvalidArgumentExceptionHandler implements ExceptionHandler<LocalS3InvalidArgumentException> {

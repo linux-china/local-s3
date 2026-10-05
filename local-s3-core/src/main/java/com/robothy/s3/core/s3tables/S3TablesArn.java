@@ -5,15 +5,8 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The ARNs of the S3 Tables API, which is how its resources are addressed: every operation but
- * {@code CreateTableBucket} and {@code ListTableBuckets} names its table bucket, its table or its namespace by an ARN
- * rather than by a name, and the ARN travels in the path of the request.
- *
- * <p>A table bucket is {@code arn:aws:s3tables:<region>:<account>:bucket/<name>} and a table is that ARN with
- * {@code /table/<id>} after it, where the ID is the one the service assigned when the table was created. A LocalS3
- * service has no account of its own, so it answers a fixed one, see {@link #DEFAULT_ACCOUNT_ID}: a client that
- * round-trips an ARN of LocalS3 gets its resources back, and one that was written against a real account has the
- * account of its ARNs ignored rather than being refused — a test double is not an authorization boundary.
+ * An ARN of the S3 Tables API, {@code arn:aws:s3tables:<region>:<account>:bucket/<name>}, with {@code /table/<id>} for a
+ * table. The account of a parsed ARN is ignored rather than refused, see {@link #DEFAULT_ACCOUNT_ID}.
  *
  * @param partition the partition of the ARN, e.g. {@code aws}.
  * @param region the region, e.g. {@code us-east-1}.

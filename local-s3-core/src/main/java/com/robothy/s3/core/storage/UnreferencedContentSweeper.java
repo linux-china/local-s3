@@ -15,50 +15,24 @@ import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 
 /**
- * Deletes the content files of a data directory that its metadata doesn't reference.
+ * Deletes the content files of a data directory that its metadata doesn't reference, and the temporary files that a
+ * dead process left behind; see {@code docs/architecture.md#a-change} for when such files arise and when the sweep runs.
  *
- * <p>A change deletes the content it replaces only after the metadata is persisted, so the metadata never references
- * a missing file, but a file may be left behind: when deleting it fails, when the process dies between persisting the
- * metadata and deleting the file, or when it dies after storing the content of an upload and before persisting its
- * metadata. Nothing references such a file anymore, so it would take disk space for as long as the data directory
- * lives.
- *
- * <p>{@linkplain LocalS3Store} starts a sweep when it opens the metadata of a data directory for writing and no service
- * of the JVM has it open, i.e. when no request of this process can be storing content that the metadata doesn't
- * reference yet; MVStore's lock of the file keeps other processes out. The sweep runs in the background, so that opening
- * a directory of many objects doesn't wait for their files to be listed, and is correct while the services use the
- * directory, because it only deletes a file that
+ * <p>Why deleting is safe while the services use the directory: a file is deleted only if
  * <ul>
- *   <li>the metadata didn't reference when the store was opened: the sweep reads a snapshot of that moment, which no
- *   later change affects. A file that nothing referenced then is never referenced later, since a change only
- *   references the content it stores, or content that the metadata referenced already, e.g. the parts of an upload that
- *   it completes;</li>
- *   <li>and was last modified {@value #MODIFIED_BEFORE_OPEN_MINUTES} minute before the store was opened, so that no file
- *   that a service stored afterwards is deleted, even on a file system with coarse modification times, or a clock that
- *   was set back.</li>
+ *   <li>the snapshot of the metadata taken when the store was opened doesn't reference it. A change only references
+ *   content it stores or content that was referenced already, so an unreferenced file never becomes referenced;</li>
+ *   <li>and it was last modified {@value #MODIFIED_BEFORE_OPEN_MINUTES} minute before the store was opened, which
+ *   tolerates coarse modification times and a clock set back. A renamed request body is touched for this reason, see
+ *   {@linkplain LocalFileSystemStorage#put(Long, Path)}.</li>
  * </ul>
+ * Temporary files ({@code .storage/.<id>.<uuid>.tmp}, {@code .storage/}{@value LocalS3Manager#REQUEST_BODY_DIRECTORY}
+ * {@code /*.tmp}) are swept here rather than when a storage starts, because only here does no service of the JVM hold
+ * the store, i.e. none can be writing them.
  *
- * <p>What isn't certain is kept:
- * <ul>
- *   <li>no content file is deleted if the metadata can't be read, or holds no objects and no uploads at all, e.g. a
- *   store that was replaced or rolled back;</li>
- *   <li>no content file is deleted in a directory of a LocalS3 before 2.5, whose {@code *.bucket.meta} files 2.5
- *   doesn't read, and whose content it therefore doesn't see referenced;</li>
- *   <li>only the content files of the layout of 2.5, {@code .storage/ab/cd/<id>}, are considered, not those still in
- *   the flat layout.</li>
- * </ul>
- *
- * <p>The sweep deletes the temporary files of the content directory as well, under the same rule of the modification
- * time, whatever the metadata holds, since nothing references them: those of the writes of the storage,
- * {@code .storage/.<id>.<uuid>.tmp}, and the request bodies of {@code .storage/}{@value
- * LocalS3Manager#REQUEST_BODY_DIRECTORY}{@code /*.tmp}. They are deleted here, rather than when a storage or a server is
- * created, because another service of the JVM may be writing them over the same data directory then, whereas no
- * service of the JVM holds the store when the sweep starts. A temporary file that is being written is modified as its
- * bytes arrive, so only a write that received nothing for a minute, of a service whose store was closed meanwhile, e.g.
- * after its shutdown timed out, can lose its file; such a write fails anyway, since it can't store its metadata.
- *
- * <p>An object file is last modified when it is stored, or later, even when the file of a request body that was
- * written long before is renamed into place, see {@linkplain LocalFileSystemStorage#put(Long, Path)}.
+ * <p>What isn't certain is kept: nothing is deleted if the metadata can't be read or holds no objects and no uploads,
+ * e.g. a replaced store; or in a directory of a LocalS3 before 2.5, whose metadata isn't read; and files of the flat
+ * layout are never considered.
  */
 @Slf4j
 final class UnreferencedContentSweeper {

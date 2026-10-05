@@ -27,36 +27,19 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Keeps the metadata of the vector buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values.
+ * Keeps the metadata of the vector buckets of a LocalS3 service in its {@linkplain LocalS3Store}, as JSON values, in the
+ * maps listed in {@code docs/architecture.md#metadata-locals3store}. It shares the store of
+ * {@linkplain MVStoreBucketMetadataStore}, so a copy of {@value LocalS3Store#FILE_NAME} is a consistent point of the
+ * whole service rather than of one half of it.
  *
- * <p>It is the same store that {@linkplain MVStoreBucketMetadataStore} writes the S3 buckets to, so a data directory
- * holds the metadata of both kinds of bucket in one {@value LocalS3Store#FILE_NAME}, committed on one write stream:
- * a copy of that file is a consistent point of the whole service rather than of one half of it. Only the content of
- * the objects and the data of the vectors are kept beside it, each named by an ID that the metadata references.
+ * <p>{@linkplain #store} writes only the vectors that an index recorded as changed, see
+ * {@linkplain VectorIndexMetadata#drainChangedVectorIds()}, once the index is tracked (this store wrote or read it); an
+ * untracked index, e.g. a new one, is written whole. A bucket name holds no {@code /}, so the maps of a bucket are the
+ * ones named with its prefix, whatever its index names hold.
  *
- * <p>Like an S3 bucket, a vector bucket is spread over several maps, so that a change writes only what it changed: a
- * put of one vector into an index of a million vectors writes one record, rather than the whole bucket.
- *
- * <ul>
- *   <li>{@value #VECTOR_BUCKETS_MAP}: the name of a vector bucket to its own settings, e.g. its encryption and policy,
- *   without its indexes;</li>
- *   <li>{@code vectors/indexes/<bucket>}: the name of an index to its configuration, without its vectors;</li>
- *   <li>{@code vectors/objects/<bucket>/<index>}: the ID of a vector to its metadata. A bucket name holds no
- *   {@code /}, so the maps of a bucket are the ones named with its prefix, whatever its index names hold.</li>
- * </ul>
- *
- * <p>{@linkplain #store} writes the vectors that an index recorded as changed, see
- * {@linkplain VectorIndexMetadata#drainChangedVectorIds()}, once the index is tracked: after this store wrote the index
- * or read it. An index that isn't tracked yet, e.g. one just created, is written whole, and an index that the store
- * holds but the bucket doesn't anymore is deleted with its vectors. The settings of the bucket and of its indexes are
- * small, and written when they differ from the stored ones.
- *
- * <p>{@linkplain #fetch} reads the whole bucket, the metadata of its vectors included: a query of an index reads the
- * metadata of all of its vectors to filter them, so reading them later would save no heap.
- *
- * <p>A store of an earlier 2.5 snapshot keeps a vector bucket whole, as one value of {@value #VECTOR_BUCKETS_MAP} with
- * its indexes and vectors. Opening such a store for writing spreads its buckets over the maps above; a store opened for
- * reading only is read as it is.
+ * <p>{@linkplain #fetch} reads the whole bucket, vectors included, since a query filters all vectors of an index anyway.
+ * A store of an earlier 2.5 snapshot, which kept a vector bucket as one value, is spread over the maps when it is opened
+ * for writing.
  */
 public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBucketMetadata> {
 

@@ -27,39 +27,15 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_S3_Tables.html">Amazon S3
- * Tables</a> endpoint of LocalS3, served on the port of the S3 service, so that one process is the object store, the
- * catalog and the table bucket API of a lakehouse:
+ * Tables</a> endpoint of LocalS3, on the port of the S3 service; see {@code docs/data-tools.md#reaching-the-api}.
  *
- * <pre>{@code
- * S3TablesClient tables = S3TablesClient.builder()
- *     .endpointOverride(URI.create("http://localhost:29090"))
- *     .region(Region.US_EAST_1)
- *     .credentialsProvider(...)
- *     .build();
- * }</pre>
+ * <p>Its paths can't be told from S3 ones, e.g. {@code PUT /buckets} is also {@code CreateBucket} of a bucket named
+ * {@code buckets}, so a request is routed here by the {@code s3tables} service in the credential scope of its signature,
+ * read before a bucket is parsed ({@link SigV4Requests#signingService}) and then verified for that service, so claiming
+ * the scope buys nothing. An unsigned request has no scope, so it comes in under {@value #PATH_PREFIX} instead.
  *
- * <p><b>How a request of this API is told from an Amazon S3 one.</b> Its paths are not a shape that could be told
- * apart: {@code PUT /buckets} of {@code CreateTableBucket} is, as a path, the {@code CreateBucket} of a bucket named
- * {@code buckets}, and {@code GET /tables/...} is a listing of a bucket named {@code tables}. What does tell them
- * apart is the signature. Every AWS SDK signs a request of this API for the {@code s3tables} service, and that service
- * is in the credential scope of the {@code Authorization} header, so the scope is read before a bucket is parsed —
- * see {@link SigV4Requests#signingService}. The signature is then <em>verified</em> for {@code s3tables} too, so a
- * request cannot claim the scope to reach this API and be accepted with the wrong key.
- *
- * <p>A client that signs <em>nothing</em> — one built with an {@code AnonymousCredentialsProvider}, which is what a
- * test points at a LocalS3 that verifies no signatures — has no credential scope to be told apart by, so it reaches
- * this API by path instead, under {@value #PATH_PREFIX}:
- *
- * <pre>{@code
- * S3TablesClient.builder().endpointOverride(URI.create("http://localhost:29090/s3tables"))
- * }</pre>
- *
- * <p>Both ways in are the same API and the same table buckets; which one a client uses is only a matter of what it
- * carries to be recognized by.
- *
- * <p>Like {@linkplain com.robothy.s3.rest.handler.iceberg.IcebergCatalogController}, this is one handler for the whole
- * API rather than one per operation: the API is a REST one, addressed by path, and the routes of the S3 router are
- * matched against {@code /bucket/key} shapes that these paths are not.
+ * <p>One handler serves the whole API, like {@linkplain com.robothy.s3.rest.handler.iceberg.IcebergCatalogController},
+ * because the routes of the S3 router match {@code /bucket/key} shapes that these REST paths are not.
  */
 public final class S3TablesController implements RouterHttpRequestHandler {
 

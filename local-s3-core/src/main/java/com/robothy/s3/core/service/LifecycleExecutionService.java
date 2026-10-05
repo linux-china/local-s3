@@ -20,24 +20,9 @@ import java.util.NavigableMap;
 import java.util.Objects;
 
 /**
- * Applies the lifecycle configurations of buckets on demand. LocalS3 never applies them by itself: a test that exercises
- * expiration asks for it, at a time of its choosing, e.g. 30 days from now, rather than waiting for a day to pass.
- *
- * <p>Every enabled rule is applied the way Amazon S3 applies it at that time:
- * <ul>
- *   <li>{@code Expiration} with {@code Days} or {@code Date} expires the current version of an object that the filter
- *   selects: the object is deleted in a bucket whose versioning was never enabled, and gets a delete marker in a
- *   versioned bucket.</li>
- *   <li>{@code NoncurrentVersionExpiration} deletes the versions, and delete markers, that have been noncurrent for
- *   {@code NoncurrentDays}, keeping the {@code NewerNoncurrentVersions} most recent ones. A version that Object Lock
- *   protects is kept.</li>
- *   <li>{@code ExpiredObjectDeleteMarker} removes a delete marker that is the only version left of its object.</li>
- *   <li>{@code AbortIncompleteMultipartUpload} aborts the uploads of the keys the prefix selects that were created
- *   {@code DaysAfterInitiation} ago.</li>
- * </ul>
- * A number of days counts from the creation of the object, the time a version became noncurrent, or the creation of
- * an upload, and is rounded up to the next midnight UTC. Transitions change nothing, since LocalS3 has one storage
- * class. The changes are published with the operation {@value #OPERATION}.
+ * Applies the lifecycle configurations of buckets on demand, at a time the caller chooses, e.g. 30 days from now, so a
+ * test exercises expiration without waiting; LocalS3 never applies them by itself. How each rule is applied is described
+ * in {@code docs/semantics.md#lifecycle-configuration}. The changes are published with the operation {@value #OPERATION}.
  */
 public interface LifecycleExecutionService extends LocalS3MetadataApplicable, StorageApplicable {
 

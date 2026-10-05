@@ -13,22 +13,16 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The Iceberg REST catalog of a LocalS3 service: the namespaces and the tables, and the commits that move a table
- * from one metadata file to the next.
+ * The Iceberg REST catalog of a LocalS3 service: the namespaces and the tables, and the commits that move a table from
+ * one metadata file to the next.
  *
- * <p>The two halves of a table live in different places, which is what an Iceberg catalog <em>is</em>. The table
- * itself — its schema, its snapshots, the manifests that list its data files — is a {@code metadata.json} written to
- * the object store, here through {@linkplain IcebergMetadataFiles}. The catalog keeps only a pointer to the file that
- * the table currently is, in {@linkplain IcebergCatalogStore}. A commit writes a new metadata file and then moves that
- * pointer, and moving the pointer is a compare-and-set: of two writers that started from the same file, exactly one
- * moves it, and the other is told its commit failed so that its client retries against the table as it now is.
+ * <p>A table is a {@code metadata.json} in the object store ({@linkplain IcebergMetadataFiles}) and a pointer to it in
+ * {@linkplain IcebergCatalogStore}; a commit writes a new file and then moves the pointer with a compare-and-set, so of
+ * two writers that started from the same file exactly one wins and the other's client retries.
  *
- * <p>The documents are handled as JSON trees rather than as classes of the Iceberg model, see
- * {@linkplain IcebergJson}: this keeps the service small and lets it carry through the fields that a newer client
- * sends, and it is why LocalS3 serves the catalog without depending on Iceberg at all.
- *
- * <p>This class is HTTP-free — it takes and returns the documents of the protocol, not requests — so that the
- * controllers stay thin and it can be tested directly.
+ * <p>Documents are JSON trees rather than classes of the Iceberg model, see {@linkplain IcebergJson}, which keeps LocalS3
+ * free of a dependency on Iceberg and carries through the fields a newer client sends. The class is HTTP-free, so it can
+ * be tested directly.
  */
 public final class IcebergCatalogService {
 
@@ -523,15 +517,9 @@ public final class IcebergCatalogService {
   }
 
   /**
-   * Drop a table, or a view.
-   *
-   * <p>A purge deletes everything under the location of the table — its metadata files, its manifests and its data
-   * files all live there — unless another table or view of the catalog lives under that location too. Two tables share
-   * a location when one is created under the name a dropped or renamed one had, because the default location of a table
-   * is derived from its name; purging then would delete the files of a table the catalog still points at, and losing a
-   * live table is worse than leaving a dropped one's files behind. {@linkplain
-   * com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager#createInMemory unique table locations} keep the
-   * two apart in the first place.
+   * Drop a table, or a view. A purge deletes everything under the location of the table, unless another table or view
+   * of the catalog lives there too, e.g. one created under the name of a dropped one: losing a live table is worse than
+   * leaving a dropped one's files behind. See {@code docs/data-tools.md#limits}.
    *
    * @param identifier the identifier.
    * @param views whether to drop a view rather than a table.

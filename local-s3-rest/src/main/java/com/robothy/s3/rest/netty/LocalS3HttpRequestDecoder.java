@@ -51,50 +51,20 @@ import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
  * Aggregates Netty HTTP messages into an {@linkplain RouterHttpRequest} for the router, handed on as a
- * {@linkplain ReceivedRequest} with what the connection knows about it.
+ * {@linkplain ReceivedRequest} with what the connection knows about it. How a body is buffered, on the heap, in a file
+ * or in heap chunks of the storage, is described in {@code docs/architecture.md#the-path-of-a-request}.
  *
- * <p>The body is limited to {@code maxRequestBodySize} bytes. An oversized request is answered with
- * an S3 {@code EntityTooLarge} error and the connection is closed. When the declared
- * {@code Content-Length} is already too large, the request is rejected before {@code 100 Continue}
- * is sent, so clients that expect it never upload the body.
- *
- * <p>The head of a request with a body is verified by a {@linkplain RequestHeadVerifier}, e.g. its signature,
- * before the body is received. A rejected request is answered with the S3 error of the rejection and the connection
- * is closed, again before {@code 100 Continue} is sent, so that the body of a request that fails anyway is neither
- * uploaded nor buffered. Requests without a body are left to the router, which keeps the connection alive.
- *
- * <p>A request that the HTTP codec fails to decode, e.g. one whose header section exceeds the max header size, is
- * answered with an S3 error, {@code RequestHeaderSectionTooLarge} for a header section that is too large and
- * {@code BadRequest} otherwise, and the connection is closed: the codec discards the rest of the connection's
- * input after a failure, so the request would otherwise never be answered.
- *
- * <p>A body of up to {@code requestBodyFileThreshold} bytes is buffered on the Java heap. A larger body
- * is written to a temporary file, which is memory-mapped as the body of the request, so that large
- * uploads don't take heap memory. The file is kept while the body is alive, so that a handler can hand it over to a
- * storage instead of copying the body (see {@linkplain RequestBodies#file}), and is deleted when the body is released.
- * The files are created in the configured directory, e.g. one on the file system of the storage, which then renames a
- * file into place, or in the default temporary directory.
- *
- * <p>A service whose storage keeps its content in the heap, i.e. an {@code IN_MEMORY} one, receives a large body into
- * the heap instead, in chunks that the storage takes over when the body is stored, see {@linkplain HeapBodyByteBuf}: an
- * upload is then neither written to the temporary directory, e.g. a small {@code /tmp} of a container, nor held twice.
- * The declared length of the body is reserved in the budget of the storage before {@code 100 Continue} is sent, so a
- * body that doesn't fit is answered {@code 507 InsufficientStorage} before it is uploaded. A body whose length isn't
- * declared, or is larger than a {@code ByteBuf} holds, is buffered in a file as before.
- *
- * <p>An {@code aws-chunked} body, which the AWS SDKs send by default over plain HTTP, is decoded while it is written to
- * its file, and the signatures of its chunks are verified along the way, see {@linkplain AwsChunkedBodyDecoder}; the
- * file then holds the decoded content, which a storage takes over like the body of any other upload rather than
- * decoding it into a second file. A body that fails to decode is answered with the S3 error of the failure, e.g.
- * {@code SignatureDoesNotMatch}, and the connection is closed. A body that is buffered on the heap is decoded when it
- * is read instead.
- *
- * <p>The event loop never waits for the disk: a {@linkplain RequestBodyFile} writes the body on the body file executor,
- * and the event loop only queues its chunks. While more than {@value RequestBodyFile#HIGH_WATER_MARK} bytes wait to be
- * written, the connection isn't read, so that a client that sends faster than the disk writes neither fills the memory
- * nor holds up the other connections of the event loop. Once the last chunk is received, the connection isn't read
- * until the file is complete; the messages already decoded meanwhile, e.g. a pipelined request, are held and decoded
- * after the request, so that the requests of a connection keep their order.
+ * <p>Why it works the way it does:
+ * <ul>
+ *   <li>Size limits and the {@linkplain RequestHeadVerifier} are applied before {@code 100 Continue}, so the body of a
+ *   request that fails anyway is never uploaded. A rejection closes the connection, since the rest of the body would
+ *   otherwise be read as the next request.</li>
+ *   <li>A request that the HTTP codec fails to decode is answered here and the connection closed: the codec discards
+ *   the rest of the input after a failure, so the request would otherwise never be answered.</li>
+ *   <li>The event loop never waits for the disk: a {@linkplain RequestBodyFile} writes on the body file executor, and
+ *   the connection isn't read while more than {@value RequestBodyFile#HIGH_WATER_MARK} bytes wait, nor until the file is
+ *   complete, so a fast client can't fill the memory and pipelined requests keep their order.</li>
+ * </ul>
  */
 public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObject> {
 

@@ -24,25 +24,15 @@ import org.jspecify.annotations.Nullable;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Initializes the channel pipeline of the LocalS3 HTTP server.
+ * Initializes the channel pipeline of the LocalS3 HTTP server; see {@code docs/architecture.md#the-path-of-a-request}.
  *
- * <p>HTTP parsing, request aggregation, encoding and chunked writing (but see below for TLS connections) run on the
- * channel's event loop, so that a connection stops reading, and its client sending, while a request is handled,
- * instead of queuing the body of the next request for a busy thread. Routing and handling run on {@code executor}, which all connections
- * share; see {@linkplain LocalS3HttpMessageHandler}. So do the writes of the request bodies that are buffered in
- * temporary files, so that an event loop never waits for the disk; see {@linkplain LocalS3HttpRequestDecoder}.
+ * <p>Parsing, aggregation and encoding run on the event loop of the connection, so a connection stops reading while its
+ * request is handled rather than queuing the next body for a busy thread; routing and handling run on {@code executor}.
  *
- * <p>With {@linkplain LocalS3Config#tls() TLS} configured, a connection is decrypted by an {@code SslHandler}, which
- * the rest of the pipeline reads plain HTTP from. Unless {@linkplain LocalS3Config#tlsRequired() TLS is required}, the
- * port answers HTTP and HTTPS alike: an {@linkplain OptionalSslHandler} reads the first bytes of each connection and
- * inserts the {@code SslHandler} only for the connections that start with a TLS handshake, so a client that speaks
- * TLS and one that doesn't share the endpoint. {@linkplain ConnectionSchemes} records which of the two a connection
- * turned out to be, for the responses that name the URL of the service.
- *
- * <p>A plaintext connection sends file-backed content as a zero-copy file region, which the kernel transfers. A TLS
- * connection can't: the content is read into memory to be encrypted. So that reading a large file doesn't block the
- * other connections of the event loop, the {@code ChunkedWriteHandler} of a TLS connection runs on
- * {@code chunkedWriterGroup}, if given; the encryption itself stays on the event loop, with the {@code SslHandler}.
+ * <p>Unless {@linkplain LocalS3Config#tlsRequired() TLS is required}, an {@linkplain OptionalSslHandler} inserts the
+ * {@code SslHandler} only for connections that start with a TLS handshake, so HTTP and HTTPS clients share the port.
+ * A TLS connection can't send a file region zero-copy, so its {@code ChunkedWriteHandler} reads the file on
+ * {@code chunkedWriterGroup}, if given, rather than block the other connections of the event loop.
  */
 public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -79,19 +69,9 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     private final @Nullable EventExecutorGroup chunkedWriterGroup;
 
     /**
-     * Create a channel initializer.
-     *
-     * @param config                   the configuration of the service, which limits the requests and connections.
-     * @param executor                 executes request handling and writes the temporary request body files, shared
-     *                                 by all connections.
-     * @param router                   routes requests to handlers.
-     * @param xmlMapper                renders S3 errors.
-     * @param requestBodyFileDirectory the directory that temporary request body files are created in, e.g. one on the
-     *                                 file system of the storage, which then renames them into place; {@code null} for
-     *                                 the default temporary directory.
-     * @param inFlightRequests         counts the requests in flight of all connections, which a server that shuts down
-     *                                 waits for.
-     * @param requestRecorder          receives the requests of all connections once their responses are written.
+     * Create a channel initializer that runs the chunked writer of a TLS connection on its event loop; see
+     * {@linkplain #LocalS3ServerInitializer(LocalS3Config, Executor, Router, XmlMapper, Path, InFlightRequests,
+     * RequestRecorder, LongFunction, EventExecutorGroup)}.
      */
     public LocalS3ServerInitializer(LocalS3Config config, Executor executor, Router router, XmlMapper xmlMapper,
                                     @Nullable Path requestBodyFileDirectory, InFlightRequests inFlightRequests,
@@ -100,22 +80,9 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
     }
 
     /**
-     * Create a channel initializer.
-     *
-     * @param config                   the configuration of the service, which limits the requests and connections.
-     * @param executor                 executes request handling and receives the large request bodies, shared by all
-     *                                 connections.
-     * @param router                   routes requests to handlers.
-     * @param xmlMapper                renders S3 errors.
-     * @param requestBodyFileDirectory the directory that temporary request body files are created in, e.g. one on the
-     *                                 file system of the storage, which then renames them into place; {@code null} for
-     *                                 the default temporary directory.
-     * @param inFlightRequests         counts the requests in flight of all connections, which a server that shuts down
-     *                                 waits for.
-     * @param requestRecorder          receives the requests of all connections once their responses are written.
-     * @param heapBodyWriters          creates the writer of a large request body of the given expected length that is
-     *                                 received into the heap for a storage that takes it over, e.g. the one of an
-     *                                 {@code IN_MEMORY} service; {@code null} to buffer large bodies in files.
+     * Create a channel initializer that buffers large bodies in files and runs the chunked writer of a TLS
+     * connection on its event loop; see {@linkplain #LocalS3ServerInitializer(LocalS3Config, Executor, Router, XmlMapper, Path, InFlightRequests,
+     * RequestRecorder, LongFunction, EventExecutorGroup)}.
      */
     public LocalS3ServerInitializer(LocalS3Config config, Executor executor, Router router, XmlMapper xmlMapper,
                                     @Nullable Path requestBodyFileDirectory, InFlightRequests inFlightRequests,

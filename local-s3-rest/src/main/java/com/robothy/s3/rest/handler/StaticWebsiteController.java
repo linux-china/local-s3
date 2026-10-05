@@ -31,22 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Serves a bucket as a
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html">static website</a>: the index
- * document of a directory, a redirect to a directory that was addressed without its trailing slash, the error document
- * of a key that isn't there, the redirects of the {@code WebsiteConfiguration} of the bucket, and the redirect of an
- * object that was stored with an {@code x-amz-website-redirect-location}.
+ * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html">static website</a>: index and
+ * error documents, directory redirects, routing rules and website redirect locations; see
+ * {@code docs/semantics.md#static-website-hosting}.
  *
- * <p>Amazon S3 serves a website on an endpoint of its own, which speaks no S3 API. LocalS3 serves it on the port of
- * its S3 API, and tells the requests apart by their credentials: a request that carries none, i.e. one a browser sent,
- * is a website request, and a signed request keeps its S3 semantics. So a test can put an object with its S3 client
- * and open it in a browser on the same port, and a bucket is private until it is made public, see
- * {@linkplain LocalS3Website}.
- *
- * <p>A bucket that has no {@code WebsiteConfiguration} is served as a website too, by probing it for
- * {@linkplain LocalS3Website#indexDocument()}, so that a bucket of static files needs no configuration at all. The one
- * request such a bucket keeps the S3 semantics of is its root: with no index document to serve in its place, it is
- * answered by {@code ListObjects}, which is what an unsigned listing of a public bucket asks for, rather than by an
- * error page.
+ * <p>Amazon S3 serves a website on an endpoint of its own; LocalS3 serves it on the port of its S3 API and tells the
+ * requests apart by their credentials, so an unsigned (browser) request is a website request and a signed one keeps its
+ * S3 semantics. The root of a bucket without an index document is answered by {@code ListObjects}, which is what an
+ * unsigned listing of a public bucket asks for.
  */
 class StaticWebsiteController implements RouterHttpRequestHandler {
 

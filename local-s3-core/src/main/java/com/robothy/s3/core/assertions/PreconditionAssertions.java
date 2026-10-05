@@ -142,19 +142,11 @@ public class PreconditionAssertions {
 
   /**
    * Evaluate the preconditions of a
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html">conditional delete</a>,
-   * i.e. of {@code DeleteObject} or of an object of {@code DeleteObjects}, against the current version of the object,
-   * whatever version the request deletes. The caller must hold the write lock of the bucket, so that the object
-   * that the condition was evaluated against is the one deleted.
-   *
-   * <ul>
-   *   <li>{@code If-Match} deletes the object only if its current version has one of the given entity tags, or
-   *   exists at all for {@code *}: a mismatch, or a current version that is a delete marker, answers
-   *   {@code 412 Precondition Failed}, and a key that holds no version answers {@code 404 NoSuchKey}.</li>
-   *   <li>{@code x-amz-if-match-last-modified-time} and {@code x-amz-if-match-size} delete the object only if it
-   *   was last modified in that second, or has that size. A mismatch answers {@code 412 Precondition Failed}; if
-   *   the key holds no object, they hold, and the delete goes on like an unconditional one.</li>
-   * </ul>
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-deletes.html">conditional delete</a>
+   * ({@code If-Match}, {@code x-amz-if-match-last-modified-time}, {@code x-amz-if-match-size}) against the current version
+   * of the object, whatever version the request deletes; see {@code docs/semantics.md#conditional-requests} for how each
+   * answers. The caller must hold the write lock of the bucket, so that the object the condition was evaluated against is
+   * the one deleted.
    *
    * @param preconditions the preconditions of the request; {@linkplain ObjectPreconditions#none()} if it carries
    *     none. The conditions of a read are ignored.

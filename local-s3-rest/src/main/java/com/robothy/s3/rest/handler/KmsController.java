@@ -30,23 +30,13 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A stateless <a href="https://docs.aws.amazon.com/kms/latest/APIReference/Welcome.html">AWS KMS</a> endpoint on the
- * port of LocalS3, so that the clients which call KMS before they talk to S3 run unchanged: the Amazon S3 Encryption
- * Client, which wraps a data key with {@code GenerateDataKey} and unwraps it with {@code Decrypt} on every object, and
- * the code that resolves a key with {@code DescribeKey} before it sends {@code x-amz-server-side-encryption:aws:kms}.
- * Like {@linkplain StsController}, it is told apart from an S3 request by its shape rather than by its host or port,
- * see {@linkplain #isKmsRequest}: KMS speaks AWS JSON 1.1, a {@code POST} to {@code /} whose {@code X-Amz-Target}
- * header names the action, signed for the {@code kms} service.
+ * port of LocalS3, so that clients which call KMS before they talk to S3, e.g. the Amazon S3 Encryption Client, run
+ * unchanged; what it answers is described in {@code docs/semantics.md#the-kms-endpoint}. Like
+ * {@linkplain StsController}, a request is told apart by its shape, see {@linkplain #isKmsRequest}.
  *
- * <p><b>Nothing is kept secret.</b> A ciphertext blob is the plaintext itself in a framed, base64 encoded envelope
- * that anyone can unpack, and no key material exists: a key ID is whatever the request named. What LocalS3 does give
- * is a faithful <em>round trip</em> — {@code Decrypt} of a blob returns the plaintext that {@code Encrypt} or
- * {@code GenerateDataKey} produced, bound to the same key ID and encryption context, so a client that wraps a data
- * key, stores the blob and unwraps it later reads its object back, and one that mismatches the context or the key gets
- * the {@code InvalidCiphertextException} of KMS instead of silently decrypting. Use it for tests and local
- * development; a blob written by LocalS3 protects nothing.
- *
- * <p>The keys are not stored either, so every key ID is valid and a blob survives a restart: an ID is an alias, a key
- * ID or an ARN, and it is answered as the ARN it names, of the account {@linkplain StsController#ACCOUNT}.
+ * <p>Nothing is kept secret and no key is stored: a ciphertext blob is the plaintext in a framed envelope, bound to its
+ * key ID and encryption context. That gives a faithful round trip, and the errors of KMS on a mismatch, without any
+ * state, so every key ID is valid and a blob survives a restart.
  */
 final class KmsController implements RouterHttpRequestHandler {
 

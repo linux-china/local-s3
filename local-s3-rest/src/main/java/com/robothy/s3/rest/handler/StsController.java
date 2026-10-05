@@ -21,20 +21,14 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * A stateless <a href="https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html">AWS STS</a> endpoint, like the
- * one of MinIO, so that the clients of a lakehouse, e.g. an Iceberg REST catalog such as Apache Polaris, Lakekeeper,
- * Gravitino or Unity Catalog, can vend scoped temporary credentials of LocalS3 with {@code AssumeRole}, and DuckDB,
- * PyIceberg or Spark can access LocalS3 with them. The credentials are issued and verified by
+ * A stateless <a href="https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html">AWS STS</a> endpoint, so that
+ * an Iceberg REST catalog such as Polaris can vend temporary credentials of LocalS3 with {@code AssumeRole}; see
+ * {@code docs/embedding.md#temporary-credentials-sts}. The credentials are issued and verified by
  * {@linkplain SessionCredentialIssuer}.
  *
- * <p>The actions are {@code AssumeRole}, {@code GetSessionToken} and {@code GetCallerIdentity}, requested with the
- * query protocol of STS: a {@code POST} to {@code /} whose form-urlencoded body carries the {@code Action} and its
- * parameters, signed for the {@code sts} service with the credentials of LocalS3, or with temporary credentials of
- * LocalS3 for role chaining. No S3 request looks like it: a browser upload posts {@code multipart/form-data}, so an STS
- * request is told apart by {@linkplain #isStsRequest} before the bucket of the request is.
- *
- * <p>LocalS3 has no IAM: the role and the session policies of a request are validated like STS validates them, but
- * don't limit what the credentials may do, which is everything that the credentials of LocalS3 may do.
+ * <p>An STS request is a form-urlencoded {@code POST /}, which no S3 request is (a browser upload posts
+ * {@code multipart/form-data}), so {@linkplain #isStsRequest} tells it apart before a bucket is parsed. LocalS3 has no
+ * IAM: roles and session policies are validated like STS validates them, but limit nothing.
  */
 final class StsController implements RouterHttpRequestHandler {
 

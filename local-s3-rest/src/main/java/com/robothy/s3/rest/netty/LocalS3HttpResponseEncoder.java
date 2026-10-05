@@ -22,24 +22,15 @@ import java.io.InputStream;
 import java.util.List;
 
 /**
- * Encodes {@linkplain RouterHttpResponse}s into Netty HTTP messages.
+ * Encodes {@linkplain RouterHttpResponse}s into Netty HTTP messages: a buffered response as a
+ * {@linkplain FullHttpResponse}, a {@linkplain StreamingRouterHttpResponse} as headers followed by streamed content.
  *
- * <p>A buffered response becomes a {@linkplain FullHttpResponse}. A {@linkplain StreamingRouterHttpResponse}
- * with a body stream becomes the response headers followed by streaming content. File-backed content
- * is sent as a zero-copy {@linkplain DefaultFileRegion} on plaintext connections, or a
- * {@linkplain ChunkedNioFile} through TLS; other streams use a {@linkplain ChunkedStream}. The content of an object
- * stored in parts, i.e. a {@linkplain CompositeInputStream}, is sent part by part on plaintext connections by a
- * {@linkplain CompositeContentChunkedInput}, which opens one part at a time.
- *
- * <p>On a plaintext connection, the content is written on the event loop of the connection. So that a large response
- * doesn't block the other connections of the loop, file-backed content is never read through the Java heap there: the
- * kernel transfers it. The other streams that storages answer hold their content in memory, which a chunk of is copied
- * at a time, as far as the connection is writable.
- *
- * <p>On a TLS connection, file-backed content has to be read into memory to be encrypted. It is read a chunk at a time
- * by the {@linkplain io.netty.handler.stream.ChunkedWriteHandler} of the connection, which runs on an executor of its
- * own rather than on the event loop; see {@linkplain LocalS3ServerInitializer}. Only the encryption of the chunks runs
- * on the event loop.
+ * <p>The content is written on the event loop, so it must never block it: on a plaintext connection a file is sent as a
+ * zero-copy {@linkplain DefaultFileRegion} and an object of parts part by part ({@linkplain CompositeContentChunkedInput},
+ * one part open at a time); in-memory streams are copied a chunk at a time while the connection is writable. A TLS
+ * connection has to read a file to encrypt it, so it uses a {@linkplain ChunkedNioFile} read by a
+ * {@linkplain io.netty.handler.stream.ChunkedWriteHandler} off the event loop, see {@linkplain LocalS3ServerInitializer}.
+ * Other streams use a {@linkplain ChunkedStream}.
  */
 public class LocalS3HttpResponseEncoder extends MessageToMessageEncoder<RouterHttpResponse> {
 

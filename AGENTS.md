@@ -47,3 +47,11 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 
 Local S3 Spring Boot Starter，主要是将应用转换为一个S3 Server，接收文件保存和事件通知，不需要考虑 `prod` profile等场景。
 
+
+## 注释与文档约定
+
+- **行为规范只写在 `docs/*.md`**：对外可见的行为（S3 语义、错误码、端点、配置项、存储布局等）以文档为唯一来源，代码注释不再复述。
+- **代码注释只写“为什么”**：设计取舍、并发/崩溃安全的前提、与 AWS 的差异原因、不显而易见的约束；保持简短。
+- **用 `docs/<file>.md#<anchor>` 引用文档**：写成 `{@code docs/semantics.md#conditional-requests}`。`DocumentationReferencesTest` 校验代码注释里的引用，以及 README、docs 之间的相对链接，标题改名后测试会失败，需同步修正引用。
+- **公开 API 的 Javadoc 例外**：`LocalS3Builder`、`LocalS3Config`、`S3Change` 等用户在 IDE 中直接阅读的类型，保留完整的 `@param` / 用法说明。
+- 修改行为时，先改文档，再改代码；`SupportedApiDocumentationTest` 与 `DocumentationReferencesTest` 用来防止两者漂移。

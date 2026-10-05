@@ -43,27 +43,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Verifies AWS Signature Version 4 requests for a single access key pair, and for the temporary credentials that the
- * STS endpoint of LocalS3 issued with it, see {@linkplain SessionCredentialIssuer}. A request signed with temporary
- * credentials carries their session token in {@code x-amz-security-token}, in {@code X-Amz-Security-Token} for a
- * presigned URL, or in the {@code x-amz-security-token} field of a form upload, and is signed with the secret access key
- * that is derived from the token. The session credentials of S3 Express One Zone, which {@code CreateSession} issues the
- * same way, carry their token in {@code x-amz-s3session-token}, or in {@code X-Amz-S3session-Token} for a presigned
- * URL.
+ * Verifies the signatures of requests for a single access key pair, and for the temporary credentials issued with it,
+ * see {@linkplain SessionCredentialIssuer}. What is verified, and the clients whose signature is only partly checked
+ * (SigV4a, SigV2), is described in {@code docs/embedding.md#require-signed-requests}.
  *
- * <p>An STS request, see {@linkplain StsController#isStsRequest}, is signed for the {@code sts} service, a KMS
- * request, see {@linkplain KmsController#isKmsRequest}, for the {@code kms} service, a request of the S3 Tables API,
- * see {@linkplain S3TablesController#isS3TablesRequest}, for {@code s3tables}, and any other request for {@code s3},
- * {@code s3vectors} or {@code s3express}.
- *
- * <p>The service of the scope is <em>checked</em> rather than trusted: a request that the router sent to the S3 Tables
- * endpoint because its scope said {@code s3tables} is verified for that service, so claiming a scope buys a client
- * nothing it couldn't have signed for.
- *
- * <p>A request signed with SigV4a ({@code AWS4-ECDSA-P256-SHA256}), which multi-Region access points and some CRT
- * based clients use, or with the legacy Signature Version 2 ({@code AWS AKID:signature}, or {@code AWSAccessKeyId} and
- * {@code Signature} in a presigned URL), only has its access key checked, not its signature, so that such clients
- * work; a warning is logged the first time.
+ * <p>The service of the credential scope is checked rather than trusted: a request that the router sent to an API by its
+ * scope, e.g. {@code s3tables}, is verified for that service, so claiming a scope buys nothing the client couldn't have
+ * signed for.
  */
 final class AwsSignatureV4Verifier {
 

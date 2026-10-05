@@ -24,29 +24,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The policy of a browser form upload, {@code POST Object}: when the form expires, and the conditions that its fields
  * and its file must satisfy. See
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-HTTPPOSTConstructPolicy.html">Creating a POST
- * policy</a>.
+ * policy</a>; the conditions LocalS3 checks and the error of each failure are listed in
+ * {@code docs/semantics.md#browser-form-uploads-post-object}.
  *
- * <p>A policy is a base64-encoded JSON document:
- * <pre>{@code
- * { "expiration": "2030-01-01T00:00:00.000Z",
- *   "conditions": [
- *     {"bucket": "uploads"},
- *     ["starts-with", "$key", "user/42/"],
- *     ["content-length-range", 1, 10485760],
- *     {"success_action_status": "201"} ] }
- * }</pre>
- *
- * <p>A condition is an exact match, as an object or as {@code ["eq", "$field", "value"]}, a prefix match,
- * {@code ["starts-with", "$field", "prefix"]}, or the range of the size of the file,
- * {@code ["content-length-range", min, max]}. Field names are compared ignoring case. Every field of the form must be
- * named by a condition, except {@code policy}, {@code x-amz-signature}, {@code signature}, {@code AWSAccessKeyId},
- * {@code file} and the fields whose names start with {@code x-ignore-}.
- *
- * <p>The errors are those of Amazon S3, including their messages, so that a form that fails here fails the same way
- * there: {@code InvalidPolicyDocument} for a document that isn't a policy, e.g. one with a condition object that
- * doesn't name exactly one field, {@code AccessDenied} for an expired
- * policy, a failed condition or a field that no condition names, and {@code EntityTooSmall} or
- * {@code EntityTooLarge} for a file outside of the {@code content-length-range}.
+ * <p>The errors, messages included, are those of Amazon S3, so that a form that fails here fails the same way there.
  */
 final class PostPolicy {
 

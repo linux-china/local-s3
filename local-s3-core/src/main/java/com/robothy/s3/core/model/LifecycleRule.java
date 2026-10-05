@@ -17,9 +17,7 @@ import javax.xml.stream.XMLStreamReader;
 
 /**
  * A rule of a lifecycle configuration, as far as LocalS3 applies it when it is
- * {@linkplain com.robothy.s3.core.service.LifecycleExecutionService asked to}: the objects it selects, and the actions
- * that expire objects, noncurrent versions and delete markers, or abort multipart uploads. Transitions are read, but
- * LocalS3 has only one storage class, so they change nothing.
+ * {@linkplain com.robothy.s3.core.service.LifecycleExecutionService asked to}. Transitions are read but change nothing.
  *
  * @param id the ID of the rule; {@code null} if it has none.
  * @param enabled whether the {@code Status} of the rule is {@code Enabled}.

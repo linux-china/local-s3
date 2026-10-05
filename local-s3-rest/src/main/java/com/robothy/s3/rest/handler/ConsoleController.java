@@ -55,49 +55,19 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Serves the built-in console of a LocalS3 service, a single self-contained HTML page that lists the buckets, creates
- * one, walks the objects of a bucket by their prefixes, previews or downloads an object, and uploads or deletes one:
+ * Serves the built-in console of a LocalS3 service, {@code GET /_admin/ui}, and the JSON endpoints under it that the
+ * page calls. What the page does, and every endpoint with its parameters, is described in
+ * {@code docs/deployment.md#console}.
  *
+ * <p>Why the endpoints are guarded the way they are:
  * <ul>
- *   <li>{@code GET /_admin/ui}: the page itself;</li>
- *   <li>{@code GET /_admin/ui/buckets}: the buckets of the service, as JSON;</li>
- *   <li>{@code GET /_admin/ui/objects?bucket=name&prefix=p/&continuation-token=t}: one page of the objects and the
- *   common prefixes under {@code prefix}, as JSON, i.e. {@code ListObjectsV2} with {@code /} as the delimiter;</li>
- *   <li>{@code GET /_admin/ui/object?bucket=name&key=k&versionId=v}: the content of an object, to preview in the
- *   page; {@code download} answers it as an attachment instead;</li>
- *   <li>{@code PUT /_admin/ui/object?bucket=name&key=k}: store the body as that object, which is what a file
- *   dropped on the page is uploaded with;</li>
- *   <li>{@code DELETE /_admin/ui/object?bucket=name&key=k&versionId=v}: delete the object, or a version of it;</li>
- *   <li>{@code POST /_admin/ui/multipart?bucket=name&key=k}: start a multipart upload of a large file, which answers
- *   its {@code uploadId}; {@code PUT /_admin/ui/multipart?bucket=name&key=k&uploadId=u&partNumber=n} stores a part
- *   of it, {@code POST /_admin/ui/multipart/complete?bucket=name&key=k&uploadId=u} completes it with the parts
- *   given as JSON, and {@code DELETE /_admin/ui/multipart?bucket=name&key=k&uploadId=u} aborts it;</li>
- *   <li>{@code PUT /_admin/ui/bucket?bucket=name}: create a bucket, in the default region;</li>
- *   <li>{@code GET /_admin/ui/snippets?bucket=name&key=k}: the configuration of DuckDB and the other clients that
- *   reach this service, with a query of the bucket or the object the page shows, see
- *   {@linkplain ConnectionSnippets};</li>
- *   <li>{@code GET /_admin/ui/presign?bucket=name&key=k&expires=seconds&method=GET}: a presigned URL of an object,
- *   which the page copies to share it, e.g. an artifact of an AI agent, with a client that has no credentials; see
- *   {@linkplain AwsSignatureV4Presigner}.</li>
+ *   <li>A browser can't sign with AWS Signature Version 4, so they want HTTP Basic authentication with the credentials
+ *   of the service instead; a service without credentials answers them to anyone, like it answers unsigned S3
+ *   requests, see {@linkplain com.robothy.s3.rest.LocalS3#warnIfOpenToTheNetwork()}.</li>
+ *   <li>The endpoints that change the data also want the {@linkplain #CONSOLE_HEADER} header, which a browser lets no
+ *   other origin send without a preflight, so a page open elsewhere can't write through the console.</li>
+ *   <li>They call the same services as the S3 operations, so the console shows and changes what a client sees.</li>
  * </ul>
- *
- * <p>The endpoints call the same services the S3 operations do, so the console shows and changes what a client sees,
- * and they are the only ones the page calls: a browser can't sign a request with AWS Signature Version 4, which is
- * why these are guarded with HTTP Basic authentication instead. A service that was configured with credentials wants
- * them as the user name and the password, i.e. the access key ID and the secret access key; a service without
- * credentials, which answers unsigned S3 requests anyway, answers the console to anyone who reaches the port, see
- * {@linkplain com.robothy.s3.rest.LocalS3#warnIfOpenToTheNetwork()}.
- *
- * <p>The endpoints that change the data also want the {@linkplain #CONSOLE_HEADER} header, which only the page
- * itself sends: a browser lets another origin send neither that header nor a {@code PUT} or a {@code DELETE} without
- * asking this service first, so a page a user has open elsewhere can't write into their buckets through the console.
- *
- * <p>The console creates a bucket, and deletes none: a bucket of a test or of a local environment is worth a click,
- * while dropping one, with everything in it, is left to the S3 API.
- *
- * <p>The page uploads a small file with a single {@code PutObject}, and a large one in parts, like an S3 client
- * does, so that no request of the console is larger than a part and a file larger than the largest body the service
- * accepts is stored as well.
  */
 class ConsoleController implements RouterHttpRequestHandler {
 

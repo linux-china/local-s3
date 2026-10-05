@@ -31,38 +31,17 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> of LocalS3, served on the port
- * of the S3 service under {@value #PATH_PREFIX}, so that one process is both the catalog and the storage of a
- * lakehouse:
+ * The <a href="https://iceberg.apache.org/spec/#rest-catalog">Iceberg REST catalog</a> of LocalS3, served on the port of
+ * the S3 service under {@value #PATH_PREFIX}; what it serves and its limits are described in
+ * {@code docs/data-tools.md#the-built-in-iceberg-rest-catalog}.
  *
- * <pre>{@code
- * RESTCatalog catalog = new RESTCatalog();
- * catalog.initialize("local", Map.of("uri", "http://localhost:29090/iceberg"));
- * }</pre>
+ * <p>Like {@linkplain com.robothy.s3.rest.handler.StsController}, it is told apart from an S3 request by its shape, its
+ * path, before a bucket is parsed, since its paths nest far deeper than the {@code /bucket/key} the S3 router reads.
+ * Besides the catalog of the service, every {@link com.robothy.s3.core.s3tables.S3TablesService table bucket} is served
+ * as a catalog under a {@code prefix}, see {@linkplain #config}.
  *
- * <p>Without this, testing Iceberg locally means running a catalog of its own — Polaris, Lakekeeper, Nessie or a JDBC
- * catalog — beside the object store, because a catalog is what turns a pile of files into a table. LocalS3 answers
- * both halves, and the catalog writes the metadata files straight through the S3 services rather than over HTTP to
- * itself.
- *
- * <p>Like {@linkplain com.robothy.s3.rest.handler.StsController} and
- * {@linkplain com.robothy.s3.rest.handler.KmsController}, this is told apart from an S3 request by its shape, here its
- * path, before the bucket of the request is parsed: the paths of the catalog are nested far deeper than the
- * {@code /bucket/key} that the S3 router reads, so they are routed here instead.
- *
- * <p><b>It serves more than one catalog.</b> Beside the catalog of the service, every
- * {@link com.robothy.s3.core.s3tables.S3TablesService table bucket} of the service is served here as a catalog of its
- * own, under a {@code prefix} that {@code GET /v1/config} answers to a client that named the table bucket as its
- * warehouse. That is how Amazon S3 Tables documents its own Iceberg REST endpoint, so an engine reaches a table bucket
- * of LocalS3 with the configuration it would use against AWS; see {@linkplain #config}.
- *
- * <p><b>Requests are not signed.</b> The Iceberg REST protocol carries its own credentials — an OAuth2 bearer token —
- * rather than an AWS signature, so a catalog request is answered whatever it carries, and a {@code Bearer} token is
- * accepted without being checked. A client that <em>does</em> sign, which the Iceberg client does when it is configured
- * with {@code rest.sigv4-enabled} — as reaching Amazon S3 Tables over this protocol requires — is verified like any
- * other request, for {@code s3} or for {@code s3tables}, whichever it signed for. A LocalS3 with credentials verifies
- * the S3 requests that the engine then makes with the credentials this catalog vends either way, which is where a test
- * that asserts about signing has something to assert.
+ * <p>Requests aren't required to be signed, since the protocol authenticates with an OAuth2 bearer token, which is
+ * accepted unchecked; one that is signed, e.g. with {@code rest.sigv4-enabled}, is verified for the service it signed for.
  */
 public final class IcebergCatalogController implements RouterHttpRequestHandler {
 

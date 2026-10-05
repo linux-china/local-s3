@@ -25,39 +25,18 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_S3_Tables.html">Amazon S3
- * Tables</a> API of a LocalS3 service: table buckets, the namespaces and the tables in them, and the metadata
- * locations that make a commit.
+ * Tables</a> API of a LocalS3 service. What it answers, where it keeps the files and its limits are described in
+ * {@code docs/data-tools.md#amazon-s3-tables}.
  *
- * <p><b>A table bucket is a catalog.</b> Every table bucket gets an
- * {@linkplain IcebergCatalogService Iceberg catalog} of its own, and that catalog is the one truth about what the
- * table bucket holds. So the two ways into a table bucket are two views of the same thing rather than two copies of
- * it:
+ * <p>Every table bucket is backed by an {@linkplain IcebergCatalogService Iceberg catalog} of its own, which is the one
+ * truth about what it holds, so this API and the Iceberg REST endpoint of the table bucket are two views of one catalog
+ * rather than two copies to keep in sync. The bookkeeping that bridges them is in {@linkplain #tableOf} (a table created
+ * over REST gets the fields of this API when first asked about) and {@linkplain #atCurrentMetadata} (a commit over REST
+ * draws a new version token, so a stale token is refused).
  *
- * <ul>
- *   <li>the control plane here, which an {@code S3TablesClient} of the AWS SDK and the {@code s3-tables-catalog}
- *       library speak — {@code CreateTable} then {@code UpdateTableMetadataLocation} for every commit; and</li>
- *   <li>the <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-integrating-open-source.html">
- *       Iceberg REST endpoint</a> of the same table bucket, which Spark, Trino, PyIceberg and DuckDB speak, reached by
- *       giving a REST catalog the ARN of the table bucket as its warehouse.</li>
- * </ul>
- *
- * <p>A table created with either is the table the other loads, and a commit made with either is the one the other then
- * reads. That is the whole point of serving this API at all: it is where the engines are going, and a local lakehouse
- * that only answered one of the two halves would send a test down a path its production code doesn't take. The
- * bookkeeping that makes it hold is in {@linkplain #tableOf} and {@linkplain #atCurrentMetadata}: a table that appeared
- * in the catalog is given the fields this API answers the first time it is asked about, and a commit made over REST
- * draws a new version token the next time this API reads the table, so the token a client is still holding is refused.
- *
- * <p><b>Where the files go.</b> A table bucket of Amazon S3 keeps its files out of reach of the S3 API. LocalS3 keeps
- * them in an ordinary bucket of the same service, named {@code <table-bucket>--table-s3}, which is what a table's
- * {@code warehouseLocation} points into. The engine that loaded a table then writes its data files there with its own
- * {@code S3FileIO}, against the same endpoint and with the same credentials, and a test can look at what was written
- * with an {@code S3Client} — which against the real service it could not.
- *
- * <p>This class is HTTP-free: it takes and answers the JSON documents of the API, not requests, so that the controller
- * stays thin and the API can be tested without a socket. The documents are trees rather than classes for the reason
- * {@linkplain IcebergJson} gives — the shapes of this API nest deeply into the Iceberg specification, and carrying a
- * field through unread is better than dropping what a newer client sent.
+ * <p>The class takes and answers JSON trees rather than requests, so the API can be tested without a socket, and rather
+ * than classes, for the reason {@linkplain IcebergJson} gives: a field a newer client sent is carried through unread
+ * instead of dropped.
  */
 public final class S3TablesService {
 

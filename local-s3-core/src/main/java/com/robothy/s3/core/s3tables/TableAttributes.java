@@ -5,21 +5,12 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What the S3 Tables API knows about a table beyond what an Iceberg catalog does: its ID, its version token, when it
- * was created and last changed, and the configuration that was stored on it.
+ * What the S3 Tables API knows about a table beyond what its Iceberg catalog does: its ID, its version token, when it
+ * was created and last changed, and the configuration stored on it. The pointer to its {@code metadata.json} lives in the
+ * catalog; see {@code docs/data-tools.md#commits-and-the-version-token}.
  *
- * <p>The table itself — the pointer to its current {@code metadata.json} — lives in the Iceberg catalog of the table
- * bucket, so the S3 Tables API and the Iceberg REST endpoint of the same table bucket are two views of one catalog: a
- * table created with {@code CreateTable} is the table that Spark loads over REST, and a commit made over REST is what
- * {@code GetTableMetadataLocation} then answers. A table that was created over REST has no record here until this API
- * is first asked about it, and {@linkplain S3TablesService} then gives it one.
- *
- * <p><b>The version token</b> is the optimistic lock of the API. It is opaque, and a new one is drawn on every change
- * of the table, so a client that read the table, built a new metadata file and calls
- * {@code UpdateTableMetadataLocation} with the token it read commits only if nothing else changed the table meanwhile.
- * {@linkplain #metadataLocation()} is what makes that hold across the two protocols: it records the pointer the
- * current token was drawn for, so a commit made over the REST endpoint is noticed the next time this API reads the
- * table, and the token that a client is still holding is refused.
+ * <p>{@linkplain #metadataLocation()} records the pointer the current version token was drawn for, which is how a
+ * commit made over the Iceberg REST endpoint is noticed by this API and the token a client still holds is refused.
  *
  * @param tableId the ID that the service assigned the table, which its ARN names.
  * @param namespace the namespace that holds the table.

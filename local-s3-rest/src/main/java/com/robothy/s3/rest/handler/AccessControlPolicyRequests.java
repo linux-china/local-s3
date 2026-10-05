@@ -25,22 +25,10 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Reads the ACL of a {@code PutBucketAcl} or {@code PutObjectAcl} request, which Amazon S3 accepts in one of three
- * forms, and only one:
- * <ul>
- *   <li>a canned ACL, the {@code x-amz-acl} header, e.g. {@code public-read}, which grants the owner
- *   {@code FULL_CONTROL} and others what the canned ACL names;</li>
- *   <li>grant headers, {@code x-amz-grant-read}, {@code x-amz-grant-write}, {@code x-amz-grant-read-acp},
- *   {@code x-amz-grant-write-acp} and {@code x-amz-grant-full-control}, each naming grantees as
- *   {@code id="..."}, {@code uri="..."} or {@code emailAddress="..."}, separated by commas;</li>
- *   <li>an {@code AccessControlPolicy} document in the body.</li>
- * </ul>
- * An ACL of headers keeps the owner of the resource, since an ACL doesn't change who owns a resource.
- *
- * <p>The errors are those of Amazon S3: {@code InvalidRequest} for a canned ACL together with grant headers,
- * {@code UnexpectedContent} for headers together with a body, {@code MissingSecurityHeader} for a request without any
- * ACL, {@code InvalidArgument} for an unknown canned ACL or a malformed grant header, and {@code MalformedACLError}
- * for a body that isn't an ACL.
+ * Reads the ACL of a {@code PutBucketAcl} or {@code PutObjectAcl} request, given as a canned ACL, grant headers or an
+ * {@code AccessControlPolicy} document, exactly one of them; the forms and the errors of Amazon S3 are listed in
+ * {@code docs/semantics.md#access-control-lists}. An ACL of headers keeps the owner of the resource, since an ACL doesn't
+ * change who owns it.
  */
 final class AccessControlPolicyRequests {
 

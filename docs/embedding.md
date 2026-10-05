@@ -135,6 +135,19 @@ localS3.start();
 
 The [health check](deployment.md#health-check) needs no authentication, so probes keep working.
 
+What is verified, besides the `Authorization` header of SigV4:
+
++ **Presigned URLs** and **browser form uploads**, whose signature is in the query or in the fields of the form.
++ **Temporary credentials** of the [STS endpoint](#temporary-credentials-sts) and the session credentials of
+  [S3 Express One Zone](semantics.md#s3-express-one-zone-directory-buckets), whose session token travels in
+  `x-amz-security-token` or `x-amz-s3session-token` (or the query parameter or form field of the same name).
++ **The service of the credential scope**: `s3`, `s3vectors` or `s3express` for an S3 request, `sts`, `kms` and
+  `s3tables` for the other APIs on the port. A request routed to an API by its scope is verified for that service, so
+  claiming a scope gains nothing.
++ **SigV4a** (`AWS4-ECDSA-P256-SHA256`, used by multi-Region access points and some CRT-based clients) and the legacy
+  **Signature Version 2** (`AWS AKID:signature`, or `AWSAccessKeyId` and `Signature` in a presigned URL) only have their
+  access key checked, not their signature, so that such clients work; a warning is logged the first time.
+
 ### Look at what is in the service
 
 An embedded service has no window of its own, so `GET /_admin/ui` serves a [built-in console](deployment.md#console):

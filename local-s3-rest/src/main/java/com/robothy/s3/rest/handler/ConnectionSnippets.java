@@ -14,21 +14,14 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The configuration that a client needs to reach this service, as snippets to paste: a DuckDB script, the environment
- * variables of s5cmd, the AWS CLI and the AWS SDKs, an AWS CLI profile, a boto3 client, the {@code storage_options} of
- * Polars, a PyIceberg catalog and the properties of Spark.
+ * The configuration that a client needs to reach this service, as snippets to paste, for DuckDB, s5cmd, the AWS CLI
+ * and SDKs, boto3, Polars, PyIceberg and Spark; see {@code docs/deployment.md#admin-endpoints}.
  *
- * <p>The service knows what a user otherwise has to get right by hand — the port, whether it speaks plain HTTP, its
- * credentials, and whether it serves an Iceberg catalog — and a DuckDB secret that misses {@code USE_SSL false} or
- * {@code URL_STYLE 'path'} is the most common reason a first query fails. So the snippets are written from the
- * configuration of the service rather than documented.
- *
- * <p>The host is the one the request addressed, like the endpoint that {@linkplain IcebergClientConfig} vends: a client
- * in a container and a client on the host are each given the name that reaches the service from where they are.
- *
- * <p>The snippets carry the credentials of the service, which only a caller that already has them receives: the
- * {@code /_admin} endpoints are signed with them, and the console asks for them. A service without credentials takes
- * unsigned requests, and the snippets then name a placeholder key pair, which any client may sign with.
+ * <p>They are written from the configuration of the service rather than documented, because what a user otherwise gets
+ * wrong by hand, e.g. a DuckDB secret without {@code USE_SSL false} or {@code URL_STYLE 'path'}, is the most common reason
+ * a first query fails. The host is the one the request addressed, so a client in a container and one on the host each
+ * get a name that works. The snippets carry the credentials of the service, which only a caller that signed with them
+ * (or passed the console's authentication) receives.
  */
 final class ConnectionSnippets {
 

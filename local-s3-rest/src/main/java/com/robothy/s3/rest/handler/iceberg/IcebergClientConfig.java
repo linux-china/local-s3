@@ -13,26 +13,13 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The settings that the Iceberg catalog hands its clients: where LocalS3 is, and the credentials to reach it with.
+ * The settings that the Iceberg catalog vends its clients: where LocalS3 is and the credentials to reach it, so an
+ * engine configured with the catalog URI alone reaches the storage; see
+ * {@code docs/data-tools.md#the-built-in-iceberg-rest-catalog}.
  *
- * <p>This is the <em>credential vending</em> of the REST catalog. An engine that is given nothing but the catalog URI
- * asks {@code GET /v1/config} when it starts, which answers where the storage is, and reads the {@code config} of
- * every table it loads, which answers the keys to it as well. So a Spark, Trino or PyIceberg configured with one line
- * reaches the storage as well:
- *
- * <pre>{@code
- * spark.sql.catalog.local.type = rest
- * spark.sql.catalog.local.uri  = http://localhost:29090/iceberg
- * }</pre>
- *
- * <p>Against a real deployment the vended credentials would be scoped and temporary, from STS; here they are the
- * credentials of the service itself, which is what a test double should hand out — a test that wants temporary ones
- * gets them from the {@code AssumeRole} of LocalS3 on the same port. The credentials route of a table,
- * {@code GET /v1/.../tables/{table}/credentials}, does hand out temporary ones, which the {@code S3FileIO} of Iceberg
- * refreshes its credentials from; see {@linkplain #credentialsResponse}.
- *
- * <p>The endpoint is the host the request arrived on, so a client in a container that reaches LocalS3 by one name and
- * a client on the host that reaches it by another are each told the name that works for them.
+ * <p>The vended keys are those of the service itself, which is what a test double should hand out; the credentials route
+ * of a table hands out temporary ones instead, see {@linkplain #credentialsResponse}. The endpoint is the host the
+ * request arrived on, so a client in a container and one on the host are each told the name that works for them.
  *
  * @param region the region that the clients are told to use.
  * @param accessKeyId the access key to vend; {@code null} if the service takes unsigned requests, which vends none.
@@ -94,15 +81,12 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
       "POST /v1/{prefix}/namespaces/{namespace}/register-view");
 
   /**
-   * The answer of {@code GET /v1/config}, which a client reads before anything else.
+   * The answer of {@code GET /v1/config}, which a client reads before anything else. {@code overrides} carries the
+   * warehouse, which this catalog decides; {@code defaults} carries the S3 settings, so a client configured with its own
+   * endpoint keeps it.
    *
-   * <p>{@code overrides} wins over what the client was configured with, and carries the warehouse: the client is
-   * talking to this catalog, so this catalog says where its tables live. {@code defaults} is what the client falls
-   * back to, and carries the S3 settings, so that a client that was configured with its own endpoint keeps it.
-   *
-   * <p>The settings carry no keys. The catalog answers anonymous requests, and {@code /v1/config} is the first thing
-   * anyone who finds the port asks, so a secret key in its answer is a secret key handed to the network. The keys go
-   * out with a loaded table alone, whose {@code config} is what the {@code FileIO} of the client reads them from.
+   * <p>It carries no keys: the catalog answers anonymous requests and this is the first thing anyone who finds the port
+   * asks. The keys go out only with a loaded table, whose {@code config} the {@code FileIO} reads them from.
    *
    * @param request the request, whose {@code Host} the endpoint is taken from.
    * @param warehouse the warehouse location of the catalog.
@@ -113,20 +97,10 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
   }
 
   /**
-   * The answer of {@code GET /v1/config} of a client that named a warehouse this catalog serves under a prefix, i.e.
-   * the ARN or the name of a table bucket of the
-   * {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API}.
-   *
-   * <p>{@code prefix} is what makes one endpoint serve many catalogs: the client puts it in the path of every request
-   * it then makes, {@code /v1/{prefix}/namespaces/...}, and the catalog of that table bucket answers. It is the same
-   * mechanism, and the same configuration on the client, that reaching Amazon S3 Tables over its Iceberg REST endpoint
-   * uses:
-   *
-   * <pre>{@code
-   * spark.sql.catalog.s3tables.type      = rest
-   * spark.sql.catalog.s3tables.uri       = http://localhost:29090/iceberg
-   * spark.sql.catalog.s3tables.warehouse = arn:aws:s3tables:us-east-1:000000000000:bucket/sales
-   * }</pre>
+   * The answer of {@code GET /v1/config} of a client that named a warehouse this catalog serves under a prefix, i.e. a
+   * table bucket of the {@link com.robothy.s3.core.s3tables.S3TablesService S3 Tables API}, see
+   * {@code docs/data-tools.md#the-same-table-bucket-as-an-iceberg-rest-catalog}. The client puts the prefix in the path of
+   * every request it then makes, which is how one endpoint serves many catalogs.
    *
    * @param request the request, whose {@code Host} the endpoint is taken from.
    * @param warehouse the warehouse to answer, which is the one the client asked for.

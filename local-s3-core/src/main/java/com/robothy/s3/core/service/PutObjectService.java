@@ -37,19 +37,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- *
- * <ul>
- *   <li>
- *     If bucket versioning is enabled, then create a new {@linkplain VersionedObjectMetadata} instance.
- *   </li>
- *   <li>
- *     If bucket versioning isn't enabled, then create a new {@linkplain VersionedObjectMetadata} instance,
- *     remove the virtual version object if exist, and set the version ID of the created
- *     {@linkplain VersionedObjectMetadata} as virtual version.
- *   </li>
- * </ul>
- *
- *
+ * Stores objects: a put adds a version to the key, which replaces the virtual version of a bucket whose versioning was
+ * never enabled; see {@code docs/semantics.md#versioning}.
  */
 public interface PutObjectService extends LocalS3MetadataApplicable, StorageApplicable {
 

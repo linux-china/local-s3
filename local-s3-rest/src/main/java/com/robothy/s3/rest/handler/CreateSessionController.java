@@ -16,18 +16,11 @@ import java.util.Set;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html">CreateSession</a> of S3
- * Express One Zone, which the AWS SDKs call before they access a directory bucket, i.e. a bucket named
- * {@code base-name--zone-id--x-s3}, and sign the requests to the bucket with the session credentials it answers,
- * sending the session token in {@code x-amz-s3session-token}.
+ * Express One Zone; see {@code docs/semantics.md#s3-express-one-zone-directory-buckets}.
  *
- * <p>The session is stateless, like the temporary credentials of the STS endpoint: it is issued and verified by the
- * same {@linkplain SessionCredentialIssuer}, so it is valid across restarts until it expires, which is after five
- * minutes, like the sessions of S3 Express One Zone. LocalS3 has no IAM: a {@code ReadOnly} session may do everything a
- * {@code ReadWrite} one may, and a session isn't bound to the bucket it was created for.
- *
- * <p>The bucket of the session needn't exist: with an endpoint override, the AWS SDK for Java creates a session for
- * every operation of a directory bucket, {@code CreateBucket} included, which Amazon S3 answers through the control
- * endpoint of S3 Express One Zone without a session.
+ * <p>The session is stateless, issued and verified by the {@linkplain SessionCredentialIssuer} of the STS endpoint. The
+ * bucket of the session needn't exist, because with an endpoint override the AWS SDK for Java creates a session even for
+ * {@code CreateBucket}, which Amazon S3 answers through its control endpoint without one.
  */
 class CreateSessionController implements RouterHttpRequestHandler {
 

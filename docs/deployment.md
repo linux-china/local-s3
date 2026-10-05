@@ -546,9 +546,10 @@ name and the secret access key as the password, and a service without credential
 anyway, serves the console to everyone who reaches the port. The S3 API of the same service is unaffected: it keeps
 requiring signatures.
 
-The three endpoints that change the data also want the `X-LocalS3-Console` header, which the page sends and which a
-browser lets no other origin send without this service allowing it first. So a page a user has open elsewhere can't
-create, upload or delete through the console, whether the service has credentials or not.
+The endpoints that change the data — creating a bucket, the `PUT` and `DELETE` of an object, and the multipart
+endpoints — also want the `X-LocalS3-Console` header, which the page sends and which a browser lets no other origin
+send without this service allowing it first. So a page a user has open elsewhere can't create, upload or delete
+through the console, whether the service has credentials or not.
 
 ```shell
 curl -s -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" "http://localhost:29090/_admin/ui/objects?bucket=my-bucket"

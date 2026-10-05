@@ -10,22 +10,15 @@ import org.h2.mvstore.MVMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Keeps the namespaces and the tables of the Iceberg catalog in the {@linkplain LocalS3Store} of a LocalS3 service,
- * beside its S3 buckets and its vector buckets: one file holds everything a data directory knows, so that a copy of
- * the directory is a consistent point of the whole service.
+ * Keeps the namespaces and the table pointers of the Iceberg catalog in the {@linkplain LocalS3Store} of a LocalS3
+ * service, beside its buckets, so a copy of the data directory is a consistent point of the whole service. The metadata
+ * files themselves are objects of the warehouse bucket.
  *
- * <p>What is kept here is small — a namespace is its levels and its properties, and a table is a pointer to the
- * metadata file that it currently is — and the metadata files themselves are objects of the warehouse bucket, written
- * through the S3 services like any other object.
+ * <p>An {@code IN_MEMORY} service that starts from a data directory copies its records into an in-memory store
+ * ({@linkplain #loadFrom}), which is cheap because the records are pointers, not tables.
  *
- * <p>An {@code IN_MEMORY} service opens an in-memory store and, if it starts from a data directory, copies the records
- * of that directory into it, so its catalog starts as the directory left it and changes nothing there. That copy is
- * what {@linkplain #loadFrom} does, and it is cheap for the same reason: the records are pointers, not tables.
- *
- * <p><b>Concurrency.</b> {@linkplain MVMap} is thread-safe, and {@linkplain #replaceTable} is a compare-and-set, which
- * is what makes a commit atomic: two commits that start from the same metadata file both build a new one, and only the
- * one that swaps the pointer first wins. The loser is answered {@code 409 CommitFailedException} and its client
- * retries against the table as it now is, which is how a real catalog behaves.
+ * <p>{@linkplain #replaceTable} is a compare-and-set on a thread-safe {@linkplain MVMap}, which is what makes a commit
+ * atomic: the loser of two commits from the same metadata file is answered {@code 409 CommitFailedException}.
  */
 public final class IcebergCatalogStore {
 
