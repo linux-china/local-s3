@@ -1,5 +1,6 @@
 package com.robothy.s3.rest;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -11,15 +12,19 @@ import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.Signature;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Generates the self-signed certificate of {@linkplain LocalS3Tls#selfSigned(String...)}, with the JDK alone: a
@@ -36,6 +41,9 @@ import java.util.Objects;
  * a CA as a trust anchor, e.g. rustls, otherwise refuses it. That is safe for the localhost certificate of a test
  * service, which lives as long as the service and is trusted only where it was explicitly installed, and unsafe
  * anywhere else, which is why it is generated rather than shipped.
+ *
+ * <p>Given the CA of mkcert, the certificate is instead an end-entity certificate that the CA issues, which needs none
+ * of the above: the CA is the trust anchor that the machine already has.
  *
  * @see <a href="https://datatracker.ietf.org/doc/html/rfc5280#section-4.1">RFC 5280 section 4.1</a>
  */
@@ -100,6 +108,15 @@ final class SelfSignedCertificateGenerator {
 
   private static final String EXTENDED_KEY_USAGE = "2.5.29.37";
 
+  private static final String SUBJECT_KEY_IDENTIFIER = "2.5.29.14";
+
+  private static final String AUTHORITY_KEY_IDENTIFIER = "2.5.29.35";
+
+  /**
+   * {@code AuthorityKeyIdentifier.keyIdentifier}, an {@code [0] IMPLICIT OCTET STRING}.
+   */
+  private static final int KEY_IDENTIFIER = 0x80;
+
   private static final String SERVER_AUTHENTICATION = "1.3.6.1.5.5.7.3.1";
 
   /**
@@ -112,14 +129,38 @@ final class SelfSignedCertificateGenerator {
   }
 
   /**
+   * The CA that issues a certificate rather than the certificate signing itself.
+   *
+   * @param certificate the certificate of the CA.
+   * @param privateKey the private key of the CA, which signs the certificate.
+   */
+  record Issuer(X509Certificate certificate, PrivateKey privateKey) {
+  }
+
+  /**
+   * Generate a certificate for {@code hosts} that signs itself, and the private key that it belongs to.
+   *
+   * @see #generate(List, Issuer)
+   */
+  static LocalS3Tls generate(List<String> hosts) {
+    return generate(hosts, null);
+  }
+
+  /**
    * Generate a certificate for {@code hosts} and the private key that it belongs to.
    *
    * @param hosts the host names and IP addresses that the certificate is issued for; the first one is its common name.
+   * @param issuer the CA that issues the certificate, or {@code null} for a certificate that signs itself.
    * @return the certificate and the key, in PEM format.
    * @throws IllegalArgumentException if a host is neither a host name nor an IP address.
-   * @throws IllegalStateException if the JDK generates neither an EC nor an RSA key pair, or can't sign.
+   * @throws IllegalStateException if the JDK generates neither an EC nor an RSA key pair, can't sign, or the key of
+   *     the issuer doesn't belong to its certificate.
    */
-  static LocalS3Tls generate(List<String> hosts) {
+  static LocalS3Tls generate(List<String> hosts, @Nullable Issuer issuer) {
+    return generate(hosts, issuer, KeyPairAlgorithm.available());
+  }
+
+  static LocalS3Tls generate(List<String> hosts, @Nullable Issuer issuer, KeyPairAlgorithm algorithm) {
     List<String> names = new ArrayList<>(hosts.size());
     List<byte[]> subjectAlternativeNames = new ArrayList<>(hosts.size());
     for (String host : hosts) {
@@ -131,42 +172,136 @@ final class SelfSignedCertificateGenerator {
       subjectAlternativeNames.add(generalName(host.trim()));
     }
 
-    KeyPairAlgorithm algorithm = KeyPairAlgorithm.available();
     KeyPair keyPair = algorithm.generateKeyPair();
     Instant now = Instant.now();
-    byte[] tbsCertificate = tbsCertificate(names.getFirst(), subjectAlternativeNames, keyPair, algorithm, now);
-    byte[] certificate = der(SEQUENCE,
-        tbsCertificate,
-        algorithm.signatureAlgorithmIdentifier(),
-        der(BIT_STRING, new byte[] {0}, sign(tbsCertificate, keyPair.getPrivate(), algorithm)));
+    byte[] subject = distinguishedName(names.getFirst());
+    byte[] sans = extension(SUBJECT_ALTERNATIVE_NAME, false,
+        der(SEQUENCE, subjectAlternativeNames.toArray(byte[][]::new)));
+    byte[] serverAuthentication = extension(EXTENDED_KEY_USAGE, false,
+        der(SEQUENCE, objectIdentifier(SERVER_AUTHENTICATION)));
+
+    byte[] certificate;
+    if (issuer == null) {
+      byte[] tbsCertificate = tbsCertificate(algorithm, subject, now.plus(VALIDITY), subject, keyPair, now,
+          sans,
+          extension(BASIC_CONSTRAINTS, true, der(SEQUENCE, der(BOOLEAN, new byte[] {(byte) 0xFF}))),
+          extension(KEY_USAGE, true, algorithm.keyUsage(true)),
+          serverAuthentication);
+      certificate = certificate(tbsCertificate, algorithm, keyPair.getPrivate());
+    } else {
+      X509Certificate ca = issuer.certificate();
+      KeyPairAlgorithm signatureAlgorithm = KeyPairAlgorithm.of(issuer.privateKey().getAlgorithm());
+      // A certificate that outlives its CA is rejected by the clients that check the whole chain.
+      Instant notAfter = now.plus(VALIDITY);
+      if (ca.getNotAfter().toInstant().isBefore(notAfter)) {
+        notAfter = ca.getNotAfter().toInstant();
+      }
+      List<byte[]> extensions = new ArrayList<>(List.of(
+          sans,
+          // An empty BasicConstraints, i.e. cA FALSE, its default.
+          extension(BASIC_CONSTRAINTS, true, der(SEQUENCE)),
+          extension(KEY_USAGE, true, algorithm.keyUsage(false)),
+          serverAuthentication));
+      byte[] keyIdentifier = subjectKeyIdentifier(ca);
+      if (keyIdentifier != null) {
+        // Lets a client pick the CA among several of the same name, e.g. the CA of mkcert of a recreated CAROOT.
+        extensions.add(extension(AUTHORITY_KEY_IDENTIFIER, false, der(SEQUENCE, der(KEY_IDENTIFIER, keyIdentifier))));
+      }
+      // The encoding of the name of the CA as it is, which is what a client compares the issuer against.
+      byte[] tbsCertificate = tbsCertificate(signatureAlgorithm, ca.getSubjectX500Principal().getEncoded(), notAfter,
+          subject, keyPair, now, extensions.toArray(byte[][]::new));
+      certificate = certificate(tbsCertificate, signatureAlgorithm, issuer.privateKey());
+      verify(certificate, ca);
+    }
 
     return new LocalS3Tls(pem("CERTIFICATE", certificate), pem("PRIVATE KEY", keyPair.getPrivate().getEncoded()));
   }
 
   /**
-   * The {@code TBSCertificate}: what the certificate says, and what its signature covers. Issuer and subject are the
-   * same, as the certificate signs itself.
+   * The {@code TBSCertificate}: what the certificate says, and what its signature covers.
    */
-  private static byte[] tbsCertificate(String commonName, List<byte[]> subjectAlternativeNames, KeyPair keyPair,
-      KeyPairAlgorithm algorithm, Instant now) {
-    byte[] name = distinguishedName(commonName);
+  private static byte[] tbsCertificate(KeyPairAlgorithm signatureAlgorithm, byte[] issuer, Instant notAfter,
+      byte[] subject, KeyPair keyPair, Instant now, byte[]... extensions) {
     return der(SEQUENCE,
         // version: v3, so that the extensions below are read.
         der(CONTEXT_0, der(INTEGER, BigInteger.TWO.toByteArray())),
         der(INTEGER, serialNumber()),
-        algorithm.signatureAlgorithmIdentifier(),
-        name,
+        signatureAlgorithm.signatureAlgorithmIdentifier(),
+        issuer,
         der(SEQUENCE,
             der(UTC_TIME, UTC_TIME_FORMAT.format(now.minus(CLOCK_SKEW)).getBytes(StandardCharsets.US_ASCII)),
-            der(UTC_TIME, UTC_TIME_FORMAT.format(now.plus(VALIDITY)).getBytes(StandardCharsets.US_ASCII))),
-        name,
+            der(UTC_TIME, UTC_TIME_FORMAT.format(notAfter).getBytes(StandardCharsets.US_ASCII))),
+        subject,
         // SubjectPublicKeyInfo, which is what a public key is encoded as.
         keyPair.getPublic().getEncoded(),
-        der(CONTEXT_3, der(SEQUENCE,
-            extension(SUBJECT_ALTERNATIVE_NAME, false, der(SEQUENCE, subjectAlternativeNames.toArray(byte[][]::new))),
-            extension(BASIC_CONSTRAINTS, true, der(SEQUENCE, der(BOOLEAN, new byte[] {(byte) 0xFF}))),
-            extension(KEY_USAGE, true, algorithm.keyUsage()),
-            extension(EXTENDED_KEY_USAGE, false, der(SEQUENCE, objectIdentifier(SERVER_AUTHENTICATION))))));
+        der(CONTEXT_3, der(SEQUENCE, extensions)));
+  }
+
+  private static byte[] certificate(byte[] tbsCertificate, KeyPairAlgorithm signatureAlgorithm, PrivateKey key) {
+    return der(SEQUENCE,
+        tbsCertificate,
+        signatureAlgorithm.signatureAlgorithmIdentifier(),
+        der(BIT_STRING, new byte[] {0}, sign(tbsCertificate, key, signatureAlgorithm)));
+  }
+
+  /**
+   * Check the signature of an issued certificate with the public key of its CA, so that a private key that doesn't
+   * belong to the certificate of the CA fails here, rather than in every client.
+   */
+  private static void verify(byte[] certificate, X509Certificate ca) {
+    try {
+      CertificateFactory.getInstance("X.509")
+          .generateCertificate(new ByteArrayInputStream(certificate))
+          .verify(ca.getPublicKey());
+    } catch (GeneralSecurityException e) {
+      throw new IllegalStateException("The private key of the CA " + ca.getSubjectX500Principal().getName()
+          + " doesn't belong to its certificate: " + e, e);
+    }
+  }
+
+  /**
+   * The key identifier of the {@code SubjectKeyIdentifier} extension of a CA, or {@code null} if it has none.
+   * {@linkplain X509Certificate#getExtensionValue(String)} returns the {@code extnValue} octet string, which wraps the
+   * key identifier, itself an octet string.
+   */
+  private static byte @Nullable [] subjectKeyIdentifier(X509Certificate ca) {
+    byte[] extensionValue = ca.getExtensionValue(SUBJECT_KEY_IDENTIFIER);
+    if (extensionValue == null) {
+      return null;
+    }
+    try {
+      return contents(OCTET_STRING, contents(OCTET_STRING, extensionValue));
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The contents of a DER value of the given tag, which spans all of {@code der}.
+   *
+   * @throws IllegalArgumentException if it is no such value.
+   */
+  private static byte[] contents(int tag, byte[] der) {
+    if (der.length < 2 || (der[0] & 0xFF) != tag) {
+      throw new IllegalArgumentException("Not a DER value of tag " + tag);
+    }
+    int length = der[1] & 0xFF;
+    int offset = 2;
+    if (length >= 0x80) {
+      int lengthBytes = length & 0x7F;
+      if (lengthBytes == 0 || lengthBytes > 3 || der.length < 2 + lengthBytes) {
+        throw new IllegalArgumentException("Invalid DER length");
+      }
+      length = 0;
+      for (int i = 0; i < lengthBytes; i++) {
+        length = (length << 8) | (der[2 + i] & 0xFF);
+      }
+      offset += lengthBytes;
+    }
+    if (offset + length != der.length) {
+      throw new IllegalArgumentException("Invalid DER length");
+    }
+    return Arrays.copyOfRange(der, offset, der.length);
   }
 
   /**
@@ -340,7 +475,7 @@ final class SelfSignedCertificateGenerator {
    * which the JDK generates in milliseconds, or a 2048 bit RSA key where EC isn't available, e.g. in a JVM whose
    * security providers are restricted.
    */
-  private enum KeyPairAlgorithm {
+  enum KeyPairAlgorithm {
 
     EC("EC", 256, "SHA256withECDSA", "1.2.840.10045.4.3.2", false),
     RSA("RSA", 2048, "SHA256withRSA", "1.2.840.113549.1.1.11", true);
@@ -387,6 +522,21 @@ final class SelfSignedCertificateGenerator {
           + " generate a self-signed certificate. Configure a certificate and its private key instead.");
     }
 
+    /**
+     * The algorithm of a key, e.g. of the private key of a CA, which decides the algorithm that it signs with.
+     *
+     * @throws IllegalArgumentException if the key is neither an EC nor an RSA key.
+     */
+    static KeyPairAlgorithm of(String keyAlgorithm) {
+      for (KeyPairAlgorithm algorithm : values()) {
+        if (algorithm.keyAlgorithm.equals(keyAlgorithm)) {
+          return algorithm;
+        }
+      }
+      throw new IllegalArgumentException("A " + keyAlgorithm + " key signs no certificate here; only EC and RSA keys"
+          + " do.");
+    }
+
     KeyPair generateKeyPair() {
       try {
         KeyPairGenerator generator = KeyPairGenerator.getInstance(keyAlgorithm);
@@ -409,14 +559,14 @@ final class SelfSignedCertificateGenerator {
     }
 
     /**
-     * The {@code KeyUsage} bit string: {@code digitalSignature} and {@code keyCertSign}, which the certificate needs as
-     * the CA that signed itself, and {@code keyEncipherment} for the RSA key exchange of a client without ECDHE. The
-     * first content byte of a named bit string is the number of unused bits of the last one.
+     * The {@code KeyUsage} bit string: {@code digitalSignature}, {@code keyCertSign}, which a certificate needs as the
+     * CA that signed itself, and {@code keyEncipherment} for the RSA key exchange of a client without ECDHE. The first
+     * content byte of a named bit string is the number of unused bits of the last one.
      */
-    byte[] keyUsage() {
+    byte[] keyUsage(boolean certificateAuthority) {
       // digitalSignature is bit 0, keyEncipherment bit 2 and keyCertSign bit 5, from the most significant bit.
-      int bits = 0b1000_0000 | (this == RSA ? 0b0010_0000 : 0) | 0b0000_0100;
-      return der(BIT_STRING, new byte[] {2, (byte) bits});
+      int bits = 0b1000_0000 | (this == RSA ? 0b0010_0000 : 0) | (certificateAuthority ? 0b0000_0100 : 0);
+      return der(BIT_STRING, new byte[] {(byte) Integer.numberOfTrailingZeros(bits), (byte) bits});
     }
 
   }

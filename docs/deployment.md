@@ -189,7 +189,7 @@ logging variables, which the logging configuration of the jar and the image read
 | `LOCAL_S3_CORS_EXPOSE_HEADERS` | `ETag`, `x-amz-version-id`, … | Comma-separated response headers that the default CORS rule lets a page read. |
 | `LOCAL_S3_CORS_MAX_AGE_SECONDS` | | Seconds that a browser may cache a preflight response of the default CORS rule. |
 | `LOCAL_S3_TLS_CERT`, `LOCAL_S3_TLS_KEY` | | Serve HTTPS, alongside plain HTTP on the same port, with this certificate chain and unencrypted PKCS#8 private key, each the path of a PEM file or the PEM content itself. Set both or neither; see [HTTPS](#https). |
-| `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). |
+| `LOCAL_S3_TLS_SELF_SIGNED` | | Serve HTTPS with a certificate that the service generates for itself on startup: `true` issues it for `localhost`, `127.0.0.1` and `::1`, and a comma-separated list of hosts issues it for those. Not to be set together with `LOCAL_S3_TLS_CERT`; see [Generate a certificate on startup](#generate-a-certificate-on-startup). Issued by the CA of mkcert where mkcert is installed; see [LocalS3 with mkcert](#locals3-with-mkcert). |
 | `LOCAL_S3_TLS_REQUIRED` | `false` | Serve HTTPS alone, instead of answering HTTP and HTTPS on the same port, so that a plain HTTP request fails. No effect without a certificate; see [HTTPS](#https). |
 | `LOCAL_S3_LOGGING_LEVEL` | `INFO` | The level of the log of the jar and the image, e.g. `DEBUG`. |
 | `LOCAL_S3_LOG_COLOR` | `false` | `true` colors the log for a terminal. Off by default, so that `docker logs`, CI logs and log files hold no escape sequences. The log is timestamped in the time zone of the process, with its offset, e.g. `2026-09-30T13:31:01.319+02:00`; set `TZ` to change it, e.g. `TZ=UTC` for a container. |
@@ -227,7 +227,9 @@ that is what a test asserting that its client really uses TLS needs. Without a c
 
 There are two ways to get a certificate: LocalS3 [generates one for itself](#generate-a-certificate-on-startup), which
 needs nothing installed but has to be handed to every client, or [mkcert](#create-a-certificate-with-mkcert) issues one
-that the machine already trusts, which clients then need nothing for.
+that the machine already trusts, which clients then need nothing for. Where mkcert is installed, the two come together:
+the certificate that LocalS3 generates is [issued by the CA of mkcert](#locals3-with-mkcert), so the machine trusts it
+without a file to create.
 
 ### Generate a certificate on startup
 
@@ -247,10 +249,14 @@ the service by, e.g. `LOCAL_S3_TLS_SELF_SIGNED=localhost,127.0.0.1,local-s3` for
 `localhost,*.s3.local` for [virtual-hosted-style](#configuration) requests. A client verifies the host it connects to
 against them, and refuses a host that the certificate doesn't name.
 
-**No client trusts the certificate, because it signed itself.** The service logs it in PEM format when it starts, which
-is the only place it exists:
+Where mkcert is installed, the certificate is issued by its CA instead, and the rest of this section doesn't apply;
+see [LocalS3 with mkcert](#locals3-with-mkcert).
+
+**No client trusts the certificate, because it signed itself.** The service logs where it looked for the CA of mkcert,
+and the certificate in PEM format when it starts, which is the only place it exists:
 
 ```text
+LocalS3 found no CA of mkcert in /Users/me/Library/Application Support/mkcert, and generates a self-signed certificate.
 LocalS3 generated a self-signed certificate for this service: CN=localhost,O=LocalS3 for
 [localhost, 127.0.0.1, 0:0:0:0:0:0:0:1], self-signed, valid until 2027-09-18T03:15:41Z, SHA-256 fingerprint 05:B7:…
 -----BEGIN CERTIFICATE-----
@@ -276,6 +282,62 @@ SSLContext sslContext = tls.newClientSslContext();                     // for on
 The certificate is valid for a year, and a new one is generated on every start, so a client that was given the
 certificate of one run has to be given the next one as well. Use mkcert below where that gets in the way, e.g. for a
 machine that several people or containers develop against.
+
+### LocalS3 with mkcert
+
+When LocalS3 generates its certificate, with `LOCAL_S3_TLS_SELF_SIGNED` or `LocalS3Tls.selfSigned()`, it looks for the
+CA of [mkcert](https://github.com/FiloSottile/mkcert), in the directory that `mkcert -CAROOT` prints:
+
+| Where | Directory |
+|---|---|
+| `CAROOT` is set | `$CAROOT` |
+| macOS | `~/Library/Application Support/mkcert` |
+| Linux and other Unix | `$XDG_DATA_HOME/mkcert`, or `~/.local/share/mkcert` |
+| Windows | `%LOCALAPPDATA%\mkcert` |
+
+If `rootCA.pem` and `rootCA-key.pem` are there, the CA of mkcert issues the certificate rather than the certificate
+signing itself. It names the same hosts and is valid for the same year, or until the CA expires if that is sooner, and
+it is no CA itself. After `mkcert -install`, the machine trusts it like a certificate that `mkcert` created:
+
+```shell
+brew install mkcert        # or see the installation of mkcert for Linux and Windows
+mkcert -install            # once: creates the CA, and adds it to the trust stores of the system and of browsers
+
+LOCAL_S3_TLS_SELF_SIGNED=localhost,127.0.0.1,s3.local java -jar local-s3-standalone-2.5.0.jar
+curl https://localhost:29090/_health    # no --cacert
+```
+
+The service logs which CA issued the certificate, by the directory, subject and SHA-256 fingerprint of the CA, so that
+a client that refuses the certificate can be checked against the CA it trusts, e.g. with
+`openssl x509 -noout -fingerprint -sha256 -in "$(mkcert -CAROOT)/rootCA.pem"`. It doesn't log the certificate in PEM
+format, since the CA is the file to trust:
+
+```text
+LocalS3 issued its certificate with the CA of mkcert in /Users/me/Library/Application Support/mkcert:
+CN=mkcert me@laptop,OU=me@laptop,O=mkcert development CA, SHA-256 fingerprint 9F:21:…
+LocalS3 serves HTTPS with the certificate CN=localhost,O=LocalS3 for [localhost, 127.0.0.1, s3.local], issued by
+CN=mkcert me@laptop,OU=me@laptop,O=mkcert development CA, valid until 2027-10-05T08:00:00Z, SHA-256 fingerprint 3A:7B:…
+```
+
+Compared with [a certificate that mkcert creates](#create-a-certificate-with-mkcert), there is no file to create and
+pass to the service, and the hosts are chosen on every start. Clients that don't read the trust store of the system,
+e.g. JVM clients and the AWS CLI, still need `"$(mkcert -CAROOT)/rootCA.pem"`; see
+[Trust the certificate in clients](#trust-the-certificate-in-clients). In the JVM that embeds the service,
+`LocalS3Tls.newClientSslContext()` and `trustManagers()` trust the certificate as before.
+
+The certificate signs itself as before when there is no CA of mkcert, i.e. mkcert isn't installed or `mkcert -install`
+hasn't run yet. It does too when the CA can't be used: a file can't be read, the key is not an unencrypted PKCS#8 key
+or doesn't belong to the certificate, or the certificate is not a CA or has expired; the service then logs a warning
+that names the directory and says why. To have the certificate sign itself where mkcert is installed, e.g. in a test that expects that, point
+`CAROOT` at a directory without a CA, e.g. `CAROOT=/nonexistent`.
+
+**Docker**: a container doesn't see the CA of mkcert on the host, so the image generates a certificate that signs
+itself. To serve HTTPS that the host trusts from a container, create the certificate with mkcert on the host, and
+[mount it](#start-locals3-with-the-certificate).
+
+`rootCA-key.pem` issues certificates for any host that the machine trusts. LocalS3 reads it to sign its certificate and
+keeps it nowhere else, neither on disk nor in the log; still, any process that reads it can intercept the HTTPS
+connections of the machine, so keep the directory of mkcert readable by its owner alone, which is what mkcert creates.
 
 ### Create a certificate with mkcert
 

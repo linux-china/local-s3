@@ -280,6 +280,8 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   service logs the certificate in PEM format to hand to a client, e.g. `curl --cacert`, `AWS_CA_BUNDLE` or the
   `ca_cert_file` of DuckDB, and `LocalS3Tls.newClientSslContext()` and `trustManagers()` trust it in the JVM that
   embeds the service. See [Generate a certificate on startup](docs/deployment.md#generate-a-certificate-on-startup).
+  Where [mkcert](https://github.com/FiloSottile/mkcert) is installed, its CA issues the certificate instead, so the
+  machine trusts it without a file to hand out; see [LocalS3 with mkcert](docs/deployment.md#locals3-with-mkcert).
 + **Conditional requests**: `If-Match`, `If-None-Match`, `If-Modified-Since` and `If-Unmodified-Since` for reads;
   conditional writes for `PutObject`, `CopyObject` and `CompleteMultipartUpload`; conditional deletes for
   `DeleteObject` and `DeleteObjects`; `x-amz-copy-source-if-*` for `CopyObject` and `UploadPartCopy`. See

@@ -20,10 +20,13 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The certificate and private key that a {@linkplain LocalS3} service serves HTTPS with, in PEM format, e.g. the
@@ -45,6 +48,8 @@ public record LocalS3Tls(String certificateChainPem, String privateKeyPem) {
    * reaches it by.
    */
   public static final List<String> DEFAULT_SELF_SIGNED_HOSTS = List.of("localhost", "127.0.0.1", "::1");
+
+  private static final Logger log = LoggerFactory.getLogger(LocalS3Tls.class);
 
   private static final String PEM_BEGIN = "-----BEGIN ";
 
@@ -87,7 +92,12 @@ public record LocalS3Tls(String certificateChainPem, String privateKeyPem) {
    *
    * <pre>{@code LocalS3.builder().tls(LocalS3Tls.selfSigned()).build()}</pre>
    *
-   * <p>Nothing trusts the certificate yet: a client either has to be given it, e.g. with
+   * <p>Where <a href="https://github.com/FiloSottile/mkcert">mkcert</a> is installed, i.e. {@code mkcert -install}
+   * created its CA in the directory that {@code mkcert -CAROOT} prints, that CA issues the certificate instead, and
+   * every client that trusts the CA, e.g. curl and DuckDB, accepts it without being given anything. Set the environment
+   * variable {@code CAROOT} to a directory without a CA to have the certificate sign itself all the same.
+   *
+   * <p>Otherwise nothing trusts the certificate yet: a client either has to be given it, e.g. with
    * {@code --ca-bundle <the PEM file>} or {@linkplain #newClientSslContext()} for a client in the same JVM, or has to
    * be told not to verify the certificate at all. The service logs the certificate in PEM format when it starts, so
    * that it can be saved to a file and handed to a client. See
@@ -122,7 +132,36 @@ public record LocalS3Tls(String certificateChainPem, String privateKeyPem) {
     if (hosts.length == 0) {
       throw new IllegalArgumentException("A self-signed certificate must be issued for at least one host.");
     }
-    return SelfSignedCertificateGenerator.generate(List.of(hosts));
+    return selfSigned(List.of(hosts), MkcertCertificateAuthority.caRoot());
+  }
+
+  /**
+   * Generate a certificate for {@code hosts}, issued by the CA of mkcert in {@code caRoot} if there is one that can,
+   * and self-signed otherwise. Either way the log says which, since that decides which clients trust the certificate.
+   */
+  static LocalS3Tls selfSigned(List<String> hosts, Optional<Path> caRoot) {
+    Optional<SelfSignedCertificateGenerator.Issuer> mkcert = caRoot.flatMap(MkcertCertificateAuthority::load);
+    if (mkcert.isPresent()) {
+      X509Certificate ca = mkcert.get().certificate();
+      try {
+        LocalS3Tls tls = SelfSignedCertificateGenerator.generate(hosts, mkcert.get());
+        log.info("LocalS3 issued its certificate with the CA of mkcert in {}: {}, SHA-256 fingerprint {}",
+            caRoot.get(), ca.getSubjectX500Principal().getName(), fingerprint(ca));
+        return tls;
+      } catch (IllegalStateException e) {
+        log.warn("LocalS3 can't issue its certificate with the CA of mkcert in {}, and generates a self-signed"
+            + " certificate instead: {}", caRoot.get(), e.getMessage());
+      }
+    } else if (caRoot.isPresent()) {
+      // A CA that is there but can't be used was warned about when it was loaded; naming the directory that was looked
+      // in otherwise tells a CA that is expected elsewhere, e.g. under another CAROOT.
+      if (!MkcertCertificateAuthority.hasCa(caRoot.get())) {
+        log.info("LocalS3 found no CA of mkcert in {}, and generates a self-signed certificate.", caRoot.get());
+      }
+    } else {
+      log.info("LocalS3 found no directory of mkcert, and generates a self-signed certificate.");
+    }
+    return SelfSignedCertificateGenerator.generate(hosts);
   }
 
   /**
@@ -259,7 +298,7 @@ public record LocalS3Tls(String certificateChainPem, String privateKeyPem) {
    * The SHA-256 fingerprint of the DER encoding of a certificate, in the upper case, colon separated notation that
    * {@code openssl x509 -fingerprint} and the clients print.
    */
-  private static String fingerprint(X509Certificate certificate) {
+  static String fingerprint(X509Certificate certificate) {
     byte[] digest;
     try {
       digest = MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());

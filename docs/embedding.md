@@ -216,7 +216,9 @@ Files.writeString(Path.of("local-s3.pem"), tls.certificateChainPem());
 `newClientSslContext()` returns an `SSLContext` that trusts the certificate for a client that takes one, e.g.
 `HttpClient` or `HttpsURLConnection`, and the service logs the certificate in PEM format when it starts. A new
 certificate is generated per call, so a client that holds the certificate of one service doesn't trust another. See
-[Generate a certificate on startup](deployment.md#generate-a-certificate-on-startup).
+[Generate a certificate on startup](deployment.md#generate-a-certificate-on-startup). Where mkcert is installed, the
+CA of mkcert issues the certificate instead, so clients that trust that CA, e.g. curl and DuckDB after
+`mkcert -install`, need nothing; see [LocalS3 with mkcert](deployment.md#locals3-with-mkcert).
 
 `tls(certPem, keyPem)` serves HTTPS with a certificate of your own instead. Each argument is the path of a PEM file, or
 the PEM content itself, e.g. read from a secret; `tls(Path, Path)` takes the files as paths. Create the certificate and

@@ -32,6 +32,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // A certificate that LocalS3 generates is issued by the CA of mkcert where mkcert is installed; a CAROOT without
+    // a CA keeps the certificates of the tests self-signed on every machine.
+    environment 'CAROOT', layout.buildDirectory.dir('no-mkcert-ca').get().asFile.path
 }
 
 jacocoTestReport {
