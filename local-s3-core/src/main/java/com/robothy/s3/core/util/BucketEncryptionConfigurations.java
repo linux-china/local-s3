@@ -40,7 +40,7 @@ public final class BucketEncryptionConfigurations {
     Element rule;
     try {
       rule = firstChild(parse(configuration).getDocumentElement(), "Rule");
-    } catch (ParserConfigurationException | SAXException | IOException e) {
+    } catch (ParserConfigurationException | SAXException | IOException _) {
       return null;
     }
     Element byDefault = firstChild(rule, "ApplyServerSideEncryptionByDefault");

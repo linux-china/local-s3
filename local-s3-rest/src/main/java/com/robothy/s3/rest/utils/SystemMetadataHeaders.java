@@ -110,7 +110,7 @@ public final class SystemMetadataHeaders {
     }
     try {
       return StorageClass.valueOf(value.trim());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidStorageClass);
     }
   }

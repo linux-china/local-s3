@@ -131,7 +131,7 @@ final class UnreferencedContentSweeper {
     while (thread.isAlive()) {
       try {
         thread.join();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         interrupted = true;
       }
     }
@@ -179,7 +179,7 @@ final class UnreferencedContentSweeper {
         log.info("Deleted {} unreferenced content files ({} bytes) of {} in {} ms.", result.files(), result.bytes(),
             contentDirectory, (System.nanoTime() - start) / 1_000_000);
       }
-    } catch (CancellationException e) {
+    } catch (CancellationException _) {
       log.debug("Stopped deleting the unreferenced content files of {}.", contentDirectory);
     } catch (IOException | RuntimeException e) {
       if (!cancelled) {

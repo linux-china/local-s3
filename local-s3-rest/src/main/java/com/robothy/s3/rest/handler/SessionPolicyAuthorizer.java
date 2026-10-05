@@ -237,7 +237,7 @@ final class SessionPolicyAuthorizer {
   private static Optional<CopySource> copySource(RouterHttpRequest request) {
     try {
       return Optional.of(CopySource.of(request));
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return Optional.empty();
     }
   }

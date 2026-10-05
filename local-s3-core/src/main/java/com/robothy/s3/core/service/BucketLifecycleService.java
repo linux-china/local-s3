@@ -137,7 +137,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
       } finally {
         reader.close();
       }
-    } catch (XMLStreamException e) {
+    } catch (XMLStreamException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }
@@ -229,7 +229,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
       long millis;
       try {
         millis = LifecycleRule.parseDate(date);
-      } catch (DateTimeParseException e) {
+      } catch (DateTimeParseException _) {
         throw new LocalS3InvalidArgumentException("Date", date, "Invalid date format, must be in ISO 8601 format.");
       }
       if (millis % Duration.ofDays(1).toMillis() != 0) {

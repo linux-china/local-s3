@@ -31,7 +31,6 @@ import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html">CompleteMultipartUpload</a>
@@ -73,7 +72,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
                   .partNumber(part.getPartNumber())
                   .checksums(partChecksums(part))
                   .build())
-              .collect(Collectors.toList());
+              .toList();
       completeMultipartUploadAns = uploadService.completeMultipartUpload(bucket, key, uploadId, parts,
           multipartUploadPolicy.minimumPartSize(), multipartUploadPolicy.compositeEtags(),
           RequestUtils.extractPreconditions(request), expectedChecksum, expectedChecksumType, expectedObjectSize);
@@ -110,7 +109,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     long size;
     try {
       size = Long.parseLong(value.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       size = -1;
     }
     if (size < 0) {

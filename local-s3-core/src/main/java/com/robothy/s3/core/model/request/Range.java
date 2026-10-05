@@ -107,7 +107,7 @@ public class Range {
         return Optional.empty();
       }
       return Optional.of(of(start, end));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return Optional.empty();
     }
   }

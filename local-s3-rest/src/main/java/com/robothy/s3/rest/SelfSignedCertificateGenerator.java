@@ -271,7 +271,7 @@ final class SelfSignedCertificateGenerator {
     }
     try {
       return contents(OCTET_STRING, contents(OCTET_STRING, extensionValue));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return null;
     }
   }
@@ -514,7 +514,7 @@ final class SelfSignedCertificateGenerator {
           Signature.getInstance(algorithm.signatureAlgorithm);
           KeyPairGenerator.getInstance(algorithm.keyAlgorithm);
           return algorithm;
-        } catch (GeneralSecurityException | RuntimeException e) {
+        } catch (GeneralSecurityException | RuntimeException _) {
           // Try the next one; the JVM supports neither if there is none.
         }
       }

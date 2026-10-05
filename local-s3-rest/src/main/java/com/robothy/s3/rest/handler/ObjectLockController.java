@@ -169,7 +169,7 @@ class ObjectLockController {
         throw new LocalS3RequestException(S3ErrorCode.MissingRequestBodyError, "Request Body is empty");
       }
       return xmlMapper.readValue(bytes, type);
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }

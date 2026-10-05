@@ -105,7 +105,7 @@ public class DefaultFileSystemS3MetadataLoader implements FileSystemS3MetadataLo
   private static long toId(String id) {
     try {
       return Long.parseLong(id);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Not an ID that the generator produced.
       return -1L;
     }

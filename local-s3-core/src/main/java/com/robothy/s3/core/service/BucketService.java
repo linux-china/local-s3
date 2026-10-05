@@ -119,7 +119,7 @@ public interface BucketService extends CreateBucketService, BucketVersioningServ
       }
       if (page.size() == pageSize) {
         // Another bucket follows the full page.
-        nextContinuationToken = ListBucketsPosition.of(page.get(page.size() - 1)).encode();
+        nextContinuationToken = ListBucketsPosition.of(page.getLast()).encode();
         break;
       }
       page.add(Bucket.fromBucketMetadata(bucket));

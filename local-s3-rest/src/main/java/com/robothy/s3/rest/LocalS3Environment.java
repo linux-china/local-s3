@@ -345,7 +345,7 @@ public final class LocalS3Environment {
   private static PersistencePolicy parsePersistencePolicy(String policyName) {
     try {
       return PersistencePolicy.valueOf(policyName.trim().toUpperCase(Locale.ROOT));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new IllegalArgumentException("\"" + policyName + "\" is not a valid " + LOCAL_S3_PERSISTENCE_POLICY
           + "; expected DURABLE or FAST.");
     }
@@ -410,7 +410,7 @@ public final class LocalS3Environment {
       if (parsed > 0) {
         return parsed;
       }
-    } catch (NumberFormatException | ArithmeticException e) {
+    } catch (NumberFormatException | ArithmeticException _) {
       // Rejected below.
     }
     throw new IllegalArgumentException("\"" + bytes + "\" is not a valid " + LOCAL_S3_IN_MEMORY_MAX_BYTES
@@ -447,7 +447,7 @@ public final class LocalS3Environment {
       if (parsed != null && !parsed.isNegative()) {
         return parsed;
       }
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       // Rejected below: a value without a number, a unit, or the form of ISO 8601.
     }
     throw new IllegalArgumentException("\"" + interval + "\" is not a valid " + LOCAL_S3_LIFECYCLE_INTERVAL
@@ -460,7 +460,7 @@ public final class LocalS3Environment {
       if (value >= 0) {
         return value;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Rejected below.
     }
     throw new IllegalArgumentException("\"" + maxAge + "\" is not a valid " + LOCAL_S3_CORS_MAX_AGE_SECONDS
@@ -473,7 +473,7 @@ public final class LocalS3Environment {
       if (value >= 1 && value <= 65535) {
         return value;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Rejected below.
     }
     throw new IllegalArgumentException("\"" + port + "\" is not a valid " + LOCAL_S3_PORT

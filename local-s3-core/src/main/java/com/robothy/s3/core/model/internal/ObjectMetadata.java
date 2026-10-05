@@ -65,7 +65,7 @@ public class ObjectMetadata {
   private static Long toVersionNumber(String versionId) {
     try {
       return Long.parseLong(versionId);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return null;
     }
   }

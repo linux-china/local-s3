@@ -109,7 +109,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
       if (Base64.getDecoder().decode(value).length == 16) {
         return value;
       }
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // Rejected below.
     }
     throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
@@ -128,7 +128,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     }
     try {
       return Long.parseLong(value.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_WRITE_OFFSET_BYTES, value,
           "The write offset must be a number of bytes.");
     }

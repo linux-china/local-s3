@@ -52,7 +52,7 @@ class RestoreObjectController implements RouterHttpRequestHandler {
   private static int parseDays(String days) {
     try {
       return Integer.parseInt(days);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }

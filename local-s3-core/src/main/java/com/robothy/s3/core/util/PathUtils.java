@@ -92,7 +92,7 @@ public class PathUtils {
     retryingWhileInUse(() -> {
       try {
         Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-      } catch (AtomicMoveNotSupportedException e) {
+      } catch (AtomicMoveNotSupportedException _) {
         Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
       }
     });

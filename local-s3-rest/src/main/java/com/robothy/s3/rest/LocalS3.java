@@ -376,7 +376,7 @@ public class LocalS3 implements AutoCloseable {
                                              String bucketName) {
         try {
             bucketService.getBucket(bucketName);
-        } catch (BucketNotExistException e) {
+        } catch (BucketNotExistException _) {
             // Existing buckets are accepted, like buckets loaded from the data path.
             bucketNameValidator.validate(bucketName);
             bucketService.createBucket(bucketName);
@@ -415,7 +415,7 @@ public class LocalS3 implements AutoCloseable {
             BucketService bucketService = getS3Manager().bucketService();
             try {
                 bucketService.getBucket(bucketName);
-            } catch (BucketNotExistException e) {
+            } catch (BucketNotExistException _) {
                 // Existing buckets are accepted, like the default buckets and the buckets loaded from the data path.
                 bucketNameValidator.validate(bucketName);
                 bucketService.createBucket(bucketName);
@@ -863,7 +863,7 @@ public class LocalS3 implements AutoCloseable {
         this.shutdownHook = null;
         try {
             Runtime.getRuntime().removeShutdownHook(hook);
-        } catch (IllegalStateException e) {
+        } catch (IllegalStateException _) {
             // The JVM is already shutting down and runs the hook anyway.
         }
     }

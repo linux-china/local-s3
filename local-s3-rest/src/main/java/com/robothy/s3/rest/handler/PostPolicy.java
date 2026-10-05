@@ -63,9 +63,9 @@ final class PostPolicy {
       // Line breaks that a form may wrap the policy in aren't part of the encoding.
       byte[] json = Base64.getDecoder().decode(base64Policy.replaceAll("\\s", ""));
       document = JSON.readTree(new String(json, StandardCharsets.UTF_8));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalidPolicy("Invalid Policy: Invalid 'base64' encoding.");
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw invalidPolicy("Invalid Policy: Invalid JSON.");
     }
     if (document == null || !document.isObject()) {
@@ -79,7 +79,7 @@ final class PostPolicy {
     Instant expiration;
     try {
       expiration = OffsetDateTime.parse(expirationNode.asText()).toInstant();
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       throw invalidPolicy("Invalid Policy: Invalid 'expiration' value: '" + expirationNode.asText() + "'");
     }
 
@@ -237,7 +237,7 @@ final class PostPolicy {
     if (node.isTextual()) {
       try {
         return Long.parseLong(node.asText()) >= 0;
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         return false;
       }
     }

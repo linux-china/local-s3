@@ -27,7 +27,7 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
       UploadMetadata uploadMetadata;
       try{
         uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
-      } catch (ObjectNotExistException e) {
+      } catch (ObjectNotExistException _) {
         throw new UploadNotExistException(key, uploadId);
       }
 

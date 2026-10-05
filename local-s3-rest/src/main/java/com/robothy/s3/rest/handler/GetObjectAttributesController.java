@@ -150,8 +150,8 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
     }
 
     // The parts are held in the order they were concatenated in, which is ascending part number.
-    int lastPartNumber = parts.get(parts.size() - 1).getPartNumber();
-    int lastOnPage = page.isEmpty() ? 0 : page.get(page.size() - 1).getPartNumber();
+    int lastPartNumber = parts.getLast().getPartNumber();
+    int lastOnPage = page.isEmpty() ? 0 : page.getLast().getPartNumber();
     return GetObjectAttributesResult.ObjectParts.builder()
         .partsCount(parts.size())
         .partNumberMarker(partNumberMarker)
@@ -193,7 +193,7 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
     int parsed;
     try {
       parsed = Integer.parseInt(value.trim());
-    } catch (NumberFormatException exception) {
+    } catch (NumberFormatException _) {
       throw new LocalS3InvalidArgumentException(headerName, value, "Value must be a number.");
     }
     if (parsed < 0) {
@@ -215,7 +215,7 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
         throw invalidAttributes(headerValue);
       }
       return attributes;
-    } catch (IllegalArgumentException exception) {
+    } catch (IllegalArgumentException _) {
       throw invalidAttributes(headerValue);
     }
   }

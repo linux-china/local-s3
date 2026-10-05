@@ -55,8 +55,8 @@ public final class ChecksumHeaders {
     }
 
     CheckSumAlgorithm sdkAlgorithm = algorithm(request, AmzHeaderNames.X_AMZ_SDK_CHECKSUM_ALGORITHM);
-    CheckSumAlgorithm algorithm = !inHeaders.isEmpty() ? inHeaders.get(0)
-        : !inTrailer.isEmpty() ? inTrailer.get(0) : sdkAlgorithm;
+    CheckSumAlgorithm algorithm = !inHeaders.isEmpty() ? inHeaders.getFirst()
+        : !inTrailer.isEmpty() ? inTrailer.getFirst() : sdkAlgorithm;
     if (Objects.isNull(algorithm)) {
       return null;
     }
@@ -95,7 +95,7 @@ public final class ChecksumHeaders {
     if (inHeaders.isEmpty()) {
       return null;
     }
-    CheckSumAlgorithm algorithm = inHeaders.get(0);
+    CheckSumAlgorithm algorithm = inHeaders.getFirst();
     return RequestChecksum.of(algorithm, request.header(Checksums.headerName(algorithm)).orElseThrow());
   }
 

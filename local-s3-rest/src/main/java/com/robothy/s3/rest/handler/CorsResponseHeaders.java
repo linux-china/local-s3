@@ -73,7 +73,7 @@ final class CorsResponseHeaders {
     } else {
       try {
         configuration = bucketService.getBucketCors(bucketName).or(() -> Optional.ofNullable(defaultConfiguration));
-      } catch (LocalS3Exception e) {
+      } catch (LocalS3Exception _) {
         // E.g. the bucket doesn't exist, which the request handler reports: the page reads the error by the default
         // rule, if the service has one.
         configuration = Optional.ofNullable(defaultConfiguration);
@@ -90,7 +90,7 @@ final class CorsResponseHeaders {
    */
   static String bucketName(RouterHttpRequest request) {
     List<String> bucket = request.getParams().get("bucket");
-    return bucket == null || bucket.isEmpty() || bucket.get(0).isBlank() ? null : bucket.get(0);
+    return bucket == null || bucket.isEmpty() || bucket.getFirst().isBlank() ? null : bucket.getFirst();
   }
 
   /**

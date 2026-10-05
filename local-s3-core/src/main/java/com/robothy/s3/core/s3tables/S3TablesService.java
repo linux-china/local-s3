@@ -695,7 +695,7 @@ public final class S3TablesService {
     if (S3TablesArn.isArn(warehouse)) {
       try {
         name = S3TablesArn.parseBucket(warehouse).bucket();
-      } catch (S3TablesException e) {
+      } catch (S3TablesException _) {
         return null;
       }
     } else {
@@ -1593,7 +1593,7 @@ public final class S3TablesService {
     String bucket = warehouseBucket(record.name());
     try {
       bucketService.getBucket(bucket);
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       bucketService.createBucket(bucket);
       log.info("Created the bucket '{}' of the table bucket '{}'.", bucket, record.name());
       return;

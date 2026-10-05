@@ -54,7 +54,7 @@ class ListDirectoryBucketsController implements RouterHttpRequestHandler {
   private static int parseMax(String value) {
     try {
       return Integer.parseInt(value.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new LocalS3InvalidArgumentException("max-directory-buckets", value,
           "Argument max-directory-buckets must be an integer between 0 and "
               + BucketService.MAX_DIRECTORY_BUCKETS + ".");

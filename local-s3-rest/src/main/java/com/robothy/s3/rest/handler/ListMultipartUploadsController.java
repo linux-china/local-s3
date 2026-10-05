@@ -14,7 +14,6 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.time.Instant;
-import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 public class ListMultipartUploadsController implements RouterHttpRequestHandler {
@@ -53,7 +52,7 @@ public class ListMultipartUploadsController implements RouterHttpRequestHandler 
         .isTruncated(answer.isTruncated())
         .commonPrefixes(answer.getCommonPrefixes().stream()
             .map(CommonPrefix::new)
-            .collect(Collectors.toList()))
+            .toList())
         .uploads(answer.getUploads().stream()
             .map(upload -> ListMultipartUploadsResult.Upload.builder()
                 .key(upload.getKey())
@@ -63,7 +62,7 @@ public class ListMultipartUploadsController implements RouterHttpRequestHandler 
                 .owner(Owner.DEFAULT_OWNER)
                 .initiator(Initiator.SYSTEM)
                 .build())
-            .collect(Collectors.toList()))
+            .toList())
         .build();
 
     httpResponse.status(HttpResponseStatus.OK);

@@ -57,7 +57,7 @@ public final class XmlConfigurations {
       } finally {
         reader.close();
       }
-    } catch (XMLStreamException e) {
+    } catch (XMLStreamException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }
@@ -94,7 +94,7 @@ public final class XmlConfigurations {
       } finally {
         reader.close();
       }
-    } catch (XMLStreamException e) {
+    } catch (XMLStreamException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }

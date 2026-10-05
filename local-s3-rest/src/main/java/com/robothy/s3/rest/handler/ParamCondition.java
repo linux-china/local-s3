@@ -115,7 +115,7 @@ final class ParamCondition implements Predicate<Map<String, List<String>>> {
     }
     for (Map.Entry<String, String> value : values.entrySet()) {
       List<String> actual = params.get(value.getKey());
-      if (actual == null || actual.isEmpty() || !value.getValue().equals(actual.get(0))) {
+      if (actual == null || actual.isEmpty() || !value.getValue().equals(actual.getFirst())) {
         return false;
       }
     }

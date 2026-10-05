@@ -142,7 +142,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     long startNanos = System.nanoTime();
     try {
       executor.execute(() -> handleOnExecutor(ctx, received, end, startNanos));
-    } catch (RejectedExecutionException e) {
+    } catch (RejectedExecutionException _) {
       // The server is shutting down.
       log.debug("Closing connection {}: the request executor rejected {} {}.", ctx.channel().id(),
           request.getMethod(), request.getUri());
@@ -211,7 +211,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     }
     try {
       ctx.executor().execute(complete);
-    } catch (RejectedExecutionException e) {
+    } catch (RejectedExecutionException _) {
       // The event loop has terminated, and the connection with it.
       if (result != null) {
         result.discard();

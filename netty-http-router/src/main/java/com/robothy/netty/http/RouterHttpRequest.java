@@ -131,7 +131,7 @@ public class RouterHttpRequest {
    * @return the first value of the parameter.
    */
   public Optional<String> parameter(String name) {
-    return Optional.ofNullable(params.get(name)).filter(values -> !values.isEmpty()).map(values -> values.get(0));
+    return Optional.ofNullable(params.get(name)).filter(values -> !values.isEmpty()).map(values -> values.getFirst());
   }
 
   /**

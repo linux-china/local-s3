@@ -168,7 +168,7 @@ public class RouterHttpResponse {
   }
 
   private static String last(List<String> values) {
-    return values == null || values.isEmpty() ? null : values.get(values.size() - 1);
+    return values == null || values.isEmpty() ? null : values.getLast();
   }
 
   /**

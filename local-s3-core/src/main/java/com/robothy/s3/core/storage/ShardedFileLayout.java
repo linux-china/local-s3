@@ -121,7 +121,7 @@ public final class ShardedFileLayout {
     try {
       Long.parseLong(name);
       return true;
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Too large to be an ID.
       return false;
     }

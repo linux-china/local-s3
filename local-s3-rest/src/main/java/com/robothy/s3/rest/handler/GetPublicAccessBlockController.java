@@ -35,7 +35,7 @@ class GetPublicAccessBlockController implements RouterHttpRequestHandler {
     
     try {
       configuration = bucketService.getPublicAccessBlock(bucketName);
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       response.status(HttpResponseStatus.NOT_FOUND);
       return;
     }

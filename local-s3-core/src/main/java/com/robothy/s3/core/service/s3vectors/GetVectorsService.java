@@ -44,7 +44,7 @@ public interface GetVectorsService extends S3VectorsMetadataAware, S3VectorsStor
         for (String key : keys) {
             try {
                 processVectorKey(key, indexMetadata, returnData, returnMetadata, vectors);
-            } catch (Exception e) {
+            } catch (Exception _) {
                 errorVectorKeys.add(key);
             }
         }

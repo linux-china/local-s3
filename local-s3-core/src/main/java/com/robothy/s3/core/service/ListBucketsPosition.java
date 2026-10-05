@@ -34,7 +34,7 @@ record ListBucketsPosition(long creationDate, String name) {
     int separator = position.indexOf(':');
     try {
       return new ListBucketsPosition(Long.parseLong(position.substring(0, separator)), position.substring(separator + 1));
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       throw new LocalS3InvalidArgumentException("continuation-token", token,
           "The continuation token provided is incorrect");
     }

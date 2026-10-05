@@ -62,7 +62,7 @@ final class LifecycleSchedule {
   private static long saturatedNanos(Duration interval) {
     try {
       return interval.toNanos();
-    } catch (ArithmeticException e) {
+    } catch (ArithmeticException _) {
       return Long.MAX_VALUE;
     }
   }
@@ -78,7 +78,7 @@ final class LifecycleSchedule {
         log.warn("A run of the lifecycle configurations didn't end within {} s of stopping LocalS3.",
             STOP_TIMEOUT.toSeconds());
       }
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

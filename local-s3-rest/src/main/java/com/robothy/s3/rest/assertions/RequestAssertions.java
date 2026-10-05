@@ -90,7 +90,7 @@ public class RequestAssertions {
     int value;
     try {
       value = Integer.parseInt(maxKeys.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw invalidMaxKeys(maxKeys);
     }
     if (value < 0) {
@@ -116,7 +116,7 @@ public class RequestAssertions {
     int number;
     try {
       number = Integer.parseInt(partNumber.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new LocalS3InvalidArgumentException("partNumber", partNumber,
           "Part number must be an integer between " + UploadAssertions.MIN_PART_NUMBER + " and "
               + UploadAssertions.MAX_PART_NUMBER + ", inclusive.");
@@ -186,9 +186,9 @@ public class RequestAssertions {
     }
 
     try {
-      return Integer.parseInt(values.get(0));
-    } catch (NumberFormatException e) {
-      throw new LocalS3InvalidArgumentException(queryParam, values.get(0),
+      return Integer.parseInt(values.getFirst());
+    } catch (NumberFormatException _) {
+      throw new LocalS3InvalidArgumentException(queryParam, values.getFirst(),
           "Provided " + queryParam + " not an integer or within integer range");
     }
   }

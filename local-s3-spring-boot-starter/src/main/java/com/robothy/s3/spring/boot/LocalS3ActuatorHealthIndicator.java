@@ -15,7 +15,7 @@ import org.springframework.boot.actuate.health.HealthIndicator;
  * the Health API that Spring Boot 4 moved to {@code spring-boot-health}. Neither class is loaded unless its API is on
  * the classpath.
  */
-public class LocalS3ActuatorHealthIndicator implements HealthIndicator {
+public class LocalS3ActuatorHealthIndicator implements HealthIndicator, AutoCloseable {
 
   private final LocalS3HealthProbe probe;
 
@@ -36,6 +36,14 @@ public class LocalS3ActuatorHealthIndicator implements HealthIndicator {
       builder.withDetail(detail.getKey(), detail.getValue());
     }
     return builder.build();
+  }
+
+  /**
+   * Close the probe with the context; Spring infers {@code close()} as the destroy method of the bean.
+   */
+  @Override
+  public void close() {
+    probe.close();
   }
 
 }

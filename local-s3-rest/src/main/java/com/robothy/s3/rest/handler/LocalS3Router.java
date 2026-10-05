@@ -746,7 +746,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
       return null;
     }
     if (best.size() == 1) {
-      return new OperationHandler(operations.get(best.get(0)), best.get(0).getHandler());
+      return new OperationHandler(operations.get(best.getFirst()), best.getFirst().getHandler());
     }
     String matched = String.join(", ", best.stream().map(operations::get).toList());
     return new OperationHandler(AMBIGUOUS_OPERATION, (req, resp) -> {

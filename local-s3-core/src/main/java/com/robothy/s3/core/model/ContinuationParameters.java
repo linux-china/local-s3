@@ -84,7 +84,7 @@ public class ContinuationParameters {
     private static String ensureContinuationTokenIsBase64Encoded(String continuationToken) {
         try {
             return new String(Base64.getDecoder().decode(continuationToken), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             throw new LocalS3InvalidArgumentException("continuation-token", continuationToken, "The continuation token provided is incorrect.");
         }
     }

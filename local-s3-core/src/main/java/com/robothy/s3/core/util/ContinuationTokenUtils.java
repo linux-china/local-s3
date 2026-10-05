@@ -52,7 +52,7 @@ public final class ContinuationTokenUtils {
     String decoded;
     try {
       decoded = new String(Base64.getDecoder().decode(token), StandardCharsets.UTF_8);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalidToken(token);
     }
     if (!decoded.startsWith(PREFIX)) {

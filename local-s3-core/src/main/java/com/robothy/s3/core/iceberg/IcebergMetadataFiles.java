@@ -81,7 +81,7 @@ public final class IcebergMetadataFiles {
           .size(bytes.length)
           .content(new ByteArrayInputStream(bytes))
           .build());
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       throw IcebergCatalogException.badRequest("The bucket " + parsed.bucket() + " of " + location
           + " does not exist. Create it, or start LocalS3 with it among its buckets.");
     }
@@ -120,7 +120,7 @@ public final class IcebergMetadataFiles {
     String bucket = parse(location).bucket();
     try {
       bucketService.getBucket(bucket);
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       bucketService.createBucket(bucket);
       log.info("Created the warehouse bucket '{}' of the Iceberg catalog.", bucket);
     }

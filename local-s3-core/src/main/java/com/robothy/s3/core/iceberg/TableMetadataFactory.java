@@ -177,7 +177,7 @@ final class TableMetadataFactory {
     int version;
     try {
       version = property.isNumber() ? property.asInt() : Integer.parseInt(property.asString().trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw IcebergCatalogException.badRequest("Invalid format version: " + property.asString());
     }
     if (version < 1 || version > MAX_FORMAT_VERSION) {

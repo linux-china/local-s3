@@ -14,7 +14,7 @@ import org.springframework.boot.health.contributor.HealthIndicator;
  * <p>An application on Spring Boot 3 gets {@linkplain LocalS3ActuatorHealthIndicator} instead, which reports the same
  * through the Actuator Health API of Spring Boot 3. Neither class is loaded unless its API is on the classpath.
  */
-public class LocalS3HealthIndicator implements HealthIndicator {
+public class LocalS3HealthIndicator implements HealthIndicator, AutoCloseable {
 
   private final LocalS3HealthProbe probe;
 
@@ -35,6 +35,14 @@ public class LocalS3HealthIndicator implements HealthIndicator {
       builder.withDetail(detail.getKey(), detail.getValue());
     }
     return builder.build();
+  }
+
+  /**
+   * Close the probe with the context; Spring infers {@code close()} as the destroy method of the bean.
+   */
+  @Override
+  public void close() {
+    probe.close();
   }
 
 }

@@ -249,10 +249,10 @@ public record LifecycleRule(String id, boolean enabled, Filter filter, Integer e
   public static long parseDate(String text) {
     try {
       return OffsetDateTime.parse(text).toInstant().toEpochMilli();
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       try {
         return Instant.parse(text).toEpochMilli();
-      } catch (DateTimeParseException ignored) {
+      } catch (DateTimeParseException _) {
         return LocalDate.parse(text).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli();
       }
     }

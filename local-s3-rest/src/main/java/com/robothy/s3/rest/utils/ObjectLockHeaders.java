@@ -101,10 +101,10 @@ public final class ObjectLockHeaders {
   public static long parseDate(String name, String value) {
     try {
       return OffsetDateTime.parse(value.trim()).toInstant().toEpochMilli();
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       try {
         return Instant.parse(value.trim()).toEpochMilli();
-      } catch (DateTimeParseException ignored) {
+      } catch (DateTimeParseException _) {
         throw new LocalS3InvalidArgumentException(name, value, "The retain until date must be an ISO 8601 date.");
       }
     }

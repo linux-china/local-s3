@@ -14,7 +14,6 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
@@ -53,7 +52,7 @@ class ListObjectsController implements RouterHttpRequestHandler {
         .prefix(listObjectsAns.getPrefix())
         .delimiter(listObjectsAns.getDelimiter())
         .maxKeys(listObjectsAns.getMaxKeys())
-        .commonPrefixes(listObjectsAns.getCommonPrefixes().stream().map(CommonPrefix::new).collect(Collectors.toList()))
+        .commonPrefixes(listObjectsAns.getCommonPrefixes().stream().map(CommonPrefix::new).toList())
         .encodingType(listObjectsAns.getEncodingType())
         .build();
 

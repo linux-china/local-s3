@@ -603,7 +603,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private static long toId(String id) {
     try {
       return Long.parseLong(id);
-    } catch (NumberFormatException | NullPointerException e) {
+    } catch (NumberFormatException | NullPointerException _) {
       return -1L;
     }
   }

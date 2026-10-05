@@ -182,7 +182,7 @@ final class AwsChunkedBodyDecoder {
     long size;
     try {
       size = Long.parseLong(parts[0].trim(), 16);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw malformed();
     }
     if (size < 0) {

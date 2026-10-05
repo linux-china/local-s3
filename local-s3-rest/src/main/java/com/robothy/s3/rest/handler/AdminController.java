@@ -74,7 +74,7 @@ class AdminController {
     if (value != null) {
       try {
         limit = Integer.parseInt(value);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         limit = -1;
       }
       if (limit < 0) {
@@ -124,7 +124,7 @@ class AdminController {
     List<LifecycleActionAns> actions;
     try {
       actions = admin.applyLifecycle(request.parameter("bucket").orElse(null), now);
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       json(response, HttpResponseStatus.NOT_FOUND, Map.of("error", "The bucket doesn't exist."));
       return;
     }

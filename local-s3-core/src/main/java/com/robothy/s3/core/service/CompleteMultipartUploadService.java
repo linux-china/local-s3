@@ -406,7 +406,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
         try {
           digests.add(HexFormat.of().parseHex(contentMd5));
           continue;
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
           // Not a digest; compute it from the content.
         }
       }

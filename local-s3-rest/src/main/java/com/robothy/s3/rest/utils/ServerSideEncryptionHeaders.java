@@ -111,7 +111,7 @@ public final class ServerSideEncryptionHeaders {
     String json;
     try {
       json = new String(Base64.getDecoder().decode(context), StandardCharsets.UTF_8).trim();
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       json = null;
     }
     if (json == null || !json.startsWith("{") || !json.endsWith("}")) {

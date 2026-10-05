@@ -34,7 +34,7 @@ class PutBucketCorsController implements RouterHttpRequestHandler {
     CORSConfiguration configuration;
     try (InputStream in = RequestUtils.getBody(request).getDecodedBody()) {
       configuration = xmlMapper.readValue(in, CORSConfiguration.class);
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new InvalidCORSConfigurationException("The XML you provided was not well-formed or did not validate "
           + "against our published schema.");
     }

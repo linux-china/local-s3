@@ -14,7 +14,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
-import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
@@ -52,7 +51,7 @@ public class ListObjectsV2Controller implements RouterHttpRequestHandler {
             .prefix(listObjectsV2Ans.getPrefix())
             .delimiter(listObjectsV2Ans.getDelimiter())
             .maxKeys(listObjectsV2Ans.getMaxKeys())
-            .commonPrefixes(listObjectsV2Ans.getCommonPrefixes().stream().map(CommonPrefix::new).collect(Collectors.toList()))
+            .commonPrefixes(listObjectsV2Ans.getCommonPrefixes().stream().map(CommonPrefix::new).toList())
             .encodingType(listObjectsV2Ans.getEncodingType())
             .keyCount(listObjectsV2Ans.getKeyCount())
             .continuationToken(continuationToken)

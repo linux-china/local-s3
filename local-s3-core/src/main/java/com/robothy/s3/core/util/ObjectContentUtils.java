@@ -91,7 +91,7 @@ public final class ObjectContentUtils {
     List<Region> regions = regions(version, position, length);
     // A region within a single part is the stream of that part, which a transport may transfer as it is.
     if (regions.size() == 1) {
-      return regions.get(0).open(storage);
+      return regions.getFirst().open(storage);
     }
 
     Optional<ContentRetention> retention = storage.retain(regions.stream().map(Region::fileId).toList());

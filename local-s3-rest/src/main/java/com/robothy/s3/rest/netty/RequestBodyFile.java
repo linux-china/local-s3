@@ -546,7 +546,7 @@ final class RequestBodyFile {
         }
         (discardedMeanwhile ? ifDiscarded : call).run();
       });
-    } catch (RejectedExecutionException e) {
+    } catch (RejectedExecutionException _) {
       // The event loop has terminated, and the connection with it.
       ifDiscarded.run();
     }

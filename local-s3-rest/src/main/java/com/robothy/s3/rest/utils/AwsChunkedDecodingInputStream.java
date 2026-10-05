@@ -124,7 +124,7 @@ public class AwsChunkedDecodingInputStream extends InputStream implements Traili
       if (size >= 0) {
         return size;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Rejected below.
     }
     throw new LocalS3RequestException(S3ErrorCode.IncompleteBody, "The aws-chunked request body is malformed.");

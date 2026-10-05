@@ -115,7 +115,7 @@ public final class S3TablesController implements RouterHttpRequestHandler {
     try {
       String operation = operationOf(request.getMethod(), segments(request));
       return operation.isEmpty() ? UNKNOWN_OPERATION : OPERATION_PREFIX + operation;
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return UNKNOWN_OPERATION;
     }
   }
@@ -483,7 +483,7 @@ public final class S3TablesController implements RouterHttpRequestHandler {
     }
     try {
       return Integer.valueOf(value.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw S3TablesException.badRequest("The query parameter '" + name + "' must be a number; got: " + value + ".");
     }
   }

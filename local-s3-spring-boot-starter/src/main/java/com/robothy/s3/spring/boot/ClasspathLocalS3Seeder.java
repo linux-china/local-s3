@@ -142,7 +142,7 @@ public class ClasspathLocalS3Seeder implements LocalS3Seeder {
   private static String url(Resource resource, String fallback) {
     try {
       return resource.getURL().toString();
-    } catch (IOException e) {
+    } catch (IOException _) {
       return fallback;
     }
   }

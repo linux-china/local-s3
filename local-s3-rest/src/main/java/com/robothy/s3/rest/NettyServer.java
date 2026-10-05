@@ -248,7 +248,7 @@ final class NettyServer {
                 log.warn("{} responses were still being written after {} seconds.", requests.count(),
                         SHUTDOWN_TIMEOUT_SECONDS);
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
     }
@@ -300,7 +300,7 @@ final class NettyServer {
             if (!executorService.awaitTermination(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) {
                 log.warn("Request executor did not terminate within {} seconds.", SHUTDOWN_TIMEOUT_SECONDS);
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
         }
         return true;

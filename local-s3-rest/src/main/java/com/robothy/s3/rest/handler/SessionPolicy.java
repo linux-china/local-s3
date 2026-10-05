@@ -86,7 +86,7 @@ final class SessionPolicy {
     JsonNode tree;
     try {
       tree = JSON.readTree(document);
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new IllegalArgumentException("Syntax errors in policy.");
     }
     if (tree == null || !tree.isObject()) {

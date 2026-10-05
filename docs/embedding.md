@@ -20,6 +20,29 @@ Testcontainers. All artifacts are published to Maven Central under the group `io
 </dependency>
 ```
 
+### Try it without a project
+
+The [executable jar](deployment.md#executable-jar) carries the Java API and everything it needs, so a single source
+file run by `java` tries the embedded service without a build. A compact source file, Java 25, needs no class
+declaration and imports `java.base`:
+
+```java
+// Demo.java
+import com.robothy.s3.rest.LocalS3;
+
+void main() {
+  var s3 = LocalS3.builder().port(19090).build();
+  s3.start();
+  IO.println("LocalS3 started at http://localhost:19090, press Enter to stop");
+  IO.readln();
+  s3.shutdown();
+}
+```
+
+```shell
+java -cp local-s3-standalone-2.5.0.jar Demo.java
+```
+
 ### In-memory mode
 
 By default, LocalS3 runs in `IN_MEMORY` mode and listens on `127.0.0.1:29090`; all data and metadata are kept in memory.

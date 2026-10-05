@@ -156,7 +156,7 @@ public final class IcebergCatalogController implements RouterHttpRequestHandler 
   public static String operation(RouterHttpRequest request) {
     try {
       return operationOf(request.getMethod(), segments(request));
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       return UNKNOWN_OPERATION;
     }
   }

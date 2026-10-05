@@ -382,7 +382,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
       byte[] md5Bytes;
       try {
         md5Bytes = HexFormat.of().parseHex(etag);
-      } catch (IllegalArgumentException e) {
+      } catch (IllegalArgumentException _) {
         throw new LocalS3BadDigestException("Invalid Content-MD5 header.");
       }
       String computedBase64 = Base64.getEncoder().encodeToString(md5Bytes);

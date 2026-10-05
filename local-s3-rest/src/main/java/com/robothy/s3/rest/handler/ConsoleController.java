@@ -387,7 +387,7 @@ class ConsoleController implements RouterHttpRequestHandler {
     if (expires != null) {
       try {
         expiration = Duration.ofSeconds(Long.parseLong(expires));
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         throw new IllegalArgumentException("The expires parameter must be a number of seconds, not " + expires + ".");
       }
     }
@@ -582,7 +582,7 @@ class ConsoleController implements RouterHttpRequestHandler {
     byte[] decoded;
     try {
       decoded = Base64.getDecoder().decode(authorization.substring("Basic ".length()).trim());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return false;
     }
     String credentials = new String(decoded, StandardCharsets.UTF_8);
@@ -685,7 +685,7 @@ class ConsoleController implements RouterHttpRequestHandler {
     String value = required(request, "partNumber");
     try {
       return Integer.parseInt(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new IllegalArgumentException("The partNumber parameter must be a number, not " + value + ".");
     }
   }

@@ -534,7 +534,7 @@ public final class IcebergCatalogService {
       // Read where the table keeps its files before the pointer to them is gone.
       try {
         location = IcebergJson.read(files.read(record.metadataLocation())).path("location").asString(null);
-      } catch (IcebergCatalogException e) {
+      } catch (IcebergCatalogException _) {
         location = null;
       }
     }
@@ -723,7 +723,7 @@ public final class IcebergCatalogService {
     if (configured != null && !configured.isNull()) {
       try {
         max = Integer.parseInt(configured.asString().trim());
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         max = DEFAULT_PREVIOUS_VERSIONS_MAX;
       }
     }
@@ -748,7 +748,7 @@ public final class IcebergCatalogService {
     }
     try {
       return Integer.parseInt(name.substring(0, dash));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return 0;
     }
   }

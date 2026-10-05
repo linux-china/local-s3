@@ -187,7 +187,7 @@ class PostObjectController implements RouterHttpRequestHandler {
     }
     try {
       return xmlMapper.readValue(tagging.get(), Tagging.class).toArrays();
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
     }
   }
@@ -222,7 +222,7 @@ class PostObjectController implements RouterHttpRequestHandler {
     try {
       URI uri = new URI(value.trim());
       return uri.isAbsolute() && uri.getHost() != null ? Optional.of(uri) : Optional.empty();
-    } catch (URISyntaxException e) {
+    } catch (URISyntaxException _) {
       return Optional.empty();
     }
   }

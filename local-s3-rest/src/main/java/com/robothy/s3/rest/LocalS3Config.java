@@ -221,7 +221,7 @@ public record LocalS3Config(
     try {
       // The wildcard addresses, 0.0.0.0 and ::, aren't loopback addresses: they serve every interface.
       return !InetAddress.getByName(bindHost).isLoopbackAddress();
-    } catch (UnknownHostException e) {
+    } catch (UnknownHostException _) {
       return true;
     }
   }

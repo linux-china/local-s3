@@ -53,7 +53,7 @@ class RenameObjectController implements RouterHttpRequestHandler {
     String path;
     try {
       path = URLDecoder.decode(renameSource.trim(), StandardCharsets.UTF_8);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_RENAME_SOURCE, renameSource,
           "Invalid rename source encoding.");
     }

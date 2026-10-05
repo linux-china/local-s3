@@ -101,7 +101,7 @@ public final class CustomerEncryptionHeaders {
     byte[] keyBytes;
     try {
       keyBytes = Base64.getDecoder().decode(key.trim());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       keyBytes = null;
     }
     if (keyBytes == null || keyBytes.length != KEY_LENGTH) {

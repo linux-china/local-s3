@@ -18,7 +18,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.function.UnaryOperator;
-import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
@@ -71,7 +70,7 @@ class ListObjectVersionsController implements RouterHttpRequestHandler {
         .delimiter(encode.apply(delimiter))
         .maxKeys(maxKeys)
         .commonPrefixes(ans.getCommonPrefixes().stream().map(encode).map(CommonPrefix::new)
-            .collect(Collectors.toList()))
+            .toList())
         .encodingType(encodingType)
         .build();
 

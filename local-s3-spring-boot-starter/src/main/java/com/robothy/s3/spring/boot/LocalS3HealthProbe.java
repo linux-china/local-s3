@@ -20,7 +20,7 @@ import java.util.Objects;
  *
  * @see LocalS3HealthIndicator
  */
-public class LocalS3HealthProbe {
+public class LocalS3HealthProbe implements AutoCloseable {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(2);
 
@@ -86,6 +86,14 @@ public class LocalS3HealthProbe {
     details.put("objectBytes", statistics.data().objectBytes());
     details.put("vectorBuckets", statistics.vectors().vectorBuckets());
     return new Result(true, details, null);
+  }
+
+  /**
+   * Close the HTTP client, whose selector thread would otherwise outlive the context until it is garbage collected.
+   */
+  @Override
+  public void close() {
+    httpClient.close();
   }
 
 }

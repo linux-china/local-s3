@@ -341,7 +341,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     if (isNotBlank(code)) {
       try {
         return HttpResponseStatus.valueOf(Integer.parseInt(code.trim()));
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         // A configuration that LocalS3 stored without checking it; the default status is answered instead.
       }
     }
@@ -431,7 +431,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     WebsiteConfiguration parsed;
     try {
       parsed = XmlUtils.fromXml(document.get(), WebsiteConfiguration.class);
-    } catch (RuntimeException e) {
+    } catch (RuntimeException _) {
       // A document that was stored without being checked beyond its root element. The bucket is served with the
       // defaults rather than failing every request of it.
       parsed = new WebsiteConfiguration();
@@ -446,7 +446,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
   private Optional<String> findWebsiteConfiguration(String bucket) {
     try {
       return bucketService.findBucketConfiguration(bucket, StoredBucketConfiguration.WEBSITE);
-    } catch (LocalS3Exception e) {
+    } catch (LocalS3Exception _) {
       return Optional.empty();
     }
   }
@@ -455,7 +455,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     try {
       bucketService.getBucket(bucket);
       return true;
-    } catch (LocalS3Exception e) {
+    } catch (LocalS3Exception _) {
       return false;
     }
   }
@@ -469,7 +469,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     }
     try {
       return !objectService.headObject(bucket, key, GetObjectOptions.builder().build()).isDeleteMarker();
-    } catch (LocalS3Exception e) {
+    } catch (LocalS3Exception _) {
       return false;
     }
   }
@@ -484,7 +484,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
       SystemMetadata systemMetadata =
           objectService.headObject(bucket, key, GetObjectOptions.builder().build()).getSystemMetadata();
       return Optional.ofNullable(systemMetadata).map(SystemMetadata::getWebsiteRedirectLocation);
-    } catch (LocalS3Exception e) {
+    } catch (LocalS3Exception _) {
       return Optional.empty();
     }
   }
@@ -496,7 +496,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
   private boolean hasObjectsUnder(String bucket, String prefix) {
     try {
       return objectService.listObjectsV2(bucket, null, "/", null, false, 1, prefix, null).getKeyCount() > 0;
-    } catch (LocalS3Exception e) {
+    } catch (LocalS3Exception _) {
       return false;
     }
   }

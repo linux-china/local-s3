@@ -122,7 +122,7 @@ public final class BucketPublicAccess {
     JsonNode policy;
     try {
       policy = JSON.readTree(document);
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       return PolicyDecision.NONE;
     }
 

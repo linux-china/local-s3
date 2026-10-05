@@ -145,7 +145,7 @@ final class SessionCredentialIssuer {
       }
       return new Session(fields[1], Instant.ofEpochSecond(Long.parseLong(fields[2])), fields[3], fields[4],
           fields[5].isEmpty() ? null : fields[5]);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // Neither base64url nor a number.
       return null;
     }

@@ -109,7 +109,7 @@ record ExternalS3Endpoint(String property, String endpoint) {
     URI uri;
     try {
       uri = URI.create(endpoint.contains("://") ? endpoint.trim() : "http://" + endpoint.trim());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return false;
     }
     String host = uri.getHost();
@@ -153,7 +153,7 @@ record ExternalS3Endpoint(String property, String endpoint) {
     try {
       // An IP address literal is parsed without a lookup.
       return InetAddress.getByName(host).isLoopbackAddress();
-    } catch (Exception e) {
+    } catch (Exception _) {
       return false;
     }
   }

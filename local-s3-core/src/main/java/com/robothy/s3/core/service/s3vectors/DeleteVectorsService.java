@@ -44,7 +44,7 @@ public interface DeleteVectorsService extends S3VectorsMetadataAware, S3VectorsS
       try {
         deleteVector(key, indexMetadata);
         deletedVectorKeys.add(key);
-      } catch (Exception e) {
+      } catch (Exception _) {
         errorVectorKeys.add(key);
       }
     }

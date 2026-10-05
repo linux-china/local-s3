@@ -85,7 +85,7 @@ public class LocalS3AwsConnectionDetailsFactory
     try {
       InetAddress resolved = InetAddress.getByName(host);
       address = resolved instanceof Inet6Address ? "[" + resolved.getHostAddress() + "]" : resolved.getHostAddress();
-    } catch (UnknownHostException e) {
+    } catch (UnknownHostException _) {
       // A host the JVM can't resolve can't be reached either; the client reports that on its first request.
       address = host;
     }

@@ -125,7 +125,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
 
     try {
       return CopyObjectOptions.TaggingDirective.valueOf(taggingDirectiveHeader);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_TAGGING_DIRECTIVE,
           taggingDirectiveHeader, "Invalid tagging directive.");
     }
@@ -145,7 +145,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     
     try {
       return CopyObjectOptions.MetadataDirective.valueOf(metadataDirectiveHeader);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE, 
           metadataDirectiveHeader, "Invalid metadata directive.");
     }

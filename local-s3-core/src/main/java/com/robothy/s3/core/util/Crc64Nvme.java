@@ -1,5 +1,8 @@
 package com.robothy.s3.core.util;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
 import java.util.zip.Checksum;
 
 /**
@@ -18,6 +21,11 @@ public final class Crc64Nvme implements Checksum {
    * {@code TABLES[k][b]} is the CRC register after byte {@code b} is followed by {@code k} zero bytes.
    */
   private static final long[][] TABLES = new long[8][256];
+
+  /**
+   * Reads eight bytes of an array as a little-endian {@code long}, which the JIT compiles to a single load.
+   */
+  private static final VarHandle LONG_LE = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
 
   static {
     for (int b = 0; b < 256; b++) {
@@ -48,14 +56,7 @@ public final class Crc64Nvme implements Checksum {
     int index = off;
     int end = off + len;
     for (; index + 8 <= end; index += 8) {
-      value ^= (b[index] & 0xFFL)
-          | (b[index + 1] & 0xFFL) << 8
-          | (b[index + 2] & 0xFFL) << 16
-          | (b[index + 3] & 0xFFL) << 24
-          | (b[index + 4] & 0xFFL) << 32
-          | (b[index + 5] & 0xFFL) << 40
-          | (b[index + 6] & 0xFFL) << 48
-          | (b[index + 7] & 0xFFL) << 56;
+      value ^= (long) LONG_LE.get(b, index);
       value = TABLES[7][(int) (value & 0xFF)]
           ^ TABLES[6][(int) ((value >>> 8) & 0xFF)]
           ^ TABLES[5][(int) ((value >>> 16) & 0xFF)]

@@ -500,7 +500,7 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     }
     try {
       return Math.max(Long.parseLong(length), -1);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return -1;
     }
   }

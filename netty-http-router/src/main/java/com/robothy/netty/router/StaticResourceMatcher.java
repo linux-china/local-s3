@@ -286,7 +286,7 @@ abstract class StaticResourceMatcher {
         try {
           BasicFileAttributes attributes = Files.readAttributes(Path.of(url.toURI()), BasicFileAttributes.class);
           return new long[] {attributes.size(), attributes.lastModifiedTime().toMillis()};
-        } catch (URISyntaxException | IllegalArgumentException e) {
+        } catch (URISyntaxException | IllegalArgumentException _) {
           return new long[] {-1, 0};
         }
       }
@@ -316,7 +316,7 @@ abstract class StaticResourceMatcher {
           return entry != null && !entry.isDirectory();
         }
         return !url.getPath().endsWith("/");
-      } catch (IOException | URISyntaxException | IllegalArgumentException e) {
+      } catch (IOException | URISyntaxException | IllegalArgumentException _) {
         return false;
       }
     }
@@ -347,7 +347,7 @@ abstract class StaticResourceMatcher {
       Path absPath;
       try {
         absPath = rootDirectory.resolve(relativePath).normalize();
-      } catch (InvalidPathException e) {
+      } catch (InvalidPathException _) {
         return null;
       }
       // relativePath has no "..", this is a second line of defense, e.g. against "C:" on Windows.

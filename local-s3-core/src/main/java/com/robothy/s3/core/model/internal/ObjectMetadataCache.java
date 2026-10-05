@@ -162,7 +162,7 @@ public final class ObjectMetadataCache {
       if (parsed > 0) {
         return parsed;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Reported below.
     }
     log.warn("Ignoring {}={}: expected a positive integer.", MAX_ENTRIES_VARIABLE, value);

@@ -212,7 +212,7 @@ public final class AwsSignatureV4RequestSigner {
       return null;
     }
     List<String> values = headers.get(name);
-    return values == null || values.isEmpty() ? null : values.get(0);
+    return values == null || values.isEmpty() ? null : values.getFirst();
   }
 
 }

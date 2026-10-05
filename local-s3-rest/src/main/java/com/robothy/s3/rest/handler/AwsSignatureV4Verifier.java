@@ -456,7 +456,7 @@ final class AwsSignatureV4Verifier {
       try {
         return new RequestTime(AMZ_DATE_FORMAT.format(DateTimeFormatter.RFC_1123_DATE_TIME.parse(date, Instant::from)),
             "date");
-      } catch (DateTimeParseException e) {
+      } catch (DateTimeParseException _) {
         throw new IllegalArgumentException("The Date header is neither an RFC 1123 date nor an ISO-8601 basic timestamp.");
       }
     }
@@ -482,7 +482,7 @@ final class AwsSignatureV4Verifier {
     int expires;
     try {
       expires = Integer.parseInt(requiredQueryParameter(queryParameters, "X-Amz-Expires"));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return malformed("X-Amz-Expires must be an integer.");
     }
     // A URL that is valid for no time, or for longer than a week, is refused like an expired one.
@@ -582,7 +582,7 @@ final class AwsSignatureV4Verifier {
     final Instant requestTime;
     try {
       requestTime = Instant.from(AMZ_DATE_FORMAT.parse(amzDate));
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       return malformed("The request time is not a valid ISO-8601 basic timestamp.");
     }
     if (!amzDate.startsWith(scopeDate)) {
@@ -843,7 +843,7 @@ final class AwsSignatureV4Verifier {
     try {
       return MessageDigest.isEqual(HexFormat.of().parseHex(expectedHex.toLowerCase(Locale.ROOT)),
           HexFormat.of().parseHex(suppliedHex.toLowerCase(Locale.ROOT)));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return false;
     }
   }
@@ -875,7 +875,7 @@ final class AwsSignatureV4Verifier {
       final long chunkLength;
       try {
         chunkLength = Long.parseLong(headerParts[0].trim(), 16);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         return false;
       }
       String chunkSignature = null;
@@ -1127,7 +1127,7 @@ final class AwsSignatureV4Verifier {
     }
     try {
       AMZ_DATE_FORMAT.parse(amzDate.get());
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       return postFieldInvalid("x-amz-date is not a valid ISO-8601 basic timestamp.");
     }
     if (!amzDate.get().startsWith(scope.date())) {
@@ -1154,7 +1154,7 @@ final class AwsSignatureV4Verifier {
       byte[] expected = mac.doFinal(policy.getBytes(StandardCharsets.UTF_8));
       byte[] supplied = Base64.getDecoder().decode(suppliedSignature.trim());
       return MessageDigest.isEqual(expected, supplied) ? VerificationResult.success() : signatureMismatch();
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return signatureMismatch();
     } catch (Exception e) {
       throw new IllegalStateException("Unable to calculate an HMAC-SHA1 signature.", e);

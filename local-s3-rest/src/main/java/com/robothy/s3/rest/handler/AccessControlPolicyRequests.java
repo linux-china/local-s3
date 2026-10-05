@@ -220,7 +220,7 @@ final class AccessControlPolicyRequests {
         throw new LocalS3RequestException(S3ErrorCode.MalformedACLError);
       }
       return acl;
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedACLError);
     } catch (IOException e) {
       throw new UncheckedIOException(e);

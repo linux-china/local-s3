@@ -111,7 +111,7 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
         Constructor<? extends DataPathSupplier> constructor = s3Config.dataPathSupplier().getDeclaredConstructor();
         DataPathSupplier dataPathSupplier = constructor.newInstance();
         dataPath = dataPathSupplier.get();
-      } catch (NoSuchMethodException e) {
+      } catch (NoSuchMethodException _) {
         throw new IllegalArgumentException("You must define no-args constructor in " + s3Config.dataPathSupplier());
       }
     }

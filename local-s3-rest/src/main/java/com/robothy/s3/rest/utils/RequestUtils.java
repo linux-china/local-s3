@@ -127,7 +127,7 @@ public class RequestUtils {
       if (length >= 0) {
         return length;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Rejected below.
     }
     throw new LocalS3InvalidArgumentException(headerName, value, "The value of " + headerName + " is not valid.");
@@ -168,7 +168,7 @@ public class RequestUtils {
       try {
         key = QueryStringDecoder.decodeComponent(separator < 0 ? tags[i] : tags[i].substring(0, separator));
         value = separator < 0 ? "" : QueryStringDecoder.decodeComponent(tags[i].substring(separator + 1));
-      } catch (IllegalArgumentException exception) {
+      } catch (IllegalArgumentException _) {
         throw invalidTagging(tagging, "Invalid URL encoding in tagging header.");
       }
 
@@ -304,7 +304,7 @@ public class RequestUtils {
     }
     try {
       return Instant.parse(value.trim()).toEpochMilli();
-    } catch (DateTimeParseException e) {
+    } catch (DateTimeParseException _) {
       throw new LocalS3InvalidArgumentException(headerName, value, "The timestamp must be an HTTP date.");
     }
   }
@@ -315,7 +315,7 @@ public class RequestUtils {
       if (size >= 0) {
         return size;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Reported below.
     }
     throw new LocalS3InvalidArgumentException(headerName, value, "The size must be a non-negative number of bytes.");

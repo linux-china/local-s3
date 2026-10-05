@@ -50,6 +50,25 @@ class LocalS3ActuatorTest {
     });
   }
 
+  /**
+   * The HTTP client of the probe is closed with the context, rather than its selector thread outliving it until the
+   * client is garbage collected.
+   */
+  @Test
+  void theHealthIndicatorClosesItsHttpClientWithTheContext() throws Exception {
+    Thread[] selector = new Thread[1];
+    runner.run(context -> {
+      context.getBean(LocalS3HealthIndicator.class).health();
+      selector[0] = Thread.getAllStackTraces().keySet().stream()
+          .filter(thread -> thread.getName().startsWith("HttpClient-") && thread.getName().endsWith("-SelectorManager"))
+          .filter(thread -> thread.getStackTrace().length > 0)
+          .reduce((first, last) -> last).orElseThrow();
+    });
+
+    selector[0].join(5_000);
+    assertFalse(selector[0].isAlive(), "The selector thread of the HTTP client of the probe stopped.");
+  }
+
   @Test
   void theEndpointListsTheBucketsWithTheirObjectsAndStorage() {
     runner.withConfiguration(AutoConfigurations.of(LocalS3EndpointAutoConfiguration.class))

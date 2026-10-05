@@ -9,7 +9,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -105,7 +104,7 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
     // Convert heap to sorted list (closest first)
     List<VectorSearchResult> results = maxHeap.stream()
         .sorted(NEAREST_FIRST)
-        .collect(Collectors.toList());
+        .toList();
 
     log.debug("Found {} nearest vectors", results.size());
     return results;

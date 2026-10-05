@@ -54,7 +54,7 @@ record CopySource(String bucket, String key, String versionId) {
 
     try {
       return new CopySource(urlDecode(bucket), urlDecode(key), urlDecode(versionId(slices)));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // A malformed percent escape.
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource, "Invalid copy source encoding.");
     }

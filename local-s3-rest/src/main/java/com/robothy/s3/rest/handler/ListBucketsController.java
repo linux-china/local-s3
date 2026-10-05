@@ -56,7 +56,7 @@ class ListBucketsController implements RouterHttpRequestHandler {
   private static int parseMaxBuckets(String value) {
     try {
       return Integer.parseInt(value.trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new LocalS3InvalidArgumentException("max-buckets", value,
           "Argument max-buckets must be an integer between 1 and " + BucketService.MAX_BUCKETS + ".");
     }

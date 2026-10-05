@@ -185,7 +185,7 @@ public final class CopyOnAccessStorage implements Storage {
     if (real.isExist(id) || copy(id)) {
       try {
         return readCopy.get();
-      } catch (IllegalArgumentException e) {
+      } catch (IllegalArgumentException _) {
         // The copy was dropped since; the base storage still has the object.
       }
     }

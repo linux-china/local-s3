@@ -57,7 +57,7 @@ public final class SigV4Requests {
       return fromHeader;
     }
     List<String> presigned = RequestPaths.queryValues(request, PRESIGNED_CREDENTIAL);
-    return presigned.isEmpty() ? null : serviceOf(presigned.get(0));
+    return presigned.isEmpty() ? null : serviceOf(presigned.getFirst());
   }
 
   /**

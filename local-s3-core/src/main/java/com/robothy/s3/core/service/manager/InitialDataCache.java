@@ -310,7 +310,7 @@ final class InitialDataCache implements CopyBudget {
       if (parsed > 0) {
         return parsed;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Reported below.
     }
     log.warn("Ignoring {}={}: expected a positive integer.", name, value);

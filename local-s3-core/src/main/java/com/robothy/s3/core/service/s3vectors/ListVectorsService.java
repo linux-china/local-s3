@@ -93,7 +93,7 @@ public interface ListVectorsService extends S3VectorsMetadataAware, S3VectorsSto
         
         try {
             return Integer.parseInt(new String(Base64.getDecoder().decode(nextToken)));
-        } catch (Exception e) {
+        } catch (Exception _) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, "Invalid nextToken");
         }
     }
@@ -145,7 +145,7 @@ public interface ListVectorsService extends S3VectorsMetadataAware, S3VectorsSto
         try {
             float[] vectorData = vectorStorage().getVectorData(vectorMetadata.getStorageId());
             builder.data(PutInputVector.VectorData.builder().values(vectorData).build());
-        } catch (Exception e) {
+        } catch (Exception _) {
             // Continue without data on error
         }
     }

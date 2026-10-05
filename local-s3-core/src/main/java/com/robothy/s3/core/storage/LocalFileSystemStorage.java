@@ -124,7 +124,7 @@ class LocalFileSystemStorage implements Storage {
       Files.move(file, createObjectDirectory(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       deleteFlatObjectFile(id);
       return id;
-    } catch (IOException | UnsupportedOperationException e) {
+    } catch (IOException | UnsupportedOperationException _) {
       // The file is left where it was; copy it.
     }
     try (InputStream in = Files.newInputStream(file)) {

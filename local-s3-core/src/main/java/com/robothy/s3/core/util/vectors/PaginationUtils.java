@@ -86,7 +86,7 @@ public class PaginationUtils {
   private static int decodeTokenToIndex(String nextToken) {
     try {
       return Integer.parseInt(new String(Base64.getDecoder().decode(nextToken)));
-    } catch (Exception e) {
+    } catch (Exception _) {
       throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, "Invalid nextToken");
     }
   }

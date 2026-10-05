@@ -385,7 +385,7 @@ final class KmsController implements RouterHttpRequestHandler {
         + "' failed to satisfy constraint: Member must not be null"));
     try {
       return Base64.getDecoder().decode(value);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw validationError("Value at '" + Character.toLowerCase(name.charAt(0)) + name.substring(1)
           + "' failed to satisfy constraint: Member must be base64 encoded");
     }
@@ -445,7 +445,7 @@ final class KmsController implements RouterHttpRequestHandler {
     JsonNode node;
     try {
       node = JSON.readTree(body);
-    } catch (JacksonException e) {
+    } catch (JacksonException _) {
       throw new KmsException("SerializationException", 400, "Unable to unmarshall request.");
     }
     if (!node.isObject()) {

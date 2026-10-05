@@ -185,7 +185,7 @@ public final class Checksums {
       if (bytes.length == length(algorithm)) {
         return bytes;
       }
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // Rejected below.
     }
     throw new LocalS3BadDigestException("Value for " + headerName(algorithm) + " header is invalid.");

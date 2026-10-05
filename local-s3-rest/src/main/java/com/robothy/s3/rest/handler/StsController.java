@@ -90,7 +90,7 @@ final class StsController implements RouterHttpRequestHandler {
     try {
       String action = parameters(request).get("Action");
       return ACTIONS.contains(action) ? action : UNKNOWN_ACTION_OPERATION;
-    } catch (StsException e) {
+    } catch (StsException _) {
       return UNKNOWN_ACTION_OPERATION;
     }
   }
@@ -212,7 +212,7 @@ final class StsController implements RouterHttpRequestHandler {
     long seconds;
     try {
       seconds = Long.parseLong(value.get().trim());
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw validationError("Value '" + value.get() + "' at 'durationSeconds' failed to satisfy constraint: "
           + "Member must be an integer");
     }
@@ -244,7 +244,7 @@ final class StsController implements RouterHttpRequestHandler {
     Map<String, String> parameters = new HashMap<>();
     request.getParams().forEach((name, values) -> {
       if (!values.isEmpty()) {
-        parameters.put(name, values.get(0));
+        parameters.put(name, values.getFirst());
       }
     });
     String body;
@@ -259,7 +259,7 @@ final class StsController implements RouterHttpRequestHandler {
         .parameters()
         .forEach((name, values) -> {
           if (!values.isEmpty()) {
-            parameters.put(name, values.get(0));
+            parameters.put(name, values.getFirst());
           }
         });
     return parameters;

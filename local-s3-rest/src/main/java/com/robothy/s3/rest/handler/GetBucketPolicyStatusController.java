@@ -33,7 +33,7 @@ class GetBucketPolicyStatusController implements RouterHttpRequestHandler {
     PolicyStatus policyStatus;
     try {
       policyStatus = bucketService.getBucketPolicyStatus(bucketName);
-    } catch (BucketNotExistException e) {
+    } catch (BucketNotExistException _) {
       response.status(HttpResponseStatus.NOT_FOUND);
       return;
     }    response.write(xmlMapper.writeValueAsString(policyStatus));
