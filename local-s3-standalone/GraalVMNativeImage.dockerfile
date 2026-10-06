@@ -35,5 +35,6 @@ ENV LOCAL_S3_MODE=PERSISTENCE
 # A container doesn't inherit the shell of a developer, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can't be the
 # client credentials of one there: keep reading them as the credentials of the service, as the image always did.
 ENV LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true
+ENV AWS_BUCKETS="my-bucket"
 
 CMD exec ./s3

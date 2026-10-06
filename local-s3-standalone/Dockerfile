@@ -44,6 +44,7 @@ ENV LOCAL_S3_MODE=PERSISTENCE
 # A container doesn't inherit the shell of a developer, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can't be the
 # client credentials of one there: keep reading them as the credentials of the service, as the image always did.
 ENV LOCAL_S3_CREDENTIALS_FROM_AWS_ENV=true
+ENV AWS_BUCKETS="my-bucket"
 
 # Size the heap by the memory limit of the container, and collect it with the Serial GC, which takes the least memory
 # and CPU for the heaps of a few GB that a test or development service has. Override JAVA_OPTS to tune the JVM, e.g.
