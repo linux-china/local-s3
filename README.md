@@ -21,6 +21,9 @@ Use it to:
 Weighing it against Adobe S3Mock, s3proxy, MinIO or LocalStack? See
 [Choosing an S3 mock](docs/comparison.md).
 
+In a hurry? The [cheat sheet](docs/cheatsheet.md) has the least configuration for DuckDB, JUnit 5, Spring Boot,
+Testcontainers, Spark with Iceberg, PyIceberg and delta-rs, each with a snippet you can run.
+
 ## Quick start
 
 **Docker**
@@ -172,6 +175,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 
 | Document | Contents |
 |---|---|
+| [Cheat sheet](docs/cheatsheet.md) | The least configuration for each client — the AWS CLI, DuckDB, JUnit 5, Spring Boot, Testcontainers, Spark, PyIceberg, delta-rs — and the common errors. |
 | [Choosing an S3 mock](docs/comparison.md) | Where LocalS3 fits next to Adobe S3Mock, s3proxy, MinIO and LocalStack, and when one of them is the better choice. |
 | [Supported APIs](docs/apis.md) | The S3, S3 Vectors and S3 Tables operations LocalS3 implements, and the ones it answers `501 NotImplemented`. |
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |

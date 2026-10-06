@@ -23,9 +23,9 @@ out. Use `testAndDevelopmentOnly` (Spring Boot 3.2+) to put it on the test class
 
 ```groovy
 dependencies {
-    testAndDevelopmentOnly 'io.github.robothy:local-s3-spring-boot-starter:last_version'
+    testAndDevelopmentOnly 'org.mvnsearch:local-s3-spring-boot-starter:last_version'
     // or only for tests:
-    // testImplementation 'io.github.robothy:local-s3-spring-boot-starter:last_version'
+    // testImplementation 'org.mvnsearch:local-s3-spring-boot-starter:last_version'
 }
 ```
 
@@ -36,7 +36,7 @@ still puts optional dependencies into the fat jar:
 ```xml
 <!-- tests -->
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-spring-boot-starter</artifactId>
     <version>last_version</version>
     <scope>test</scope>
@@ -48,7 +48,7 @@ still puts optional dependencies into the fat jar:
         <id>local-s3</id>
         <dependencies>
             <dependency>
-                <groupId>org.mvnsearch.robothy</groupId>
+                <groupId>org.mvnsearch</groupId>
                 <artifactId>local-s3-spring-boot-starter</artifactId>
                 <version>last_version</version>
             </dependency>
