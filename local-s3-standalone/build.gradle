@@ -214,7 +214,7 @@ registerImageTest('dockerImageTest', 'latest', 'buildJvmBasedDockerImage', 'libs
 registerImageTest('nativeImageTest', "native-${imageVersion}", 'buildGraalVMNativeBasedDockerImage', 'bin/s3',
         'GraalVM native image based')
 
-tasks.register('pushJava21BasedDockerImage', Exec) {
+tasks.register('pushJvmBasedDockerImage', Exec) {
     dependsOn 'dockerImageTest'
     group = "docker-image"
     commandLine shellCommand(executor, "docker push luofuxiang/local-s3:${imageVersion}")
