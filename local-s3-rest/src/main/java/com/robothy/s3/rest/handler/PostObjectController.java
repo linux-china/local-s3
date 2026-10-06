@@ -43,24 +43,11 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPOST.html">POST Object</a>, the upload
- * of a file by an HTML form that a browser posts to a bucket.
- *
- * <p>The form carries what a {@code PutObject} request carries in its headers: the {@code key}, which may contain
- * {@code ${filename}}, the {@code Content-Type}, the system-defined metadata, {@code x-amz-meta-*},
- * {@code tagging} and the {@code x-amz-server-side-encryption*} fields, SSE-C ones included. If the service requires signed requests, the form must carry a {@code policy} and its signature,
- * see {@linkplain AwsSignatureV4Verifier#verifyPostPolicy}; a form that carries a policy has it checked either way,
- * see {@linkplain PostPolicy}, so that a form can be debugged against a service that doesn't require signatures.
- *
- * <p>The response is a redirect to {@code success_action_redirect} if the form names one, and otherwise has the
- * {@code success_action_status} of the form, {@code 204 No Content} by default, or {@code 201 Created} with a
- * {@code PostResponse} document.
+ * See {@code docs/semantics.md#browser-form-uploads-post-object}. A form that carries a policy has it checked even if
+ * the service doesn't require signatures, so a form can be debugged against such a service.
  */
 class PostObjectController implements RouterHttpRequestHandler {
 
-  /**
-   * The operation that the change of an object stored by a form is named after.
-   */
   static final String OPERATION = "PostObject";
 
   private static final String FILENAME_VARIABLE = "${filename}";
@@ -69,17 +56,11 @@ class PostObjectController implements RouterHttpRequestHandler {
 
   private final XmlMapper xmlMapper;
 
-  /**
-   * Verifies the signature of the policy; {@code null} if the service doesn't require signed requests.
-   */
   private final AwsSignatureV4Verifier signatureVerifier;
 
   private final Clock clock;
 
-  /**
-   * The scheme of the URLs that the service is reached at when the request doesn't say: {@code https} if it serves
-   * TLS. A port that answers both HTTP and HTTPS is told by the request, see {@linkplain ConnectionSchemes}.
-   */
+  // A port that answers both HTTP and HTTPS is told by the request, see ConnectionSchemes.
   private final String defaultScheme;
 
   PostObjectController(ServiceFactory serviceFactory, AwsSignatureV4Verifier signatureVerifier) {
@@ -172,9 +153,6 @@ class PostObjectController implements RouterHttpRequestHandler {
     }
   }
 
-  /**
-   * The tags of the {@code tagging} field, a {@code Tagging} document.
-   */
   private String[][] tagging(MultipartFormData form) {
     Optional<String> tagging = form.field("tagging").filter(value -> !value.isBlank());
     if (tagging.isEmpty()) {
@@ -198,10 +176,6 @@ class PostObjectController implements RouterHttpRequestHandler {
     return userMetadata;
   }
 
-  /**
-   * The URL of the stored object, addressed like the form was: by the scheme the form was posted with, at the bucket
-   * of the path, or at the bucket of the host of a virtual-hosted-style request.
-   */
   private String objectLocation(RouterHttpRequest request, String bucketName, String key) {
     String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
     String path = request.getPath() == null ? "/" : request.getPath();
@@ -210,9 +184,6 @@ class PostObjectController implements RouterHttpRequestHandler {
     return scheme + "://" + host + "/" + (bucketInPath ? S3ObjectUtils.urlEncode(bucketName, false) + "/" : "") + encodeKey(key);
   }
 
-  /**
-   * The URI of {@code success_action_redirect}; empty if it isn't an absolute URI, which Amazon S3 ignores too.
-   */
   private static Optional<URI> redirectUri(String value) {
     try {
       URI uri = new URI(value.trim());
@@ -222,9 +193,6 @@ class PostObjectController implements RouterHttpRequestHandler {
     }
   }
 
-  /**
-   * The redirect URI with the {@code bucket}, {@code key} and {@code etag} of the stored object added to its query.
-   */
   private static String redirectLocation(URI redirect, String bucketName, String key, String etag) {
     String value = redirect.toString();
     int fragment = value.indexOf('#');

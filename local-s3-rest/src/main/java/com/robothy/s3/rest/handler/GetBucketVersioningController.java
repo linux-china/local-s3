@@ -13,9 +13,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Objects;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketVersioning.html">GetBucketVersioning</a>
- */
 class GetBucketVersioningController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

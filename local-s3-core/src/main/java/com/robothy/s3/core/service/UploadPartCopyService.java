@@ -13,25 +13,10 @@ import com.robothy.s3.core.model.request.UploadPartOptions;
 import java.io.IOException;
 import java.io.InputStream;
 
-/**
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html">UploadPartCopy</a>,
- * which uploads a part of a multipart upload by copying a range of an object that is already stored.
- */
 public interface UploadPartCopyService extends GetObjectService, UploadPartService {
 
   /**
-   * Upload a part by copying data from an existing object. Neither bucket is locked while the content is
-   * copied, so that copying a large range doesn't block the other requests to them: the source object is
-   * resolved under the read lock of the source bucket, its content is copied without a lock, and only the
-   * commit of {@linkplain #uploadPart} holds the write lock of the destination bucket. This is the same
-   * sequence that {@linkplain CopyObjectService#copyObject} uses.
-   *
-   * @param bucket the bucket of the multipart upload.
-   * @param key the object key of the multipart upload.
-   * @param uploadId the upload ID generated when initializing the upload.
-   * @param partNumber the part number.
-   * @param options copy options.
-   * @return result of the copy.
+   * Neither bucket is locked while the content is copied, like {@linkplain CopyObjectService#copyObject}.
    */
   default UploadPartCopyAns uploadPartCopy(String bucket, String key, String uploadId, Integer partNumber,
                                            UploadPartCopyOptions options) {

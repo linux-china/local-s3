@@ -42,30 +42,11 @@ import software.amazon.awssdk.services.s3vectors.S3VectorsClientBuilder;
 import software.amazon.awssdk.transfer.s3.S3TransferManager;
 
 /**
- * Embeds a LocalS3 service in a Spring Boot application:
- *
- * <ul>
- *   <li>a {@linkplain LocalS3} bean configured by {@linkplain LocalS3Properties local-s3.*} and the
- *   {@linkplain LocalS3BuilderCustomizer customizers}, which {@linkplain LocalS3Lifecycle} starts and stops with the
- *   application context;</li>
- *   <li>the buckets and objects of the directory tree of {@code local-s3.seed.classpath}, put into the service when it
- *   starts and after every reset;</li>
- *   <li>the {@code S3Change}s that the service commits, published to the application context, where
- *   {@code @EventListener} and {@code @TransactionalEventListener} methods receive them;</li>
- *   <li>an {@linkplain S3Client}, an {@linkplain S3AsyncClient} and an {@linkplain S3Presigner} that point at the
- *   service, unless the application defines its own, when the AWS SDK is on the classpath (the {@code S3AsyncClient}
- *   with {@code netty-nio-client}, {@code aws-crt-client} or {@code aws-crt}), and likewise an
- *   {@linkplain S3VectorsClient}, an {@linkplain S3TablesClient} and an {@linkplain S3TransferManager} when their
- *   modules are.</li>
- * </ul>
- *
- * <p>Set {@code local-s3.enabled=false} to leave the service out, e.g. in the profile that runs against Amazon S3. The
- * clients back off by themselves, with a warning, when the application is configured with another S3 endpoint, e.g.
- * {@code spring.cloud.aws.s3.endpoint} or {@code AWS_ENDPOINT_URL}; see {@linkplain ExternalS3Endpoint}.
+ * See {@code docs/embedding.md#spring-boot} and the README of the starter.
  *
  * <p>Ordered before the S3 auto-configurations of Spring Cloud AWS, whose clients are {@code @ConditionalOnMissingBean}
- * too: the clients of the starter are defined first, so Spring Cloud AWS backs off from them, and its
- * {@code S3Template} uses them. The classes are named, rather than referenced, since Spring Cloud AWS is optional.
+ * too, so that Spring Cloud AWS backs off from the clients of the starter and its {@code S3Template} uses them. The
+ * classes are named, rather than referenced, since Spring Cloud AWS is optional.
  */
 @AutoConfiguration(beforeName = {
     "io.awspring.cloud.autoconfigure.s3.S3AutoConfiguration",
@@ -130,11 +111,7 @@ public class LocalS3AutoConfiguration {
     return builder.build();
   }
 
-  /**
-   * Warns that the clients of the starter back off from an S3 endpoint that the application is configured with, see
-   * {@linkplain LocalS3ClientsCondition}: once per context, from the bean of the service rather than from the condition,
-   * which is evaluated more than once.
-   */
+  // Warned from the bean of the service rather than from LocalS3ClientsCondition, which is evaluated more than once.
   private static void warnIfTheClientsBackOff(Environment environment) {
     if (environment.getProperty(ExternalS3Endpoint.CLIENTS_ENABLED) != null) {
       return;
@@ -153,28 +130,12 @@ public class LocalS3AutoConfiguration {
     return new LocalS3ApplicationEventPublisher(applicationContext);
   }
 
-  /**
-   * The executor that delivers the changes of the service to its listeners, {@code local-s3.events.executor}. A
-   * {@linkplain LocalS3BuilderCustomizer} that sets one of its own overrides it.
-   *
-   * @param properties the configuration, whose {@code events.executor} selects the executor.
-   * @param beanFactory provides the {@code applicationTaskExecutor} of Spring Boot.
-   * @return the executor.
-   */
   @Bean
   @ConditionalOnMissingBean
   public LocalS3EventExecutor localS3EventExecutor(LocalS3Properties properties, ListableBeanFactory beanFactory) {
     return LocalS3EventExecutor.of(properties.getEvents().getExecutor(), beanFactory);
   }
 
-  /**
-   * Seeds the service from the directory tree of {@code local-s3.seed.classpath}, when one is configured. An
-   * application that seeds otherwise defines a {@linkplain LocalS3Seeder} bean of its own, which is applied too.
-   *
-   * @param properties the configuration, whose {@code seed.classpath} names the tree.
-   * @param context resolves the location with the class loader of the application.
-   * @return the seeder of the configured classpath location.
-   */
   @Bean
   @ConditionalOnMissingBean
   @ConditionalOnProperty(name = "local-s3.seed.enabled", havingValue = "true", matchIfMissing = true)
@@ -184,16 +145,6 @@ public class LocalS3AutoConfiguration {
     return new ClasspathLocalS3Seeder(properties.getSeed().getClasspath(), context);
   }
 
-  /**
-   * Starts and stops the service with the context. Under Spring Boot DevTools, whose restart class loader loads the
-   * application, an {@code IN_MEMORY} service keeps its data across the restarts, unless
-   * {@code local-s3.devtools.keep-data=false}.
-   *
-   * @param localS3 the service.
-   * @param properties the configuration.
-   * @param context the application context, whose class loader tells whether DevTools restarts it.
-   * @return the lifecycle of the service.
-   */
   @Bean
   @ConditionalOnMissingBean
   public LocalS3Lifecycle localS3Lifecycle(LocalS3 localS3, LocalS3Properties properties, ApplicationContext context) {
@@ -201,25 +152,14 @@ public class LocalS3AutoConfiguration {
         && LocalS3DevToolsRestart.isRestartable(context.getClassLoader()));
   }
 
-  /**
-   * Publishes {@code local.s3.endpoint} and {@code local.s3.port} to the environment, see
-   * {@linkplain LocalS3PropertySource}. Static, since it post-processes the bean factory before this configuration is
-   * created.
-   *
-   * @return the registrar of the property source.
-   */
+  // Static, since it post-processes the bean factory before this configuration is created.
   @Bean
   static LocalS3PropertySource.Registrar localS3PropertySourceRegistrar() {
     return new LocalS3PropertySource.Registrar();
   }
 
-  /**
-   * Whether the service listens on a random free port rather than the default {@code 29090} of
-   * {@code local-s3.port}: in the context of a {@code @SpringBootTest}, unless the port is configured. The test context
-   * framework caches the contexts of test classes with different configurations side by side, and each of them has a
-   * service of its own, which would compete for a fixed port. The clients of the starter and
-   * {@code ${local.s3.endpoint}} name the port the service is listening on.
-   */
+  // The test context framework caches the contexts of test classes side by side, each with a service of its own,
+  // which would compete for a fixed port.
   static boolean randomPortForTest(Environment environment) {
     return environment.getProperty(SPRING_BOOT_TEST_PROPERTY, Boolean.class, false)
         && !Binder.get(environment).bind("local-s3.port", Bindable.of(Integer.class)).isBound();
@@ -301,11 +241,7 @@ public class LocalS3AutoConfiguration {
     return value != null && !value.isBlank();
   }
 
-  /**
-   * The clients of the AWS SDK that point at the embedded service, with path-style requests, and signed with the
-   * credentials of the service, if it requires any. Creating a client starts the service. The AWS SDK is an optional
-   * dependency of the starter: without {@code software.amazon.awssdk:s3}, the application only embeds the service.
-   */
+  // The AWS SDK is optional: without it, the application only embeds the service.
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnClass(S3Client.class)
   @Conditional(LocalS3ClientsCondition.class)
@@ -340,24 +276,16 @@ public class LocalS3AutoConfiguration {
           .build();
     }
 
-    /**
-     * The endpoint of the service, named by the summary that {@linkplain LocalS3Lifecycle} logs once: an application
-     * that embeds the service on purpose, e.g. to receive the files of other processes, gets one line at {@code INFO}
-     * rather than a warning per client.
-     */
+    // LocalS3Lifecycle logs the endpoint once, rather than a warning per client.
     private static URI pointAtLocalS3(Class<?> clientType, LocalS3Lifecycle lifecycle) {
       return lifecycle.endpointFor(clientType.getSimpleName());
     }
 
     /**
-     * An {@linkplain S3AsyncClient} that points at the service. It is built on the asynchronous HTTP client of the AWS
-     * SDK that the application brings, {@code netty-nio-client} or {@code aws-crt-client}, which the SDK picks from the
-     * classpath; without either, on the AWS Common Runtime alone ({@code aws-crt}, e.g. the one that Spring Cloud AWS
-     * builds its {@code S3CrtAsyncClient} on), as an {@code S3CrtAsyncClient}, which uploads and downloads in parts of
-     * its own.
+     * Without {@code netty-nio-client} or {@code aws-crt-client}, built on {@code aws-crt} alone as an
+     * {@code S3CrtAsyncClient}, e.g. the one Spring Cloud AWS brings for its own.
      *
-     * @param multipart whether an {@code S3AsyncClient} of an HTTP client uploads and downloads in parts, like the one of
-     *     a transfer manager does.
+     * @param multipart whether an {@code S3AsyncClient} of an HTTP client uploads and downloads in parts.
      */
     static S3AsyncClient asyncClient(Class<?> clientType, LocalS3Lifecycle lifecycle, LocalS3Properties properties,
                                      ClassLoader classLoader, boolean multipart) {
@@ -391,12 +319,8 @@ public class LocalS3AutoConfiguration {
       return StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKeyId, secretAccessKey));
     }
 
-    /**
-     * The builder of the client of the S3 Vectors API, with {@code software.amazon.awssdk:s3vectors}, which
-     * {@linkplain LocalS3VectorsClientAutoConfiguration} builds the client with. A builder rather than the client,
-     * because Spring Cloud AWS defines its {@code s3VectorsClient} whatever the application defines, from the
-     * {@code S3VectorsClientBuilder} bean, which it backs off from: its client then points at the service too.
-     */
+    // A builder rather than the client: Spring Cloud AWS defines its s3VectorsClient whatever the application
+    // defines, from the S3VectorsClientBuilder bean, which it backs off from, so its client points here too.
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(S3VectorsClient.class)
     static class VectorsClientConfiguration {
@@ -412,11 +336,7 @@ public class LocalS3AutoConfiguration {
 
     }
 
-    /**
-     * The client of the S3 Tables API, with {@code software.amazon.awssdk:s3tables}. It is pointed straight at the
-     * service, since it always signs, and the {@code s3tables} service of its credential scope is what tells its
-     * requests from the S3 ones, whose paths they share.
-     */
+    // Not path-style: the s3tables service of its credential scope tells its requests from the S3 ones.
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(S3TablesClient.class)
     static class TablesClientConfiguration {
@@ -433,12 +353,8 @@ public class LocalS3AutoConfiguration {
 
     }
 
-    /**
-     * The transfer manager, with {@code software.amazon.awssdk:s3-transfer-manager} and {@code netty-nio-client}. It
-     * transfers through an {@linkplain S3AsyncClient} of its own, with multipart uploads and downloads enabled, rather
-     * than through the {@code S3AsyncClient} bean, whose {@code putObject} would then split large objects into parts
-     * too. The configuration closes that client after the transfer manager, which doesn't close a client it was given.
-     */
+    // A client of its own, with multipart on, rather than the S3AsyncClient bean, whose putObject would then split
+    // large objects too. Closed here, since the transfer manager doesn't close a client it was given.
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(S3TransferManager.class)
     @Conditional(AsyncClientCondition.class)

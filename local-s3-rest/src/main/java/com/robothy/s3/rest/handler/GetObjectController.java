@@ -24,9 +24,6 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 
-/**
- * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html">GetObject</a>.
- */
 class GetObjectController implements RouterHttpRequestHandler {
 
   private final ObjectService objectService;

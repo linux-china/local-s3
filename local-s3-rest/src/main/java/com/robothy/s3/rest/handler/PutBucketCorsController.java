@@ -14,9 +14,6 @@ import java.io.InputStream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html">PutBucketCors</a>.
- */
 class PutBucketCorsController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

@@ -177,7 +177,10 @@ like Amazon S3 answers them, but nothing is encrypted either, see
 signature; see [semantics.md](semantics.md#browser-form-uploads-post-object).
 
 `ListBuckets` is paginated with `max-buckets`, `continuation-token`, `prefix` and `bucket-region`, so
-`listBucketsPaginator` works.
+`listBucketsPaginator` works. A request without them gets every bucket on one page, like Amazon S3 answers it; a
+paginated one gets at most `max-buckets` (1 to 10000) per page. Buckets are listed in the order they were created,
+and the token marks the last bucket of a page, so a bucket created or deleted between two pages neither repeats a
+bucket nor skips one.
 
 Besides the S3 API, a service answers a health check and a few admin endpoints; see
 [deployment.md](deployment.md#health-check).

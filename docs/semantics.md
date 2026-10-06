@@ -37,7 +37,7 @@ test relies on one of them; such a test has to run against Amazon S3.
 | `PutBucketLifecycleConfiguration` | Stored; applied when a test asks, with `POST /_admin/lifecycle` or `LocalS3#applyLifecycle`, or on a schedule that is off by default | Amazon S3 applies the rules by itself, once a day. See [lifecycle configuration](#lifecycle-configuration) |
 | `PutBucketNotificationConfiguration` | Stored and returned as put; the ARNs aren't checked | No event reaches SNS, SQS, Lambda or EventBridge; use a [change listener](#change-events) instead |
 | `PutBucketAcl`, `PutObjectAcl`, `x-amz-acl`, `x-amz-grant-*` | Stored and returned | Not enforced against signed requests; only a public `READ` opens a bucket to anonymous [website](#which-buckets-are-public) reads. See [access control lists](#access-control-lists) |
-| `PutBucketPolicy`, `PutPublicAccessBlock` | Stored and returned | Not enforced against signed requests; only an `Allow` of `s3:GetObject` to `*` opens a bucket to anonymous [website](#which-buckets-are-public) reads, and conditions aren't evaluated |
+| `PutBucketPolicy`, `PutPublicAccessBlock` | Stored and returned | Not enforced against signed requests; only an `Allow` of `s3:GetObject` to `*` opens a bucket to anonymous [website](#which-buckets-are-public) reads, and conditions aren't evaluated. `GetBucketPolicyStatus` answers `IsPublic` for any policy, unless `BlockPublicPolicy` or `RestrictPublicBuckets` is set |
 | `PutBucketOwnershipControls` | Stored and returned | ACLs keep working under `BucketOwnerEnforced` |
 | `PutBucketAccelerateConfiguration` | Stored and returned | Nothing is accelerated |
 | `PutBucketLogging` | Stored and returned | No access log is written |
@@ -53,6 +53,10 @@ test relies on one of them; such a test has to run against Amazon S3.
 | `POST Object` fields `acl`, `x-amz-storage-class`, server-side encryption | Like the headers of `PutObject` above; they still have to be named by the policy | As above |
 | S3 Vectors `PutVectorBucketPolicy` | Stored and returned | Not enforced |
 | S3 Tables encryption, storage class, resource policies, maintenance, metrics, replication, record expiration | Stored and read back | Nothing is encrypted or tiered, no policy is enforced, no job runs: `GetTableMaintenanceJobStatus` answers `Not_Yet_Run`. See [the S3 Tables API](#the-s3-tables-api) |
+
+The document of a stored configuration must be well-formed XML whose root element is the one of its configuration,
+otherwise `400 MalformedXML`; its contents aren't checked, since nothing reads them. Deleting a configuration that a
+bucket doesn't have succeeds, except for the ones named by `id`, which answer `404 NoSuchConfiguration`.
 
 An operation that LocalS3 doesn't have at all answers `501 NotImplemented` rather than pretending to succeed, and is
 counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#known-unimplemented-amazon-s3-apis).
@@ -91,6 +95,15 @@ counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#kno
   `LOCAL_S3_ACCEPT_CHUNKED_UPLOADS=false` or `local-s3.accept-chunked-uploads=false` answer `411` like Amazon S3, e.g.
   to test that a client declares the length of what it uploads. The `aws-chunked` bodies of the AWS SDKs declare their
   length in `x-amz-decoded-content-length` and aren't affected.
++ The tags of an object, of `PutObjectTagging`, `x-amz-tagging` or a copy, are within the
+  [limits](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html) of Amazon S3: at most 10, each
+  with a unique key of 1 to 128 characters and a value of at most 256; otherwise `400 InvalidTag`, and the object keeps
+  the tags it has.
++ A `Content-MD5` that isn't the base64 of an MD5 digest, e.g. an empty one, answers `400 InvalidDigest` before the
+  content is read; one that doesn't match the content answers `400 BadDigest`.
++ `DeleteObjects` takes 1 to 1000 objects, otherwise `400 MalformedXML`. An object that can't be deleted is reported as
+  an `<Error>` of its own, with its S3 error, or `InternalError` for an unexpected failure, whose message is logged
+  rather than answered, and the other objects are still deleted.
 + `x-amz-expected-bucket-owner` and `x-amz-source-expected-bucket-owner` are **accepted and ignored**: LocalS3 has one
   account, which owns every bucket, so a request never fails with `403 AccessDenied` for naming another owner. A test
   that relies on that check must run against Amazon S3.
@@ -166,6 +179,19 @@ object is answered `200`, so a resumed download, e.g. of a browser, never splice
 It is evaluated after the other conditions of a read, so a `304` or a `412` still wins, and it is ignored without a
 `Range`, e.g. with a `partNumber`. `HeadObject` evaluates it like `GetObject`.
 
+### Reading a part
+
+`GetObject` and `HeadObject` with `partNumber` read one part of an object, answered `206 Partial Content` with a
+`Content-Range` and `x-amz-mp-parts-count`:
+
++ The parts are counted from 1 in the order of the content, whatever part numbers they were uploaded with, so a client
+  that reads parts 1 to `x-amz-mp-parts-count` reads the whole object.
++ An object that wasn't uploaded in parts has a single part, all of its content; an empty part has no `Content-Range`.
++ A part number beyond the parts answers `400 InvalidPartNumber`; `partNumber` together with `Range` answers
+  `400 InvalidRequest`.
++ The checksum answered is the one of the part, of the algorithm of the object, with the checksum type of the object,
+  e.g. `COMPOSITE`. A read of a `Range` answers no checksum, since the checksum is of the whole content.
+
 ## Versioning
 
 A bucket is in one of three states, as in Amazon S3: never versioned, versioning enabled, or versioning suspended.
@@ -196,6 +222,7 @@ that version reports `null`.
   `x-amz-delete-marker: true`. Like Amazon S3, it is idempotent: it succeeds if the version, or the key, is already
   gone, so that the retries and the concurrent cleanups of Iceberg, Delta Lake or DuckLake don't fail. Its conditions,
   e.g. `If-Match`, still fail on a key that holds no version, see [conditional requests](#conditional-requests).
+  Unlike a read, a delete doesn't fail on a malformed version ID either; it deletes nothing.
 + `GetObject`, `HeadObject`, `CopyObject` (through `versionId` of the source), `GetObjectAttributes`, `RestoreObject`
   and the tagging, ACL, retention and legal hold operations address a version with `versionId`; a conditional read of a
   version is evaluated against that version. A version ID that LocalS3 couldn't have given, i.e. neither `null` nor a
@@ -215,12 +242,58 @@ that version reports `null`.
 + Noncurrent versions and delete markers are never removed by themselves: a `NoncurrentVersionExpiration` or
   `ExpiredObjectDeleteMarker` rule removes them when a test [applies the lifecycle rules](#lifecycle-configuration).
 
+## Object attributes
+
+`GetObjectAttributes` answers only the attributes that `x-amz-object-attributes` names, leaving the others out
+entirely, like Amazon S3. Its `ETag` is unquoted, unlike every other answer, and `Checksum` is left out for an object
+stored without one. `ObjectParts` is answered for an object uploaded in parts, paged by `x-amz-max-parts` (at most, and
+by default, 1000) and `x-amz-part-number-marker`; a part carries its checksum if it is of the algorithm of the object.
+A header that isn't a non-negative number answers `400 InvalidArgument`.
+
+## Copies
+
++ `CopyObject` copies the metadata, the content type and the tags of the source, unless `x-amz-metadata-directive` or
+  `x-amz-tagging-directive` is `REPLACE`, which takes those of the request. The storage class, the website redirect
+  location, the Object Lock settings and the encryption of the source are never copied: the copy has the ones of the
+  request, like Amazon S3.
++ A copy of the current version of an object onto itself that changes nothing answers `400 InvalidRequest`, like
+  Amazon S3. Replacing the metadata or the tags, or setting the storage class, the encryption or the checksum algorithm,
+  is a change; a copy of an older version restores that version.
++ A copy gets a checksum of the algorithm that the request names, or else of the algorithm of the source, computed from
+  the content. A `COMPOSITE` checksum of a source uploaded in parts becomes the full object checksum of the copy, which
+  isn't stored in parts.
+
 ## Entity tags of multipart uploads
 
 The object of a completed multipart upload gets the entity tag of Amazon S3: the MD5 of the concatenated MD5 digests
 of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the MD5 of the whole content instead;
 `s3Api(s3 -> s3.compositeMultipartEtags(false))`, `@LocalS3(compositeMultipartEtags = false)` or
 `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS=false` bring that back for tests that depend on it.
+
+## Completing multipart uploads
+
++ `CreateMultipartUpload` takes `x-amz-checksum-type` only with `x-amz-checksum-algorithm`, and only a type that the
+  algorithm has, otherwise `400 InvalidRequest`; without a type, the algorithm's default, e.g. `COMPOSITE` for SHA-256.
+  A part uploaded without a checksum, e.g. by `UploadPartCopy`, gets one of the algorithm of its upload, and a part
+  with a checksum of another algorithm answers `400 InvalidRequest`.
++ `UploadPartCopy` answers `400 InvalidCopySourceRange` for an `x-amz-copy-source-range` that goes beyond the end of
+  the source, which a read would clamp.
++ Every part that `CompleteMultipartUpload` names must have been uploaded, in ascending part numbers
+  (`InvalidPartOrder`), with the entity tag that its upload answered (`InvalidPart`). The part sizes, the
+  [conditions](#conditional-requests) and `x-amz-mp-object-size` are checked as described above; an upload that fails
+  any of them is kept with its parts, so it can be completed again or aborted.
++ The parts aren't concatenated: the object references the stored parts, so completing an upload neither copies its
+  content nor takes its space twice. The parts that the request doesn't name are deleted.
++ An upload created with a checksum algorithm gives the object a checksum of that algorithm and type: a `COMPOSITE`
+  checksum is the checksum of the checksums of the parts, with or without the `-<parts>` suffix in the request; a
+  `FULL_OBJECT` one is combined from the CRCs of the parts. A checksum of a part in the request that doesn't match the
+  part answers `InvalidPart`, a checksum of the object that doesn't match answers `BadDigest`, and a checksum type or
+  algorithm other than the one of the upload answers `400 InvalidRequest`.
++ A `CompleteMultipartUpload` that is retried after the upload was completed, e.g. after a timeout, gets the answer of
+  the completion again, without a change, for as long as the key holds the version that the upload stored; after that
+  version is overwritten without versioning, or deleted, it answers `NoSuchUpload`, as Amazon S3 does.
++ `AbortMultipartUpload` of an upload that doesn't exist, or was already aborted or completed, answers
+  `404 NoSuchUpload`, like Amazon S3.
 
 ## Browser form uploads (POST Object)
 

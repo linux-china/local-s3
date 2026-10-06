@@ -13,9 +13,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html">PutBucketTagging</a>
- */
 class PutBucketTaggingController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

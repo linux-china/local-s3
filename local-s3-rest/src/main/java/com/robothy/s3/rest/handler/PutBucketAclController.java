@@ -12,10 +12,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketAcl.html">PutBucketAcl</a>, whose ACL
- * is a canned ACL, grant headers or a document in the body; see {@linkplain AccessControlPolicyRequests}.
- * LocalS3 only stores the Acl information for the specified bucket;
- * it doesn't do granting actions.
+ * See {@code docs/semantics.md#access-control-lists} and {@linkplain AccessControlPolicyRequests}.
  */
 class PutBucketAclController implements RouterHttpRequestHandler {
 

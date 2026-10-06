@@ -34,15 +34,8 @@ import java.util.TreeMap;
 
 
 /**
- * Routes the requests of LocalS3 to their handlers.
- *
- * <p>The routes of a method and a path are told apart by their conditions on the parameters and headers of a request.
- * Of the routes that match a request, the one whose conditions are the most specific wins: a matched condition on the
- * parameters counts more than a matched condition on the headers, and a matched condition more than none. The winner
- * never depends on the order the routes were registered in. {@linkplain #verifyRoutes()} checks, once the routes are
- * registered, that the smallest request that satisfies the conditions of every route is won by that route alone;
- * a request that still matches several routes equally, e.g. one that combines two subresources such as
- * {@code ?acl&tagging}, is answered with {@code InvalidRequest}.
+ * See {@code docs/architecture.md#the-path-of-a-request}: the most specific route wins, never the order of
+ * registration, and {@linkplain #verifyRoutes()} checks that when the routes are registered.
  */
 class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
@@ -50,56 +43,28 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   static final String BUCKET_KEY_PATH = "/{bucket}/{key}";
 
-  /**
-   * Path of the health check. It is answered without authentication, so that container and Kubernetes
-   * probes can use it; as an exact path, it takes precedence over a bucket named {@code _health}.
-   */
+  // An exact path, so it takes precedence over a bucket named _health; see docs/deployment.md#health-check.
   static final String HEALTH_CHECK_PATH = "/_health";
 
-  /**
-   * Path of the S3 Vectors tagging operations, which address a vector bucket or an index by its ARN. The ARN holds
-   * {@code /}, so a request is told to be one of them by {@linkplain #VECTOR_RESOURCE_TAGS_PREFIX}, and its decoded ARN
-   * is passed as the {@code resourceArn} parameter.
-   */
+  // The ARN of a vector bucket or an index holds "/", so the decoded ARN is passed as the resourceArn parameter.
   static final String VECTOR_RESOURCE_TAGS_PATH = "/tags/{resourceArn}";
 
-  /**
-   * The start of the decoded path of a request of an S3 Vectors tagging operation. The path of an object of a bucket
-   * named {@code tags} can start with it too; such a key is taken for an ARN, since S3 Vectors has no other way to be
-   * told apart from Amazon S3 by its path.
-   */
+  // A key of a bucket named "tags" can start with it too, and is taken for an ARN: S3 Vectors has no other way to be
+  // told apart from Amazon S3 by its path.
   static final String VECTOR_RESOURCE_TAGS_PREFIX = "/tags/arn:aws:s3vectors:";
 
-  /**
-   * admin ops path
-   */
   static final String ADMIN_OPS_PATH = "/_admin/";
 
-  /**
-   * The operation of a request whose signature is rejected.
-   */
   static final String AUTHENTICATION_FAILURE_OPERATION = "AuthenticationFailure";
 
-  /**
-   * The operation of a request that no route matches.
-   */
   static final String NOT_FOUND_OPERATION = OperationHandler.NOT_FOUND_OPERATION;
 
-  /**
-   * The operation of a request that several routes match equally.
-   */
   static final String AMBIGUOUS_OPERATION = "AmbiguousRequest";
 
-  /**
-   * The operation of a CORS preflight request that addresses no bucket, which the default CORS rule answers.
-   */
   static final String SERVICE_PREFLIGHT_OPERATION = "ServiceCorsPreflight";
 
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
-  /**
-   * The operation that each route answers, which the problems of the routes are reported by.
-   */
   private final Map<Route, String> operations = new IdentityHashMap<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
@@ -108,46 +73,20 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   private final CorsResponseHeaders corsResponseHeaders;
 
-  /**
-   * Answers the STS requests; {@code null} if the router has no STS endpoint.
-   */
   private StsController stsController;
 
-  /**
-   * Authorizes the S3 requests of temporary credentials by their session policy; {@code null} if the router has no
-   * STS endpoint, whose credentials alone carry one.
-   */
   private SessionPolicyAuthorizer sessionPolicyAuthorizer;
 
-  /**
-   * Answers the KMS requests; {@code null} if the router has no KMS endpoint.
-   */
   private KmsController kmsController;
 
-  /**
-   * Answers the Iceberg REST catalog requests; {@code null} if the service serves no catalog.
-   */
   private IcebergCatalogController icebergController;
 
-  /**
-   * Answers the S3 Tables requests; {@code null} if the service serves no table buckets.
-   */
   private S3TablesController s3TablesController;
 
-  /**
-   * Serves the buckets as static websites; {@code null} if the service serves none.
-   */
   private StaticWebsiteController websiteController;
 
-  /**
-   * Serves the built-in console; {@code null} if the service serves none, e.g. a router of handlers alone.
-   */
   private ConsoleController consoleController;
 
-  /**
-   * Answers the CORS preflight requests that address no bucket, e.g. of the Iceberg REST catalog, by the default CORS
-   * rule of the service; {@code null} if the service has no default rule.
-   */
   private CorsPreflightController servicePreflightController;
 
   LocalS3Router() {
@@ -158,23 +97,10 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     this(new AwsSignatureV4Verifier(accessKeyId, secretAccessKey), new VirtualHostParser(Set.of()));
   }
 
-  /**
-   * Create a router.
-   *
-   * @param signatureVerifier verifies request signatures; {@code null} to accept all requests.
-   * @param virtualHostParser parses the bucket of virtual-hosted-style requests.
-   */
   LocalS3Router(AwsSignatureV4Verifier signatureVerifier, VirtualHostParser virtualHostParser) {
     this(signatureVerifier, virtualHostParser, null);
   }
 
-  /**
-   * Create a router.
-   *
-   * @param signatureVerifier verifies request signatures; {@code null} to accept all requests.
-   * @param virtualHostParser parses the bucket of virtual-hosted-style requests.
-   * @param corsResponseHeaders adds CORS headers to the responses of cross-origin requests; {@code null} to add none.
-   */
   LocalS3Router(AwsSignatureV4Verifier signatureVerifier, VirtualHostParser virtualHostParser,
                 CorsResponseHeaders corsResponseHeaders) {
     this.signatureVerifier = signatureVerifier;
@@ -182,100 +108,47 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     this.corsResponseHeaders = corsResponseHeaders;
   }
 
-  /**
-   * Answer the STS requests, see {@linkplain StsController#isStsRequest}, with a controller.
-   *
-   * @param stsController the controller.
-   * @return this router.
-   */
   LocalS3Router sts(StsController stsController) {
     this.stsController = Objects.requireNonNull(stsController);
     return this;
   }
 
-  /**
-   * Authorize the S3 requests signed with temporary credentials by the session policy of the credentials, see
-   * {@linkplain SessionPolicyAuthorizer}, whether or not the router verifies signatures.
-   *
-   * @param authorizer the authorizer.
-   * @return this router.
-   */
+  // Whether or not the router verifies signatures.
   LocalS3Router sessionPolicies(SessionPolicyAuthorizer authorizer) {
     this.sessionPolicyAuthorizer = Objects.requireNonNull(authorizer);
     return this;
   }
 
-  /**
-   * Answer the KMS requests, see {@linkplain KmsController#isKmsRequest}, with a controller.
-   *
-   * @param kmsController the controller.
-   * @return this router.
-   */
   LocalS3Router kms(KmsController kmsController) {
     this.kmsController = Objects.requireNonNull(kmsController);
     return this;
   }
 
-  /**
-   * Answer the Iceberg REST catalog requests, see {@linkplain IcebergCatalogController#isIcebergRequest}, with a
-   * controller.
-   *
-   * @param icebergController the controller; {@code null} to serve no catalog, which leaves its paths to the S3
-   *     routes, i.e. to a bucket named {@code iceberg}.
-   * @return this router.
-   */
+  // null leaves the paths of the catalog to the S3 routes, i.e. to a bucket named "iceberg".
   LocalS3Router iceberg(IcebergCatalogController icebergController) {
     this.icebergController = icebergController;
     return this;
   }
 
-  /**
-   * Answer the S3 Tables requests, see {@linkplain S3TablesController#isS3TablesRequest}, with a controller.
-   *
-   * @param controller the controller; {@code null} to serve no table buckets, which leaves a request signed for
-   *     {@code s3tables} to the S3 routes.
-   * @return this router.
-   */
+  // null leaves a request signed for s3tables to the S3 routes.
   LocalS3Router s3Tables(S3TablesController controller) {
     this.s3TablesController = controller;
     return this;
   }
 
-  /**
-   * Serve the buckets as static websites, see {@linkplain StaticWebsiteController}: the unsigned {@code GET} and
-   * {@code HEAD} requests of the buckets that allow them are answered with the semantics of a website rather than
-   * those of the S3 API, and without a signature.
-   *
-   * @param websiteController the controller; {@code null} to serve no website, which leaves every request to the S3
-   *     API.
-   * @return this router.
-   */
+  // null leaves every request to the S3 API.
   LocalS3Router website(StaticWebsiteController websiteController) {
     this.websiteController = websiteController;
     return this;
   }
 
-  /**
-   * Serve the built-in console under {@linkplain ConsoleController#PATH}, see {@linkplain ConsoleController}. Its
-   * requests come from a browser, which can't sign them, so they are guarded with HTTP Basic authentication by the
-   * controller rather than verified as signatures here.
-   *
-   * @param consoleController the controller; {@code null} to serve no console, which leaves {@code /_admin/ui} to
-   *     the S3 routes, i.e. to a bucket named {@code _admin}.
-   * @return this router.
-   */
+  // A browser can't sign, so the controller guards the console with HTTP Basic authentication instead. null leaves
+  // /_admin/ui to the S3 routes, i.e. to a bucket named "_admin".
   LocalS3Router console(ConsoleController consoleController) {
     this.consoleController = consoleController;
     return this;
   }
 
-  /**
-   * Answer the CORS preflight requests that address no bucket, e.g. {@code OPTIONS /} or of the Iceberg REST catalog
-   * and the S3 Tables API, by the default CORS rule of the service.
-   *
-   * @param preflightController the controller; {@code null} to leave them to the routes, which answer no such request.
-   * @return this router.
-   */
   LocalS3Router servicePreflight(CorsPreflightController preflightController) {
     this.servicePreflightController = preflightController;
     return this;
@@ -287,12 +160,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
   }
 
   /**
-   * Register a route of an operation.
-   *
-   * @param operation the name of the operation that the route answers, e.g. {@code GetBucketAcl}; {@code null} to name
-   *     the route by its method, path and conditions.
-   * @param rule the route.
-   * @return this router.
+   * @param operation e.g. {@code GetBucketAcl}; {@code null} to name the route by its method, path and conditions.
    */
   LocalS3Router route(String operation, Route rule) {
     operations.put(rule, Objects.requireNonNullElseGet(operation,
@@ -305,10 +173,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
-  /**
-   * The handler of a request, as an {@linkplain OperationHandler} that names the operation it answers, e.g.
-   * {@code PutObject}, so that the request is recorded by its operation.
-   */
+  // Named by its operation, so that the request is recorded by it.
   @Override
   public RouterHttpRequestHandler match(RouterHttpRequest request) {
     // Before everything else: the console is a path of the service, and its own controller guards it.
@@ -385,10 +250,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         .orElse(handler);
   }
 
-  /**
-   * The handler of an STS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
-   * in the error format of STS rather than the one of Amazon S3.
-   */
+  // A rejected signature is answered in the error format of STS rather than of Amazon S3.
   private OperationHandler matchSts(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
@@ -400,10 +262,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return new OperationHandler(StsController.operation(request), stsController);
   }
 
-  /**
-   * The handler of a KMS request, which isn't addressed at a bucket whatever its host. A rejected signature is answered
-   * in the JSON error format of KMS rather than the one of Amazon S3.
-   */
+  // A rejected signature is answered in the JSON error format of KMS rather than of Amazon S3.
   private OperationHandler matchKms(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
@@ -415,13 +274,8 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return new OperationHandler(KmsController.operation(request), kmsController);
   }
 
-  /**
-   * The handler of an Iceberg REST catalog request. The catalog speaks its own protocol, whose credentials are an
-   * OAuth2 bearer token rather than an AWS signature, so its requests aren't verified: a client that signs them with
-   * SigV4, which the Iceberg client does only when it is configured to, is verified like any other request, and one
-   * that doesn't is answered as it is. The S3 requests that the engine then makes are verified either way, which is
-   * where the credentials of a service actually guard something.
-   */
+  // The catalog authenticates with an OAuth2 bearer token, so only a request signed with SigV4 is verified; the S3
+  // requests that the engine makes are verified either way. See docs/data-tools.md#limits.
   private OperationHandler matchIceberg(RouterHttpRequest request) {
     if (requiresAuthentication(request) && isAwsSigned(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
@@ -432,11 +286,7 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return new OperationHandler(IcebergCatalogController.operation(request), icebergController);
   }
 
-  /**
-   * The handler of an S3 Tables request, which isn't addressed at a bucket whatever its path: its credential scope
-   * says so, and the signature is then verified for that same service. A rejected signature is answered in the
-   * {@code rest-json} error format of the API rather than in the XML of Amazon S3.
-   */
+  // A rejected signature is answered in the rest-json error format of the API rather than in XML.
   private OperationHandler matchS3Tables(RouterHttpRequest request) {
     if (requiresAuthentication(request)) {
       AwsSignatureV4Verifier.VerificationResult result = signatureVerifier.verify(request);
@@ -496,10 +346,6 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         ? AwsSignatureV4Verifier.VerifiedHead.COMPLETE : verifiedHead;
   }
 
-  /**
-   * What {@linkplain #verifyHead} verified of a request before its body was received, which the decoder handed on with
-   * the request; {@code null} if nothing was.
-   */
   private static AwsSignatureV4Verifier.VerifiedHead verifiedHead(RouterHttpRequest request) {
     return ReceivedRequest.of(request)
         .map(ReceivedRequest::verification)
@@ -597,12 +443,6 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return new BucketKey(path.substring(1, secondSlashIdx), path.substring(secondSlashIdx + 1));
   }
 
-  /**
-   * The bucket and the object key that a request addresses.
-   *
-   * @param bucket the bucket name.
-   * @param key the object key; empty for a request that addresses the bucket itself.
-   */
   private record BucketKey(String bucket, String key) {
   }
 

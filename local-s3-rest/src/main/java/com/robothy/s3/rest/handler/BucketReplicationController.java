@@ -22,9 +22,6 @@ public class BucketReplicationController {
     this.replicationService = serviceFactory.getInstance(BucketService.class);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketReplication.html">PutBucketReplication</a>
-   */
   public void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
@@ -36,9 +33,6 @@ public class BucketReplicationController {
         .status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketReplication.html">GetBucketReplication</a>
-   */
   public void get(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String bucketReplication = this.replicationService.getBucketReplication(bucketName);
@@ -48,9 +42,6 @@ public class BucketReplicationController {
         .write(bucketReplication);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketReplication.html">DeleteBucketReplication</a>
-   */
   public void delete(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     this.replicationService.deleteBucketReplication(bucketName);

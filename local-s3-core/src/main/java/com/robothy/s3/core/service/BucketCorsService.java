@@ -10,31 +10,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Bucket cross-origin resource sharing (CORS) configuration service.
- *
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketCors.html">PutBucketCors</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html">GetBucketCors</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketCors.html">DeleteBucketCors</a>
+ * See {@code docs/semantics.md#cors}.
  */
 public interface BucketCorsService extends LocalS3MetadataApplicable {
 
-  /**
-   * HTTP methods that CORS rules can allow.
-   */
   Set<String> CORS_METHODS = Set.of("GET", "PUT", "POST", "DELETE", "HEAD");
 
-  /**
-   * Max number of rules of a CORS configuration.
-   */
   int MAX_CORS_RULES = 100;
 
-  /**
-   * Put the CORS configuration of a bucket, replacing the existing one.
-   *
-   * @param bucketName the bucket name.
-   * @param configuration the CORS configuration.
-   * @throws InvalidCORSConfigurationException if the configuration is invalid.
-   */
   default void putBucketCors(String bucketName, CORSConfiguration configuration) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -44,12 +27,6 @@ public interface BucketCorsService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Get the CORS configuration of a bucket.
-   *
-   * @param bucketName the bucket name.
-   * @return the CORS configuration; empty if the bucket has none.
-   */
   default Optional<CORSConfiguration> getBucketCors(String bucketName) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -58,11 +35,6 @@ public interface BucketCorsService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Delete the CORS configuration of a bucket.
-   *
-   * @param bucketName the bucket name.
-   */
   default void deleteBucketCors(String bucketName) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);

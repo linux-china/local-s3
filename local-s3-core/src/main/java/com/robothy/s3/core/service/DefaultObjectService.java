@@ -5,44 +5,17 @@ import com.robothy.s3.core.storage.Storage;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/**
- * The {@linkplain ObjectService} of a LocalS3 service, used by both the in-memory and the persistent mode, whose
- * operations run within its {@linkplain BucketGuard}.
- */
 public class DefaultObjectService implements ObjectService {
 
-  /**
-   * Create a service with a guard of its own, which only locks the buckets.
-   *
-   * @param s3Metadata the metadata of the service.
-   * @param storage the storage of the service.
-   * @return the service.
-   */
   public static ObjectService create(LocalS3Metadata s3Metadata, Storage storage) {
     return create(s3Metadata, storage, BucketGuard.inMemory());
   }
 
-  /**
-   * Create a service.
-   *
-   * @param s3Metadata the metadata of the service.
-   * @param storage the storage of the service.
-   * @param bucketGuard the guard of the buckets, shared with the bucket service of the same LocalS3 service.
-   * @return the service.
-   */
   public static ObjectService create(LocalS3Metadata s3Metadata, Storage storage, BucketGuard bucketGuard) {
     return create(() -> s3Metadata, () -> storage, bucketGuard);
   }
 
-  /**
-   * Create a service whose metadata and storage are looked up for every operation, so that a manager can replace
-   * them, e.g. to reset the data of the service, within {@linkplain BucketGuard#exclusive}.
-   *
-   * @param s3Metadata supplies the current metadata of the service.
-   * @param storage supplies the current storage of the service.
-   * @param bucketGuard the guard of the buckets, shared with the bucket service of the same LocalS3 service.
-   * @return the service.
-   */
+  // Looked up for every operation, so that a reset can replace them within BucketGuard#exclusive.
   public static ObjectService create(Supplier<LocalS3Metadata> s3Metadata, Supplier<Storage> storage,
                                      BucketGuard bucketGuard) {
     return new DefaultObjectService(s3Metadata, storage, bucketGuard);

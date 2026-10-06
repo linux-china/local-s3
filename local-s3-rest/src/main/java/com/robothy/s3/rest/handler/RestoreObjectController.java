@@ -18,10 +18,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html">RestoreObject</a>, see
- * {@linkplain RestoreObjectService}. The restore completes at once: the first one of an object answers
- * {@code 202 Accepted}, and one of an object that has a restored copy answers {@code 200 OK}, like Amazon S3 does.
- * The {@code Tier} of the request is ignored.
+ * See {@code docs/semantics.md#storage-classes-and-restores}.
  */
 class RestoreObjectController implements RouterHttpRequestHandler {
 
@@ -57,12 +54,6 @@ class RestoreObjectController implements RouterHttpRequestHandler {
     }
   }
 
-  /**
-   * Add the {@code x-amz-restore} header of an archived object that has a restored copy to a {@code GetObject} or
-   * {@code HeadObject} response.
-   *
-   * @param restoreExpiryDate when the restored copy expires, in epoch milliseconds; {@code null} if there is none.
-   */
   static void addRestoreHeader(RouterHttpResponse response, Long restoreExpiryDate) {
     if (restoreExpiryDate != null) {
       response.putHeader(AmzHeaderNames.X_AMZ_RESTORE, "ongoing-request=\"false\", expiry-date=\""

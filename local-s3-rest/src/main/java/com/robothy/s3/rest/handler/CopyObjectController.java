@@ -29,7 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html">CopyObject</a>
+ * See {@code docs/semantics.md#copies}.
  */
 class CopyObjectController extends ObjectHttpRequestHandler {
 
@@ -65,22 +65,13 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
   }
 
-  /**
-   * Parse the request and build CopyObjectOptions.
-   *
-   * @param request The HTTP request
-   * @return CopyObjectOptions instance
-   */
   CopyObjectOptions parseCopyOptions(RouterHttpRequest request) {
-    // Parse copy source information (bucket, key, version)
     CopySource copySource = CopySource.of(request);
 
-    // Parse metadata directive and user metadata
     CopyObjectOptions.MetadataDirective metadataDirective = parseMetadataDirective(request);
     Map<String, String> userMetadata = extractUserMetadata(request, metadataDirective);
     boolean replaceMetadata = metadataDirective == CopyObjectOptions.MetadataDirective.REPLACE;
 
-    // Parse tagging directive and the tagging that replaces the one of the source object.
     CopyObjectOptions.TaggingDirective taggingDirective = parseTaggingDirective(request);
     String[][] tagging = taggingDirective == CopyObjectOptions.TaggingDirective.REPLACE
         ? RequestUtils.extractTagging(request).orElse(null)
@@ -111,12 +102,6 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .build();
   }
 
-  /**
-   * Parse the x-amz-tagging-directive header.
-   *
-   * @param request The HTTP request
-   * @return TaggingDirective enum value (defaults to COPY)
-   */
   private CopyObjectOptions.TaggingDirective parseTaggingDirective(RouterHttpRequest request) {
     String taggingDirectiveHeader = request.header(AmzHeaderNames.X_AMZ_TAGGING_DIRECTIVE).orElse(null);
     if (taggingDirectiveHeader == null) {
@@ -131,12 +116,6 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     }
   }
 
-  /**
-   * Parse the x-amz-metadata-directive header.
-   *
-   * @param request The HTTP request
-   * @return MetadataDirective enum value (defaults to COPY)
-   */
   private CopyObjectOptions.MetadataDirective parseMetadataDirective(RouterHttpRequest request) {
     String metadataDirectiveHeader = request.header(AmzHeaderNames.X_AMZ_METADATA_DIRECTIVE).orElse(null);
     if (metadataDirectiveHeader == null) {
@@ -151,13 +130,6 @@ class CopyObjectController extends ObjectHttpRequestHandler {
     }
   }
   
-  /**
-   * Extract user metadata from request headers if directive is REPLACE.
-   *
-   * @param request The HTTP request
-   * @param metadataDirective The metadata directive
-   * @return Map of user metadata key-value pairs
-   */
   private Map<String, String> extractUserMetadata(RouterHttpRequest request,
                                                   CopyObjectOptions.MetadataDirective metadataDirective) {
     if (metadataDirective != CopyObjectOptions.MetadataDirective.REPLACE) {

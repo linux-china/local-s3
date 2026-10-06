@@ -43,16 +43,9 @@ import java.util.Optional;
 public interface PutObjectService extends LocalS3MetadataApplicable, StorageApplicable {
 
   /**
-   * Put an object. The content is stored before the bucket is locked, so that a large upload doesn't block
-   * the other requests to the bucket; only {@linkplain #commitPutObject} holds the bucket write lock. If the
-   * object can't be added, the stored content is deleted. The change is delivered to the listeners once the object is
-   * committed and this cleanup is out of the way, so that a listener that fails can't have the content of a committed
-   * object deleted.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param options the object content and metadata.
-   * @return result of the put object operation.
+   * The content is stored before the bucket is locked, so a large upload doesn't block the bucket; only
+   * {@linkplain #commitPutObject} holds the write lock. The change is delivered after the cleanup of a failed commit,
+   * so a listener that fails can't have the content of a committed object deleted.
    */
   default PutObjectAns putObject(String bucketName, String key, PutObjectOptions options) {
     // Reject a missing bucket before storing the content; commitPutObject checks it again under the lock.
@@ -103,23 +96,9 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   /**
-   * Append content to an object, like the {@code PutObject} of an S3 Express One Zone directory bucket that sends
-   * {@code x-amz-write-offset-bytes}: the offset must be the size of the object the key holds, or {@code 0} if it holds
-   * none, which creates the object.
-   *
-   * <p>The object isn't changed in place: a new version is stored whose content is the content of the object followed
-   * by the content of the request, so that a reader of the object never sees half an append, and whose metadata, e.g.
-   * the content type, is the one of the object. Its entity tag is the MD5 digest of the whole content, and its
-   * checksum, if the request or the object has an algorithm, the full object checksum of the whole content. A
-   * {@code Content-MD5} or a checksum of the request is verified against the appended content. The object is read, and
-   * the new content stored, without a lock; if another request changed the object in the meantime, the append fails
-   * with {@code InvalidWriteOffset} rather than losing that change.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param options the content to append, and the offset to append it at.
-   * @return result of the put object operation, whose size is the size of the whole object.
-   * @throws LocalS3RequestException {@code InvalidWriteOffset} if the offset isn't the size of the object.
+   * See {@code docs/semantics.md#appends-and-renames}. A new version is stored rather than the object changed in
+   * place, so a reader never sees half an append; the object is read and the content stored without a lock, and a
+   * concurrent change fails the append rather than being lost.
    */
   private PutObjectAns appendObject(String bucketName, String key, PutObjectOptions options) {
     long offset = options.getWriteOffsetBytes();
@@ -224,11 +203,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     });
   }
 
-  /**
-   * The current version of an object.
-   *
-   * @return the current version; {@code null} if the key holds no object, or its current version is a delete marker.
-   */
+  /** {@code null} for no object, or a delete marker. */
   private static VersionedObjectMetadata currentVersion(BucketMetadata bucketMetadata, String key) {
     return bucketMetadata.getObjectMetadataRef(key)
         .map(ref -> ref.get().getLatest())
@@ -247,14 +222,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         && Objects.equals(left.getEtag(), right.getEtag());
   }
 
-  /**
-   * Add a new version of an object whose content is already stored, unconditionally.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
-   * @return result of the put object operation.
-   */
   default PutObjectAns commitPutObject(String bucketName, String key, VersionedObjectMetadata versionedObjectMetadata) {
     return changeBucket(bucketName, () -> {
       return commitPutObject(bucketName, key, versionedObjectMetadata, ObjectPreconditions.none());
@@ -262,21 +229,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   /**
-   * Add a new version of an object whose content is already stored, if the object that the key holds
-   * satisfies the preconditions of the request. Called by {@linkplain #putObject}.
-   *
-   * <p>The preconditions are evaluated here rather than before the content is stored, i.e. under the write
-   * lock of the bucket that the version is added under. That is what makes an {@code If-Match} put a
-   * compare-and-swap and an {@code If-None-Match: *} put a create: no other request can store the object
-   * between the evaluation of the condition and the addition of the version. A conditional put that is
-   * rejected has stored its content already, which {@linkplain #putObject} then discards.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
-   * @param preconditions the conditions that the object the key holds must satisfy;
-   *     {@linkplain ObjectPreconditions#none()} to add the version unconditionally.
-   * @return result of the put object operation.
+   * The preconditions are evaluated here, under the write lock, rather than before the content is stored: that is
+   * what makes an {@code If-Match} put a compare-and-swap and an {@code If-None-Match: *} put a create.
    */
   default PutObjectAns commitPutObject(String bucketName, String key,
                                        VersionedObjectMetadata versionedObjectMetadata,
@@ -285,16 +239,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   /**
-   * Add a new version of an object whose content is already stored, like
-   * {@linkplain #commitPutObject(String, String, VersionedObjectMetadata, ObjectPreconditions)}, and name the change it
-   * publishes after the operation that stored the object.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
-   * @param preconditions the conditions that the object the key holds must satisfy.
-   * @param operation the S3 operation that stores the object, e.g. {@code PutObject} or {@code PostObject}.
-   * @return result of the put object operation.
+   * @param operation the S3 operation that the change is published under, e.g. {@code PostObject}.
    */
   default PutObjectAns commitPutObject(String bucketName, String key,
                                        VersionedObjectMetadata versionedObjectMetadata,
@@ -311,18 +256,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     });
   }
 
-  /**
-   * Add a new version of an object whose content is already stored to the metadata of a bucket. The caller
-   * holds the write lock of the bucket, e.g. {@linkplain #commitPutObject}, or
-   * {@linkplain CompleteMultipartUploadService#commitCompleteMultipartUpload}, which adds the version and
-   * removes the completed upload under the same lock.
-   *
-   * @param bucketMetadata the metadata of the bucket that the object belongs to.
-   * @param storage the storage that holds the content of the version.
-   * @param key the object key.
-   * @param versionedObjectMetadata the metadata of the new version, referencing the stored content.
-   * @return result of the put object operation.
-   */
+  // The caller holds the write lock, e.g. CompleteMultipartUploadService, which removes the upload under the same lock.
   static PutObjectAns addVersion(BucketMetadata bucketMetadata, Storage storage, String key,
                                  VersionedObjectMetadata versionedObjectMetadata) {
     // Rejects Object Lock settings for a bucket without Object Lock before anything changes.
@@ -366,10 +300,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .build();
   }
 
-  /**
-   * Give a version that is stored without an encryption the default encryption of its bucket, like Amazon S3 does. A
-   * version stored with a customer-provided key keeps that key only.
-   */
   private static void applyBucketDefaultEncryption(BucketMetadata bucketMetadata, VersionedObjectMetadata version) {
     if (Objects.isNull(version.getServerSideEncryption()) && Objects.isNull(version.getCustomerEncryption())) {
       version.setServerSideEncryption(bucketMetadata.getDefaultEncryption());
@@ -377,7 +307,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   private static void checkRequestingMd5Header(PutObjectOptions options, String etag) {
-    // Validate Content-MD5 header if present.
     if (Objects.nonNull(options.getContentMd5())) {
       byte[] md5Bytes;
       try {

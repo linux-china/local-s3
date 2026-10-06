@@ -30,20 +30,12 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Handles <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html">Object Lock</a>: the object
- * lock configuration of a bucket, and the retention and legal hold of an object version; see
- * {@linkplain BucketObjectLockService} and {@linkplain ObjectLockService}.
+ * See {@code docs/semantics.md#object-lock}.
  */
 class ObjectLockController {
 
-  /**
-   * The max number of days of a default retention.
-   */
   private static final int MAX_DAYS = 36500;
 
-  /**
-   * The max number of years of a default retention.
-   */
   private static final int MAX_YEARS = 100;
 
   private final BucketObjectLockService bucketService;
@@ -58,9 +50,6 @@ class ObjectLockController {
     this.xmlMapper = serviceFactory.getInstance(XmlMapper.class);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLockConfiguration.html">PutObjectLockConfiguration</a>
-   */
   void putConfiguration(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     ObjectLockConfiguration configuration = readBody(request, ObjectLockConfiguration.class);
@@ -93,9 +82,6 @@ class ObjectLockController {
     ResponseUtils.addCommonHeaders(response).status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html">GetObjectLockConfiguration</a>
-   */
   void getConfiguration(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     BucketObjectLockConfiguration configuration = bucketService.getObjectLockConfiguration(bucketName)
@@ -110,9 +96,6 @@ class ObjectLockController {
     writeXml(response, result.build());
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectRetention.html">PutObjectRetention</a>
-   */
   void putRetention(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
@@ -126,9 +109,6 @@ class ObjectLockController {
     ResponseUtils.addCommonHeaders(response).status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html">GetObjectRetention</a>
-   */
   void getRetention(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
@@ -136,9 +116,6 @@ class ObjectLockController {
     writeXml(response, new ObjectLockRetention(lock.mode().name(), ObjectLockHeaders.formatDate(lock.retainUntilDate())));
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLegalHold.html">PutObjectLegalHold</a>
-   */
   void putLegalHold(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);
@@ -151,9 +128,6 @@ class ObjectLockController {
     ResponseUtils.addCommonHeaders(response).status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html">GetObjectLegalHold</a>
-   */
   void getLegalHold(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String key = RequestAssertions.assertObjectKeyProvided(request);

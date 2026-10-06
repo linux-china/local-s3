@@ -21,26 +21,10 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public interface CreateMultipartUploadService extends LocalS3MetadataApplicable {
 
-  /**
-   * Init a multipart upload.
-   *
-   * @param bucket  the bucket name
-   * @param key     the object key.
-   * @param options options of the multipart upload.
-   * @return the upload ID.
-   */
   default String createMultipartUpload(String bucket, String key, CreateMultipartUploadOptions options) {
     return initiateMultipartUpload(bucket, key, options).getUploadId();
   }
 
-  /**
-   * Init a multipart upload, like {@linkplain #createMultipartUpload}, and answer what the upload was created with.
-   *
-   * @param bucket  the bucket name
-   * @param key     the object key.
-   * @param options options of the multipart upload.
-   * @return the upload ID, and the encryption that the object of the upload is stored with.
-   */
   default CreateMultipartUploadAns initiateMultipartUpload(String bucket, String key,
                                                            CreateMultipartUploadOptions options) {
     ChecksumType checksumType = checksumType(options);
@@ -80,13 +64,6 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
     });
   }
 
-  /**
-   * The type of the checksum of the object that an upload stores.
-   *
-   * @return the type; {@code null} if the upload has no checksum algorithm.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the request names a type without an algorithm, or a
-   *     type that the algorithm has no checksum of, like Amazon S3 rejects it.
-   */
   private static ChecksumType checksumType(CreateMultipartUploadOptions options) {
     CheckSumAlgorithm algorithm = options.getChecksumAlgorithm();
     ChecksumType type = options.getChecksumType();

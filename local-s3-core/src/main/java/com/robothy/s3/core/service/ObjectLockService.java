@@ -18,33 +18,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * The Object Lock retention and legal hold of object versions, in a bucket that has Object Lock enabled.
- *
- * <p>A retention that protects a version can be extended, but not shortened or removed, unless it is in
- * {@code GOVERNANCE} mode and the request sends {@code x-amz-bypass-governance-retention: true}. Its mode can't be
- * changed either: a {@code GOVERNANCE} retention is turned into a {@code COMPLIANCE} one only with the bypass, like
- * Amazon S3 answers, and a {@code COMPLIANCE} one never changes its mode. A retention that has expired can be replaced
- * by any retention.
- *
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectRetention.html">PutObjectRetention</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html">GetObjectRetention</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectLegalHold.html">PutObjectLegalHold</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html">GetObjectLegalHold</a>
+ * See {@code docs/semantics.md#object-lock}.
  */
 public interface ObjectLockService extends LocalS3MetadataApplicable {
 
-  /**
-   * Put the retention of an object version.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionId the version; {@code null} for the current one.
-   * @param mode the retention mode; {@code null}, with {@code retainUntilDate}, to remove the retention.
-   * @param retainUntilDate the epoch milliseconds to retain the version until; {@code null} to remove the retention.
-   * @param bypassGovernanceRetention whether the request bypasses a governance mode retention.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the bucket doesn't have Object Lock enabled;
-   *     {@code AccessDenied} if the change would weaken a retention that protects the version.
-   */
   default void putObjectRetention(String bucketName, String key, String versionId, ObjectLockMode mode,
                                   Long retainUntilDate, boolean bypassGovernanceRetention) {
     long now = System.currentTimeMillis();
@@ -59,15 +36,6 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Get the retention of an object version.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionId the version; {@code null} for the current one.
-   * @return the protection of the version, which has a retention.
-   * @throws LocalS3RequestException {@code NoSuchObjectLockConfiguration} if the version has no retention.
-   */
   default ObjectLock getObjectRetention(String bucketName, String key, String versionId) {
     ObjectLock lock = readVersion(bucketName, key, versionId);
     if (!lock.hasRetention()) {
@@ -76,29 +44,10 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
     return lock;
   }
 
-  /**
-   * Turn the legal hold of an object version on or off.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionId the version; {@code null} for the current one.
-   * @param on whether the legal hold is on.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the bucket doesn't have Object Lock enabled.
-   */
   default void putObjectLegalHold(String bucketName, String key, String versionId, boolean on) {
     changeVersion(bucketName, key, versionId, lock -> lock.withLegalHold(on));
   }
 
-  /**
-   * Get whether the legal hold of an object version is on.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param versionId the version; {@code null} for the current one.
-   * @return {@code true} if the legal hold is on.
-   * @throws LocalS3RequestException {@code NoSuchObjectLockConfiguration} if the legal hold of the version was never
-   *     set.
-   */
   default boolean getObjectLegalHold(String bucketName, String key, String versionId) {
     ObjectLock lock = readVersion(bucketName, key, versionId);
     if (lock.legalHold() == null) {
@@ -107,10 +56,6 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
     return lock.legalHold();
   }
 
-  /**
-   * Whether a change of a retention that protects a version is allowed: one that keeps the version at least as long in
-   * the same mode, or any change of a {@code GOVERNANCE} retention that is bypassed, e.g. into {@code COMPLIANCE} mode.
-   */
   private static boolean isAllowedRetentionChange(ObjectLock current, ObjectLockMode mode, Long retainUntilDate,
                                                   boolean bypassGovernanceRetention) {
     if (current.mode() == ObjectLockMode.GOVERNANCE && bypassGovernanceRetention) {
@@ -145,18 +90,9 @@ public interface ObjectLockService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * A version of an object, and the ID it is stored under.
-   */
   record ResolvedVersion(String versionId, VersionedObjectMetadata version) {
   }
 
-  /**
-   * Resolve the version that a request names.
-   *
-   * @throws ObjectNotExistException if no version is named and the current version is a delete marker.
-   * @throws MethodNotAllowedException if the named version is a delete marker.
-   */
   private static ResolvedVersion resolveVersion(ObjectMetadata objectMetadata, String key, String versionId) {
     ResolvedVersion resolved;
     if (versionId == null) {

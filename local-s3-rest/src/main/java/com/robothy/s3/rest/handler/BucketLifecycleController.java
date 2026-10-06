@@ -18,11 +18,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Handles the lifecycle configuration of a bucket, which LocalS3 stores and returns but never applies; see
- * {@linkplain BucketLifecycleService}.
- *
- * <p>The deprecated {@code PutBucketLifecycle} and {@code GetBucketLifecycle} send the same requests as
- * {@code PutBucketLifecycleConfiguration} and {@code GetBucketLifecycleConfiguration}, and are answered by them.
+ * See {@code docs/semantics.md#lifecycle-configuration}; the deprecated operations are answered by the same routes.
  */
 class BucketLifecycleController {
 
@@ -32,9 +28,6 @@ class BucketLifecycleController {
     this.lifecycleService = serviceFactory.getInstance(BucketService.class);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
-   */
   void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration;
@@ -51,9 +44,6 @@ class BucketLifecycleController {
             lifecycle.transitionDefaultMinimumObjectSize());
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>
-   */
   void get(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     BucketLifecycleConfiguration lifecycle = lifecycleService.getBucketLifecycleConfiguration(bucketName)
@@ -66,9 +56,6 @@ class BucketLifecycleController {
         .write(lifecycle.configuration());
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketLifecycle.html">DeleteBucketLifecycle</a>
-   */
   void delete(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     lifecycleService.deleteBucketLifecycle(bucketName);

@@ -16,22 +16,8 @@ import com.robothy.s3.datatypes.response.S3Object;
 import java.time.Instant;
 import java.util.*;
 
-/**
- * Algorithm implementation of list objects.
- */
 public interface ListObjectsService extends LocalS3MetadataApplicable {
 
-  /**
-   * List objects with options.
-   *
-   * @param bucket       the bucket to list objects.
-   * @param delimiter    the delimiter for condensing common prefixes in the returned listing results.
-   * @param encodingType the encoding method for keys in the returned listing results.
-   * @param marker       the marker indicating where the returned results should begin.
-   * @param maxKeys      the maximum objects to return.
-   * @param prefix       the prefix restricting what keys will be listed.
-   * @return a listing of objects from the specified bucket.
-   */
   default ListObjectsAns listObjects(String bucket, String delimiter, String encodingType,
                                      String marker, int maxKeys, String prefix) {
     return withBucketReadLock(bucket, () -> {
@@ -54,13 +40,9 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * List the objects and common prefixes of a page, in the order of their keys.
-   *
-   * <p>Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, see
-   * {@linkplain ListItemUtils#skipPrefix}, so that a page takes O(page size &times; log N) steps however many keys its
-   * common prefixes roll up, rather than a step per key. Only the objects whose latest version is a delete marker are
-   * stepped over one by one, as a common prefix is only listed if it rolls up an object that isn't deleted; that is
-   * answered by {@linkplain ObjectMetadataRef#isLatestDeleted()}, without reading their metadata.
+   * Once a key rolls up into a common prefix, the rest of the prefix is skipped with one lookup, so a page costs
+   * O(page size &times; log N) however many keys it rolls up. Delete markers are stepped over by their reference,
+   * without reading their metadata from the store.
    */
   static ListObjectsAns listObjectsAndCommonPrefixes(NavigableMap<String, ObjectMetadataRef> filteredObjects, String effectivePrefix, String delimiter, int maxKeys) {
     if (filteredObjects.isEmpty() || 0 == maxKeys) {
@@ -76,13 +58,10 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
 
     String nextMarker = null;
 
-    // The entries are iterated rather than the keys, so that each object is found once instead of looked up again.
     Iterator<Map.Entry<String, ObjectMetadataRef>> entries = filteredObjects.entrySet().iterator();
     while (entries.hasNext()) {
       Map.Entry<String, ObjectMetadataRef> entry = entries.next();
       String key = entry.getKey();
-      // Only the objects of the page have their metadata read; the deleted ones are stepped over by what their
-      // reference knows, so that a bucket full of delete markers isn't read from the store key by key.
       if (entry.getValue().isLatestDeleted()) {
         continue;
       }
@@ -115,12 +94,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * The marker of the next page, after the last item of a full page.
-   *
-   * @param currentKey the key of the last item.
-   * @param entries the entries after the last item; after its common prefix, if the last item is one.
-   * @return the key of the last item, or its common prefix; {@code null} if nothing is left to list, e.g. the keys
-   *     left are all of objects whose latest version is a delete marker, so that no empty page is announced.
+   * @return {@code null} if only delete markers are left, so that no empty page is announced.
    */
   static String calculateNextMarker(String currentKey, Iterator<Map.Entry<String, ObjectMetadataRef>> entries,
           String effectivePrefix, String delimiter) {
@@ -153,7 +127,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
       object.checkSumAlgorithm(latest.getChecksum().getAlgorithm())
           .checksumType(latest.getChecksum().getType());
     }
-    // Answered only if the request asks for it, see x-amz-optional-object-attributes; the controller drops it otherwise.
+    // The controller drops it unless x-amz-optional-object-attributes asks for it.
     Long restoreExpiryDate = RestoreObjectService.activeRestoreExpiryDate(latest);
     if (Objects.nonNull(restoreExpiryDate)) {
       object.restoreStatus(new RestoreStatus(false, Instant.ofEpochMilli(restoreExpiryDate)));
@@ -162,9 +136,7 @@ public interface ListObjectsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * Encode the keys of a listing if {@code encodingType} asks for it.
-   *
-   * @param encodePrefix whether the Prefix is encoded too: it is by ListObjectsV2, and not by ListObjects (v1).
+   * @param encodePrefix ListObjectsV2 encodes the Prefix, ListObjects (v1) doesn't.
    */
   static void encodeIfNeeded(ListObjectsAns listObjectsAns, String encodingType, boolean encodePrefix) {
     if (Objects.isNull(encodingType)) {

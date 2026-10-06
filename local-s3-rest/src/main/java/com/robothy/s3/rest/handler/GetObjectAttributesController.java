@@ -32,14 +32,10 @@ import java.util.stream.Collectors;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Handle request of <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html">GetObjectAttributes</a>.
+ * See {@code docs/semantics.md#object-attributes}.
  */
 class GetObjectAttributesController implements RouterHttpRequestHandler {
 
-  /**
-   * The largest page of parts that {@code ObjectParts} is answered with, which is also the page that a
-   * request asking for no particular size gets. Amazon S3 uses the same limit for {@code ListParts}.
-   */
   private static final int MAX_PARTS_LIMIT = 1000;
 
   private final GetObjectService objectService;
@@ -81,18 +77,6 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
   }
 
-  /**
-   * The answer of the request, which carries only the attributes that it asked for: Amazon S3 leaves an
-   * attribute that the {@code x-amz-object-attributes} header didn't name out of the answer entirely, so
-   * that a client can tell what it asked for apart from what it didn't.
-   *
-   * <p>{@code ETag} is unquoted, and {@code Checksum} is left out for an object that was stored without a checksum, like Amazon S3 does.
-   *
-   * @param request the request, which carries the paging of {@code ObjectParts}.
-   * @param attributes the attributes that the request asked for.
-   * @param object the object that was read.
-   * @return the answer to write.
-   */
   private GetObjectAttributesResult result(RouterHttpRequest request, Set<ObjectAttribute> attributes,
                                            GetObjectAns object) {
     GetObjectAttributesResult.GetObjectAttributesResultBuilder result = GetObjectAttributesResult.builder();
@@ -115,15 +99,7 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
     return result.build();
   }
 
-  /**
-   * A page of the parts that the object was uploaded in, paged by the {@code x-amz-max-parts} and
-   * {@code x-amz-part-number-marker} headers the way {@code ListParts} is paged by its parameters.
-   *
-   * @param request the request, which carries the paging.
-   * @param object the object that was read.
-   * @return the page of parts; {@code null} if the object wasn't uploaded in parts, which leaves the
-   *     element out of the answer.
-   */
+  /** {@code null} if the object wasn't uploaded in parts, which leaves the element out of the answer. */
   private GetObjectAttributesResult.ObjectParts objectParts(RouterHttpRequest request, GetObjectAns object) {
     List<ObjectPartMetadata> parts = object.getParts();
     if (Objects.isNull(parts) || parts.isEmpty()) {
@@ -162,9 +138,6 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
         .build();
   }
 
-  /**
-   * The checksum of a part, which is answered if it is of the algorithm of the checksum of the object.
-   */
   private static ChecksumElements partChecksum(GetObjectAns object, ObjectPartMetadata part) {
     ObjectChecksum objectChecksum = object.getChecksum();
     ObjectChecksum partChecksum = part.getChecksum();
@@ -175,15 +148,6 @@ class GetObjectAttributesController implements RouterHttpRequestHandler {
     return ChecksumElements.valueOf(partChecksum);
   }
 
-  /**
-   * The value of a header that carries a number.
-   *
-   * @param request the request.
-   * @param headerName the name of the header.
-   * @param defaultValue the value to answer with if the request doesn't carry the header.
-   * @return the value of the header, or {@code defaultValue}.
-   * @throws LocalS3InvalidArgumentException if the header doesn't carry a number, or carries a negative one.
-   */
   private int intHeaderOrDefault(RouterHttpRequest request, String headerName, int defaultValue) {
     String value = request.header(headerName).orElse(null);
     if (Objects.isNull(value)) {

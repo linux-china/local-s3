@@ -16,9 +16,6 @@ import java.io.InputStream;
 import java.util.Objects;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketVersioning.html">PutBucketVersioning</a>
- */
 class PutBucketVersioningController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;
@@ -45,13 +42,7 @@ class PutBucketVersioningController implements RouterHttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
   }
 
-  /**
-   * Parse the {@code Status} or the {@code MfaDelete} of a versioning configuration, which is {@code Enabled} or
-   * {@code disabledValue}, case-sensitively, like Amazon S3 reads them.
-   *
-   * @return {@code true} for {@code Enabled}, {@code false} for {@code disabledValue}; {@code null} if it is left out.
-   * @throws LocalS3RequestException {@code MalformedXML} for any other value.
-   */
+  // Case-sensitive, like Amazon S3 reads them; any other value is MalformedXML.
   private static Boolean parse(String value, String disabledValue) {
     if (Objects.isNull(value)) {
       return null;

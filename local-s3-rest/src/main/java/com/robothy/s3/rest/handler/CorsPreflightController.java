@@ -19,12 +19,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Answers CORS preflight requests, i.e. the {@code OPTIONS} requests of browsers, by the CORS configuration of the
- * bucket, like <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html">OPTIONS object</a>.
- * Browsers don't sign preflight requests, so they are not authenticated.
- *
- * <p>Where no bucket configuration applies, i.e. the bucket has none or the request addresses no bucket, the default
- * CORS rule of the service applies, if it has one; see {@linkplain com.robothy.s3.rest.LocalS3Cors}.
+ * See {@code docs/semantics.md#cors}. Browsers don't sign preflight requests, so they are not authenticated.
  */
 class CorsPreflightController implements RouterHttpRequestHandler {
 
@@ -37,9 +32,6 @@ class CorsPreflightController implements RouterHttpRequestHandler {
     this.defaultConfiguration = CorsResponseHeaders.defaultConfiguration(serviceFactory);
   }
 
-  /**
-   * Whether the service has a default CORS rule, which also answers the preflight requests that address no bucket.
-   */
   boolean hasDefaultConfiguration() {
     return defaultConfiguration != null;
   }
@@ -49,10 +41,6 @@ class CorsPreflightController implements RouterHttpRequestHandler {
     answer(request, response, CorsResponseHeaders.bucketName(request));
   }
 
-  /**
-   * Answer a preflight request that addresses no bucket, e.g. one of the Iceberg REST catalog, by the default CORS
-   * rule of the service.
-   */
   void handleWithoutBucket(RouterHttpRequest request, RouterHttpResponse response) {
     answer(request, response, null);
   }
@@ -91,11 +79,6 @@ class CorsPreflightController implements RouterHttpRequestHandler {
     ResponseUtils.addCommonHeaders(response);
   }
 
-  /**
-   * The CORS configuration of a bucket, or the default rule of the service if the bucket has none.
-   *
-   * @return the configuration; {@code null} if neither applies.
-   */
   private CORSConfiguration bucketConfiguration(String bucketName) {
     try {
       return bucketService.getBucketCors(bucketName).orElse(defaultConfiguration);

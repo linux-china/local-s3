@@ -9,16 +9,10 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Bucket access control service.
+ * See {@code docs/semantics.md#access-control-lists}.
  */
 public interface BucketAclService extends LocalS3MetadataApplicable {
 
-  /**
-   * Put ACL to the specified bucket.
-   *
-   * @param bucketName bucket that associate with the ACL.
-   * @param acl new ACL.
-   */
   default void putBucketAcl(String bucketName, AccessControlPolicy acl) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -27,13 +21,6 @@ public interface BucketAclService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Get bucket access control.
-   *
-   * @param bucketName the bucket associate with the ACL.
-   * @return the ACL of the bucket. If the ACL or owner is null,
-   * then set the default owner 'LocalS3' to the ACL and return.
-   */
   default AccessControlPolicy getBucketAcl(String bucketName) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);

@@ -20,58 +20,22 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 /**
- * Bucket lifecycle configuration service: stores, returns and deletes the configuration, validating its structure the
- * way Amazon S3 does, so a configuration Amazon S3 rejects isn't accepted. It is applied only on demand, by
- * {@linkplain LifecycleExecutionService}; see {@code docs/semantics.md#lifecycle-configuration} for what is checked.
- *
- * <p>A rule put without an {@code ID} gets a generated one, like on Amazon S3, since tools such as Terraform rely on it.
- *
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>
- * @see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketLifecycle.html">DeleteBucketLifecycle</a>
+ * Validates the structure of a configuration the way Amazon S3 does; applied only by
+ * {@linkplain LifecycleExecutionService}. See {@code docs/semantics.md#lifecycle-configuration}.
  */
 public interface BucketLifecycleService extends LocalS3MetadataApplicable {
 
-  /**
-   * Max number of rules of a lifecycle configuration.
-   */
   int MAX_RULES = 1000;
 
-  /**
-   * Max length of the {@code ID} of a rule.
-   */
   int MAX_RULE_ID_LENGTH = 255;
 
-  /**
-   * The {@code x-amz-transition-default-minimum-object-size} of a configuration that is put without one, which is
-   * what Amazon S3 applies to new configurations.
-   */
   String DEFAULT_TRANSITION_MINIMUM_OBJECT_SIZE = "all_storage_classes_128K";
 
-  /**
-   * The values that {@code x-amz-transition-default-minimum-object-size} may have.
-   */
   Set<String> TRANSITION_MINIMUM_OBJECT_SIZES = Set.of("varies_by_storage_class", DEFAULT_TRANSITION_MINIMUM_OBJECT_SIZE);
 
-  /**
-   * The elements of a rule that are actions; a rule needs at least one of them.
-   */
   Set<String> RULE_ACTIONS = Set.of("Expiration", "Transition", "NoncurrentVersionExpiration",
       "NoncurrentVersionTransition", "AbortIncompleteMultipartUpload");
 
-  /**
-   * Put the lifecycle configuration of a bucket, replacing the existing one. The configuration is stored; its rules
-   * are applied only by {@linkplain LifecycleExecutionService}, when it is asked to.
-   *
-   * @param bucketName the bucket name.
-   * @param configuration the {@code LifecycleConfiguration} XML document.
-   * @param transitionDefaultMinimumObjectSize the {@code x-amz-transition-default-minimum-object-size} of the
-   *     configuration; {@code null} for {@value #DEFAULT_TRANSITION_MINIMUM_OBJECT_SIZE}.
-   * @return the stored configuration.
-   * @throws LocalS3RequestException if the configuration is malformed, or a rule has no action.
-   * @throws LocalS3InvalidArgumentException if the IDs of the rules are too long or not unique, or the minimum object
-   *     size is not a valid value.
-   */
   default BucketLifecycleConfiguration putBucketLifecycleConfiguration(String bucketName, String configuration,
                                                                        String transitionDefaultMinimumObjectSize) {
     return changeBucket(bucketName, () -> {
@@ -91,12 +55,6 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Get the lifecycle configuration of a bucket.
-   *
-   * @param bucketName the bucket name.
-   * @return the lifecycle configuration; empty if the bucket has none.
-   */
   default Optional<BucketLifecycleConfiguration> getBucketLifecycleConfiguration(String bucketName) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -104,11 +62,6 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Delete the lifecycle configuration of a bucket. Deleting the configuration of a bucket that has none succeeds.
-   *
-   * @param bucketName the bucket name.
-   */
   default void deleteBucketLifecycle(String bucketName) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -117,11 +70,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Validate a configuration.
-   *
-   * @return whether every rule has an {@code ID}.
-   */
+  /** @return whether every rule has an {@code ID}, so that the missing ones are generated. */
   private static boolean validateLifecycleConfiguration(String configuration) {
     if (configuration == null || configuration.isBlank()) {
       throw new LocalS3RequestException(S3ErrorCode.MalformedXML);
@@ -172,11 +121,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     return allHaveIds;
   }
 
-  /**
-   * Validate the rule whose start element the reader is at, and leave the reader at its end element.
-   *
-   * @return whether the rule has an {@code ID}.
-   */
+  /** Leaves the reader at the end element of the rule. */
   private static boolean validateRule(XMLStreamReader reader, Set<String> ids) throws XMLStreamException {
     String id = null;
     String status = null;
@@ -215,10 +160,7 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     return id != null;
   }
 
-  /**
-   * Validate the {@code Date} of the {@code Expiration} or {@code Transition} whose start element the reader is at,
-   * and leave the reader at its end element. Amazon S3 takes an ISO 8601 date at midnight UTC only.
-   */
+  /** Leaves the reader at the end element of the date. */
   private static void validateDateOfAction(XMLStreamReader reader) throws XMLStreamException {
     while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
       if (!"Date".equals(reader.getLocalName())) {
@@ -238,13 +180,6 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     }
   }
 
-  /**
-   * Move the reader to the next start or end element, skipping text, comments and processing instructions.
-   *
-   * @return {@linkplain XMLStreamConstants#START_ELEMENT}, {@linkplain XMLStreamConstants#END_ELEMENT}, or
-   *     {@linkplain XMLStreamConstants#END_DOCUMENT} if the document ends.
-   * @throws LocalS3RequestException if the document has a document type, or text outside of the leaf elements.
-   */
   private static int nextElement(XMLStreamReader reader) throws XMLStreamException {
     while (reader.hasNext()) {
       int event = reader.next();
@@ -267,9 +202,6 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     return XMLStreamConstants.END_DOCUMENT;
   }
 
-  /**
-   * Skip the element whose start element the reader is at, with everything it contains.
-   */
   private static void skipElement(XMLStreamReader reader) throws XMLStreamException {
     int depth = 1;
     while (depth > 0) {

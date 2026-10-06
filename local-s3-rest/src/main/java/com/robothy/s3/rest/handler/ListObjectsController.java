@@ -16,9 +16,6 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html">ListObjects</a>.
- */
 class ListObjectsController implements RouterHttpRequestHandler {
 
   private final ListObjectsService listObjectsService;

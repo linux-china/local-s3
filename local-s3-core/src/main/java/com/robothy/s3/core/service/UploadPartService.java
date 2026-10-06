@@ -17,22 +17,11 @@ import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
- * Uploads a part in a multipart upload.
- */
 public interface UploadPartService extends LocalS3MetadataApplicable, StorageApplicable {
 
   /**
-   * Upload part for an initialized upload. The data is stored before the bucket is locked, so that a large
-   * part doesn't block the other requests to the bucket; only {@linkplain #commitUploadPart} holds the bucket
-   * write lock. If the part can't be added, the stored data is deleted.
-   *
-   * @param bucket the bucket name.
-   * @param key the object key of the upload.
-   * @param uploadId the upload ID generated when initializing the upload.
-   * @param partNumber the part number.
-   * @param options options of upload the upload part operation.
-   * @return result of the upload part.
+   * The data is stored before the bucket is locked, so a large part doesn't block the bucket; only
+   * {@linkplain #commitUploadPart} holds the write lock.
    */
   default UploadPartAns uploadPart(String bucket, String key, String uploadId, Integer partNumber, UploadPartOptions options) {
     // Reject an invalid part number or a missing upload before storing the data; commitUploadPart checks the
@@ -70,17 +59,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     });
   }
 
-  /**
-   * The checksum that a part is uploaded with: the one of the request, which must be of the algorithm of the upload
-   * if the upload has one, or else a checksum of the algorithm of the upload, which Amazon S3 computes for a part
-   * uploaded without one, e.g. by {@code UploadPartCopy}.
-   *
-   * @param upload the upload that the part is uploaded to.
-   * @param requested the checksum of the request; {@code null} if it has none.
-   * @return the checksum to upload the part with; {@code null} for none.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the checksum of the request is of another algorithm
-   *     than the one of the upload.
-   */
+  // A part uploaded without a checksum, e.g. by UploadPartCopy, gets one of the algorithm of its upload, like Amazon S3.
   private static RequestChecksum partChecksum(UploadMetadata upload, RequestChecksum requested) {
     CheckSumAlgorithm algorithm = upload.getChecksumAlgorithm();
     if (Objects.isNull(requested)) {
@@ -94,17 +73,6 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     return requested;
   }
 
-  /**
-   * Add a part whose data is already stored to an upload, replacing the part with the same number.
-   * Called by {@linkplain #uploadPart}.
-   *
-   * @param bucket the bucket name.
-   * @param key the object key of the upload.
-   * @param uploadId the upload ID generated when initializing the upload.
-   * @param partNumber the part number.
-   * @param uploadPartMetadata the metadata of the part, referencing the stored data.
-   * @return result of the upload part.
-   */
   default UploadPartAns commitUploadPart(String bucket, String key, String uploadId, Integer partNumber,
                                          UploadPartMetadata uploadPartMetadata) {
     return changeBucket(bucket, () -> {

@@ -9,9 +9,6 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html">DeleteBucketTagging</a>
- */
 class DeleteBucketTaggingController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

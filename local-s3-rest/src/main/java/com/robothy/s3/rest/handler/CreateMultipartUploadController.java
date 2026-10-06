@@ -27,9 +27,6 @@ import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateMultipartUpload.html">CreateMultipartUpload</a>
- */
 class CreateMultipartUploadController implements RouterHttpRequestHandler {
 
   private final CreateMultipartUploadService uploadService;

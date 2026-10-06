@@ -20,23 +20,14 @@ import java.util.NavigableMap;
 import java.util.Objects;
 
 /**
- * Applies the lifecycle configurations of buckets on demand, at a time the caller chooses, e.g. 30 days from now, so a
- * test exercises expiration without waiting; LocalS3 never applies them by itself. How each rule is applied is described
- * in {@code docs/semantics.md#lifecycle-configuration}. The changes are published with the operation {@value #OPERATION}.
+ * Applied on demand, at a time the caller chooses, so a test exercises expiration without waiting; see
+ * {@code docs/semantics.md#lifecycle-configuration}.
  */
 public interface LifecycleExecutionService extends LocalS3MetadataApplicable, StorageApplicable {
 
-  /**
-   * The operation that the changes of a lifecycle action are published with.
-   */
   String OPERATION = "LifecycleExpiration";
 
-  /**
-   * Apply the lifecycle configurations of every bucket that has one, each under the write lock of its bucket.
-   *
-   * @param now the time to apply the rules at, e.g. a time in the future to expire what would have expired by then.
-   * @return the actions taken, bucket by bucket.
-   */
+  // Each bucket under its own write lock.
   default List<LifecycleActionAns> applyLifecycle(Instant now) {
     List<LifecycleActionAns> actions = new ArrayList<>();
     for (BucketMetadata bucket : localS3Metadata().listBuckets()) {
@@ -47,14 +38,6 @@ public interface LifecycleExecutionService extends LocalS3MetadataApplicable, St
     return actions;
   }
 
-  /**
-   * Apply the lifecycle configuration of a bucket under its write lock.
-   *
-   * @param bucketName the bucket name.
-   * @param now the time to apply the rules at.
-   * @return the actions taken; empty if the bucket has no lifecycle configuration.
-   * @throws com.robothy.s3.core.exception.BucketNotExistException if the bucket doesn't exist.
-   */
   default List<LifecycleActionAns> applyLifecycle(String bucketName, Instant now) {
     Objects.requireNonNull(now, "now");
     return changeBucket(bucketName, () -> {
@@ -205,10 +188,6 @@ public interface LifecycleExecutionService extends LocalS3MetadataApplicable, St
         || (rule.expirationDate() != null && rule.expirationDate() <= now);
   }
 
-  /**
-   * The version ID that a client knows a version by: {@code null} for the version of an object that was stored while
-   * the versioning of the bucket was suspended or never enabled.
-   */
   private static String returnedVersionId(ObjectMetadata object, String versionId) {
     return object.getVirtualVersion().map(versionId::equals).orElse(false) ? ObjectMetadata.NULL_VERSION : versionId;
   }

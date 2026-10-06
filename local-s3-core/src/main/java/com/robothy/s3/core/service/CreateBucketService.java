@@ -12,37 +12,18 @@ import com.robothy.s3.datatypes.Grantee;
 import com.robothy.s3.datatypes.Owner;
 import java.util.List;
 
-/**
- * Create bucket service.
- * <p>
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html">CreateBucket</a>
- */
 public interface CreateBucketService extends LocalS3MetadataApplicable {
 
-  /**
-   * Create a bucket.
-   */
   default Bucket createBucket(String bucketName) {
     return changeBucket(bucketName, BucketGuard.Change.CREATE, () -> {
       return createBucket(bucketName, null);
     });
   }
 
-  /**
-   * Create a bucket.
-   */
   default Bucket createBucket(String bucketName, String region) {
     return createBucket(bucketName, region, false);
   }
 
-  /**
-   * Create a bucket, with Object Lock enabled if requested, which enables the versioning of the bucket too.
-   *
-   * @param bucketName the bucket name.
-   * @param region the region of the bucket; {@code null} for the default one.
-   * @param objectLockEnabled whether the request sends {@code x-amz-bucket-object-lock-enabled: true}.
-   * @return the bucket.
-   */
   default Bucket createBucket(String bucketName, String region, boolean objectLockEnabled) {
     return changeBucket(bucketName, BucketGuard.Change.CREATE, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);

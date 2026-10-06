@@ -12,9 +12,6 @@ import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html">DeleteObject</a>
- */
 class DeleteObjectController extends ObjectHttpRequestHandler {
 
   private final DeleteObjectService deleteObjectService;

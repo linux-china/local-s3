@@ -21,9 +21,6 @@ import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html">HeadObject</a>
- */
 class HeadObjectController implements RouterHttpRequestHandler {
 
   private final GetObjectService objectService;

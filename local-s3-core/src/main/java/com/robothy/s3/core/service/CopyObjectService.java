@@ -18,15 +18,8 @@ import java.util.Optional;
 public interface CopyObjectService extends GetObjectService, PutObjectService, LocalS3MetadataApplicable, StorageApplicable {
 
   /**
-   * Creates a copy of an object that is already stored in Local S3. Neither bucket is locked while the content
-   * is copied, so that copying a large object doesn't block the other requests to them: the source object is
-   * resolved under the read lock of the source bucket, its content is copied without a lock, and only the
-   * commit of {@linkplain #putObject} holds the write lock of the destination bucket.
-   *
-   * @param bucket destination bucket.
-   * @param key destination object key.
-   * @param options copy options.
-   * @return copy result.
+   * See {@code docs/semantics.md#copies}. Neither bucket is locked while the content is copied: only the commit of
+   * {@linkplain #putObject} holds the write lock of the destination.
    */
   default CopyObjectAns copyObject(String bucket, String key, CopyObjectOptions options) {
     // The object that putObject stores is created by CopyObject.
@@ -50,18 +43,13 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
           + "redirect location or encryption attributes.");
     }
 
-    // The metadata of the source object is copied, unless the directive replaces all of it, the content type and
-    // the system-defined metadata included, with the one of the request.
     boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
     Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
     String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
-    // Neither the storage class nor the website redirect location is copied: the copy has the ones of the request,
-    // like Amazon S3 does.
     SystemMetadata systemMetadataToUse = SystemMetadata.withWebsiteRedirectLocation(
         SystemMetadata.withStorageClass(replaceMetadata ? options.getSystemMetadata()
             : srcObjectAns.getSystemMetadata(), options.getStorageClass()), options.getWebsiteRedirectLocation());
 
-    // The tagging of the source object is copied, unless the directive replaces it with the requested one.
     String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE
         ? options.getTagging().orElse(null)
         : srcObjectAns.getTagging();
@@ -77,7 +65,6 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
         .preconditions(options.getPreconditions())
         .checksum(copyChecksum(options, srcObjectAns))
-        // Neither the Object Lock settings nor the encryption of the source are copied, like Amazon S3 does.
         .objectLock(options.getObjectLock())
         .customerEncryption(options.getCustomerEncryption())
         .serverSideEncryption(options.getServerSideEncryption())
@@ -94,11 +81,6 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .build();
   }
 
-  /**
-   * Whether the request copies the current version of an object onto itself and changes nothing of it, which Amazon
-   * S3 refuses. A copy that replaces the metadata or the tags, or sets the storage class, the encryption or the
-   * checksum algorithm, changes the object; one of an older version restores that version.
-   */
   private static boolean isCopyToItselfWithoutChanges(String bucket, String key, CopyObjectOptions options) {
     return bucket.equals(options.getSourceBucket()) && key.equals(options.getSourceKey())
         && options.getSourceVersion().isEmpty()
@@ -111,13 +93,6 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         && Objects.isNull(options.getCustomerEncryption());
   }
 
-  /**
-   * The checksum that a copy is stored with: one of the algorithm that the request names, or else of the algorithm
-   * of the source object, which is computed from the copied content. A composite checksum of the source is not the
-   * checksum of a copy, which isn't stored in parts, so the copy gets the checksum of its whole content instead.
-   *
-   * @return the checksum; {@code null} if the request names no algorithm and the source has no checksum.
-   */
   private static RequestChecksum copyChecksum(CopyObjectOptions options, GetObjectAns source) {
     CheckSumAlgorithm algorithm = Objects.nonNull(options.getChecksumAlgorithm()) ? options.getChecksumAlgorithm()
         : Optional.ofNullable(source.getChecksum()).map(ObjectChecksum::getAlgorithm).orElse(null);

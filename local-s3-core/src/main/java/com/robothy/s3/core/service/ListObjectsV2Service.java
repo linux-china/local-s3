@@ -11,19 +11,6 @@ import com.robothy.s3.core.util.Strings;
 
 public interface ListObjectsV2Service extends ListObjectsService {
 
-    /**
-     * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html">ListObjectsV2</a>
-     *
-     * @param bucket            the bucket to list objects.
-     * @param continuationToken the token indicating where the returned results should begin.
-     * @param delimiter         the delimiter for condensing common prefixes in the returned listing results.
-     * @param encodingType      the encoding method for keys in the returned listing results.
-     * @param fetchOwner        whether to fetch the owner of the object.
-     * @param maxKeys           the maximum objects to return.
-     * @param prefix            the prefix restricting what keys will be listed.
-     * @param startAfter        the key indicating where the returned results should begin.
-     * @return a listing of objects from the specified bucket.
-     */
     default ListObjectsV2Ans listObjectsV2(String bucket, String continuationToken,
                                            String delimiter, String encodingType,
                                            boolean fetchOwner, int maxKeys,
@@ -67,11 +54,8 @@ public interface ListObjectsV2Service extends ListObjectsService {
       });
     }
 
-    /**
-     * The key that the next page continues after: the key of the last object of the page, or, if the page ends at a
-     * common prefix, the last key that the prefix rolls up. Taking the last key that starts with an object's key instead
-     * would skip the keys that continue it, e.g. {@code data.parquet.crc} after {@code data.parquet}.
-     */
+    // The last key that a common prefix rolls up, rather than the last key that starts with an object's key, which
+    // would skip the keys that continue it, e.g. data.parquet.crc after data.parquet.
     static String calculateNextContinuationToken(String nextMarker, BucketMetadata bucketMetadata,
                                                  String effectivePrefix, String delimiter) {
         if (Objects.isNull(nextMarker)) {

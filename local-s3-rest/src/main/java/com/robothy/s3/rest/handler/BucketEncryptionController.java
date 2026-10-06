@@ -20,9 +20,6 @@ class BucketEncryptionController {
     this.encryptionService = serviceFactory.getInstance(BucketService.class);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html">PutBucketEncryption</a>
-   */
   void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
@@ -32,9 +29,6 @@ class BucketEncryptionController {
         .status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html">GetBucketEncryption</a>
-   */
   void get(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String encryption = this.encryptionService.getBucketEncryption(bucketName);
@@ -43,9 +37,6 @@ class BucketEncryptionController {
         .status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html">DeleteBucketEncryption</a>
-   */
   void delete(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     this.encryptionService.deleteBucketEncryption(bucketName);

@@ -9,9 +9,6 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
-/**
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html">AbortMultipartUpload</a>
- */
 public class AbortMultipartUploadController implements RouterHttpRequestHandler {
 
   private final ObjectService objectService;

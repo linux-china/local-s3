@@ -13,9 +13,6 @@ import java.util.Collection;
 import java.util.Map;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html">GetBucketTagging<a/>
- */
 class GetBucketTaggingController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

@@ -14,24 +14,10 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * The configurations of a bucket that LocalS3 stores and returns but never applies: transfer acceleration, access
- * logging, requester pays, static website hosting and ownership controls, see {@linkplain StoredBucketConfiguration},
- * and the analytics, inventory and metrics configurations, of which a bucket has several, each named by an ID, see
- * {@linkplain IdentifiedBucketConfiguration}.
- *
- * <p>A document must be well-formed XML whose root element is the one of its configuration; its contents aren't
- * checked, since nothing reads them. It is stored as it was put, and returned as is.
+ * See {@code docs/semantics.md#stored-not-applied}.
  */
 public interface BucketStoredConfigurationService extends LocalS3MetadataApplicable {
 
-  /**
-   * Put a configuration of a bucket, replacing the existing one.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @param configuration the XML document.
-   * @throws LocalS3RequestException if the document isn't a well-formed document of the configuration.
-   */
   default void putBucketConfiguration(String bucketName, StoredBucketConfiguration type, String configuration) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -41,15 +27,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * Get a configuration of a bucket.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @return the document that was put; the default configuration if none was.
-   * @throws LocalS3RequestException with {@linkplain StoredBucketConfiguration#notFoundError()} if the bucket has
-   *     none: it was deleted, or was never put and has no default.
-   */
   default String getBucketConfiguration(String bucketName, StoredBucketConfiguration type) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -65,15 +42,7 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * Find a configuration of a bucket, for the callers that apply one if the bucket has it, e.g. the static website
-   * endpoint reading the {@code WebsiteConfiguration}, rather than answering a request for it.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @return the document that was put, or the default one if none was; empty if the bucket has none, or doesn't
-   *     exist.
-   */
+  // For the callers that apply a configuration, e.g. the website endpoint, rather than answer a request for it.
   default Optional<String> findBucketConfiguration(String bucketName, StoredBucketConfiguration type) {
     return withBucketReadLock(bucketName, () -> localS3Metadata().getBucketMetadata(bucketName)
         .map(bucket -> bucket.getStoredConfigurations().getOrDefault(type.name(),
@@ -81,12 +50,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
         .filter(configuration -> !configuration.isEmpty()));
   }
 
-  /**
-   * Delete a configuration of a bucket. Deleting one that the bucket doesn't have succeeds, like on Amazon S3.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   */
   default void deleteBucketConfiguration(String bucketName, StoredBucketConfiguration type) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -100,17 +63,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * Put a configuration of a bucket that is named by an ID, replacing the one of the same ID.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @param id the ID of the request, which must be the {@code Id} of the document as well.
-   * @param configuration the XML document.
-   * @throws LocalS3RequestException with {@linkplain S3ErrorCode#MalformedXML} if the document isn't a well-formed
-   *     document of the configuration or has no {@code Id}, and with {@linkplain S3ErrorCode#InvalidArgument} if the
-   *     request names no ID, or another one than the document.
-   */
   default void putBucketConfiguration(String bucketName, IdentifiedBucketConfiguration type, String id,
                                       String configuration) {
     changeBucket(bucketName, () -> {
@@ -130,16 +82,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * Get a configuration of a bucket by its ID.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @param id the ID of the configuration.
-   * @return the document that was put.
-   * @throws LocalS3RequestException with {@linkplain S3ErrorCode#NoSuchConfiguration} if the bucket has no
-   *     configuration of that ID.
-   */
   default String getBucketConfiguration(String bucketName, IdentifiedBucketConfiguration type, String id) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -153,13 +95,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * List the configurations of a bucket of one kind, in the order of their IDs.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @return the documents that were put; empty if there are none.
-   */
   default List<String> listBucketConfigurations(String bucketName, IdentifiedBucketConfiguration type) {
     return withBucketReadLock(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
@@ -168,15 +103,6 @@ public interface BucketStoredConfigurationService extends LocalS3MetadataApplica
     });
   }
 
-  /**
-   * Delete a configuration of a bucket by its ID.
-   *
-   * @param bucketName the bucket name.
-   * @param type the configuration.
-   * @param id the ID of the configuration.
-   * @throws LocalS3RequestException with {@linkplain S3ErrorCode#NoSuchConfiguration} if the bucket has no
-   *     configuration of that ID, like Amazon S3 answers.
-   */
   default void deleteBucketConfiguration(String bucketName, IdentifiedBucketConfiguration type, String id) {
     changeBucket(bucketName, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);

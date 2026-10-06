@@ -53,10 +53,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
       if (Objects.nonNull(startKey)) {
         // If the keyMarker doesn't have a common prefix.
         if (Objects.isNull(delimiter) || -1 == (delimiterIndex = startKey.indexOf(delimiter, prefixLen))) {
-          // Like Amazon S3, a key marker without a version ID marker starts the listing after the key, and the markers
-          // needn't name a key or a version that exists. A client that deletes the versions of each page before it
-          // asks for the next one, e.g. to empty a bucket, sends the markers of a version that is gone, and the
-          // listing goes on after it.
+          // The markers needn't name a version that exists; see docs/semantics.md#versioning.
           if (Objects.nonNull(startVersionId) && (Objects.isNull(prefix) || startKey.startsWith(prefix))) {
             Optional<ObjectMetadata> objectMetadata = bucketMetadata.getObjectMetadata(startKey);
             if (objectMetadata.isPresent()) {
@@ -119,10 +116,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * A page of the listing, which carries the markers of the next page only if it is truncated, i.e. something is left
-   * to list after it, so that a page that happens to end with the last version isn't followed by an empty one.
-   */
+  // A page that happens to end with the last version carries no markers, so that no empty page follows it.
   private static ListObjectVersionsAns page(List<VersionItem> versionItems, List<String> commonPrefixes,
                                             boolean truncated, String nextKeyMarker, String nextVersionIdMarker) {
     return ListObjectVersionsAns.builder()
@@ -134,15 +128,8 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * The versions of an object that come after the version ID marker. A version ID orders the versions by when they were
-   * created, so the marker of a version that is gone still has its place among them. The null version is the exception:
-   * its marker is {@code null}, like Amazon S3 answers it, which has no place once the version is gone, e.g. deleted by a
-   * client that empties the bucket page by page. All the versions of the object are then listed, so that none is
-   * skipped; a version that the previous page listed and that is still there is listed again.
-   *
-   * @param objectMetadata the object that the key marker names.
-   * @param versionIdMarker the version ID marker.
-   * @return the versions of the object that come after the marker.
+   * A version ID orders the versions by creation, so the marker of a version that is gone still has its place. The
+   * null version's marker is {@code null}, which has no place once the version is gone: all versions are listed then.
    */
   private static NavigableMap<String, VersionedObjectMetadata> versionsAfter(ObjectMetadata objectMetadata,
                                                                              String versionIdMarker) {
@@ -156,25 +143,11 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * The versions that {@linkplain #fetchVersions} listed of a key.
-   *
-   * @param lastVersionId the ID of the last version listed, as it is answered, i.e. {@code null} for the null version;
-   *     {@code null} if none was listed.
-   * @param truncated whether versions of the key are left, which the page had no room for.
+   * @param lastVersionId as it is answered, i.e. {@code null} for the null version; {@code null} if none was listed.
    */
   record Fetched(String lastVersionId, boolean truncated) {
   }
 
-  /**
-   * Fetch {@code versions} to {@code versionItems}, until the page holds {@code maxKeys} items.
-   *
-   * @param versionItems where version items store.
-   * @param commonPrefixes fetched common prefixes.
-   * @param versions where version items fetch from.
-   * @param maxKeys max keys.
-   * @param virtualVersion the version ID that the null version of the key is held by; {@code null} if it has none.
-   * @return the last version listed, and whether versions are left.
-   */
   static Fetched fetchVersions(List<VersionItem> versionItems, List<String> commonPrefixes, String key,
                                Map<String, VersionedObjectMetadata> versions, boolean firstItemIsLatest,
                                int maxKeys, String virtualVersion) {

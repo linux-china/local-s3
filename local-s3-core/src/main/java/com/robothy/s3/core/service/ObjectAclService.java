@@ -15,20 +15,8 @@ import com.robothy.s3.datatypes.Owner;
 import java.util.Collections;
 import java.util.Objects;
 
-/**
- * Object access control service.
- */
 public interface ObjectAclService extends LocalS3MetadataApplicable {
 
-  /**
-   * Put ACL to the specified versioned object.
-   *
-   * @param bucketName bucket name.
-   * @param key object key.
-   * @param versionId version ID.
-   * @param acl new ACL.
-   * @return version ID where the new ACL applies to.
-   */
   default String putObjectAcl(String bucketName, String key, String versionId, AccessControlPolicy acl) {
     return changeBucket(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
@@ -48,14 +36,6 @@ public interface ObjectAclService extends LocalS3MetadataApplicable {
     });
   }
 
-  /**
-   * Get ACL from the specified versioned object.
-   *
-   * @param bucketName bucket name.
-   * @param key object key.
-   * @param versionId version ID.
-   * @return versioned object ACL.
-   */
   default GetObjectAclAns getObjectAcl(String bucketName, String key, String versionId) {
     return withBucketReadLock(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);

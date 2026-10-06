@@ -20,9 +20,6 @@ import java.util.List;
 import java.util.function.UnaryOperator;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectVersions.html">ListObjectVersions</a>
- */
 class ListObjectVersionsController implements RouterHttpRequestHandler {
 
   private final ListObjectVersionsService listObjectVersionsService;

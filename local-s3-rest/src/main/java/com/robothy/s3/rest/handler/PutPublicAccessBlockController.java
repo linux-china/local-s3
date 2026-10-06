@@ -12,10 +12,6 @@ import com.robothy.s3.rest.netty.RequestBodies;
 import java.io.InputStream;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutPublicAccessBlock.html">PutPublicAccessBlock</a>.
- * Sets the PublicAccessBlock configuration for a bucket.
- */
 class PutPublicAccessBlockController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

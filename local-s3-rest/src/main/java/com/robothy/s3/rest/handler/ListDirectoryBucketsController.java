@@ -16,12 +16,7 @@ import java.util.List;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListDirectoryBuckets.html">ListDirectoryBuckets</a> of
- * S3 Express One Zone, with the {@code continuation-token} and {@code max-directory-buckets} parameters, see
- * {@linkplain BucketService#listDirectoryBuckets(String, Integer)}.
- *
- * <p>It is a {@code GET /} like {@code ListBuckets}: the router tells the two apart by the {@code max-directory-buckets}
- * parameter, or, of a request without it, by the {@code s3express} service that the AWS SDKs sign it for.
+ * See {@code docs/apis.md#supported-amazon-s3-apis}, which also tells how the router tells it from ListBuckets.
  */
 class ListDirectoryBucketsController implements RouterHttpRequestHandler {
 

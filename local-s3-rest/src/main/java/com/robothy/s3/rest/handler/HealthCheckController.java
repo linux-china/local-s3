@@ -9,9 +9,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
- * Answers {@code GET} and {@code HEAD} requests to {@value LocalS3Router#HEALTH_CHECK_PATH} with {@code 200 OK}
- * once LocalS3 serves requests, e.g. for Testcontainers wait strategies and Kubernetes probes. The health check
- * needs no authentication.
+ * See {@code docs/deployment.md#health-check}.
  */
 class HealthCheckController implements RouterHttpRequestHandler {
 

@@ -14,10 +14,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetPublicAccessBlock.html">GetPublicAccessBlock</a>.
- * Gets the PublicAccessBlock configuration for a bucket.
- */
 class GetPublicAccessBlockController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

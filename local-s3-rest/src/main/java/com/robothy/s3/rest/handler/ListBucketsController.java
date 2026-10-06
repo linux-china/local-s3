@@ -18,9 +18,7 @@ import java.util.List;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListBuckets.html">ListBuckets</a>, with the
- * {@code max-buckets}, {@code continuation-token}, {@code prefix} and {@code bucket-region} parameters of a paginated
- * request, see {@linkplain BucketService#listBuckets(ListBucketsOptions)}.
+ * See {@code docs/apis.md#supported-amazon-s3-apis}.
  */
 class ListBucketsController implements RouterHttpRequestHandler {
 

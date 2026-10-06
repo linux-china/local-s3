@@ -16,10 +16,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html">RenameObject</a>, see
- * {@linkplain RenameObjectService}.
- */
 class RenameObjectController implements RouterHttpRequestHandler {
 
   private final RenameObjectService renameObjectService;

@@ -32,9 +32,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
 import java.util.List;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html">CompleteMultipartUpload</a>
- */
 class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
 
   private final CompleteMultipartUploadService uploadService;
@@ -95,12 +92,6 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
   }
 
-  /**
-   * The size of the object that the request expects.
-   *
-   * @return the {@code x-amz-mp-object-size}; {@code null} if the request expects none.
-   * @throws LocalS3InvalidArgumentException if the header isn't a non-negative number.
-   */
   private static Long expectedObjectSize(RouterHttpRequest request) {
     String value = request.header(AmzHeaderNames.X_AMZ_MP_OBJECT_SIZE).orElse(null);
     if (Objects.isNull(value)) {
@@ -119,9 +110,6 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     return size;
   }
 
-  /**
-   * The checksums that the request names a part with, by algorithm.
-   */
   private static Map<CheckSumAlgorithm, String> partChecksums(CompletedPart part) {
     Map<CheckSumAlgorithm, String> checksums = new EnumMap<>(CheckSumAlgorithm.class);
     putIfPresent(checksums, CheckSumAlgorithm.CRC32, part.getChecksumCRC32());

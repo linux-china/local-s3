@@ -19,32 +19,13 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RenameObject.html">RenameObject</a>, which Amazon S3
- * offers for the directory buckets of S3 Express One Zone.
- *
- * <p>An object is renamed atomically, under the write lock of its bucket, and without copying its content: the
- * destination key gets the object with its content, entity tag, metadata, tags and checksum, and the source key no
- * longer holds it. An object that the destination key held is replaced. Like directory buckets, which have no
- * versioning, only a bucket whose versioning was never configured supports it.
+ * See {@code docs/semantics.md#appends-and-renames}. Renamed atomically, under the write lock of the bucket, without
+ * copying the content.
  */
 public interface RenameObjectService extends LocalS3MetadataApplicable, StorageApplicable {
 
-  /**
-   * The prefix of the headers that name the conditions of the object to rename.
-   */
   String RENAME_SOURCE_PREFIX = "x-amz-rename-source-";
 
-  /**
-   * Rename an object.
-   *
-   * @param bucketName the bucket name.
-   * @param key the new key of the object.
-   * @param options the key of the object to rename, and the conditions of the request.
-   * @throws LocalS3RequestException {@code InvalidRequest} if the versioning of the bucket was ever configured.
-   * @throws ObjectNotExistException if the source key holds no object, or the destination holds none and
-   *     {@code If-Match} is given.
-   * @throws PreconditionFailedException if a condition doesn't hold.
-   */
   default void renameObject(String bucketName, String key, RenameObjectOptions options) {
     ObjectAssertions.assertObjectKeyIsWritable(key);
     String sourceKey = options.getSourceKey();

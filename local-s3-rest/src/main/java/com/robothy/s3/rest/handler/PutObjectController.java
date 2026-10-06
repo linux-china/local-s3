@@ -25,9 +25,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Base64;
 import java.util.Objects;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html">PutObject<a/>.
- */
 class PutObjectController extends ObjectHttpRequestHandler {
 
   private final boolean acceptChunkedUploads;
@@ -37,10 +34,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     this.acceptChunkedUploads = acceptChunkedUploads(serviceFactory);
   }
 
-  /**
-   * Whether the service stores a body sent with {@code Transfer-Encoding: chunked} alone; a router of handlers alone,
-   * which has no configuration, does.
-   */
+  // A router of handlers alone, which has no configuration, stores such a body.
   static boolean acceptChunkedUploads(ServiceFactory serviceFactory) {
     return !serviceFactory.containsInstance(LocalS3Config.class)
         || serviceFactory.getInstance(LocalS3Config.class).acceptChunkedUploads();
@@ -93,13 +87,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addAmzRequestId(response);
   }
 
-  /**
-   * The {@code Content-MD5} of the request, which is checked against the content once it is stored.
-   *
-   * @return the header; {@code null} if the request has none.
-   * @throws LocalS3RequestException {@code InvalidDigest} if the header isn't the base64 of an MD5 digest, e.g. is
-   *     empty, like Amazon S3 rejects it before it reads the content; a digest that doesn't match is {@code BadDigest}.
-   */
+  // Rejected before the content is read, like Amazon S3; see docs/semantics.md#request-validation.
   private static String contentMd5(RouterHttpRequest request) {
     String value = request.header(HttpHeaderNames.CONTENT_MD5).orElse(null);
     if (Objects.isNull(value)) {
@@ -115,12 +103,6 @@ class PutObjectController extends ObjectHttpRequestHandler {
     throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
   }
 
-  /**
-   * The offset that the request appends its content at.
-   *
-   * @return the {@code x-amz-write-offset-bytes}; {@code null} if the request replaces the object.
-   * @throws LocalS3InvalidArgumentException if the header isn't a number.
-   */
   private static Long writeOffsetBytes(RouterHttpRequest request) {
     String value = request.header(AmzHeaderNames.X_AMZ_WRITE_OFFSET_BYTES).orElse(null);
     if (Objects.isNull(value)) {

@@ -12,10 +12,6 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketPolicyStatus.html">GetBucketPolicyStatus</a>.
- * Returns the policy status for a specified bucket.
- */
 class GetBucketPolicyStatusController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

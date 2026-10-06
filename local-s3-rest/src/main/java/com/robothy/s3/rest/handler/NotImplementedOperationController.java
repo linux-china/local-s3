@@ -13,9 +13,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import tools.jackson.dataformat.xml.XmlMapper;
 
 /**
- * Answers {@code 501 NotImplemented} for an operation that LocalS3 routes but doesn't implement. The
- * README lists them, so that a user can tell before choosing LocalS3 whether it covers what their tests
- * need.
+ * See {@code docs/apis.md#known-unimplemented-amazon-s3-apis}.
  */
 class NotImplementedOperationController implements RouterHttpRequestHandler {
 

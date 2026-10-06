@@ -12,9 +12,6 @@ import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLocation.html">GetBucketLocation</a>
- */
 class GetBucketLocationController implements RouterHttpRequestHandler {
 
   private final XmlMapper xmlMapper;

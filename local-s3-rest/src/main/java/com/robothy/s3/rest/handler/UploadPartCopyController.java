@@ -24,12 +24,6 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.time.Instant;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html">UploadPartCopy</a>,
- * the PUT of a part that carries an {@code x-amz-copy-source} header instead of the data of the part. The AWS
- * SDKs use it to copy an object with a multipart upload, e.g. when it is larger than the threshold of the
- * transfer manager.
- */
 class UploadPartCopyController implements RouterHttpRequestHandler {
 
   private final UploadPartCopyService uploadPartCopyService;

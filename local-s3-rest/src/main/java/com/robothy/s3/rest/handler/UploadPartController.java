@@ -19,9 +19,6 @@ import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html">UploadPart</a>
- */
 class UploadPartController implements RouterHttpRequestHandler {
 
   private static final Logger log = LoggerFactory.getLogger(UploadPartController.class);

@@ -6,7 +6,6 @@ import com.robothy.s3.core.assertions.ObjectAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.assertions.VersionedObjectAssertions;
-import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
@@ -30,9 +29,6 @@ import java.util.Optional;
 
 public interface GetObjectService extends StorageApplicable, LocalS3MetadataApplicable {
 
-  /**
-   * Get object.
-   */
   default GetObjectAns getObject(String bucketName, String key, GetObjectOptions options) {
     return withBucketReadLock(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
@@ -44,33 +40,14 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
   }
 
   /**
-   * Resolve the source object of a copy, i.e. of {@code CopyObject} or {@code UploadPartCopy}, under the read lock of
-   * its bucket, and open its content, which the caller reads without the lock. The conditions of the source object
-   * are evaluated before its content is opened; see
-   * {@linkplain PreconditionAssertions#copySourceConditionFailed(String)} for how they differ from the ones of a read.
-   *
-   * @param bucketName the bucket of the source object.
-   * @param key the key of the source object.
-   * @param versionId the version to copy; {@code null} for the current one.
-   * @param range the range of the source object to copy; {@code null} for all of it.
-   * @param preconditions the {@code x-amz-copy-source-if-*} conditions; {@code null} or
-   *     {@linkplain ObjectPreconditions#none()} for none.
-   * @return the source object, with its content open unless it is a delete marker.
-   * @throws PreconditionFailedException if a condition of the source object didn't hold.
+   * Resolve the source object of a copy under the read lock of its bucket; the caller reads the content without the
+   * lock. Conditions: {@code docs/semantics.md#conditional-requests}.
    */
   default GetObjectAns getCopySource(String bucketName, String key, String versionId, Range range,
                                      ObjectPreconditions preconditions) {
     return getCopySource(bucketName, key, versionId, range, preconditions, null);
   }
 
-  /**
-   * Resolve the source object of a copy like {@linkplain #getCopySource(String, String, String, Range,
-   * ObjectPreconditions)}, providing the customer key that the source object was stored with.
-   *
-   * @param sourceCustomerEncryption the {@code x-amz-copy-source-server-side-encryption-customer-*} key of the request;
-   *     {@code null} for none.
-   * @return the source object, with its content open unless it is a delete marker.
-   */
   default GetObjectAns getCopySource(String bucketName, String key, String versionId, Range range,
                                      ObjectPreconditions preconditions, CustomerEncryption sourceCustomerEncryption) {
     ObjectPreconditions conditions = Objects.requireNonNullElseGet(preconditions, ObjectPreconditions::none);
@@ -197,17 +174,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
   }
 
   /**
-   * The content of a read of a version: all of it, the {@code Range} of the request, or the part that the
-   * {@code partNumber} of the request names. The answer carries the size, the content unless {@code metadataOnly},
-   * the {@code Content-Range}, the checksum, and the number of parts of a read of a part.
-   *
-   * <p>A part is counted from 1 in the order of the content, like the {@code x-amz-mp-parts-count} header that
-   * answers it counts them, so that a client that reads parts 1 to the count reads the whole object; the part
-   * numbers that the parts were uploaded with don't have to be consecutive. An object that wasn't uploaded in parts
-   * has a single part, which is all of its content, like Amazon S3 answers.
-   *
-   * @throws LocalS3RequestException {@code InvalidRequest} if the request carries both a range and a part number.
-   * @throws LocalS3Exception {@code InvalidPartNumber} if the object has no part of the part number.
+   * The content of a read: all of it, its {@code Range} or its {@code partNumber}; see
+   * {@code docs/semantics.md#range-requests} and {@code docs/semantics.md#reading-a-part}.
    */
   private static GetObjectAns.GetObjectAnsBuilder content(Storage storage, VersionedObjectMetadata version,
                                                           boolean metadataOnly, GetObjectOptions options) {
@@ -240,8 +208,6 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         }
         ObjectPartMetadata part = parts.get(partNumber - 1);
         contentLength = part.getSize();
-        // The checksum of the part, which is what the content read is, when the object has one of its algorithm.
-        // Like Amazon S3, it is reported with the type of the checksum of the object, e.g. COMPOSITE for SHA-256.
         ObjectChecksum objectChecksum = version.getChecksum();
         ObjectChecksum partChecksum = part.getChecksum();
         checksum = Objects.nonNull(objectChecksum) && Objects.nonNull(partChecksum)
@@ -249,7 +215,6 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
             ? new ObjectChecksum(partChecksum.getAlgorithm(), objectChecksum.getType(), partChecksum.getValue()) : null;
         answer.partsCount(parts.size());
       }
-      // A read of a part is a partial content, even of the only part of an object; an empty part has no range.
       if (contentLength > 0) {
         answer.contentRange("bytes " + start + "-" + (start + contentLength - 1) + "/" + fullSize);
       }
@@ -259,7 +224,6 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
       start = range[0];
       contentLength = range[1] - start + 1;
       answer.contentRange("bytes " + start + "-" + range[1] + "/" + fullSize);
-      // The checksum is the one of the whole content, not of a range of it.
       checksum = null;
     } else {
       start = 0;
@@ -276,12 +240,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
   }
 
   /**
-   * The answer of a read that the client already holds the object of: no content, but the metadata that
-   * identifies the version it holds, which the {@code ETag} and {@code Last-Modified} headers of a
-   * {@code 304 Not Modified} response carry, like RFC 9110 requires of a response that omits the content.
-   *
-   * <p>The preconditions of a read are evaluated before the content is opened, so that an object that the
-   * client already holds is never read from the storage.
+   * The {@code ETag} and {@code Last-Modified} of a {@code 304} identify the version the client holds (RFC 9110); the
+   * content is never opened.
    */
   private static GetObjectAns notModified(String bucketName, String key, String versionId,
                                           VersionedObjectMetadata versionedObjectMetadata) {
@@ -297,14 +257,6 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .build();
   }
 
-  /**
-   * Get metadata of the specified object.
-   *
-   * @param bucketName the bucket name.
-   * @param key the object key.
-   * @param options options.
-   * @return versioned object with metadata only.
-   */
   default GetObjectAns headObject(String bucketName, String key, GetObjectOptions options) {
     return withBucketReadLock(bucketName, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);

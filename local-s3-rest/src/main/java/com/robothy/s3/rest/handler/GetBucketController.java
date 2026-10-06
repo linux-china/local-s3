@@ -12,9 +12,6 @@ import java.time.Instant;
 
 import tools.jackson.dataformat.xml.XmlMapper;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_GetBucket.html">GetBucket</a>
- */
 class GetBucketController implements RouterHttpRequestHandler {
 
   private final BucketService bucketService;

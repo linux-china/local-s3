@@ -4,19 +4,7 @@ import com.robothy.s3.core.exception.InvalidRangeException;
 import java.util.Optional;
 
 /**
- * Represents a parsed byte range from an HTTP {@code Range: bytes=...} header (RFC 9110).
- *
- * <p>Three forms are supported:
- * <ul>
- *   <li>{@code bytes=start-end} — {@link #of(long, long)}</li>
- *   <li>{@code bytes=start-}   — {@link #from(long)}</li>
- *   <li>{@code bytes=-suffix}  — {@link #last(long)}</li>
- * </ul>
- *
- * <p>A header that none of these forms describe, a multipart range like {@code bytes=0-1,5-6} and a unit
- * other than {@code bytes} are all unparsable here. Amazon S3 answers such a request with the whole object,
- * so a caller reading a {@code Range} header uses {@link #tryParse(String)} and ignores an empty answer;
- * {@link #parse(String)} stays strict for the headers that S3 does reject, such as {@code x-amz-copy-source-range}.
+ * A single byte range of a {@code Range} header; see {@code docs/semantics.md#range-requests}.
  */
 public class Range {
 
@@ -32,37 +20,28 @@ public class Range {
     this.suffixLength = suffixLength;
   }
 
-  /** {@code bytes=start-end} */
   public static Range of(long start, long end) {
     return new Range(start, end, null);
   }
 
-  /** {@code bytes=start-} */
   public static Range from(long start) {
     return new Range(start, null, null);
   }
 
-  /** {@code bytes=-suffixLength} */
   public static Range last(long suffixLength) {
     return new Range(null, null, suffixLength);
   }
 
   /**
-   * Parse the value of a {@code Range} header.
-   *
-   * @throws InvalidRangeException if the header value cannot be parsed
+   * Strict, for the headers that Amazon S3 rejects when they don't parse, e.g. {@code x-amz-copy-source-range}.
    */
   public static Range parse(String rangeHeader) {
     return tryParse(rangeHeader).orElseThrow(InvalidRangeException::new);
   }
 
   /**
-   * Parse the value of a {@code Range} header, answering {@link Optional#empty()} instead of failing when the
-   * value is not a single satisfiable-looking byte range. RFC 9110 lets a server ignore a {@code Range} header
-   * it cannot parse, and Amazon S3 does exactly that: the response is the whole object with status {@code 200}.
-   *
-   * <p>Whether a syntactically valid range fits the object is not decided here but by {@link #resolve(long)},
-   * which fails with {@code 416} for a range that the object cannot satisfy.
+   * Empty for a header that a read ignores, as Amazon S3 does; whether the range fits the object is
+   * {@linkplain #resolve(long)}'s to decide.
    */
   public static Optional<Range> tryParse(String rangeHeader) {
     if (rangeHeader == null) {
@@ -76,7 +55,6 @@ public class Range {
 
     String spec = header.substring("bytes=".length()).trim();
     if (spec.indexOf(',') >= 0) {
-      // Amazon S3 serves a single range only; it answers a multipart range with the whole object.
       return Optional.empty();
     }
 
@@ -93,7 +71,7 @@ public class Range {
         if (endStr.isEmpty()) {
           return Optional.empty();
         }
-        // A suffix length of 0 parses; no object can satisfy it, so resolve() rejects it with 416.
+        // resolve() rejects a suffix length of 0 with 416.
         return Optional.of(last(parseUnsigned(endStr)));
       }
 
@@ -112,7 +90,7 @@ public class Range {
     }
   }
 
-  /** Parse a byte position; a sign makes it no longer a position, so {@code -1} and {@code +1} are both rejected. */
+  /** A sign would make {@code Long.parseLong} accept {@code +1} and {@code -1}. */
   private static long parseUnsigned(String value) {
     for (int i = 0; i < value.length(); i++) {
       if (value.charAt(i) < '0' || value.charAt(i) > '9') {
@@ -122,20 +100,14 @@ public class Range {
     return Long.parseLong(value);
   }
 
-  /**
-   * The number of bytes of a {@code bytes=start-end} range, whose both ends are given.
-   *
-   * @return the length; empty for a {@code bytes=start-} or {@code bytes=-suffix} range.
-   */
+  /** Empty unless both ends are given. */
   public Optional<Long> length() {
     return start != null && end != null ? Optional.of(end - start + 1) : Optional.empty();
   }
 
   /**
-   * Resolve concrete start/end byte positions given the total object size.
-   *
-   * @return {@code long[2]} with inclusive {@code [start, end]} positions
-   * @throws InvalidRangeException if the range cannot be satisfied for this object size
+   * @return the inclusive {@code [start, end]} of the range, clipped to the object.
+   * @throws InvalidRangeException if the object can't satisfy the range.
    */
   public long[] resolve(long objectSize) {
     if (objectSize <= 0) {

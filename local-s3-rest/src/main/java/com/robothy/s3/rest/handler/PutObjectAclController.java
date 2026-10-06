@@ -12,9 +12,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
 /**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAcl.html">PutObjectAcl</a>, whose ACL
- * is a canned ACL, grant headers or a document in the body; see {@linkplain AccessControlPolicyRequests}.
- * LocalS3 stores the ACL information without enforcing permissions.
+ * See {@code docs/semantics.md#access-control-lists} and {@linkplain AccessControlPolicyRequests}.
  */
 class PutObjectAclController extends ObjectHttpRequestHandler {
 

@@ -15,11 +15,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Handles the notification configuration of a bucket, which LocalS3 stores and returns but never delivers to; see
- * {@linkplain BucketNotificationService}.
- *
- * <p>The deprecated {@code PutBucketNotification} and {@code GetBucketNotification} send the same requests as
- * {@code PutBucketNotificationConfiguration} and {@code GetBucketNotificationConfiguration}, and are answered by them.
+ * See {@code docs/semantics.md#stored-not-applied}; the deprecated operations are answered by the same routes.
  */
 class BucketNotificationController {
 
@@ -29,9 +25,6 @@ class BucketNotificationController {
     this.notificationService = serviceFactory.getInstance(BucketService.class);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketNotificationConfiguration.html">PutBucketNotificationConfiguration</a>
-   */
   void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration;
@@ -43,9 +36,6 @@ class BucketNotificationController {
         .status(HttpResponseStatus.OK);
   }
 
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html">GetBucketNotificationConfiguration</a>
-   */
   void get(RouterHttpRequest request, RouterHttpResponse response) {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String configuration = notificationService.getBucketNotificationConfiguration(bucketName);

@@ -17,11 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 /**
- * Handles the configurations of a bucket that LocalS3 stores and returns but never applies, e.g.
- * {@code PutBucketWebsite}, {@code GetBucketOwnershipControls} or {@code GetBucketLogging}; see
- * {@linkplain StoredBucketConfiguration}, and the ones of which a bucket has several, each named by the {@code id}
- * parameter, e.g. {@code PutBucketMetricsConfiguration}; see {@linkplain IdentifiedBucketConfiguration}. One controller
- * answers the operations of every such configuration, each route naming the configuration it addresses.
+ * One controller answers every stored configuration, each route naming the configuration it addresses; see
+ * {@code docs/semantics.md#stored-not-applied}.
  */
 class BucketStoredConfigurationController {
 
@@ -36,9 +33,6 @@ class BucketStoredConfigurationController {
     this.configurationService = serviceFactory.getInstance(BucketService.class);
   }
 
-  /**
-   * The {@code PUT} of a configuration, which stores the document as it was sent.
-   */
   RouterHttpRequestHandler put(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -52,9 +46,6 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code GET} of a configuration.
-   */
   RouterHttpRequestHandler get(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -66,9 +57,6 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code DELETE} of a configuration.
-   */
   RouterHttpRequestHandler delete(StoredBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -78,9 +66,6 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code PUT} of a configuration named by the {@code id} parameter, which stores the document as it was sent.
-   */
   RouterHttpRequestHandler put(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -95,9 +80,6 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code GET} of a configuration named by the {@code id} parameter.
-   */
   RouterHttpRequestHandler get(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -110,10 +92,7 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code GET} of the configurations of a kind, without the {@code id} parameter. Every configuration is on the
-   * one page, so the list is never truncated.
-   */
+  // Every configuration is on the one page, so the list is never truncated.
   RouterHttpRequestHandler list(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -131,9 +110,6 @@ class BucketStoredConfigurationController {
     };
   }
 
-  /**
-   * The {@code DELETE} of a configuration named by the {@code id} parameter.
-   */
   RouterHttpRequestHandler delete(IdentifiedBucketConfiguration type) {
     return (request, response) -> {
       String bucketName = RequestAssertions.assertBucketNameProvided(request);

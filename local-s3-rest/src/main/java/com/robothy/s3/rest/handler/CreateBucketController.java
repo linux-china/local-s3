@@ -19,9 +19,6 @@ import java.io.InputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Handle <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html">CreateBucket</a>.
- */
 class CreateBucketController extends BucketHttpRequestHandler {
 
   private static final Logger log = LoggerFactory.getLogger(CreateBucketController.class);
