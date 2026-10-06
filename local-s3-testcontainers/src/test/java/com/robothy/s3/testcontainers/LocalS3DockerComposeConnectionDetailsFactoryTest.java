@@ -38,14 +38,14 @@ class LocalS3DockerComposeConnectionDetailsFactoryTest {
 
   @Test
   void matchesTheImageOfLocalS3() throws Exception {
-    assertNotNull(factory.getConnectionDetails(source("luofuxiang/local-s3:latest", Map.of(), Map.of())));
-    assertNotNull(factory.getConnectionDetails(source("docker.io/luofuxiang/local-s3", Map.of(), Map.of())));
+    assertNotNull(factory.getConnectionDetails(source("linuxchina/local-s3:latest", Map.of(), Map.of())));
+    assertNotNull(factory.getConnectionDetails(source("docker.io/linuxchina/local-s3", Map.of(), Map.of())));
     assertNull(factory.getConnectionDetails(source("localstack/localstack", Map.of(), Map.of())));
   }
 
   @Test
   void matchesAnotherImageByItsLabel() throws Exception {
-    Map<String, String> label = Map.of("org.springframework.boot.service-connection", "luofuxiang/local-s3");
+    Map<String, String> label = Map.of("org.springframework.boot.service-connection", "linuxchina/local-s3");
     assertNotNull(factory.getConnectionDetails(source("mirror.example.com/s3/local-s3:1.0", Map.of(), label)));
     assertNotNull(factory.getConnectionDetails(source("mirror.example.com/s3/local-s3:1.0", Map.of(),
         Map.of("org.springframework.boot.service-connection", "local-s3"))));
@@ -53,7 +53,7 @@ class LocalS3DockerComposeConnectionDetailsFactoryTest {
 
   @Test
   void pointsAtTheMappedPortWithTheDefaultKeyWhereTheServiceRequiresNone() throws Exception {
-    AwsConnectionDetails details = factory.getConnectionDetails(source("luofuxiang/local-s3",
+    AwsConnectionDetails details = factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("LOCAL_S3_CREDENTIALS_FROM_AWS_ENV", "true"), Map.of()));
     assertEquals(URI.create("http://127.0.0.1:32773"), details.getEndpoint());
     assertEquals("us-east-1", details.getRegion());
@@ -63,31 +63,31 @@ class LocalS3DockerComposeConnectionDetailsFactoryTest {
 
   @Test
   void signsWithTheCredentialsOfTheService() throws Exception {
-    AwsConnectionDetails fromAwsEnv = factory.getConnectionDetails(source("luofuxiang/local-s3",
+    AwsConnectionDetails fromAwsEnv = factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("LOCAL_S3_CREDENTIALS_FROM_AWS_ENV", "true", "AWS_ACCESS_KEY_ID", "aws-id",
             "AWS_SECRET_ACCESS_KEY", "aws-secret"), Map.of()));
     assertEquals("aws-id", fromAwsEnv.getAccessKey());
     assertEquals("aws-secret", fromAwsEnv.getSecretKey());
 
-    AwsConnectionDetails localS3 = factory.getConnectionDetails(source("luofuxiang/local-s3",
+    AwsConnectionDetails localS3 = factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("LOCAL_S3_CREDENTIALS_FROM_AWS_ENV", "true", "AWS_ACCESS_KEY_ID", "aws-id",
             "AWS_SECRET_ACCESS_KEY", "aws-secret", "LOCAL_S3_ACCESS_KEY_ID", "id",
             "LOCAL_S3_SECRET_ACCESS_KEY", "secret"), Map.of()));
     assertEquals("id", localS3.getAccessKey());
     assertEquals("secret", localS3.getSecretKey());
 
-    AwsConnectionDetails awsEnvNotUsed = factory.getConnectionDetails(source("luofuxiang/local-s3",
+    AwsConnectionDetails awsEnvNotUsed = factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("AWS_ACCESS_KEY_ID", "aws-id", "AWS_SECRET_ACCESS_KEY", "aws-secret"), Map.of()));
     assertEquals("local-s3", awsEnvNotUsed.getAccessKey());
   }
 
   @Test
   void followsThePortAndTlsOfTheService() throws Exception {
-    AwsConnectionDetails details = factory.getConnectionDetails(source("luofuxiang/local-s3",
+    AwsConnectionDetails details = factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("LOCAL_S3_PORT", "9000", "LOCAL_S3_TLS_SELF_SIGNED", "localhost,s3"), Map.of()));
     assertEquals(URI.create("https://127.0.0.1:39000"), details.getEndpoint());
 
-    assertEquals("http", factory.getConnectionDetails(source("luofuxiang/local-s3",
+    assertEquals("http", factory.getConnectionDetails(source("linuxchina/local-s3",
         Map.of("LOCAL_S3_TLS_SELF_SIGNED", "false"), Map.of())).getEndpoint().getScheme());
   }
 

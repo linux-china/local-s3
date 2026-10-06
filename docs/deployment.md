@@ -13,12 +13,12 @@ them are configured by the same environment variables, and answer the same healt
 
 ## Docker
 
-The images are published to [DockerHub](https://hub.docker.com/r/luofuxiang/local-s3): `luofuxiang/local-s3`, for
-`linux/amd64` and `linux/arm64`, runs on a Java 25 JRE, and `luofuxiang/local-s3:native-<version>` is a much smaller
+The images are published to [DockerHub](https://hub.docker.com/r/linuxchina/local-s3): `linuxchina/local-s3`, for
+`linux/amd64` and `linux/arm64`, runs on a Java 25 JRE, and `linuxchina/local-s3:native-<version>` is a much smaller
 GraalVM native image.
 
 ```shell
-docker run --name s3 -d -v "$PWD/local-s3:/data" -p 29090:29090 luofuxiang/local-s3
+docker run --name s3 -d -v "$PWD/local-s3:/data" -p 29090:29090 linuxchina/local-s3
 ```
 
 The image sets `LOCAL_S3_HOST=0.0.0.0` and `LOCAL_S3_MODE=PERSISTENCE`, so it listens on every interface and
@@ -43,8 +43,8 @@ your own user instead, and keep the ownership of the directory, start the contai
 > address of the host alone:
 >
 > ```shell
-> docker run -d -p 29090:29090 -e LOCAL_S3_ACCESS_KEY_ID=local -e LOCAL_S3_SECRET_ACCESS_KEY=local luofuxiang/local-s3
-> docker run -d -p 127.0.0.1:29090:29090 luofuxiang/local-s3
+> docker run -d -p 29090:29090 -e LOCAL_S3_ACCESS_KEY_ID=local -e LOCAL_S3_SECRET_ACCESS_KEY=local linuxchina/local-s3
+> docker run -d -p 127.0.0.1:29090:29090 linuxchina/local-s3
 > ```
 >
 > The warning is logged by `com.robothy.s3.rest.LocalS3`; a service that is meant to be open can silence it there.
@@ -92,7 +92,7 @@ memory still with a minimal configuration for tests:
 
 ```shell
 docker run -d -p 29090:29090 -e LOCAL_S3_MODE=IN_MEMORY \
-    -e JAVA_OPTS="-Xss256k -XX:+UseSerialGC -XX:MaxRAMPercentage=50 -XX:TieredStopAtLevel=1" luofuxiang/local-s3
+    -e JAVA_OPTS="-Xss256k -XX:+UseSerialGC -XX:MaxRAMPercentage=50 -XX:TieredStopAtLevel=1" linuxchina/local-s3
 ```
 
 ```java
@@ -265,7 +265,7 @@ without a file to create.
 LOCAL_S3_TLS_SELF_SIGNED=true java -jar local-s3-standalone-2.5.0.jar
 
 # Docker
-docker run -d -p 29090:29090 -e LOCAL_S3_TLS_SELF_SIGNED=true luofuxiang/local-s3
+docker run -d -p 29090:29090 -e LOCAL_S3_TLS_SELF_SIGNED=true linuxchina/local-s3
 ```
 
 Set it to the comma-separated hosts to issue the certificate for instead of `true`, for every name that clients reach
@@ -387,7 +387,7 @@ LOCAL_S3_TLS_CERT=localhost+1.pem LOCAL_S3_TLS_KEY=localhost+1-key.pem java -jar
 # Docker
 docker run -d -p 29090:29090 -v "$PWD:/certs:ro" \
   -e LOCAL_S3_TLS_CERT=/certs/localhost+1.pem -e LOCAL_S3_TLS_KEY=/certs/localhost+1-key.pem \
-  luofuxiang/local-s3
+  linuxchina/local-s3
 
 curl https://localhost:29090/_health
 ```
@@ -572,7 +572,7 @@ spec:
     spec:
       containers:
         - name: local-s3
-          image: luofuxiang/local-s3:latest
+          image: linuxchina/local-s3:latest
           env:
             - name: LOCAL_S3_MODE
               value: IN_MEMORY

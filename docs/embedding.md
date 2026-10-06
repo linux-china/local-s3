@@ -982,7 +982,7 @@ reach the service with no property of the application.
 # compose.yaml
 services:
   local-s3:
-    image: luofuxiang/local-s3
+    image: linuxchina/local-s3
     ports:
       - "29090"
 ```
@@ -995,8 +995,8 @@ dependencies {
 }
 ```
 
-It matches a service of the image `luofuxiang/local-s3`; a service of another image, e.g. of a private registry, is
-matched by the label `org.springframework.boot.service-connection: luofuxiang/local-s3`. The connection details follow
+It matches a service of the image `linuxchina/local-s3`; a service of another image, e.g. of a private registry, is
+matched by the label `org.springframework.boot.service-connection: linuxchina/local-s3`. The connection details follow
 the environment of the service:
 
 | `AwsConnectionDetails` | Value |

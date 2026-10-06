@@ -2,7 +2,7 @@
 
 How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake, Hadoop S3A, [Apache Paimon](#apache-paimon),
 [Apache Hudi](#apache-hudi) and the [Python](#python) data tools at LocalS3,
-e.g. a LocalS3 started with `docker run -p 29090:29090 luofuxiang/local-s3` or embedded in an IDE. They run as
+e.g. a LocalS3 started with `docker run -p 29090:29090 linuxchina/local-s3` or embedded in an IDE. They run as
 end-to-end tests in [`local-s3-integration-test`](../local-s3-integration-test/README.md), and the Python ones in
 [`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md).
 

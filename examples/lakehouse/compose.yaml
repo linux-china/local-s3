@@ -5,7 +5,7 @@ services:
   local-s3:
     # 2.5.0 isn't released yet: compose builds the image from local-s3-standalone/build/libs/s3.jar, which
     # `./gradlew :local-s3-standalone:jar` produces. Once it is released, the build section can go.
-    image: luofuxiang/local-s3:2.5.0-SNAPSHOT
+    image: linuxchina/local-s3:2.5.0-SNAPSHOT
     build: ../../local-s3-standalone
     environment:
       LOCAL_S3_ICEBERG_CATALOG: "true"

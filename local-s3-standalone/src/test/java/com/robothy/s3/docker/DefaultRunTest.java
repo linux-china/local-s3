@@ -15,7 +15,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 /**
- * {@code docker run luofuxiang/local-s3} with nothing else: the image runs {@code PERSISTENCE} over {@code /data},
+ * {@code docker run linuxchina/local-s3} with nothing else: the image runs {@code PERSISTENCE} over {@code /data},
  * and {@code docker run} creates that as an anonymous volume.
  *
  * <p>The volume is initialized from the {@code /data} of the image, ownership included, so the directory has to

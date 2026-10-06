@@ -6,7 +6,7 @@ write and read the same Iceberg tables through it.
 
 | Service    | Image                                | Reached from the host at                  |
 |------------|--------------------------------------|-------------------------------------------|
-| `local-s3` | `luofuxiang/local-s3:2.5.0-SNAPSHOT` | `http://localhost:29090` (catalog: `/iceberg`) |
+| `local-s3` | `linuxchina/local-s3:2.5.0-SNAPSHOT` | `http://localhost:29090` (catalog: `/iceberg`) |
 | `spark`    | `apache/spark:3.5.6`                 | Spark UI at `http://localhost:4040` while a job runs |
 | `trino`    | `trinodb/trino:476`                  | `http://localhost:8080`                   |
 

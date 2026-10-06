@@ -1,12 +1,12 @@
 services:
   local-s3-java:
-    image: luofuxiang/local-s3:2.5.0-SNAPSHOT
+    image: linuxchina/local-s3:2.5.0-SNAPSHOT
     ports:
       - "29090:29090"
     environment:
       AWS_BUCKETS: "demo-bucket"
   local-s3-native:
-    image: luofuxiang/local-s3:native-2.5.0-SNAPSHOT
+    image: linuxchina/local-s3:native-2.5.0-SNAPSHOT
     ports:
       - "39090:29090"
     environment:

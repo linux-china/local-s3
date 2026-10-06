@@ -41,7 +41,7 @@ public class LocalS3Container extends GenericContainer<LocalS3Container> {
   /**
    * The repository of the LocalS3 Docker image on Docker Hub.
    */
-  public static final String IMAGE_NAME = "luofuxiang/local-s3";
+  public static final String IMAGE_NAME = "linuxchina/local-s3";
 
   /**
    * The image that every image this container runs must declare itself compatible with.

@@ -164,7 +164,7 @@ tasks.register('buildGraalVMNativeBasedDockerImage', Exec) {
             .withPathSensitivity(PathSensitivity.RELATIVE)
 
     commandLine shellCommand(executor,
-            "docker build -t luofuxiang/local-s3:native-${imageVersion} -f GraalVMNativeImage.dockerfile .")
+            "docker build -t linuxchina/local-s3:native-${imageVersion} -f GraalVMNativeImage.dockerfile .")
 }
 
 tasks.register('buildJvmBasedDockerImage', Exec) {
@@ -172,7 +172,7 @@ tasks.register('buildJvmBasedDockerImage', Exec) {
     dependsOn('jar')
 
     commandLine shellCommand(executor,
-            "docker build -t luofuxiang/local-s3:latest -t luofuxiang/local-s3:${imageVersion} .")
+            "docker build -t linuxchina/local-s3:latest -t linuxchina/local-s3:${imageVersion} .")
 }
 
 
@@ -217,20 +217,20 @@ registerImageTest('nativeImageTest', "native-${imageVersion}", 'buildGraalVMNati
 tasks.register('pushJvmBasedDockerImage', Exec) {
     dependsOn 'dockerImageTest'
     group = "docker-image"
-    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:${imageVersion}")
+    commandLine shellCommand(executor, "docker push linuxchina/local-s3:${imageVersion}")
 }
 
 tasks.register('pushGraalVMNativeBasedDockerImage', Exec) {
     // Like before, pushing requires the image tests of the JVM based image; run nativeImageTest to test this one.
     dependsOn 'buildGraalVMNativeBasedDockerImage', 'dockerImageTest'
     group = "docker-image"
-    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:native-${imageVersion}")
+    commandLine shellCommand(executor, "docker push linuxchina/local-s3:native-${imageVersion}")
 }
 
 tasks.register('pushLatestImage', Exec) {
     dependsOn 'dockerImageTest'
     group = "docker-image"
-    commandLine shellCommand(executor, "docker push luofuxiang/local-s3:latest")
+    commandLine shellCommand(executor, "docker push linuxchina/local-s3:latest")
 }
 
 tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
@@ -240,8 +240,8 @@ tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
     description = "Builds and pushes a multi-platform (linux/amd64 + linux/arm64) Docker image using buildx."
 
     commandLine shellCommand(executor, "docker buildx build --platform linux/amd64,linux/arm64 --push" +
-            " -t luofuxiang/local-s3:latest" +
-            " -t luofuxiang/local-s3:${imageVersion}" +
+            " -t linuxchina/local-s3:latest" +
+            " -t linuxchina/local-s3:${imageVersion}" +
             " .")
 }
 

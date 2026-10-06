@@ -4,7 +4,7 @@ All notable changes to LocalS3 are documented in this file. The format is based 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Every module is released with the same version, to Maven Central under `io.github.robothy`, and as the Docker image
-`luofuxiang/local-s3`.
+`linuxchina/local-s3`.
 
 ## [2.5.0] - Unreleased
 
@@ -197,7 +197,7 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + **A service that is open to the network says so when it starts.** A service that has no credentials and binds an
   address other than a loopback one — which the Docker image does, since a container serves its host — answers every
   request, whoever sends it. It now logs a `WARN` naming the address it listens on and how to close it, so that
-  `docker run -p 29090:29090 luofuxiang/local-s3` on a shared network isn't an open object store that nothing
+  `docker run -p 29090:29090 linuxchina/local-s3` on a shared network isn't an open object store that nothing
   mentioned. `LocalS3Config.reachableFromOtherHosts()` is the condition, beside `authenticationEnabled()`. The
   service still starts: an open service on a private network is a valid setup, and the logger of
   `com.robothy.s3.rest.LocalS3` silences the warning. See [Docker](docs/deployment.md#docker).
@@ -564,7 +564,7 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
     `bar` of `foo=bar&bar`, has an empty value rather than being refused.
   + A `Content-Encoding` without `aws-chunked` is stored as it is, e.g. `deflate, gzip`, not rewritten to
     `deflate,gzip`.
-+ `docker run luofuxiang/local-s3` with no arguments works. The image runs `PERSISTENCE` over `/data`, and the
++ `docker run linuxchina/local-s3` with no arguments works. The image runs `PERSISTENCE` over `/data`, and the
   anonymous volume that `docker run` creates for it is initialized from the `/data` of the image, its ownership
   included; that directory belonged to `root`, so the service, which runs as `locals3` since 2.5, started and then
   failed to open its store with `AccessDeniedException: /data/buckets.mvstore`. The image now creates `/data` owned

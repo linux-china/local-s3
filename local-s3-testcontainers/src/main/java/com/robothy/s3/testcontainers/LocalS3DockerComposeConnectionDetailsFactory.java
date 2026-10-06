@@ -16,13 +16,13 @@ import org.springframework.boot.docker.compose.service.connection.DockerComposeC
  * <pre>{@code
  * services:
  *   local-s3:
- *     image: luofuxiang/local-s3
+ *     image: linuxchina/local-s3
  *     ports:
  *       - "29090"
  * }</pre>
  *
  * <p>It matches a service of the image {@value LocalS3Container#IMAGE_NAME}, and a service of any other image, e.g. of
- * a mirror, that has the label {@code org.springframework.boot.service-connection: luofuxiang/local-s3}. The endpoint,
+ * a mirror, that has the label {@code org.springframework.boot.service-connection: linuxchina/local-s3}. The endpoint,
  * credentials and TLS come from the environment of the service, as the service reads them: {@code LOCAL_S3_PORT},
  * {@code LOCAL_S3_ACCESS_KEY_ID} and {@code LOCAL_S3_SECRET_ACCESS_KEY}, or {@code AWS_ACCESS_KEY_ID} and
  * {@code AWS_SECRET_ACCESS_KEY} where {@code LOCAL_S3_CREDENTIALS_FROM_AWS_ENV} is {@code true}, as the image sets it,
