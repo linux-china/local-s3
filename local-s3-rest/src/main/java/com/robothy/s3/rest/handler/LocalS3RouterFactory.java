@@ -142,8 +142,12 @@ public class LocalS3RouterFactory {
     // they remain valid across restarts.
     SessionCredentialIssuer sessionCredentialIssuer = new SessionCredentialIssuer(secretAccessKey, Clock.systemUTC());
     SessionPolicyAuthorizer sessionPolicyAuthorizer = new SessionPolicyAuthorizer(sessionCredentialIssuer);
+    Duration allowedClockSkew = serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class).allowedClockSkew()
+        : LocalS3Config.DEFAULT_ALLOWED_CLOCK_SKEW;
     AwsSignatureV4Verifier signatureVerifier = accessKeyId == null ? null
-        : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC());
+        : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC(),
+            allowedClockSkew);
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
         .sts(new StsController(sessionCredentialIssuer))
         .sessionPolicies(sessionPolicyAuthorizer)

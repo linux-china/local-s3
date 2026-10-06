@@ -390,7 +390,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 |---|---|---|
 | Storage | `storage(storage -> ...)` | `mode`, `dataPath`, `persistencePolicy`, `maxInMemoryBytes`, `initialDataCacheEnabled` |
 | HTTP server | `netty(netty -> ...)` | `parentEventGroupThreadNum`, `childEventGroupThreadNum`, `s3ExecutorThreadNum`, `virtualThreads`, `daemonThreads`, `maxRequestBodySize`, `requestBodyFileThreshold`, `maxRequestHeaderSize`, `idleConnectionTimeoutSeconds`, `registerShutdownHook`, `requestRecorder` |
-| S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags`, `acceptChunkedUploads` |
+| S3 API | `s3Api(s3 -> ...)` | `virtualHostDomains`, `compositeMultipartEtags`, `acceptChunkedUploads`, `allowedClockSkew`; see [request validation](semantics.md#request-validation) |
 | Change events | `events(events -> ...)` | `listener(S3ChangeListener)`, `executor(Executor)` |
 | Lifecycle | `lifecycle(lifecycle -> ...)` | `applyEvery(Duration)`; see [lifecycle configuration](semantics.md#lifecycle-configuration) |
 | HTTPS | `tls(tls -> ...)` | `certificate(...)`, `selfSigned(...)`, `required(...)` |

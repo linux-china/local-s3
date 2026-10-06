@@ -69,6 +69,8 @@ import org.jspecify.annotations.Nullable;
  *     that address no bucket; {@code null} is {@linkplain LocalS3Cors#disabled()}, which is the default.
  * @param lifecycleInterval how often the service applies the lifecycle configurations of its buckets by itself, once
  *     it has started; {@code null} or zero for never, which is the default, and is {@code null} then.
+ * @param allowedClockSkew how far the time of a signed request may be from the clock of the service; zero turns the
+ *     time check off. {@code null} is {@linkplain #DEFAULT_ALLOWED_CLOCK_SKEW 15 minutes}, which is the default.
  */
 public record LocalS3Config(
     String bindHost,
@@ -104,13 +106,20 @@ public record LocalS3Config(
     @Nullable LocalS3IcebergCatalog icebergCatalog,
     LocalS3Website website,
     LocalS3Cors cors,
-    @Nullable Duration lifecycleInterval) {
+    @Nullable Duration lifecycleInterval,
+    @Nullable Duration allowedClockSkew) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
    * of more than 2 GiB is kept in a temporary file only, rather than memory-mapped.
    */
   public static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 5L * 1024 * 1024 * 1024;
+
+  /**
+   * Default time(15 minutes) that the time of a signed request may be from the clock of the service, as Amazon S3
+   * allows.
+   */
+  public static final Duration DEFAULT_ALLOWED_CLOCK_SKEW = Duration.ofMinutes(15);
 
   /**
    * Default max number of bytes(a quarter of the max heap) that the content stored by an {@code IN_MEMORY} service
@@ -191,6 +200,8 @@ public record LocalS3Config(
     cors = cors == null ? LocalS3Cors.disabled() : cors;
     requireLifecycleInterval(lifecycleInterval);
     lifecycleInterval = lifecycleInterval == null || lifecycleInterval.isZero() ? null : lifecycleInterval;
+    requireAllowedClockSkew(allowedClockSkew);
+    allowedClockSkew = allowedClockSkew == null ? DEFAULT_ALLOWED_CLOCK_SKEW : allowedClockSkew;
   }
 
   /**
@@ -293,7 +304,7 @@ public record LocalS3Config(
         + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
         + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors
-        + ", lifecycleInterval=" + lifecycleInterval + "]";
+        + ", lifecycleInterval=" + lifecycleInterval + ", allowedClockSkew=" + allowedClockSkew + "]";
   }
 
   /*
@@ -319,6 +330,10 @@ public record LocalS3Config(
 
   static void requireLifecycleInterval(Duration lifecycleInterval) {
     requireThat(lifecycleInterval == null || !lifecycleInterval.isNegative(), "lifecycleInterval must not be negative.");
+  }
+
+  static void requireAllowedClockSkew(Duration allowedClockSkew) {
+    requireThat(allowedClockSkew == null || !allowedClockSkew.isNegative(), "allowedClockSkew must not be negative.");
   }
 
   static void requireIdleConnectionTimeoutSeconds(long idleConnectionTimeoutSeconds) {

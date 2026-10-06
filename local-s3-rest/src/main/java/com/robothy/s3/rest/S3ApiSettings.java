@@ -1,7 +1,9 @@
 package com.robothy.s3.rest;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -16,6 +18,8 @@ public final class S3ApiSettings {
     boolean compositeMultipartEtags = true;
 
     boolean acceptChunkedUploads = true;
+
+    Duration allowedClockSkew = LocalS3Config.DEFAULT_ALLOWED_CLOCK_SKEW;
 
     S3ApiSettings() {
     }
@@ -82,6 +86,24 @@ public final class S3ApiSettings {
      */
     public S3ApiSettings acceptChunkedUploads(boolean acceptChunkedUploads) {
         this.acceptChunkedUploads = acceptChunkedUploads;
+        return this;
+    }
+
+    /**
+     * Set how far the time of a signed request, its {@code x-amz-date} or {@code Date}, may be from the clock of the
+     * service before the request is answered with {@code 403 RequestTimeTooSkewed}. Only applies when
+     * {@linkplain LocalS3Builder#credentials(String, String) credentials} are configured.
+     *
+     * <p>The default value is 15 minutes, like Amazon S3. The clock of a Docker Desktop, WSL2 or Colima VM often drifts
+     * after the host sleeps; a larger value tolerates that, and {@linkplain Duration#ZERO} turns the time check off, so
+     * that only the signature itself is verified and presigned URLs don't expire.
+     *
+     * @param allowedClockSkew the allowed difference, not negative; zero turns the time check off.
+     * @return these settings.
+     */
+    public S3ApiSettings allowedClockSkew(Duration allowedClockSkew) {
+        LocalS3Config.requireAllowedClockSkew(Objects.requireNonNull(allowedClockSkew, "allowedClockSkew"));
+        this.allowedClockSkew = allowedClockSkew;
         return this;
     }
 

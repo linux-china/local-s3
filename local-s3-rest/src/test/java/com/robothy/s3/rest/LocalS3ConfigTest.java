@@ -10,8 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class LocalS3ConfigTest {
@@ -64,6 +66,22 @@ class LocalS3ConfigTest {
   }
 
   @Test
+  void theAllowedClockSkewDefaultsTo15MinutesAndIsReadFromTheEnvironment() {
+    assertEquals(Duration.ofMinutes(15), LocalS3.builder().buildConfig().allowedClockSkew());
+    assertEquals(Duration.ofHours(1), LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_ALLOWED_CLOCK_SKEW, "1h")::get)
+        .buildConfig().allowedClockSkew());
+    assertEquals(Duration.ZERO, LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_ALLOWED_CLOCK_SKEW, "0")::get)
+        .buildConfig().allowedClockSkew());
+    IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> LocalS3.builder()
+        .fromEnvironment(Map.of(LocalS3Environment.LOCAL_S3_ALLOWED_CLOCK_SKEW, "-1h")::get));
+    assertTrue(e.getMessage().contains(LocalS3Environment.LOCAL_S3_ALLOWED_CLOCK_SKEW), e.getMessage());
+    assertThrows(IllegalArgumentException.class,
+        () -> LocalS3.builder().s3Api(s3 -> s3.allowedClockSkew(Duration.ofMinutes(-1))));
+  }
+
+  @Test
   void aConfigIsValidatedWhenItIsCreatedDirectly() {
     LocalS3Config valid = LocalS3.builder().buildConfig();
 
@@ -74,7 +92,7 @@ class LocalS3ConfigTest {
         valid.nettyParentEventGroupThreadNum(), valid.nettyChildEventGroupThreadNum(), valid.s3ExecutorThreadNum(),
         valid.virtualThreads(), "access-key-id", null, valid.maxRequestBodySize(), valid.requestBodyFileThreshold(),
         valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
-        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(), valid.virtualHostDomains(), null, null, false, null, null, null, null));
+        valid.compositeMultipartEtags(), valid.acceptChunkedUploads(), valid.virtualHostDomains(), null, null, false, null, null, null, null, null));
 
     List<String> buckets = new ArrayList<>(List.of("a"));
     LocalS3Config copied = new LocalS3Config(valid.bindHost(), valid.port(), valid.dataPath(), valid.mode(), valid.persistencePolicy(), buckets,
@@ -83,7 +101,7 @@ class LocalS3ConfigTest {
         valid.s3ExecutorThreadNum(), valid.virtualThreads(), null, null, valid.maxRequestBodySize(),
         valid.requestBodyFileThreshold(), valid.maxRequestHeaderSize(), valid.idleConnectionTimeoutSeconds(),
         valid.compositeMultipartEtags(), valid.acceptChunkedUploads(),
-        valid.virtualHostDomains(), null, null, false, null, null, null, null);
+        valid.virtualHostDomains(), null, null, false, null, null, null, null, null);
     buckets.add("b");
     assertEquals(List.of("a"), copied.buckets());
   }
@@ -134,7 +152,8 @@ class LocalS3ConfigTest {
         config.requestBodyFileThreshold(), config.maxRequestHeaderSize(), config.idleConnectionTimeoutSeconds(),
         config.compositeMultipartEtags(), config.acceptChunkedUploads(),
         config.virtualHostDomains(), config.requestRecorder(), config.tls(), config.tlsRequired(),
-        config.icebergCatalog(), config.website(), config.cors(), config.lifecycleInterval());
+        config.icebergCatalog(), config.website(), config.cors(), config.lifecycleInterval(),
+        config.allowedClockSkew());
   }
 
 }

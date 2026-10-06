@@ -117,6 +117,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Added
 
++ **Configurable clock skew**: the 15 minutes that the time of a signed request may be from the clock of the service
+  are configurable, for a Docker Desktop, WSL2 or Colima VM whose clock drifts after the host sleeps:
+  `s3Api(s3 -> s3.allowedClockSkew(Duration.ofHours(1)))`, `LOCAL_S3_ALLOWED_CLOCK_SKEW=1h` (`--allowed-clock-skew`)
+  or `local-s3.allowed-clock-skew=1h`; `0` turns the time check off. `RequestTimeTooSkewed` names the request time
+  and the server time; see [request validation](docs/semantics.md#request-validation).
 + **Uploads of undeclared length**: `PutObject` and `UploadPart` store a body sent with `Transfer-Encoding: chunked`
   and no `Content-Length`, e.g. of `curl -T -` or a streaming `fetch`, which Amazon S3, and LocalS3 before, answer
   with `411 MissingContentLength`. `s3Api(s3 -> s3.acceptChunkedUploads(false))`, `@LocalS3(acceptChunkedUploads =

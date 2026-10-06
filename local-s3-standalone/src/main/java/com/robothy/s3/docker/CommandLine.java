@@ -97,6 +97,9 @@ final class CommandLine {
                     "Require requests signed with this access key. Set together with --secret-key."),
             option("--secret-key", List.of("--secret-access-key"), LocalS3Environment.LOCAL_S3_SECRET_ACCESS_KEY,
                     "<secret>", "The secret access key of --access-key."),
+            option("--allowed-clock-skew", LocalS3Environment.LOCAL_S3_ALLOWED_CLOCK_SKEW, "<duration>",
+                    "With --access-key: how far the time of a signed request may be from the server clock, e.g. 1h"
+                            + " or PT1H. Default 15m; 0 turns the time check off."),
             option("--virtual-host-domains", LocalS3Environment.LOCAL_S3_VIRTUAL_HOST_DOMAINS, "<domains>",
                     "Comma-separated base domains of virtual-hosted-style requests, e.g. s3,s3.local."),
             flag("--virtual-threads", LocalS3Environment.LOCAL_S3_VIRTUAL_THREADS,

@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.security.MessageDigest;
@@ -310,6 +311,34 @@ class AwsSignatureV4VerifierTest {
 
     Map<String, String> skewed = dateSignedHeaders("Fri, 24 May 2013 01:00:00 GMT");
     assertEquals(S3ErrorCode.RequestTimeTooSkewed, verifyHead(skewed, PUT_OBJECT_PATH, HttpMethod.PUT).errorCode());
+  }
+
+  /**
+   * The message of {@code RequestTimeTooSkewed} names both times, and the allowed skew is configurable, or the check
+   * turned off, e.g. for a VM whose clock drifted after the host slept.
+   */
+  @Test
+  void theAllowedClockSkewIsConfigurable() {
+    Clock clock = Clock.fixed(Instant.parse("2013-05-24T01:00:00Z"), ZoneOffset.UTC);
+    Map<String, String> headers = putObjectHeaders();
+
+    VerificationResult skewed = new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY, clock)
+        .verifyHeadForBody(request(headers, null)).result();
+    assertEquals(S3ErrorCode.RequestTimeTooSkewed, skewed.errorCode());
+    assertTrue(skewed.message().contains("RequestTime: 2013-05-24T00:00:00Z"), skewed.message());
+    assertTrue(skewed.message().contains("ServerTime: 2013-05-24T01:00:00Z"), skewed.message());
+
+    assertTrue(verifierWithSkew(clock, Duration.ofHours(2)).verifyHeadForBody(request(headers, null))
+        .result().authenticated());
+    assertEquals(S3ErrorCode.RequestTimeTooSkewed, verifierWithSkew(clock, Duration.ofMinutes(30))
+        .verifyHeadForBody(request(headers, null)).result().errorCode());
+    assertTrue(verifierWithSkew(Clock.fixed(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC), Duration.ZERO)
+        .verifyHeadForBody(request(headers, null)).result().authenticated(), "Zero turns the time check off.");
+  }
+
+  private static AwsSignatureV4Verifier verifierWithSkew(Clock clock, Duration allowedClockSkew) {
+    return new AwsSignatureV4Verifier(ACCESS_KEY_ID, SECRET_ACCESS_KEY,
+        new SessionCredentialIssuer(SECRET_ACCESS_KEY, clock), clock, allowedClockSkew);
   }
 
   /**

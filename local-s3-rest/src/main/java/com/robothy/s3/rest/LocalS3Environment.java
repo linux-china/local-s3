@@ -198,6 +198,14 @@ public final class LocalS3Environment {
   public static final String LOCAL_S3_SECRET_ACCESS_KEY = "LOCAL_S3_SECRET_ACCESS_KEY";
 
   /**
+   * How far the time of a signed request may be from the clock of the service, e.g. {@code 1h} or {@code PT1H};
+   * {@code 0} turns the time check off. The default is 15 minutes.
+   *
+   * @see S3ApiSettings#allowedClockSkew(Duration)
+   */
+  public static final String LOCAL_S3_ALLOWED_CLOCK_SKEW = "LOCAL_S3_ALLOWED_CLOCK_SKEW";
+
+  /**
    * Read the credentials of the service from {@linkplain #AWS_ACCESS_KEY_ID} and {@linkplain #AWS_SECRET_ACCESS_KEY}
    * where {@linkplain #LOCAL_S3_ACCESS_KEY_ID} isn't set: {@code true} turns it on. It is off by default, because
    * those are the variables that the AWS SDKs, the AWS CLI and DuckDB read the <b>client</b> credentials of a
@@ -246,6 +254,9 @@ public final class LocalS3Environment {
         .ifPresent(composite -> builder.s3Api(s3 -> s3.compositeMultipartEtags(Boolean.parseBoolean(composite))));
     variable(variables, LOCAL_S3_ACCEPT_CHUNKED_UPLOADS)
         .ifPresent(accept -> builder.s3Api(s3 -> s3.acceptChunkedUploads(Boolean.parseBoolean(accept))));
+    variable(variables, LOCAL_S3_ALLOWED_CLOCK_SKEW)
+        .ifPresent(skew -> builder.s3Api(s3 -> s3.allowedClockSkew(parseDuration(skew, LOCAL_S3_ALLOWED_CLOCK_SKEW,
+            "e.g. 15m, 1h or PT1H, or 0 to turn the time check off"))));
     variable(variables, LOCAL_S3_VIRTUAL_HOST_DOMAINS)
         .ifPresent(domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.split(","))));
     variable(variables, AWS_BUCKETS).ifPresent(names -> builder.buckets(names.split(",")));
@@ -429,7 +440,11 @@ public final class LocalS3Environment {
    * @throws IllegalArgumentException if the value isn't such a duration.
    */
   public static Duration parseLifecycleInterval(String interval) {
-    String value = interval.trim().toLowerCase(Locale.ROOT);
+    return parseDuration(interval, LOCAL_S3_LIFECYCLE_INTERVAL, "e.g. 30m, 1h, 1d or PT1H, or 0 for none");
+  }
+
+  private static Duration parseDuration(String duration, String variable, String examples) {
+    String value = duration.trim().toLowerCase(Locale.ROOT);
     try {
       Duration parsed;
       if (value.startsWith("p")) {
@@ -452,8 +467,8 @@ public final class LocalS3Environment {
     } catch (RuntimeException _) {
       // Rejected below: a value without a number, a unit, or the form of ISO 8601.
     }
-    throw new IllegalArgumentException("\"" + interval + "\" is not a valid " + LOCAL_S3_LIFECYCLE_INTERVAL
-        + "; use a duration, e.g. 30m, 1h, 1d or PT1H, or 0 for none.");
+    throw new IllegalArgumentException("\"" + duration + "\" is not a valid " + variable + "; use a duration, "
+        + examples + ".");
   }
 
   private static int parseCorsMaxAgeSeconds(String maxAge) {

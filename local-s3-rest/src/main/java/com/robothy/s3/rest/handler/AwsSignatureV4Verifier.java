@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.s3tables.S3TablesArn;
 import com.robothy.s3.rest.handler.iceberg.IcebergCatalogController;
 import com.robothy.s3.rest.handler.s3tables.S3TablesController;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.AmzHeaderValues;
 import com.robothy.s3.rest.netty.ChunkSignatures;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -63,7 +65,6 @@ final class AwsSignatureV4Verifier {
   private static final String TERMINATOR = "aws4_request";
   private static final String UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
   private static final String EMPTY_SHA256 = sha256Hex(new byte[0]);
-  private static final Duration ALLOWED_CLOCK_SKEW = Duration.ofMinutes(15);
   static final int MAX_PRESIGNED_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
   static final DateTimeFormatter AMZ_DATE_FORMAT =
       DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(java.time.ZoneOffset.UTC);
@@ -81,6 +82,7 @@ final class AwsSignatureV4Verifier {
   private final String secretAccessKey;
   private final SessionCredentialIssuer sessionCredentialIssuer;
   private final Clock clock;
+  private final Duration allowedClockSkew;
   private final AtomicBoolean sigV4aWarned = new AtomicBoolean();
   private final AtomicBoolean sigV2Warned = new AtomicBoolean();
 
@@ -92,6 +94,11 @@ final class AwsSignatureV4Verifier {
     this(accessKeyId, secretAccessKey, new SessionCredentialIssuer(secretAccessKey, clock), clock);
   }
 
+  AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey, SessionCredentialIssuer sessionCredentialIssuer,
+                         Clock clock) {
+    this(accessKeyId, secretAccessKey, sessionCredentialIssuer, clock, LocalS3Config.DEFAULT_ALLOWED_CLOCK_SKEW);
+  }
+
   /**
    * Create a verifier.
    *
@@ -99,9 +106,10 @@ final class AwsSignatureV4Verifier {
    * @param secretAccessKey the secret access key of LocalS3.
    * @param sessionCredentialIssuer resolves the temporary credentials that a request is signed with.
    * @param clock the clock that the time of a request is checked with.
+   * @param allowedClockSkew how far the time of a request may be from {@code clock}; zero skips the time check.
    */
   AwsSignatureV4Verifier(String accessKeyId, String secretAccessKey, SessionCredentialIssuer sessionCredentialIssuer,
-                         Clock clock) {
+                         Clock clock, Duration allowedClockSkew) {
     if (accessKeyId == null || accessKeyId.isBlank()) {
       throw new IllegalArgumentException("accessKeyId must not be blank.");
     }
@@ -112,6 +120,7 @@ final class AwsSignatureV4Verifier {
     this.secretAccessKey = secretAccessKey;
     this.sessionCredentialIssuer = Objects.requireNonNull(sessionCredentialIssuer);
     this.clock = Objects.requireNonNull(clock);
+    this.allowedClockSkew = Objects.requireNonNull(allowedClockSkew);
   }
 
   /**
@@ -589,13 +598,18 @@ final class AwsSignatureV4Verifier {
       return malformed("The credential scope date does not match the request time.");
     }
 
+    if (allowedClockSkew.isZero()) {
+      return VerificationResult.success();
+    }
     Instant now = clock.instant();
     if (presignedExpiry == null) {
-      if (Duration.between(requestTime, now).abs().compareTo(ALLOWED_CLOCK_SKEW) > 0) {
+      if (Duration.between(requestTime, now).abs().compareTo(allowedClockSkew) > 0) {
+        // The times are answered, since a VM clock that drifted after the host slept is hard to guess otherwise.
         return VerificationResult.failure(S3ErrorCode.RequestTimeTooSkewed,
-            S3ErrorCode.RequestTimeTooSkewed.description());
+            S3ErrorCode.RequestTimeTooSkewed.description() + " RequestTime: " + requestTime + ", ServerTime: "
+                + now.truncatedTo(ChronoUnit.SECONDS) + ", MaxAllowedSkew: " + allowedClockSkew + ".");
       }
-    } else if (now.isBefore(requestTime.minus(ALLOWED_CLOCK_SKEW))
+    } else if (now.isBefore(requestTime.minus(allowedClockSkew))
         || now.isAfter(requestTime.plus(presignedExpiry))) {
       return VerificationResult.failure(S3ErrorCode.AccessDenied, "Request has expired.");
     }

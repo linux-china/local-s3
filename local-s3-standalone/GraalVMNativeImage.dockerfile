@@ -29,6 +29,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 USER locals3
 
+ENV LOCAL_S3_ALLOWED_CLOCK_SKEW="0"
 ENV LOCAL_S3_HOST="0.0.0.0"
 ENV LOCAL_S3_MODE=PERSISTENCE
 # A container doesn't inherit the shell of a developer, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can't be the

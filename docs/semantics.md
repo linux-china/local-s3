@@ -87,6 +87,12 @@ counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#kno
   (`POST Object`) larger than 2 GiB is rejected with `EntityTooLarge`.
 + If credentials are configured, the signature of a request with a body is verified before the body is received, so
   the body of a request that fails anyway is neither uploaded nor buffered.
++ If credentials are configured, the time of a signed request (`x-amz-date` or `Date`) may differ from the clock of the
+  service by **15 minutes** at most, like Amazon S3 allows; otherwise `403 RequestTimeTooSkewed`, whose message names
+  the request time and the server time. The clock of a Docker Desktop, WSL2 or Colima VM often drifts after the host
+  sleeps, so the tolerance is configurable: `s3Api(s3 -> s3.allowedClockSkew(Duration.ofHours(1)))`,
+  `LOCAL_S3_ALLOWED_CLOCK_SKEW=1h` (`--allowed-clock-skew 1h`) or `local-s3.allowed-clock-skew=1h`. `0` turns the
+  time check off, so that only the signature itself is verified, and a presigned URL doesn't expire either.
 + `PutObject` and `UploadPart` **accept a body sent with `Transfer-Encoding: chunked` and no `Content-Length`**, i.e.
   a stream whose length the client didn't know when it started, e.g. `curl -T -`, a streaming `fetch` of Node.js or
   Deno, or a lightweight S3 library that streams. Amazon S3 answers such a request with `411 MissingContentLength`;

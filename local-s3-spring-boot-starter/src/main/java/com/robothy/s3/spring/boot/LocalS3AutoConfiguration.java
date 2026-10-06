@@ -188,6 +188,7 @@ public class LocalS3AutoConfiguration {
         interval -> builder.lifecycle(lifecycle -> lifecycle.applyEvery(interval)));
     builder.s3Api(s3 -> s3.compositeMultipartEtags(properties.isCompositeMultipartEtags())
         .acceptChunkedUploads(properties.isAcceptChunkedUploads()));
+    applyIfSet(properties.getAllowedClockSkew(), skew -> builder.s3Api(s3 -> s3.allowedClockSkew(skew)));
     applyIfSet(properties.getVirtualHostDomains(),
         domains -> builder.s3Api(s3 -> s3.virtualHostDomains(domains.toArray(String[]::new))));
 

@@ -648,7 +648,7 @@ public class LocalS3Builder {
                 netty.idleConnectionTimeoutSeconds, s3Api.compositeMultipartEtags, s3Api.acceptChunkedUploads,
                 s3Api.virtualHostDomains, netty.requestRecorder, tlsSettings.tls, tlsSettings.required,
                 icebergCatalogSettings.icebergCatalog, websiteSettings.website, corsSettings.cors,
-                lifecycleSettings.interval);
+                lifecycleSettings.interval, s3Api.allowedClockSkew);
     }
 
     /**

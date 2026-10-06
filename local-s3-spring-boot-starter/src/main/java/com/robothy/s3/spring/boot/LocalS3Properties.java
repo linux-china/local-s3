@@ -83,6 +83,12 @@ public class LocalS3Properties {
   private boolean acceptChunkedUploads = true;
 
   /**
+   * With credentials, how far the time of a signed request may be from the clock of the service before it is answered
+   * with 403 RequestTimeTooSkewed, e.g. 1h; 0 turns the time check off.
+   */
+  private Duration allowedClockSkew = LocalS3Config.DEFAULT_ALLOWED_CLOCK_SKEW;
+
+  /**
    * Base domains of virtual-hosted-style requests besides the default ones, e.g. {@code s3.local}.
    */
   private List<String> virtualHostDomains = new ArrayList<>();
@@ -209,6 +215,14 @@ public class LocalS3Properties {
 
   public void setAcceptChunkedUploads(boolean acceptChunkedUploads) {
     this.acceptChunkedUploads = acceptChunkedUploads;
+  }
+
+  public Duration getAllowedClockSkew() {
+    return allowedClockSkew;
+  }
+
+  public void setAllowedClockSkew(Duration allowedClockSkew) {
+    this.allowedClockSkew = allowedClockSkew;
   }
 
   public List<String> getVirtualHostDomains() {
