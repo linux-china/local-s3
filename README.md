@@ -6,9 +6,9 @@
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://hub.docker.com/r/linuxchina/local-s3)
 [![codecov](https://codecov.io/gh/Robothy/local-s3/branch/main/graph/badge.svg?token=9YLOKDU03D)](https://codecov.io/gh/Robothy/local-s3)
 
-LocalS3 is an Amazon S3 mock service for testing and local development. It is based on Netty and has no heavy
-dependencies, so it starts quickly and handles requests efficiently. It also implements the Amazon S3 Vectors and
-Amazon S3 Tables APIs.
+LocalS3 is an Amazon S3 mock service for testing and local development. 
+It is based on Netty and has no heavy dependencies, so it starts quickly and handles requests efficiently. 
+It implements S3 API + Vectors + Tables + Iceberg + STS + KMS + Website + Console features.
 
 Use it to:
 
