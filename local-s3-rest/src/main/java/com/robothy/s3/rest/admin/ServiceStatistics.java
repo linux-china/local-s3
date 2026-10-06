@@ -2,6 +2,7 @@ package com.robothy.s3.rest.admin;
 
 import com.robothy.s3.core.service.manager.ObjectStatistics;
 import com.robothy.s3.core.service.manager.vectors.VectorStatistics;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -11,6 +12,7 @@ import java.util.Map;
  * @param startedAt when the service started, in ISO-8601.
  * @param uptimeSeconds the seconds since the service started.
  * @param inFlightRequests the requests being handled, or their responses written, including the one that asks.
+ * @param features the optional features that the service serves beside its S3 API, e.g. {@code vector}.
  * @param data the Amazon S3 data of the service.
  * @param vectors the S3 Vectors data of the service.
  * @param totalRequests the number of requests recorded since the service started or was reset, besides the health
@@ -22,7 +24,7 @@ import java.util.Map;
  *     {@linkplain RequestStatistics#notImplemented()}.
  */
 public record ServiceStatistics(String mode, String startedAt, long uptimeSeconds, int inFlightRequests,
-                                ObjectStatistics data, VectorStatistics vectors, long totalRequests,
+                                List<String> features, ObjectStatistics data, VectorStatistics vectors, long totalRequests,
                                 Map<String, RequestStatistics.OperationStatistics> operations,
                                 Map<String, Long> notImplemented) {
 }

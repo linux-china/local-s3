@@ -600,7 +600,7 @@ public class LocalS3 implements AutoCloseable {
         Instant since = this.startedAt;
         return new ServiceStatistics(config.mode().name(), since == null ? null : since.toString(),
                 since == null ? 0 : Duration.between(since, Instant.now()).toSeconds(),
-                started == null ? 0 : started.inFlightRequests(),
+                started == null ? 0 : started.inFlightRequests(), config.enabledFeatures(),
                 objects.statistics(), localS3VectorsManager.statistics(),
                 requests == null ? 0 : requests.totalRequests(),
                 requests == null ? Map.of() : requests.operations(),

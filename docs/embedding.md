@@ -397,6 +397,7 @@ which takes the settings of that domain and applies them, so the rarely used kno
 | Static websites | `website(website -> ...)` | `enabled`, `allBuckets`, `indexDocument`, `errorDocument`, `settings(LocalS3Website)` |
 | Default CORS rule | `defaultCors(cors -> ...)` | `allowedOrigins`, `allowedMethods`, `allowedHeaders`, `exposeHeaders`, `maxAgeSeconds`, `settings(LocalS3Cors)`; see [CORS](semantics.md#cors) |
 | Iceberg REST catalog | `icebergCatalog(iceberg -> ...)` | `enabled`, `warehouse`, `createWarehouseBucket`, `credentialVending`, `uniqueTableLocation`, `settings(LocalS3IcebergCatalog)` |
+| Optional features | `features(f -> ...)` | `vector`, `s3Tables`, `kms`, `sts`, `console`, `settings(LocalS3Features)`; see [Turn features off](#turn-features-off) |
 
 ```java
 LocalS3 localS3 = LocalS3.builder()
@@ -423,6 +424,36 @@ the one-liner that turns it on with its defaults: `tls(certPem, keyPem)`, `tls(L
 for one.
 
 A settings object writes through to the builder as it is called, so it must not be kept beyond the call.
+
+### Turn features off
+
+Besides the S3 API, a service serves the S3 Vectors API, the S3 Tables API, an AWS KMS endpoint, an AWS STS endpoint
+and the [console](deployment.md#console). They are all on by default; an application that embeds LocalS3 as a plain
+S3 server can turn off the ones it doesn't need, which leaves their routes out of the router altogether. The
+[Spring Boot starter](#spring-boot) is the exception: it serves S3 and the console alone unless
+`local-s3.features.*` turns the others on. Their requests
+are then answered by the S3 API, like a request to a bucket: `GET /_admin/ui` answers `404 NoSuchBucket`, and a
+`POST /` of STS or KMS answers `400 RequestIsNotMultiPartContent`, as a form upload that isn't one.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .features(f -> f.vector(false).s3Tables(false).kms(false).sts(false).console(false))
+    .build();
+```
+
+| Feature | Builder | Variable | Spring Boot property, `false` by default except `console` |
+|---|---|---|---|
+| S3 Vectors API | `vector(false)` | `LOCAL_S3_FEATURES_VECTOR=false` | `local-s3.features.vector=true` |
+| S3 Tables API, with the Iceberg REST catalog of its table buckets | `s3Tables(false)` | `LOCAL_S3_FEATURES_S3_TABLES=false` | `local-s3.features.s3-tables=true` |
+| AWS KMS | `kms(false)` | `LOCAL_S3_FEATURES_KMS=false` | `local-s3.features.kms=true` |
+| AWS STS | `sts(false)` | `LOCAL_S3_FEATURES_STS=false` | `local-s3.features.sts=true` |
+| Console at `/_admin/ui` | `console(false)` | `LOCAL_S3_FEATURES_CONSOLE=false` | `local-s3.features.console=false` |
+
+Only what is served changes: the data of a feature that is turned off is kept, and served again once it is turned
+back on. Turning STS off removes `AssumeRole` and `GetSessionToken`, while the temporary credentials that the Iceberg
+REST catalog vends and that `CreateSession` issues are still accepted. The Iceberg REST catalog, with its remote
+signing route `/iceberg/v1/aws/s3/sign`, and the static website hosting have switches of their own,
+`icebergCatalog(...)`, off by default, and `website(...)`.
 
 ### Start faster with an AOT cache
 
@@ -587,7 +618,9 @@ with a `local-s3.data-path` for an application that receives large files, see
 [Memory](../local-s3-spring-boot-starter/README.md#memory). `local-s3.website.*` configures
 [static website hosting](semantics.md#static-website-hosting): `enabled`, `all-buckets`, `index-document` and
 `error-document`. `local-s3.cors.*` configures the [default CORS rule](semantics.md#cors) of the buckets without one
-of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-headers` and `max-age`. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
+of their own: `allowed-origins`, `allowed-methods`, `allowed-headers`, `expose-headers` and `max-age`. Of the [optional features](#turn-features-off), the
+starter serves the console alone by default; `local-s3.features.vector`, `s3-tables`, `kms` and `sts` turn the others
+on. See [its README](../local-s3-spring-boot-starter/README.md). The starter is on by default, so declare it for development and tests only (Gradle `developmentOnly` or
 `testAndDevelopmentOnly`, a Maven `test` scope or profile). If the production jar includes it, the application
 starts a local service. Its clients still reach the endpoint the application is configured with, e.g.
 `spring.cloud.aws.s3.endpoint` or `AWS_ENDPOINT_URL`: the starter then defines no clients, and logs a warning; see

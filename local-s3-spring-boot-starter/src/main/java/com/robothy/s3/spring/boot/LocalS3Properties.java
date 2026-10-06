@@ -3,6 +3,7 @@ package com.robothy.s3.spring.boot;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.LocalS3Cors;
+import com.robothy.s3.rest.LocalS3Features;
 import com.robothy.s3.rest.LocalS3IcebergCatalog;
 import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
@@ -113,6 +114,8 @@ public class LocalS3Properties {
 
   private final Website website = new Website();
 
+  private final Features features = new Features();
+
   private final Cors cors = new Cors();
 
   private final Devtools devtools = new Devtools();
@@ -195,6 +198,10 @@ public class LocalS3Properties {
 
   public Website getWebsite() {
     return website;
+  }
+
+  public Features getFeatures() {
+    return features;
   }
 
   public Cors getCors() {
@@ -851,6 +858,83 @@ public class LocalS3Properties {
 
     public void setUniqueTableLocation(boolean uniqueTableLocation) {
       this.uniqueTableLocation = uniqueTableLocation;
+    }
+  }
+
+  /**
+   * The optional capabilities that LocalS3 serves beside its S3 API. An application usually embeds LocalS3 to receive
+   * files, so only the console is on by default, unlike a {@code LocalS3} built without the starter; one that is off
+   * has no routes at all, e.g. {@code local-s3.features.vector=true} turns the S3 Vectors API on.
+   */
+  public static class Features {
+
+    /**
+     * Whether to serve the S3 Vectors API.
+     */
+    private boolean vector = false;
+
+    /**
+     * Whether to serve the S3 Tables API.
+     */
+    private boolean s3Tables = false;
+
+    /**
+     * Whether to serve the AWS KMS endpoint.
+     */
+    private boolean kms = false;
+
+    /**
+     * Whether to serve the AWS STS endpoint.
+     */
+    private boolean sts = false;
+
+    /**
+     * Whether to serve the built-in console under /_admin/ui.
+     */
+    private boolean console = true;
+
+    public boolean isVector() {
+      return vector;
+    }
+
+    public void setVector(boolean vector) {
+      this.vector = vector;
+    }
+
+    public boolean isS3Tables() {
+      return s3Tables;
+    }
+
+    public void setS3Tables(boolean s3Tables) {
+      this.s3Tables = s3Tables;
+    }
+
+    public boolean isKms() {
+      return kms;
+    }
+
+    public void setKms(boolean kms) {
+      this.kms = kms;
+    }
+
+    public boolean isSts() {
+      return sts;
+    }
+
+    public void setSts(boolean sts) {
+      this.sts = sts;
+    }
+
+    public boolean isConsole() {
+      return console;
+    }
+
+    public void setConsole(boolean console) {
+      this.console = console;
+    }
+
+    LocalS3Features toLocalS3Features() {
+      return new LocalS3Features(vector, s3Tables, kms, sts, console);
     }
   }
 

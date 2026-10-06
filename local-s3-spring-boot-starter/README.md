@@ -171,8 +171,9 @@ The starter defines:
   [Initial data](#initial-data);
 + with the AWS SDK, an `S3Client`, an `S3AsyncClient` (with `netty-nio-client`) and an `S3Presigner` that point at the
   service, with path-style requests and the
-  credentials of the service, and, with their modules, an `S3VectorsClient` (`s3vectors`), an `S3TablesClient`
-  (`s3tables`) and an `S3TransferManager` (`s3-transfer-manager` and `netty-nio-client`, over an `S3AsyncClient` of its
+  credentials of the service, and, with their modules, an `S3VectorsClient` (`s3vectors`) and an `S3TablesClient`
+  (`s3tables`), once `local-s3.features.vector` and `local-s3.features.s3-tables` turn their APIs on, see
+  [Features](#features), and an `S3TransferManager` (`s3-transfer-manager` and `netty-nio-client`, over an `S3AsyncClient` of its
   own with multipart transfers enabled). Creating one starts the service, so a bean can use it while it is initialized, even with a
   random port. The starter backs off from a client that the application defines itself, from all of them with
   `local-s3.clients.enabled=false`, and from all of them, with a warning, when the application is configured with
@@ -302,6 +303,23 @@ local-s3:
 A bucket is public once its ACL grants the `AllUsers` group `READ`, e.g. with the `public-read` canned ACL, or its
 bucket policy allows `s3:GetObject` to every principal. `all-buckets: true` serves every bucket without publishing it,
 which is handy while developing a page locally and lets an unsigned request read any object of the service.
+
+## Features
+
+The starter embeds LocalS3 so that the application receives files, so it serves S3 and the console at `/_admin/ui`
+alone by default. The S3 Vectors API, the S3 Tables API, AWS KMS and AWS STS are off: they have no routes at all, and
+the starter defines no `S3VectorsClient` or `S3TablesClient`. Turn on the ones the application needs; see
+[Turn features off](../docs/embedding.md#turn-features-off).
+
+```yaml
+local-s3:
+  features:
+    vector: true       # S3 Vectors API, and the S3VectorsClient bean
+    s3-tables: true    # S3 Tables API, and the S3TablesClient bean
+    kms: true
+    sts: true
+    console: false     # on by default
+```
 
 ## CORS for browsers
 

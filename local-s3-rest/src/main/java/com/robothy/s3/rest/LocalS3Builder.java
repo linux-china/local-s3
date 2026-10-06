@@ -50,7 +50,9 @@ import org.slf4j.LoggerFactory;
  *   <li>{@linkplain #website(Consumer)} — the static website hosting, {@linkplain WebsiteSettings};</li>
  *   <li>{@linkplain #defaultCors(Consumer)} — the CORS rule of the buckets without one of their own,
  *       {@linkplain CorsSettings};</li>
- *   <li>{@linkplain #icebergCatalog(Consumer)} — the Iceberg REST catalog, {@linkplain IcebergCatalogSettings}.</li>
+ *   <li>{@linkplain #icebergCatalog(Consumer)} — the Iceberg REST catalog, {@linkplain IcebergCatalogSettings};</li>
+ *   <li>{@linkplain #features(Consumer)} — the optional capabilities beside the S3 API, e.g. S3 Vectors, S3 Tables,
+ *       KMS, STS and the console, {@linkplain FeatureSettings}.</li>
  * </ul>
  *
  * <p>Each domain also has the one-liner that turns it on, e.g. {@linkplain #tls(LocalS3Tls)},
@@ -97,6 +99,8 @@ public class LocalS3Builder {
     private final CorsSettings corsSettings = new CorsSettings();
 
     private final IcebergCatalogSettings icebergCatalogSettings = new IcebergCatalogSettings();
+
+    private final FeatureSettings featureSettings = new FeatureSettings();
 
     /**
      * Set the host that local-s3 service listens on.
@@ -630,6 +634,24 @@ public class LocalS3Builder {
     }
 
     /**
+     * Turn off optional capabilities that the service serves beside its S3 API, all of which are on by default. A
+     * capability that is off has no routes at all, so an embedded service that only needs S3 exposes nothing else:
+     *
+     * <pre>{@code
+     *  LocalS3.builder()
+     *      .features(f -> f.vector(false).s3Tables(false).kms(false).sts(false).console(false))
+     *      .build();
+     * }</pre>
+     *
+     * @param features configures the capabilities of the service.
+     * @return builder.
+     */
+    public LocalS3Builder features(@NonNull Consumer<FeatureSettings> features) {
+        features.accept(featureSettings);
+        return this;
+    }
+
+    /**
      * Build the configuration of a {@linkplain LocalS3} service from the values set so far. Changing the builder
      * afterwards doesn't change the configuration.
      *
@@ -648,7 +670,7 @@ public class LocalS3Builder {
                 netty.idleConnectionTimeoutSeconds, s3Api.compositeMultipartEtags, s3Api.acceptChunkedUploads,
                 s3Api.virtualHostDomains, netty.requestRecorder, tlsSettings.tls, tlsSettings.required,
                 icebergCatalogSettings.icebergCatalog, websiteSettings.website, corsSettings.cors,
-                lifecycleSettings.interval, s3Api.allowedClockSkew);
+                lifecycleSettings.interval, s3Api.allowedClockSkew, featureSettings.features);
     }
 
     /**

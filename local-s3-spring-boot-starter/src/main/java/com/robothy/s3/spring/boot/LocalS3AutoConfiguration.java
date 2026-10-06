@@ -202,6 +202,8 @@ public class LocalS3AutoConfiguration {
     builder.website(settings -> settings.settings(new LocalS3Website(website.isEnabled(), website.isAllBuckets(),
         website.getIndexDocument(), website.getErrorDocument())));
 
+    builder.features(features -> features.settings(properties.getFeatures().toLocalS3Features()));
+
     LocalS3Cors cors = properties.getCors().toLocalS3Cors();
     if (cors.enabled()) {
       builder.defaultCors(cors);
@@ -324,6 +326,7 @@ public class LocalS3AutoConfiguration {
     // defines, from the S3VectorsClientBuilder bean, which it backs off from, so its client points here too.
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(S3VectorsClient.class)
+    @ConditionalOnProperty(name = "local-s3.features.vector", havingValue = "true")
     static class VectorsClientConfiguration {
 
       @Bean
@@ -340,6 +343,7 @@ public class LocalS3AutoConfiguration {
     // Not path-style: the s3tables service of its credential scope tells its requests from the S3 ones.
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(S3TablesClient.class)
+    @ConditionalOnProperty(name = "local-s3.features.s3-tables", havingValue = "true")
     static class TablesClientConfiguration {
 
       @Bean

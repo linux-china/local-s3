@@ -30,6 +30,7 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3Features;
 import com.robothy.s3.rest.LocalS3Website;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -148,20 +149,28 @@ public class LocalS3RouterFactory {
     AwsSignatureV4Verifier signatureVerifier = accessKeyId == null ? null
         : new AwsSignatureV4Verifier(accessKeyId, secretAccessKey, sessionCredentialIssuer, Clock.systemUTC(),
             allowedClockSkew);
+    // A capability that is turned off isn't registered at all, so its requests fall through to the S3 routes.
+    LocalS3Features features = serviceFactory.containsInstance(LocalS3Config.class)
+        ? serviceFactory.getInstance(LocalS3Config.class).features()
+        : LocalS3Features.all();
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
-        .sts(new StsController(sessionCredentialIssuer))
         .sessionPolicies(sessionPolicyAuthorizer)
-        .kms(new KmsController())
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
         // routes: without one, /iceberg/... stays an ordinary bucket path.
-        .iceberg(icebergController(serviceFactory, sessionCredentialIssuer))
+        .iceberg(icebergController(serviceFactory, sessionCredentialIssuer, features.s3Tables()))
         // Told apart from an S3 request by the service in its credential scope rather than by its path, which it
         // shares with the S3 routes; see S3TablesController.
-        .s3Tables(s3TablesController(serviceFactory))
+        .s3Tables(features.s3Tables() ? s3TablesController(serviceFactory) : null)
         .website(websiteController(serviceFactory))
         // The console reads the same services the S3 operations do; a service without them, e.g. a router of
         // handlers alone, serves none.
-        .console(consoleController(serviceFactory, accessKeyId, secretAccessKey));
+        .console(features.console() ? consoleController(serviceFactory, accessKeyId, secretAccessKey) : null);
+    if (features.sts()) {
+      router.sts(new StsController(sessionCredentialIssuer));
+    }
+    if (features.kms()) {
+      router.kms(new KmsController());
+    }
 
     Routes routes = new Routes(router);
     SharedControllers shared = SharedControllers.create(serviceFactory);
@@ -170,7 +179,9 @@ public class LocalS3RouterFactory {
     bucketWriteRoutes(routes, serviceFactory, shared, signatureVerifier, sessionPolicyAuthorizer);
     objectReadRoutes(routes, serviceFactory, shared);
     objectWriteRoutes(routes, serviceFactory, shared);
-    vectorRoutes(routes, serviceFactory);
+    if (features.vector()) {
+      vectorRoutes(routes, serviceFactory);
+    }
     for (NotImplementedOperation operation : NOT_IMPLEMENTED_OPERATIONS) {
       routes.add(operation.name(), operation.method(), operation.path(), operation.params(), null,
           new NotImplementedOperationController(serviceFactory, operation.name()));
@@ -192,17 +203,19 @@ public class LocalS3RouterFactory {
    * @param serviceFactory the services of the service.
    * @param sessionCredentialIssuer the issuer of the STS endpoint, whose temporary credentials the credentials route of
    *     a table answers, so that they are verified like the ones of {@code AssumeRole}.
+   * @param s3TablesEnabled whether the catalog also serves the table buckets of the S3 Tables API.
    * @return the controller; {@code null} if the service serves no catalog.
    */
   private static IcebergCatalogController icebergController(ServiceFactory serviceFactory,
-                                                            SessionCredentialIssuer sessionCredentialIssuer) {
+                                                            SessionCredentialIssuer sessionCredentialIssuer,
+                                                            boolean s3TablesEnabled) {
     if (!serviceFactory.containsInstance(IcebergCatalogService.class)) {
       return null;
     }
     IcebergClientConfig clientConfig = serviceFactory.containsInstance(IcebergClientConfig.class)
         ? serviceFactory.getInstance(IcebergClientConfig.class)
         : new IcebergClientConfig(IcebergClientConfig.DEFAULT_REGION, null, null, false, false);
-    S3TablesService s3Tables = serviceFactory.containsInstance(S3TablesService.class)
+    S3TablesService s3Tables = s3TablesEnabled && serviceFactory.containsInstance(S3TablesService.class)
         ? serviceFactory.getInstance(S3TablesService.class) : null;
     return new IcebergCatalogController(serviceFactory.getInstance(IcebergCatalogService.class), clientConfig,
         s3Tables, () -> {

@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.storage.PersistencePolicy;
 import com.robothy.s3.rest.LocalS3;
 import com.robothy.s3.rest.LocalS3Config;
+import com.robothy.s3.rest.LocalS3Features;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import io.awspring.cloud.autoconfigure.core.AwsAutoConfiguration;
 import io.awspring.cloud.autoconfigure.core.CredentialsProviderAutoConfiguration;
@@ -68,6 +69,12 @@ class LocalS3AutoConfigurationTest {
           LocalS3VectorsClientAutoConfiguration.class))
       .withPropertyValues("local-s3.port=-1");
 
+  /**
+   * The features that the starter leaves off by default.
+   */
+  private static final String[] ALL_FEATURES = {"local-s3.features.vector=true", "local-s3.features.s3-tables=true",
+      "local-s3.features.kms=true", "local-s3.features.sts=true"};
+
   @Test
   void embedsAServiceWithClientsThatPointAtIt() {
     runner.withPropertyValues("local-s3.buckets=first,second").run(context -> {
@@ -95,7 +102,7 @@ class LocalS3AutoConfigurationTest {
   @Test
   @ExtendWith(OutputCaptureExtension.class)
   void logsOneSummaryThatNamesTheClients(CapturedOutput output) {
-    runner.run(context -> assertTrue(context.getBean(LocalS3.class).isRunning()));
+    runner.withPropertyValues(ALL_FEATURES).run(context -> assertTrue(context.getBean(LocalS3.class).isRunning()));
     String out = output.getOut();
     assertEquals(1, out.split("Embedded LocalS3: ", -1).length - 1, out);
     // In the order the clients are created.
@@ -108,6 +115,28 @@ class LocalS3AutoConfigurationTest {
     }
     assertFalse(out.contains("points at the embedded LocalS3"), out);
     assertFalse(out.contains("WARN"), out);
+  }
+
+  @Test
+  void servesS3AndTheConsoleAloneByDefault() {
+    runner.run(context -> {
+      assertEquals(new LocalS3Features(false, false, false, false, true),
+          context.getBean(LocalS3.class).getConfig().features());
+      assertFalse(context.containsBean("s3VectorsClient"));
+      assertTrue(context.getBeansOfType(S3VectorsClient.class).isEmpty());
+      assertTrue(context.getBeansOfType(S3TablesClient.class).isEmpty());
+      assertFalse(context.getBeansOfType(S3Client.class).isEmpty(), "S3 itself is always served.");
+    });
+  }
+
+  @Test
+  void turnsFeaturesOn() {
+    runner.withPropertyValues(ALL_FEATURES).withPropertyValues("local-s3.features.console=false").run(context -> {
+      assertEquals(new LocalS3Features(true, true, true, true, false),
+          context.getBean(LocalS3.class).getConfig().features());
+      assertEquals(1, context.getBeansOfType(S3VectorsClient.class).size());
+      assertEquals(1, context.getBeansOfType(S3TablesClient.class).size());
+    });
   }
 
   @Test
@@ -224,7 +253,7 @@ class LocalS3AutoConfigurationTest {
 
   @Test
   void definesTheClientsOfTheOtherApisThatPointAtTheService(@TempDir Path directory) throws Exception {
-    runner.withPropertyValues("local-s3.buckets=transfers").run(context -> {
+    runner.withPropertyValues(ALL_FEATURES).withPropertyValues("local-s3.buckets=transfers").run(context -> {
       S3VectorsClient vectors = context.getBean(S3VectorsClient.class);
       vectors.createVectorBucket(request -> request.vectorBucketName("vectors"));
       assertEquals(List.of("vectors"), vectors.listVectorBuckets(request -> { }).vectorBuckets().stream()
@@ -462,6 +491,7 @@ class LocalS3AutoConfigurationTest {
             CredentialsProviderAutoConfiguration.class, RegionProviderAutoConfiguration.class,
             LocalS3AutoConfiguration.class, LocalS3VectorsClientAutoConfiguration.class))
         .withPropertyValues("local-s3.port=-1", "spring.cloud.aws.region.static=us-east-1")
+        .withPropertyValues(ALL_FEATURES)
         .run(context -> {
           assertNull(context.getStartupFailure());
           assertEquals(1, context.getBeansOfType(S3VectorsClient.class).size());

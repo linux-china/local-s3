@@ -114,6 +114,41 @@ public final class LocalS3Environment {
   public static final String LOCAL_S3_ICEBERG_WAREHOUSE = "LOCAL_S3_ICEBERG_WAREHOUSE";
 
   /**
+   * Serve the S3 Vectors API: {@code false} leaves its routes out. It is on by default.
+   *
+   * @see FeatureSettings#vector(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_VECTOR = "LOCAL_S3_FEATURES_VECTOR";
+
+  /**
+   * Serve the S3 Tables API: {@code false} leaves its routes out. It is on by default.
+   *
+   * @see FeatureSettings#s3Tables(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_S3_TABLES = "LOCAL_S3_FEATURES_S3_TABLES";
+
+  /**
+   * Serve the AWS KMS endpoint: {@code false} leaves its routes out. It is on by default.
+   *
+   * @see FeatureSettings#kms(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_KMS = "LOCAL_S3_FEATURES_KMS";
+
+  /**
+   * Serve the AWS STS endpoint: {@code false} leaves its routes out. It is on by default.
+   *
+   * @see FeatureSettings#sts(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_STS = "LOCAL_S3_FEATURES_STS";
+
+  /**
+   * Serve the built-in console: {@code false} leaves its routes out. It is on by default.
+   *
+   * @see FeatureSettings#console(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_CONSOLE = "LOCAL_S3_FEATURES_CONSOLE";
+
+  /**
    * Serve the buckets as static websites to the requests that carry no credentials: {@code false} turns it off. It is
    * on by default, and only a public bucket answers such a request.
    *
@@ -265,6 +300,16 @@ public final class LocalS3Environment {
         .ifPresent(enabled -> builder.icebergCatalog(Boolean.parseBoolean(enabled)));
     variable(variables, LOCAL_S3_ICEBERG_WAREHOUSE)
         .ifPresent(warehouse -> builder.icebergCatalog(iceberg -> iceberg.warehouse(warehouse)));
+    variable(variables, LOCAL_S3_FEATURES_VECTOR)
+        .ifPresent(enabled -> builder.features(features -> features.vector(Boolean.parseBoolean(enabled))));
+    variable(variables, LOCAL_S3_FEATURES_S3_TABLES)
+        .ifPresent(enabled -> builder.features(features -> features.s3Tables(Boolean.parseBoolean(enabled))));
+    variable(variables, LOCAL_S3_FEATURES_KMS)
+        .ifPresent(enabled -> builder.features(features -> features.kms(Boolean.parseBoolean(enabled))));
+    variable(variables, LOCAL_S3_FEATURES_STS)
+        .ifPresent(enabled -> builder.features(features -> features.sts(Boolean.parseBoolean(enabled))));
+    variable(variables, LOCAL_S3_FEATURES_CONSOLE)
+        .ifPresent(enabled -> builder.features(features -> features.console(Boolean.parseBoolean(enabled))));
     variable(variables, LOCAL_S3_WEBSITE).ifPresent(enabled -> builder.website(Boolean.parseBoolean(enabled)));
     variable(variables, LOCAL_S3_WEBSITE_ALL_BUCKETS)
         .ifPresent(allBuckets -> builder.website(website -> website.allBuckets(Boolean.parseBoolean(allBuckets))));

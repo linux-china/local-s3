@@ -8,6 +8,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -71,6 +72,8 @@ import org.jspecify.annotations.Nullable;
  *     it has started; {@code null} or zero for never, which is the default, and is {@code null} then.
  * @param allowedClockSkew how far the time of a signed request may be from the clock of the service; zero turns the
  *     time check off. {@code null} is {@linkplain #DEFAULT_ALLOWED_CLOCK_SKEW 15 minutes}, which is the default.
+ * @param features the optional capabilities that the service serves beside its S3 API; {@code null} is
+ *     {@linkplain LocalS3Features#all()}, which is the default.
  */
 public record LocalS3Config(
     String bindHost,
@@ -107,7 +110,8 @@ public record LocalS3Config(
     LocalS3Website website,
     LocalS3Cors cors,
     @Nullable Duration lifecycleInterval,
-    @Nullable Duration allowedClockSkew) {
+    @Nullable Duration allowedClockSkew,
+    @Nullable LocalS3Features features) {
 
   /**
    * Default and largest max request body size(5G), the largest object that Amazon S3 accepts in a single upload. A body
@@ -202,6 +206,7 @@ public record LocalS3Config(
     lifecycleInterval = lifecycleInterval == null || lifecycleInterval.isZero() ? null : lifecycleInterval;
     requireAllowedClockSkew(allowedClockSkew);
     allowedClockSkew = allowedClockSkew == null ? DEFAULT_ALLOWED_CLOCK_SKEW : allowedClockSkew;
+    features = features == null ? LocalS3Features.all() : features;
   }
 
   /**
@@ -275,6 +280,38 @@ public record LocalS3Config(
   }
 
   /**
+   * The optional features that the service serves beside its S3 API, as {@code GET /_admin/stats} names them; see
+   * {@code docs/deployment.md#admin-endpoints}.
+   *
+   * @return the names of the features that are on, in a fixed order.
+   */
+  public List<String> enabledFeatures() {
+    List<String> enabled = new ArrayList<>();
+    if (features.vector()) {
+      enabled.add("vector");
+    }
+    if (features.s3Tables()) {
+      enabled.add("s3Tables");
+    }
+    if (features.kms()) {
+      enabled.add("kms");
+    }
+    if (features.sts()) {
+      enabled.add("sts");
+    }
+    if (features.console()) {
+      enabled.add("console");
+    }
+    if (icebergCatalogEnabled()) {
+      enabled.add("icebergCatalog");
+    }
+    if (websiteEnabled()) {
+      enabled.add("website");
+    }
+    return List.copyOf(enabled);
+  }
+
+  /**
    * Whether the service answers plain HTTP requests: always without TLS, and with TLS unless
    * {@linkplain #tlsRequired()} is set, in which case the port serves HTTPS alone.
    *
@@ -304,7 +341,7 @@ public record LocalS3Config(
         + ", virtualHostDomains=" + virtualHostDomains
         + ", tls=" + tlsEnabled() + ", tlsRequired=" + tlsRequired
         + ", icebergCatalog=" + icebergCatalog + ", website=" + website + ", cors=" + cors
-        + ", lifecycleInterval=" + lifecycleInterval + ", allowedClockSkew=" + allowedClockSkew + "]";
+        + ", lifecycleInterval=" + lifecycleInterval + ", allowedClockSkew=" + allowedClockSkew + ", features=" + features + "]";
   }
 
   /*
