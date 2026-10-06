@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.model.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.robothy.s3.datatypes.response.S3Object;
 import lombok.Builder;
 
@@ -12,6 +13,8 @@ import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JacksonXmlRootElement(localName = "ListBucketResult")
+@JsonPropertyOrder({"Name", "Prefix", "StartAfter", "ContinuationToken", "NextContinuationToken", "KeyCount",
+    "MaxKeys", "Delimiter", "EncodingType", "IsTruncated", "Contents", "CommonPrefixes"})
 public class ListBucketV2Result {
 
     @JacksonXmlProperty(localName = "IsTruncated")

@@ -2,6 +2,7 @@ package com.robothy.s3.datatypes.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.robothy.s3.datatypes.Owner;
 import com.robothy.s3.datatypes.converter.AmazonInstantConverter;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
@@ -21,6 +22,8 @@ import tools.jackson.databind.annotation.JsonSerialize;
  *                      a restored copy that hasn't expired.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonPropertyOrder({"Key", "LastModified", "ETag", "ChecksumAlgorithm", "ChecksumType", "Size", "Owner",
+    "StorageClass", "RestoreStatus"})
 public record S3Object(
     @JsonProperty("ChecksumAlgorithm") CheckSumAlgorithm checkSumAlgorithm,
     @JsonProperty("ChecksumType") ChecksumType checksumType,

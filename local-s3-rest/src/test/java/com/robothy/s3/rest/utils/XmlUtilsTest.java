@@ -2,12 +2,14 @@ package com.robothy.s3.rest.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.Grant;
 import com.robothy.s3.datatypes.Grantee;
-import com.robothy.s3.rest.model.response.ListBucketResult;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import tools.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 /**
  * The mapper of the XML documents of the service is configured like Jackson 2 configured a mapper, so that the
@@ -17,17 +19,15 @@ class XmlUtilsTest {
 
   @Test
   void writesTheElementsInTheOrderOfTheFieldsOfTheModel() {
-    String xml = XmlUtils.toXml(ListBucketResult.builder()
-        .isTruncated(false)
-        .name("my-bucket")
-        .prefix("a/")
-        .maxKeys(1000)
-        .contents(List.of())
-        .build());
+    String xml = XmlUtils.toXml(new FieldOrder("z", "m", "a"));
 
-    assertTrue(xml.indexOf("<IsTruncated>") < xml.indexOf("<Name>"), xml);
-    assertTrue(xml.indexOf("<Name>") < xml.indexOf("<Prefix>"), xml);
-    assertTrue(xml.indexOf("<Prefix>") < xml.indexOf("<MaxKeys>"), xml);
+    assertTrue(xml.indexOf("<Zeta>") < xml.indexOf("<Mu>"), xml);
+    assertTrue(xml.indexOf("<Mu>") < xml.indexOf("<Alpha>"), xml);
+  }
+
+  @JacksonXmlRootElement(localName = "FieldOrder")
+  record FieldOrder(@JsonProperty("Zeta") String zeta, @JsonProperty("Mu") String mu,
+                    @JsonProperty("Alpha") String alpha) {
   }
 
   /**
