@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/Robothy/local-s3/actions/workflows/build.yml/badge.svg)](https://github.com/Robothy/local-s3/actions/workflows/build.yml)
 [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](https://github.com/robothy/local-s3/blob/main/LICENSE)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.robothy/local-s3-rest.svg)](https://search.maven.org/artifact/io.github.robothy/local-s3-rest/)
+[![Maven Central](https://img.shields.io/maven-central/v/org.mvnsearch/local-s3-rest.svg)](https://search.maven.org/artifact/org.mvnsearch/local-s3-rest/)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://hub.docker.com/r/linuxchina/local-s3)
 [![codecov](https://codecov.io/gh/Robothy/local-s3/branch/main/graph/badge.svg?token=9YLOKDU03D)](https://codecov.io/gh/Robothy/local-s3)
 
@@ -35,7 +35,7 @@ AWS_ACCESS_KEY_ID=any AWS_SECRET_ACCESS_KEY=any AWS_REGION=us-east-1 \
 
 ```xml
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-jupiter</artifactId>
     <version>last_version</version>
     <scope>test</scope>
@@ -60,7 +60,7 @@ With Spring Cloud AWS (`spring-cloud-aws-starter-s3`: 4.x for Spring Boot 4, 3.4
 
 ```xml
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-testcontainers</artifactId>
     <version>last_version</version>
     <scope>test</scope>

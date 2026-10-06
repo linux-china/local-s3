@@ -14,7 +14,7 @@ Testcontainers. All artifacts are published to Maven Central under the group `io
 
 ```xml
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-rest</artifactId>
     <version>last_version</version>
 </dependency>
@@ -687,7 +687,7 @@ which reads back the data directory of a `PERSISTENCE` service after a restart.
 
 ```xml
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-jupiter</artifactId>
     <version>last_version</version>
     <scope>test</scope>
@@ -825,7 +825,7 @@ and method rather than per thread, so they work the same when tests run in paral
 
 ```xml
 <dependency>
-    <groupId>io.github.robothy</groupId>
+    <groupId>org.mvnsearch</groupId>
     <artifactId>local-s3-testcontainers</artifactId>
     <version>last_version</version>
     <scope>test</scope>
@@ -991,7 +991,7 @@ services:
 dependencies {
     implementation("io.awspring.cloud:spring-cloud-aws-starter-s3")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
-    developmentOnly("io.github.robothy:local-s3-testcontainers:<version>")
+    developmentOnly("org.mvnsearch:local-s3-testcontainers:<version>")
 }
 ```
 

@@ -16,7 +16,7 @@ repositories {
 
 }
 
-project.group = 'io.github.robothy'
+project.group = 'org.mvnsearch'
 
 dependencies {
     implementation(libs.slf4jApi)

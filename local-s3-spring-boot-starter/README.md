@@ -48,7 +48,7 @@ still puts optional dependencies into the fat jar:
         <id>local-s3</id>
         <dependencies>
             <dependency>
-                <groupId>io.github.robothy</groupId>
+                <groupId>org.mvnsearch.robothy</groupId>
                 <artifactId>local-s3-spring-boot-starter</artifactId>
                 <version>last_version</version>
             </dependency>

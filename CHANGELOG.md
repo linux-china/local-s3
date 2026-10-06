@@ -3,7 +3,7 @@
 All notable changes to LocalS3 are documented in this file. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-Every module is released with the same version, to Maven Central under `io.github.robothy`, and as the Docker image
+Every module is released with the same version, to Maven Central under `org.mvnsearch`, and as the Docker image
 `linuxchina/local-s3`.
 
 ## [2.5.0] - Unreleased
