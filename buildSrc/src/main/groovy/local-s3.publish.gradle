@@ -22,7 +22,7 @@ publishing {
             pom {
                 name = "LocalS3"
                 description = 'An AmazonS3 service implementation.'
-                url = 'https://github.com/Robothy/local-s3'
+                url = 'https://github.com/linux-china/local-s3'
 
                 licenses {
                     license {
@@ -36,6 +36,11 @@ publishing {
                         id = 'robothy'
                         name = "Fuxiang Luo"
                         email = "robothyluo@gmail.com"
+                    }
+                    developer {
+                        id = 'linux-china'
+                        name = "linux_china"
+                        email = "libing.chen@gmail.com"
                     }
                 }
             }
