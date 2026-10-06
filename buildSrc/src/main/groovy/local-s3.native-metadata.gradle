@@ -49,9 +49,11 @@ def generateNativeImageMetadata = tasks.register('generateNativeImageMetadata') 
             }
         }
         def metadata = handWritten.exists() ? new groovy.json.JsonSlurper().parse(handWritten) as Map : [:]
+        // The array class of each one too: Jackson resolves the type of a List<T> through T[], which it instantiates
+        // reflectively, e.g. the List<ConsoleBucket> of the console.
         def reflection = (metadata.reflection ?: []) + types.collect { type ->
             [type: type, allDeclaredConstructors: true, allDeclaredMethods: true, allDeclaredFields: true]
-        }
+        } + types.collect { type -> [type: type + '[]'] }
         metadata.reflection = reflection
         def file = outputFile.get().asFile
         file.parentFile.mkdirs()

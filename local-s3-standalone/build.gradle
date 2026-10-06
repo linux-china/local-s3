@@ -14,6 +14,7 @@ dependencies {
     testImplementation(libs.testContainersJunit)
     testImplementation(libs.awssdkS3)
     testImplementation(libs.awssdkS3vectors)
+    testImplementation(libs.awssdkS3tables)
     // @ServiceConnection of LocalS3Container, run against the clients of Spring Cloud AWS.
     testImplementation(libs.springBootTestcontainers)
     testImplementation(libs.springBootTest)
