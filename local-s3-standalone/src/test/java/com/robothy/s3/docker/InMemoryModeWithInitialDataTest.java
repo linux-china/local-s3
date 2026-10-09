@@ -82,9 +82,9 @@ public class InMemoryModeWithInitialDataTest {
       var objectResponse = s3.getObjectAsBytes(builder -> builder.bucket("init-bucket").key("a.txt"));
       assertEquals("Hello", objectResponse.asUtf8String());
 
-      assertDoesNotThrow(() -> s3.createBucket(builder -> builder.bucket("my-bucket")));
+      assertDoesNotThrow(() -> s3.createBucket(builder -> builder.bucket("test-bucket")));
       assertDoesNotThrow(
-          () -> s3.putObject(builder -> builder.bucket("my-bucket").key("b.txt"), RequestBody.fromString("Robothy")));
+          () -> s3.putObject(builder -> builder.bucket("test-bucket").key("b.txt"), RequestBody.fromString("Robothy")));
     }
   }
 
@@ -95,7 +95,7 @@ public class InMemoryModeWithInitialDataTest {
     try (S3Client s3 = createS3Client()) {
       assertDoesNotThrow(() -> s3.headBucket(builder -> builder.bucket("init-bucket"))); // bucket from initial data.
       assertThrows(NoSuchBucketException.class,
-          () -> s3.headBucket(builder -> builder.bucket("my-bucket"))); // bucket created in the previous test.
+          () -> s3.headBucket(builder -> builder.bucket("test-bucket"))); // bucket created in the previous test.
       var objectResponse = s3.getObjectAsBytes(builder -> builder.bucket("init-bucket").key("a.txt"));
       assertEquals("Hello", objectResponse.asUtf8String());
     }

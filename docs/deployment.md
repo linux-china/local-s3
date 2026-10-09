@@ -21,8 +21,8 @@ GraalVM native image.
 docker run --name s3 -d -v "$PWD/local-s3:/data" -p 29090:29090 linuxchina/local-s3
 ```
 
-The image sets `LOCAL_S3_HOST=0.0.0.0` and `LOCAL_S3_MODE=PERSISTENCE`, so it listens on every interface and
-persists to the `/data` volume. It declares a Docker `HEALTHCHECK` that requests
+The image sets `LOCAL_S3_HOST=0.0.0.0`, `LOCAL_S3_MODE=PERSISTENCE` and `AWS_BUCKETS=my-bucket`, so it listens on
+every interface, persists to the `/data` volume, and has the bucket `my-bucket` ready on startup. It declares a Docker `HEALTHCHECK` that requests
 the [health check](#health-check).
 
 It runs as the unprivileged user `locals3`, so a bind-mounted data directory must be writable by that user. To run as
@@ -200,7 +200,7 @@ logging variables, which the logging configuration of the jar and the image read
 | `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES` | `50000` | `PERSISTENCE` mode: the number of objects whose metadata is kept in heap; see [Opening a large data path](#opening-a-large-data-path). |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES` | `1024` | `IN_MEMORY` mode with initial data: the max number of data paths whose loaded data the JVM caches. |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_BYTES` | a quarter of the max heap | `IN_MEMORY` mode with initial data: the max heap that the copies of the objects read from the data paths take, e.g. `512m`. The least recently used data paths are dropped to make room, and an object that still doesn't fit is read from the disk instead. Also settable with `LocalS3.configureInitialDataCache(maxEntries, maxBytes)`. |
-| `AWS_BUCKETS` | | Comma-separated buckets to create on startup. A name with the suffix `:versioned`, e.g. `plain,audit:versioned`, is created with versioning enabled. |
+| `AWS_BUCKETS` | none; `my-bucket` in the image | Comma-separated buckets to create on startup. A name with the suffix `:versioned`, e.g. `plain,audit:versioned`, is created with versioning enabled. |
 | `LOCAL_S3_ACCESS_KEY_ID`, `LOCAL_S3_SECRET_ACCESS_KEY` | | Require requests signed with this key pair. Unset, every request is answered, whoever sends it; a service that also binds an address other than a loopback one warns about that when it starts, see [Docker](#docker). |
 | `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV` | `false`; `true` in the image | Read the key pair from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where `LOCAL_S3_ACCESS_KEY_ID` isn't set. Off outside the image, because those are the client credentials that a developer's shell exports; see [Executable jar](#executable-jar). |
 | `LOCAL_S3_ALLOWED_CLOCK_SKEW` | `15m` | With credentials: how far the time of a signed request may be from the clock of the service, e.g. `1h` or `PT1H`, before it is answered with `403 RequestTimeTooSkewed`. `0` turns the time check off, e.g. for a VM whose clock drifts after the host sleeps. See [request validation](semantics.md#request-validation). |

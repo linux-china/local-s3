@@ -52,8 +52,8 @@ public class PersistenceModeTest {
   public void create() {
     assertTrue(container.isRunning());
     try (S3Client s3 = createS3Client()) {
-      String bucket = "my-bucket";
-      assertDoesNotThrow(() -> s3.createBucket(builder -> builder.bucket("my-bucket")));
+      String bucket = "test-bucket";
+      assertDoesNotThrow(() -> s3.createBucket(builder -> builder.bucket("test-bucket")));
       assertDoesNotThrow(
           () -> s3.putObject(builder -> builder.bucket(bucket).key("a.txt"), RequestBody.fromString("Hello World")));
     }
@@ -64,7 +64,7 @@ public class PersistenceModeTest {
   public void read() throws IOException {
     assertTrue(container.isRunning());
     try (S3Client s3 = createS3Client()) {
-      String bucket = "my-bucket";
+      String bucket = "test-bucket";
       var objectResponse = s3.getObjectAsBytes(builder -> builder.bucket(bucket).key("a.txt"));
       assertEquals("Hello World", objectResponse.asUtf8String());
     }

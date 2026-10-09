@@ -44,7 +44,8 @@ class DefaultRunTest {
         .credentialsProvider(AnonymousCredentialsProvider.create())
         .build()) {
 
-      s3.createBucket(request -> request.bucket("my-bucket"));
+      // The image creates my-bucket by default.
+      s3.headBucket(request -> request.bucket("my-bucket"));
       s3.putObject(request -> request.bucket("my-bucket").key("a.txt"), RequestBody.fromString("Hello World"));
 
       assertEquals("Hello World",

@@ -36,8 +36,8 @@ public class InMemoryModeTest {
         .region(Region.AP_EAST_1)
         .build();
 
-    assertDoesNotThrow(() -> s3Client.createBucket(b -> b.bucket("my-bucket")));
-    assertDoesNotThrow(() -> s3Client.headBucket(b -> b.bucket("my-bucket")));
+    assertDoesNotThrow(() -> s3Client.createBucket(b -> b.bucket("test-bucket")));
+    assertDoesNotThrow(() -> s3Client.headBucket(b -> b.bucket("test-bucket")));
     s3Client.close();
   }
 
