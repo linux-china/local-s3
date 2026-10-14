@@ -1,7 +1,7 @@
 # Data tools
 
 How to point DuckDB, DuckLake, Apache Iceberg, Delta Lake, Hadoop S3A, [Apache Paimon](#apache-paimon),
-[Apache Hudi](#apache-hudi) and the [Python](#python) data tools at LocalS3,
+[Apache Hudi](#apache-hudi), the [Python](#python) data tools and [rclone](#rclone) at LocalS3,
 e.g. a LocalS3 started with `docker run -p 29090:29090 linuxchina/local-s3` or embedded in an IDE. They run as
 end-to-end tests in [`local-s3-integration-test`](../local-s3-integration-test/README.md), and the Python ones in
 [`ceph-s3-tests/data-tools`](../ceph-s3-tests/data-tools/README.md).
@@ -945,3 +945,59 @@ pd.read_parquet("s3://demo1/dataset", filters=[("part", "==", "p1")], storage_op
 botocore addresses buckets path-style against an `endpoint_url`, so nothing more is needed. `test_s3fs_pandas.py` covers Parquet and CSV, partitioned datasets with a filter on the partitions,
 multipart uploads, range reads of row groups, `copy`, `mv`, `find`, `glob` and recursive deletes (`DeleteObjects`),
 with the checksums that botocore adds to uploads by default.
+
+## rclone
+
+[rclone](https://rclone.org/s3/) reaches LocalS3 as an S3 remote of the provider `Other`. Create the remote once:
+
+```shell
+rclone config create local-s3 s3 provider=Other endpoint=http://127.0.0.1:29090 \
+    access_key_id=admin secret_access_key=admin region=us-east-1 force_path_style=true
+```
+
+which writes this section to `rclone config file`, e.g. `~/.config/rclone/rclone.conf`, where it can be written by hand
+instead:
+
+```ini
+[local-s3]
+type = s3
+provider = Other
+endpoint = http://127.0.0.1:29090
+access_key_id = admin
+secret_access_key = admin
+region = us-east-1
+force_path_style = true
+```
+
+The key pair is the one LocalS3 was started with; a LocalS3 without credentials accepts any. A remote is addressed as
+`local-s3:bucket/path`:
+
+```shell
+rclone mkdir local-s3:demo                             # CreateBucket
+rclone copy ./data local-s3:demo/data --progress       # upload a directory
+rclone ls local-s3:demo                                # list the objects, with sizes
+rclone lsd local-s3:                                   # list the buckets
+rclone tree local-s3:demo
+rclone cat local-s3:demo/data/a.txt
+rclone sync ./data local-s3:demo/data                  # make the prefix match the directory, deleting the rest
+rclone check ./data local-s3:demo/data                 # compare by size and MD5
+rclone copy local-s3:demo/data ./restore               # download
+rclone link local-s3:demo/data/a.txt --expire 1h       # a presigned URL for curl or a browser
+rclone purge local-s3:demo                             # delete the bucket and everything in it
+```
+
+**Without a config file**, e.g. in CI or a one-off script, the same remote comes from the environment, or from a
+connection string in place of the remote name:
+
+```shell
+export RCLONE_CONFIG_LOCAL_S3_TYPE=s3 RCLONE_CONFIG_LOCAL_S3_PROVIDER=Other \
+    RCLONE_CONFIG_LOCAL_S3_ENDPOINT=http://127.0.0.1:29090 \
+    RCLONE_CONFIG_LOCAL_S3_ACCESS_KEY_ID=admin RCLONE_CONFIG_LOCAL_S3_SECRET_ACCESS_KEY=admin
+rclone lsf -R local_s3:demo                            # the variables name the remote local_s3
+
+rclone lsf ":s3,provider=Other,endpoint='http://localhost:29090',access_key_id=admin,secret_access_key=admin:demo"
+```
+
+rclone uploads a file larger than `--s3-upload-cutoff`, 200 MiB by default, as a multipart upload, and keeps the MD5
+of the whole file in the metadata of the object, so `check` and `sync` compare multipart objects by MD5 too. The
+commands above were run with rclone 1.75 against a LocalS3 with credentials, multipart uploads included.
