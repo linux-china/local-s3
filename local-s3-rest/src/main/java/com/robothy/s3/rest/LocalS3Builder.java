@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  *       {@linkplain CorsSettings};</li>
  *   <li>{@linkplain #icebergCatalog(Consumer)} — the Iceberg REST catalog, {@linkplain IcebergCatalogSettings};</li>
  *   <li>{@linkplain #features(Consumer)} — the optional capabilities beside the S3 API, e.g. S3 Vectors, S3 Tables,
- *       KMS, STS and the console, {@linkplain FeatureSettings}.</li>
+ *       KMS, STS, the console and the MCP server, {@linkplain FeatureSettings}.</li>
  * </ul>
  *
  * <p>Each domain also has the one-liner that turns it on, e.g. {@linkplain #tls(LocalS3Tls)},
@@ -634,8 +634,9 @@ public class LocalS3Builder {
     }
 
     /**
-     * Turn off optional capabilities that the service serves beside its S3 API, all of which are on by default. A
-     * capability that is off has no routes at all, so an embedded service that only needs S3 exposes nothing else:
+     * Turn optional capabilities that the service serves beside its S3 API on or off. All of them but the MCP server
+     * are on by default. A capability that is off has no routes at all, so an embedded service that only needs S3
+     * exposes nothing else:
      *
      * <pre>{@code
      *  LocalS3.builder()

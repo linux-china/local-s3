@@ -15,15 +15,18 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * The optional features of a service: every one is served by default, and one that is turned off has no routes.
+ * The optional features of a service: every one but the MCP server is served by default, and one that is turned off
+ * has no routes.
  */
 class FeaturesTest {
 
   private final HttpClient client = HttpClient.newHttpClient();
 
   @Test
-  void everyFeatureIsServedByDefault() throws Exception {
-    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).build();
+  void everyFeatureIsServedOnceTurnedOn() throws Exception {
+    assertEquals(LocalS3Features.defaults(), LocalS3.builder().buildConfig().features());
+    assertEquals(LocalS3Features.all().withMcp(false), LocalS3Features.defaults());
+    LocalS3 localS3 = LocalS3.builder().port(-1).mode(LocalS3Mode.IN_MEMORY).features(f -> f.mcp(true)).build();
     assertEquals(LocalS3Features.all(), localS3.getConfig().features());
     localS3.start();
     try {
@@ -78,9 +81,10 @@ class FeaturesTest {
     Map<String, String> variables = Map.of(
         LocalS3Environment.LOCAL_S3_FEATURES_VECTOR, "false",
         LocalS3Environment.LOCAL_S3_FEATURES_KMS, "false",
-        LocalS3Environment.LOCAL_S3_FEATURES_CONSOLE, "true");
+        LocalS3Environment.LOCAL_S3_FEATURES_CONSOLE, "true",
+        LocalS3Environment.LOCAL_S3_FEATURES_MCP, "true");
     LocalS3Config config = LocalS3.builder().fromEnvironment(variables::get).buildConfig();
-    assertEquals(new LocalS3Features(false, true, false, true, true), config.features());
+    assertEquals(new LocalS3Features(false, true, false, true, true, true), config.features());
   }
 
   /**
@@ -100,7 +104,10 @@ class FeaturesTest {
         "sts", HttpRequest.newBuilder(URI.create(endpoint + "/"))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString("Action=GetCallerIdentity&Version=2011-06-15")),
-        "console", HttpRequest.newBuilder(URI.create(endpoint + "/_admin/ui")).GET());
+        "console", HttpRequest.newBuilder(URI.create(endpoint + "/_admin/ui")).GET(),
+        "mcp", HttpRequest.newBuilder(URI.create(endpoint + "/_mcp"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}")));
   }
 
 }

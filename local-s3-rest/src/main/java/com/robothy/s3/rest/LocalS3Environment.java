@@ -149,6 +149,13 @@ public final class LocalS3Environment {
   public static final String LOCAL_S3_FEATURES_CONSOLE = "LOCAL_S3_FEATURES_CONSOLE";
 
   /**
+   * Serve the built-in MCP server: {@code true} adds its route. It is off by default.
+   *
+   * @see FeatureSettings#mcp(boolean)
+   */
+  public static final String LOCAL_S3_FEATURES_MCP = "LOCAL_S3_FEATURES_MCP";
+
+  /**
    * Serve the buckets as static websites to the requests that carry no credentials: {@code false} turns it off. It is
    * on by default, and only a public bucket answers such a request.
    *
@@ -310,6 +317,8 @@ public final class LocalS3Environment {
         .ifPresent(enabled -> builder.features(features -> features.sts(Boolean.parseBoolean(enabled))));
     variable(variables, LOCAL_S3_FEATURES_CONSOLE)
         .ifPresent(enabled -> builder.features(features -> features.console(Boolean.parseBoolean(enabled))));
+    variable(variables, LOCAL_S3_FEATURES_MCP)
+        .ifPresent(enabled -> builder.features(features -> features.mcp(Boolean.parseBoolean(enabled))));
     variable(variables, LOCAL_S3_WEBSITE).ifPresent(enabled -> builder.website(Boolean.parseBoolean(enabled)));
     variable(variables, LOCAL_S3_WEBSITE_ALL_BUCKETS)
         .ifPresent(allBuckets -> builder.website(website -> website.allBuckets(Boolean.parseBoolean(allBuckets))));

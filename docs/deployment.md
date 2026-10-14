@@ -205,6 +205,7 @@ logging variables, which the logging configuration of the jar and the image read
 | `LOCAL_S3_CREDENTIALS_FROM_AWS_ENV` | `false`; `true` in the image | Read the key pair from `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where `LOCAL_S3_ACCESS_KEY_ID` isn't set. Off outside the image, because those are the client credentials that a developer's shell exports; see [Executable jar](#executable-jar). |
 | `LOCAL_S3_ALLOWED_CLOCK_SKEW` | `15m` | With credentials: how far the time of a signed request may be from the clock of the service, e.g. `1h` or `PT1H`, before it is answered with `403 RequestTimeTooSkewed`. `0` turns the time check off, e.g. for a VM whose clock drifts after the host sleeps. See [request validation](semantics.md#request-validation). |
 | `LOCAL_S3_FEATURES_VECTOR`, `LOCAL_S3_FEATURES_S3_TABLES`, `LOCAL_S3_FEATURES_KMS`, `LOCAL_S3_FEATURES_STS`, `LOCAL_S3_FEATURES_CONSOLE` | `true` | `false` leaves the routes of the S3 Vectors API, the S3 Tables API, AWS KMS, AWS STS or the [console](#console) out of the service. See [Turn features off](embedding.md#turn-features-off). |
+| `LOCAL_S3_FEATURES_MCP` | `false` | `true` serves the [MCP server](#mcp-server) at `/_mcp`, for AI agents. |
 | `LOCAL_S3_WEBSITE` | `true` | Serve the buckets as [static websites](semantics.md#static-website-hosting) to the requests that carry no credentials. Only a public bucket answers one; the signed requests of an S3 client are never affected. |
 | `LOCAL_S3_WEBSITE_ALL_BUCKETS` | `false` | Serve **every** bucket as a static website, not the public ones alone, which also lets an unsigned request read the objects of a private bucket. Meant for local development. |
 | `LOCAL_S3_WEBSITE_INDEX_DOCUMENT` | `index.html` | The index document of the buckets that have no `WebsiteConfiguration` of their own. |
@@ -659,13 +660,64 @@ application under test; the bucket it creates and what it uploads and deletes do
 Being paths of the service, `/_admin/ui` and the paths below it are the console rather than the objects of a bucket
 named `_admin`, like the other `/_admin` endpoints and `/_health` are.
 
+## MCP server
+
+LocalS3 serves a built-in [Model Context Protocol](https://modelcontextprotocol.io) server at `/_mcp`, so that an AI
+agent — Claude Code, an IDE agent, or any MCP client — keeps the artifacts it produces in LocalS3 and hands them to a
+person, where the [console](#console) shows them. It is **off by default**: turn it on with
+`LOCAL_S3_FEATURES_MCP=true`, `--features-mcp`, `features(f -> f.mcp(true))` or `local-s3.features.mcp=true`.
+
+It speaks the Streamable HTTP transport, protocol versions `2025-11-25`, `2025-06-18`, `2025-03-26` and `2024-11-05`,
+with JSON-RPC over the JSON library LocalS3 already has, so it adds no dependency. Every request is answered with a
+plain JSON response; the server keeps no session and opens no stream, so `GET /_mcp` and `DELETE /_mcp` answer
+`405 Method Not Allowed`, and a notification is acknowledged with `202 Accepted`.
+
+```shell
+claude mcp add --transport http locals3 http://localhost:29090/_mcp
+# A service with credentials
+claude mcp add --transport http locals3 http://localhost:29090/_mcp \
+    --header "Authorization: Bearer $AWS_SECRET_ACCESS_KEY"
+```
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `list_buckets` | | The buckets, with their creation date and region. |
+| `list_objects` | `bucket`, `prefix`, `delimiter` (`/` by default, `""` for none), `max_keys` (100 by default, up to 1000), `continuation_token` | A page of the objects under a prefix, and the folders below it as `commonPrefixes`, like `ListObjectsV2`. |
+| `read_object` | `bucket`, `key`, `range` (e.g. `bytes=0-1023`, `bytes=4096-`, `bytes=-512`), `max_bytes` (256 KiB by default, up to 4 MiB), `version_id` | The content of an object: text as text, an image as image content, anything else as a base64 blob. A read that stops at `max_bytes` says so and names the range of the rest. |
+| `put_object` | `bucket`, `key`, `content`, `encoding` (`utf-8` or `base64`), `content_type` | Store an object, with the content type of its extension unless one is given. |
+| `presign` | `bucket`, `key`, `method` (`GET` or `PUT`), `expires_in` (3600 seconds by default, up to 7 days) | A presigned URL of the object, on the host the agent reached the service at, like `Share` of the console. A service without credentials answers the plain URL, which doesn't expire. |
+| `delete_object` | `bucket`, `key`, `version_id` | Delete an object, or put a delete marker in a versioned bucket, like `DeleteObject`. |
+| `create_bucket` | `bucket` | Create a bucket in the default region, under the naming rules of Amazon S3. |
+
+A tool answers its result as `structuredContent` and, for the clients that read text alone, as the same JSON in a text
+block. A tool that fails, e.g. on a key that doesn't exist, answers `isError: true` with the S3 error code and message,
+e.g. `NoSuchKey: ...`, so the model reads it and corrects its call.
+
+The objects are also **resources**: `resources/list` lists the objects of every bucket, 100 at a time with a cursor,
+as `s3://<bucket>/<key>` with the key percent-encoded, `resources/templates/list` answers the template
+`s3://{bucket}/{key}`, and `resources/read` reads up to 4 MiB of one, as text or as a base64 blob. An unknown object is
+answered with the error `-32002`.
+
+The MCP server is guarded like the console, rather than by a signature, which an agent can't make: a service with
+credentials wants `Authorization: Bearer <secret access key>`, or HTTP Basic authentication with the access key ID and
+the secret access key, and answers anything else with `401`; a service without credentials answers everyone who
+reaches the port, as it does unsigned S3 requests. A request that carries an `Origin` header, which only a browser
+sends, is answered only from a page of `localhost`, `127.0.0.1`, `[::1]` or the host the request addressed, and
+`403 Forbidden` otherwise, so that a page of another site can't reach a service on the loopback address by rebinding
+its DNS name. An unsupported `MCP-Protocol-Version` header is answered with `400`.
+
+The tools change the data through the same services as the S3 API, so a write reaches the
+[change listeners](embedding.md#listen-to-bucket-and-object-changes) like any other. Its requests are recorded in the
+statistics as the operation `Mcp`. Like `/_admin/ui`, `/_mcp` is a path of the service rather than of a bucket
+named `_mcp` while the server is on. S3 Vectors aren't served through MCP yet.
+
 ## Admin endpoints
 
 A running service answers a few endpoints for local development and tests, with JSON:
 
 | Endpoint | Description |
 |---|---|
-| `GET /_admin/stats` | The optional features that are on, as `features`, e.g. `["vector", "s3Tables", "kms", "sts", "console", "website"]`, out of those that [can be turned off](embedding.md#turn-features-off), `icebergCatalog` and `website`. The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), how much object metadata the service keeps in heap (`loadedObjects` and `loadedObjectMetadataBytes`, see [Opening a large data path](#opening-a-large-data-path)), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. The percentiles are estimated from a histogram whose buckets are about 19% wide, interpolated within the bucket, so they are accurate to about 19% and never outside the smallest and the largest latency recorded. `notImplemented` counts the requests answered `501 NotImplemented`, by operation, e.g. `SelectObjectContent`, or by method, path shape and query parameters, e.g. `GET /{bucket}?analytics`, for a request without a route. |
+| `GET /_admin/stats` | The optional features that are on, as `features`, e.g. `["vector", "s3Tables", "kms", "sts", "console", "website"]`, and `mcp` when the [MCP server](#mcp-server) is on, out of those that [can be turned off](embedding.md#turn-features-off), `icebergCatalog` and `website`. The amount of data (buckets, objects, object versions, delete markers, object bytes, multipart uploads in progress, vector buckets, indexes and vectors), how much object metadata the service keeps in heap (`loadedObjects` and `loadedObjectMetadataBytes`, see [Opening a large data path](#opening-a-large-data-path)), the requests in flight, and per operation, e.g. `PutObject`, the number of requests, the `4xx` and `5xx` responses, the requests per second of the last minute, and the average, p50, p90, p99 and max latency in milliseconds. The percentiles are estimated from a histogram whose buckets are about 19% wide, interpolated within the bucket, so they are accurate to about 19% and never outside the smallest and the largest latency recorded. `notImplemented` counts the requests answered `501 NotImplemented`, by operation, e.g. `SelectObjectContent`, or by method, path shape and query parameters, e.g. `GET /{bucket}?analytics`, for a request without a route. |
 | `GET /_admin/requests?limit=n` | The last 100 requests, the most recent first: time, method, URI, operation, status, latency and `x-amz-request-id`. The values of the credentials of presigned URLs are hidden. |
 | `POST /_admin/lifecycle` | Apply the lifecycle configurations of the buckets, which LocalS3 never does by itself, and answer the actions taken. `bucket=name` applies one bucket's only; `now=2030-01-01T00:00:00Z` applies them at that instant, or `days=31` that many days from now, instead of the current time. See [lifecycle configuration](semantics.md#lifecycle-configuration). |
 | `GET /_admin/snippets?bucket=&key=` | The configuration that DuckDB, s5cmd and the AWS CLI (environment variables, and a profile), boto3, Polars (`storage_options`), PyIceberg and Spark need to reach the service, as JSON: `endpoint`, `region`, `icebergCatalog`, `snippets` (each with `id`, `title`, `language` and `content`), and with `bucket` the DuckDB query of that bucket, prefix or object as `duckdbQuery`. The endpoint is the host the request addressed, so a client in a container is given the name it reaches the service by; plain HTTP unless the service [serves HTTPS alone](#https). The snippets carry the credentials of the service, which only a caller that signed with them receives, and a placeholder key pair if it has none. |

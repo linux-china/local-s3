@@ -223,6 +223,9 @@ public class LocalS3 implements AutoCloseable {
         }
         // Where to look at what the service holds, which an embedded service gives no other sign of.
         log.info("LocalS3 console: {}/_admin/ui", endpoint());
+        if (config.features().mcp()) {
+            log.info("LocalS3 MCP server: {}/_mcp", endpoint());
+        }
         if (config.tls() != null) {
             logCertificate(config.tls());
         }

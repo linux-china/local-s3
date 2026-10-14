@@ -73,7 +73,7 @@ import org.jspecify.annotations.Nullable;
  * @param allowedClockSkew how far the time of a signed request may be from the clock of the service; zero turns the
  *     time check off. {@code null} is {@linkplain #DEFAULT_ALLOWED_CLOCK_SKEW 15 minutes}, which is the default.
  * @param features the optional capabilities that the service serves beside its S3 API; {@code null} is
- *     {@linkplain LocalS3Features#all()}, which is the default.
+ *     {@linkplain LocalS3Features#defaults()}, which is the default.
  */
 public record LocalS3Config(
     String bindHost,
@@ -206,7 +206,7 @@ public record LocalS3Config(
     lifecycleInterval = lifecycleInterval == null || lifecycleInterval.isZero() ? null : lifecycleInterval;
     requireAllowedClockSkew(allowedClockSkew);
     allowedClockSkew = allowedClockSkew == null ? DEFAULT_ALLOWED_CLOCK_SKEW : allowedClockSkew;
-    features = features == null ? LocalS3Features.all() : features;
+    features = features == null ? LocalS3Features.defaults() : features;
   }
 
   /**
@@ -301,6 +301,9 @@ public record LocalS3Config(
     }
     if (features.console()) {
       enabled.add("console");
+    }
+    if (features.mcp()) {
+      enabled.add("mcp");
     }
     if (icebergCatalogEnabled()) {
       enabled.add("icebergCatalog");

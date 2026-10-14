@@ -427,9 +427,10 @@ A settings object writes through to the builder as it is called, so it must not 
 
 ### Turn features off
 
-Besides the S3 API, a service serves the S3 Vectors API, the S3 Tables API, an AWS KMS endpoint, an AWS STS endpoint
-and the [console](deployment.md#console). They are all on by default; an application that embeds LocalS3 as a plain
-S3 server can turn off the ones it doesn't need, which leaves their routes out of the router altogether. The
+Besides the S3 API, a service serves the S3 Vectors API, the S3 Tables API, an AWS KMS endpoint, an AWS STS endpoint,
+the [console](deployment.md#console) and the [MCP server](deployment.md#mcp-server). They are all on by default but
+the MCP server, which `mcp(true)` turns on; an application that embeds LocalS3 as a plain S3 server can turn off the
+ones it doesn't need, which leaves their routes out of the router altogether. The
 [Spring Boot starter](#spring-boot) is the exception: it serves S3 and the console alone unless
 `local-s3.features.*` turns the others on. Their requests
 are then answered by the S3 API, like a request to a bucket: `GET /_admin/ui` answers `404 NoSuchBucket`, and a
@@ -448,6 +449,7 @@ LocalS3 localS3 = LocalS3.builder()
 | AWS KMS | `kms(false)` | `LOCAL_S3_FEATURES_KMS=false` | `local-s3.features.kms=true` |
 | AWS STS | `sts(false)` | `LOCAL_S3_FEATURES_STS=false` | `local-s3.features.sts=true` |
 | Console at `/_admin/ui` | `console(false)` | `LOCAL_S3_FEATURES_CONSOLE=false` | `local-s3.features.console=false` |
+| MCP server at `/_mcp`, off by default | `mcp(true)` | `LOCAL_S3_FEATURES_MCP=true` | `local-s3.features.mcp=true` |
 
 Only what is served changes: the data of a feature that is turned off is kept, and served again once it is turned
 back on. Turning STS off removes `AssumeRole` and `GetSessionToken`, while the temporary credentials that the Iceberg

@@ -177,7 +177,7 @@ public class LocalS3RouterFactory {
     // A capability that is turned off isn't registered at all, so its requests fall through to the S3 routes.
     LocalS3Features features = serviceFactory.containsInstance(LocalS3Config.class)
         ? serviceFactory.getInstance(LocalS3Config.class).features()
-        : LocalS3Features.all();
+        : LocalS3Features.defaults();
     LocalS3Router router = new LocalS3Router(signatureVerifier, virtualHostParser, corsResponseHeaders)
         .sessionPolicies(sessionPolicyAuthorizer)
         // Only a service that was configured with an Iceberg catalog has one registered, and only it serves the
@@ -189,7 +189,8 @@ public class LocalS3RouterFactory {
         .website(websiteController(serviceFactory))
         // The console reads the same services the S3 operations do; a service without them, e.g. a router of
         // handlers alone, serves none.
-        .console(features.console() ? consoleController(serviceFactory, accessKeyId, secretAccessKey) : null);
+        .console(features.console() ? consoleController(serviceFactory, accessKeyId, secretAccessKey) : null)
+        .mcp(features.mcp() ? mcpController(serviceFactory, accessKeyId, secretAccessKey) : null);
     if (features.sts()) {
       router.sts(new StsController(sessionCredentialIssuer));
     }
@@ -298,6 +299,22 @@ public class LocalS3RouterFactory {
       return null;
     }
     return new ConsoleController(serviceFactory, accessKeyId, secretAccessKey);
+  }
+
+  /**
+   * The controller of the built-in MCP server of a service.
+   *
+   * @param accessKeyId the access key ID that the server asks for; {@code null} if the service has no credentials,
+   *     which serves it to every request.
+   * @return the controller; {@code null} if the service holds no data to serve, e.g. a router of handlers alone.
+   */
+  private static McpController mcpController(ServiceFactory serviceFactory, String accessKeyId,
+                                             String secretAccessKey) {
+    if (!serviceFactory.containsInstance(BucketService.class)
+        || !serviceFactory.containsInstance(ObjectService.class)) {
+      return null;
+    }
+    return new McpController(serviceFactory, accessKeyId, secretAccessKey);
   }
 
   /**

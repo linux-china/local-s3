@@ -5,12 +5,12 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.NonNull;
 
 /**
- * The optional capabilities of a service, all on by default; see {@linkplain LocalS3Features}.
+ * The optional capabilities of a service, all but the MCP server on by default; see {@linkplain LocalS3Features}.
  * {@linkplain LocalS3Builder#features(Consumer)} hands out the one that the builder builds its configuration from.
  */
 public final class FeatureSettings {
 
-    LocalS3Features features = LocalS3Features.all();
+    LocalS3Features features = LocalS3Features.defaults();
 
     FeatureSettings() {
     }
@@ -67,6 +67,17 @@ public final class FeatureSettings {
      */
     public FeatureSettings console(boolean enabled) {
         this.features = this.features.withConsole(enabled);
+        return this;
+    }
+
+    /**
+     * Set whether the built-in MCP server is served under {@code /_mcp}. It is off by default.
+     *
+     * @param enabled {@code true} to serve it.
+     * @return these settings.
+     */
+    public FeatureSettings mcp(boolean enabled) {
+        this.features = this.features.withMcp(enabled);
         return this;
     }
 

@@ -167,6 +167,9 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
   files and folders by dropping them on the page or deletes one — so what an embedded service or an AI agent put in
   there can be looked at and changed, rather than listed with `aws s3 ls`. Guarded with HTTP Basic authentication when
   credentials are configured. [Details](docs/deployment.md#console).
++ **A built-in MCP server** at `/_mcp`, off by default: Streamable HTTP JSON-RPC with no new dependency, whose tools
+  list, read (text, ranges, a size limit), store, presign and delete objects, and whose resources are the objects as
+  `s3://` URIs — so Claude Code or an IDE agent keeps its artifacts in LocalS3. [Details](docs/deployment.md#mcp-server).
 + **Health check and admin endpoints** for statistics, recent requests, and resetting a service between tests.
 + **Runs anywhere**: embedded in Java 25, JUnit 5, Spring Boot 3 and 4, Testcontainers, a Docker image (JVM or native), or an
   executable jar.
@@ -181,7 +184,7 @@ try (LocalS3 localS3 = LocalS3.builder().port(29090).build()) {
 | [Semantics](docs/semantics.md) | Request validation, conditional requests, versioning, entity tags, browser form uploads, lifecycle configurations, and change events. |
 | [Embedding](docs/embedding.md) | The Java API, Spring Boot, JUnit 5 and Testcontainers. |
 | [Data tools](docs/data-tools.md) | DuckDB, DuckLake, Apache Iceberg and Delta Lake on LocalS3, the built-in Iceberg REST catalog, and Amazon S3 Tables. |
-| [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check, the console and admin endpoints. |
+| [Deployment](docs/deployment.md) | Docker, the executable jar, Kubernetes, configuration variables, persistence, health check, the console, the MCP server and admin endpoints. |
 | [Architecture](docs/architecture.md) | Modules, the path of a request, the `BucketGuard` concurrency model, storage layers and the data directory layout. |
 | [Changelog](CHANGELOG.md) | Changes per release, and how to upgrade, e.g. the new data directory format of 2.5. |
 

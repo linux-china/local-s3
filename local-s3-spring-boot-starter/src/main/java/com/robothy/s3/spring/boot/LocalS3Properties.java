@@ -893,6 +893,11 @@ public class LocalS3Properties {
      */
     private boolean console = true;
 
+    /**
+     * Whether to serve the built-in MCP server under /_mcp, which lets AI agents read and write objects.
+     */
+    private boolean mcp = false;
+
     public boolean isVector() {
       return vector;
     }
@@ -933,8 +938,16 @@ public class LocalS3Properties {
       this.console = console;
     }
 
+    public boolean isMcp() {
+      return mcp;
+    }
+
+    public void setMcp(boolean mcp) {
+      this.mcp = mcp;
+    }
+
     LocalS3Features toLocalS3Features() {
-      return new LocalS3Features(vector, s3Tables, kms, sts, console);
+      return new LocalS3Features(vector, s3Tables, kms, sts, console, mcp);
     }
   }
 

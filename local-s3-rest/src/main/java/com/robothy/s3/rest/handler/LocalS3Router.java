@@ -97,6 +97,8 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   private ConsoleController consoleController;
 
+  private McpController mcpController;
+
   private CorsPreflightController servicePreflightController;
 
   LocalS3Router() {
@@ -159,6 +161,13 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     return this;
   }
 
+  // An agent can't sign either; the controller guards the MCP server like the console. null leaves /_mcp to the S3
+  // routes, i.e. to a bucket named "_mcp".
+  LocalS3Router mcp(McpController mcpController) {
+    this.mcpController = mcpController;
+    return this;
+  }
+
   LocalS3Router servicePreflight(CorsPreflightController preflightController) {
     this.servicePreflightController = preflightController;
     return this;
@@ -196,6 +205,9 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     if (isConsoleRequest(request)) {
       return new OperationHandler(ConsoleController.operation(request.getMethod(), trimPath(request.getPath())),
           consoleController);
+    }
+    if (isMcpRequest(request)) {
+      return new OperationHandler(McpController.OPERATION, mcpController);
     }
     if (isServicePreflight(request)) {
       return new OperationHandler(SERVICE_PREFLIGHT_OPERATION, servicePreflightController::handleWithoutBucket);
@@ -420,7 +432,23 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     // Neither health checks nor the CORS preflight requests of browsers are signed, and the console is guarded with
     // HTTP Basic authentication instead, which is the only kind of credentials a browser can be asked for.
     return signatureVerifier != null && !isHealthCheck(request) && !isPreflight(request)
-        && !isConsoleRequest(request);
+        && !isConsoleRequest(request) && !isMcpRequest(request);
+  }
+
+  /**
+   * Whether a request is one of the built-in MCP server, i.e. of {@linkplain McpController#PATH}, addressed at the
+   * service rather than at a bucket, like {@linkplain #isConsoleRequest} tells.
+   */
+  private boolean isMcpRequest(RouterHttpRequest request) {
+    if (mcpController == null || !McpController.METHODS.contains(request.getMethod())) {
+      return false;
+    }
+    Optional<BucketRegion> bucketRegion =
+        virtualHostParser.parse(request.getHeaders().get(HttpHeaderNames.HOST.toString()));
+    if (bucketRegion.isPresent() && bucketRegion.get().getBucketName().isPresent()) {
+      return false;
+    }
+    return McpController.PATH.equals(trimPath(Objects.toString(request.getPath(), "")));
   }
 
   /**

@@ -132,6 +132,8 @@ final class CommandLine {
                     "Serve the AWS STS endpoint. Default true."),
             flag("--features-console", LocalS3Environment.LOCAL_S3_FEATURES_CONSOLE,
                     "Serve the console under /_admin/ui. Default true."),
+            flag("--features-mcp", LocalS3Environment.LOCAL_S3_FEATURES_MCP,
+                    "Serve the MCP server under /_mcp, for AI agents. Default false."),
             flag("--website", LocalS3Environment.LOCAL_S3_WEBSITE,
                     "Serve the public buckets as static websites to unsigned requests. Default true."),
             flag("--website-all-buckets", LocalS3Environment.LOCAL_S3_WEBSITE_ALL_BUCKETS,

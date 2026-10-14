@@ -22,7 +22,6 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.model.request.DecodedAmzRequestBody;
-import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.StreamingRouterHttpResponse;
 import com.robothy.s3.rest.service.BucketNameValidator;
@@ -38,18 +37,14 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -158,11 +153,6 @@ class ConsoleController implements RouterHttpRequestHandler {
    * The methods that the console presigns a URL for: reading an object, or uploading one in its place.
    */
   private static final Set<String> PRESIGN_METHODS = Set.of("GET", "PUT");
-
-  /**
-   * A {@code Host} header that is a name or an address and a port, which a presigned URL is built on.
-   */
-  private static final Pattern HOST = Pattern.compile("[A-Za-z0-9._\\-]+(:\\d{1,5})?|\\[[0-9A-Fa-f:.]+](:\\d{1,5})?");
 
   /**
    * What an unauthorized response asks for, which is what makes a browser show its credentials prompt.
@@ -407,23 +397,9 @@ class ConsoleController implements RouterHttpRequestHandler {
         ? new AwsSignatureV4Presigner(accessKeyId, secretAccessKey)
         : AwsSignatureV4Presigner.unsigned();
     Instant now = Instant.now();
-    String url = presigner.presign(endpoint(request), method, bucket, key, expiration);
+    String url = presigner.presign(ServiceEndpoints.of(request, config), method, bucket, key, expiration);
     json(response, HttpResponseStatus.OK, new ConsolePresignedUrl(url, method, signed,
         signed ? expiration.getSeconds() : null, signed ? now.plus(expiration).toString() : null));
-  }
-
-  /**
-   * The endpoint that the page reached this service at: the host it addressed and the scheme it arrived by, since a
-   * presigned URL signs its host, and the browser that the page runs in is the one that reaches it.
-   */
-  private String endpoint(RouterHttpRequest request) {
-    String host = request.header(HttpHeaderNames.HOST.toString())
-        .map(String::trim)
-        .filter(value -> HOST.matcher(value).matches())
-        .orElseThrow(() -> new IllegalArgumentException("The request names no host to sign a URL for."));
-    String scheme = ConnectionSchemes.of(request)
-        .orElse(config != null && config.tlsEnabled() ? ConnectionSchemes.HTTPS : ConnectionSchemes.HTTP);
-    return scheme + "://" + host;
   }
 
   /**
@@ -571,33 +547,7 @@ class ConsoleController implements RouterHttpRequestHandler {
    * doesn't have would guard nothing.
    */
   private boolean isAuthorized(RouterHttpRequest request) {
-    if (accessKeyId == null) {
-      return true;
-    }
-    String authorization = request.header(HttpHeaderNames.AUTHORIZATION.toString()).orElse("");
-    if (!authorization.regionMatches(true, 0, "Basic ", 0, "Basic ".length())) {
-      return false;
-    }
-
-    byte[] decoded;
-    try {
-      decoded = Base64.getDecoder().decode(authorization.substring("Basic ".length()).trim());
-    } catch (IllegalArgumentException _) {
-      return false;
-    }
-    String credentials = new String(decoded, StandardCharsets.UTF_8);
-    int colon = credentials.indexOf(':');
-    if (colon < 0) {
-      return false;
-    }
-    // Compared without returning early on the first byte that differs, like the signatures of the S3 API are.
-    return equals(credentials.substring(0, colon), accessKeyId)
-        & equals(credentials.substring(colon + 1), secretAccessKey);
-  }
-
-  private static boolean equals(String given, String expected) {
-    return MessageDigest.isEqual(given.getBytes(StandardCharsets.UTF_8),
-        Objects.toString(expected, "").getBytes(StandardCharsets.UTF_8));
+    return accessKeyId == null || ServiceCredentials.hasBasic(request, accessKeyId, secretAccessKey);
   }
 
   private void unauthorized(RouterHttpResponse response) {
