@@ -186,9 +186,14 @@ encrypted or tiered. Analytics, intelligent-tiering, inventory and metrics confi
 no report or metric is ever produced and no object changes tier. `RestoreObject` completes at once. Bucket notification configurations are stored, and no notification is delivered — use
 [change listeners](embedding.md#listen-to-bucket-and-object-changes) instead, which are told of every committed change.
 
-**Some operations answer `501`.** `GetObjectTorrent`, `SelectObjectContent` and `WriteGetObjectResponse` are
-routed and answer `501 NotImplemented` with an error naming the operation, so a client fails clearly instead of
-appearing to succeed. The full lists, checked against the router by a test so they can't drift, are in
+**Some operations answer `501`.** `GetObjectTorrent`, `SelectObjectContent`, `WriteGetObjectResponse`,
+`UpdateObjectEncryption`, the object annotation operations (`DeleteObjectAnnotation`, `GetObjectAnnotation`,
+`ListObjectAnnotations` and `PutObjectAnnotation`) and the S3 Metadata operations (`CreateBucketMetadataConfiguration`,
+`CreateBucketMetadataTableConfiguration`, `DeleteBucketMetadataConfiguration`, `DeleteBucketMetadataTableConfiguration`,
+`GetBucketMetadataConfiguration`, `GetBucketMetadataTableConfiguration`,
+`UpdateBucketMetadataAnnotationTableConfiguration`, `UpdateBucketMetadataInventoryTableConfiguration` and
+`UpdateBucketMetadataJournalTableConfiguration`) are routed and answer `501 NotImplemented` with an error naming the
+operation, so a client fails clearly instead of appearing to succeed. The full lists, checked against the router by a test so they can't drift, are in
 [apis.md](apis.md); a test also checks the operations named here.
 
 **Its integrations are JVM-side.** The Docker image serves any client in any language, but the parts that make LocalS3

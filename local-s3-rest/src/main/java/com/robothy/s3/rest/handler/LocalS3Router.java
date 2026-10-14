@@ -16,6 +16,7 @@ import com.robothy.s3.rest.netty.OperationHandler;
 import com.robothy.s3.rest.netty.RequestBodies;
 import com.robothy.s3.rest.netty.ReceivedRequest;
 import com.robothy.s3.rest.netty.RequestHeadVerifier;
+import com.robothy.s3.rest.utils.ErrorResponses;
 import com.robothy.s3.rest.utils.SigV4Requests;
 import com.robothy.s3.rest.utils.VirtualHostParser;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -23,6 +24,7 @@ import io.netty.handler.codec.http.HttpMethod;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -63,9 +65,17 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
 
   static final String SERVICE_PREFLIGHT_OPERATION = "ServiceCorsPreflight";
 
+  static final String S3_CONTROL_OPERATION = "S3Control";
+
+  // The API version that every path of S3 Control starts with.
+  static final String S3_CONTROL_PATH_PREFIX = "/v20180820/";
+
   private final Map<HttpMethod, Map<String, List<Route>>> rules = new HashMap<>();
 
   private final Map<Route, String> operations = new IdentityHashMap<>();
+
+  // The operations of a bucket or an object that a request without parameters reaches, e.g. ListObjects.
+  private final Set<String> operationsWithoutSubresource = new HashSet<>();
 
   private final AwsSignatureV4Verifier signatureVerifier;
 
@@ -163,8 +173,14 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * @param operation e.g. {@code GetBucketAcl}; {@code null} to name the route by its method, path and conditions.
    */
   LocalS3Router route(String operation, Route rule) {
-    operations.put(rule, Objects.requireNonNullElseGet(operation,
-        () -> rule.getMethod() + " " + rule.getPath() + " " + conditions(rule)));
+    String name = Objects.requireNonNullElseGet(operation,
+        () -> rule.getMethod() + " " + rule.getPath() + " " + conditions(rule));
+    operations.put(rule, name);
+    // A preflight is answered whatever the parameters of the request it precedes.
+    if (rule.getParamMatcher() == null && !HttpMethod.OPTIONS.equals(rule.getMethod())
+        && (BUCKET_PATH.equals(rule.getPath()) || BUCKET_KEY_PATH.equals(rule.getPath()))) {
+      operationsWithoutSubresource.add(name);
+    }
     this.rules.putIfAbsent(rule.getMethod(), new HashMap<>());
     Map<String, List<Route>> pathRules = this.rules.get(rule.getMethod());
     pathRules.putIfAbsent(rule.getPath(), new ArrayList<>());
@@ -198,11 +214,16 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     if (s3TablesController != null && S3TablesController.isS3TablesRequest(request)) {
       return withCorsHeaders(request, matchS3Tables(request));
     }
-    OperationHandler handler = matchMethod(request.getMethod())
-        .map(pathRules -> matchPath(pathRules, request))
-        .map(rules -> matchHandler(rules, request))
-        .orElseGet(() -> new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
+    // Not answered right away, so that its signature is verified like the one of every S3 request.
+    OperationHandler handler = isS3ControlRequest(request)
+        ? new OperationHandler(S3_CONTROL_OPERATION, (req, resp) -> ErrorResponses.notImplemented(req, resp,
+            "the S3 Control API (" + req.getMethod() + " " + req.getPath() + ")"))
+        : matchMethod(request.getMethod())
+            .map(pathRules -> matchPath(pathRules, request))
+            .map(rules -> matchHandler(rules, request))
+            .orElseGet(() -> new OperationHandler(NOT_FOUND_OPERATION, notFoundHandler()));
     handler = asListDirectoryBuckets(request, handler);
+    handler = unroutedSubresource(request, handler);
 
     // A bucket that is served as a static website answers an unsigned read of a browser, which the S3 routes above
     // would answer with a listing, with an XML error, or, of a service that requires signed requests, not at all.
@@ -248,6 +269,33 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
         .findFirst()
         .map(entry -> new OperationHandler(entry.getValue(), entry.getKey().getHandler()))
         .orElse(handler);
+  }
+
+  /**
+   * The handler of a request that carries a subresource that no route of its method and path is for, e.g.
+   * {@code DELETE /bucket/key?acl}, which the routes answer with the operation without parameters, here
+   * {@code DeleteObject}. See {@code docs/apis.md#not-routed-at-all}.
+   */
+  private OperationHandler unroutedSubresource(RouterHttpRequest request, OperationHandler handler) {
+    if (handler == null || !operationsWithoutSubresource.contains(handler.operation())
+        || !S3Subresources.any(request.getParams())) {
+      return handler;
+    }
+    String subresources = String.join("&", request.getParams().keySet().stream()
+        .filter(S3Subresources.NAMES::contains).sorted().toList());
+    return new OperationHandler(NOT_FOUND_OPERATION, (req, resp) -> ErrorResponses.notImplemented(req, resp,
+        req.getMethod() + " " + req.getPath() + "?" + subresources));
+  }
+
+  /**
+   * Whether a request is one of the S3 Control API, which an AWS SDK sends to the endpoint of Amazon S3 when it is
+   * overridden. Its path alone could be the one of a bucket named {@code v20180820}; its account or outpost header, or
+   * its signing name, which only some clients sign with, tells it apart.
+   */
+  private static boolean isS3ControlRequest(RouterHttpRequest request) {
+    return Objects.toString(request.getPath(), "").startsWith(S3_CONTROL_PATH_PREFIX)
+        && (request.header("x-amz-account-id").isPresent() || request.header("x-amz-outpost-id").isPresent()
+            || "s3-control".equals(SigV4Requests.signingService(request)));
   }
 
   // A rejected signature is answered in the error format of STS rather than of Amazon S3.

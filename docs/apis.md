@@ -42,6 +42,7 @@ Many configurations below are stored and read back but never applied, e.g. notif
 + GetObjectLegalHold
 + GetObjectLockConfiguration
 + GetObjectRetention
++ GetBucketAbac
 + GetBucketAccelerateConfiguration
 + GetBucketAcl
 + GetBucketAnalyticsConfiguration
@@ -75,6 +76,7 @@ Many configurations below are stored and read back but never applied, e.g. notif
 + ListObjectVersions
 + ListMultipartUploads
 + ListParts
++ PutBucketAbac
 + PutBucketAccelerateConfiguration
 + PutBucketAcl
 + PutBucketAnalyticsConfiguration
@@ -121,9 +123,10 @@ was never configured answers an empty `NotificationConfiguration`. To hear of ch
 [change events](semantics.md#change-events). The deprecated `PutBucketNotification` and `GetBucketNotification` send
 the same requests, and are answered the same way.
 
-Transfer acceleration, access logging, requester pays and ownership controls are **stored and returned as they were
-put, but never applied**: nothing is accelerated, logged or billed to the requester, and ACLs keep working whatever the
-object ownership. They exist so that clients that read or write them, e.g.
+Transfer acceleration, access logging, requester pays, ownership controls and attribute-based access control (ABAC) are
+**stored and returned as they were put, but never applied**: nothing is accelerated, logged or billed to the requester,
+ACLs keep working whatever the object ownership, and no access is decided by the tags of a bucket. They exist so that
+clients that read or write them, e.g.
 Terraform refreshing an `aws_s3_bucket`, or CDK and SDK tool chains setting the ownership controls, work against
 LocalS3. A bucket that was never configured answers like a new bucket of Amazon S3 does:
 
@@ -133,6 +136,7 @@ LocalS3. A bucket that was never configured answers like a new bucket of Amazon 
 | `GetBucketLogging`                 | an empty `BucketLoggingStatus`                           | –                                    |
 | `GetBucketRequestPayment`          | `<Payer>BucketOwner</Payer>`                             | –                                    |
 | `GetBucketOwnershipControls`       | `<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership>` | `404 OwnershipControlsNotFoundError` |
+| `GetBucketAbac`                    | `<Status>Disabled</Status>`                              | –                                    |
 
 The analytics, intelligent-tiering, inventory and metrics configurations of a bucket, of which it has several, each
 named by the `id` parameter, are **stored and returned as they were put, but never applied** either: no storage class
@@ -332,10 +336,47 @@ with a clear error instead of appearing to succeed. If your tests need one of th
 + SelectObjectContent
 + WriteGetObjectResponse
 
+**Object encryption**
++ UpdateObjectEncryption
+
+**Object annotations**
++ DeleteObjectAnnotation
++ GetObjectAnnotation
++ ListObjectAnnotations
++ PutObjectAnnotation
+
+**S3 Metadata** (journal, inventory and annotation tables)
++ CreateBucketMetadataConfiguration
++ CreateBucketMetadataTableConfiguration
++ DeleteBucketMetadataConfiguration
++ DeleteBucketMetadataTableConfiguration
++ GetBucketMetadataConfiguration
++ GetBucketMetadataTableConfiguration
++ UpdateBucketMetadataAnnotationTableConfiguration
++ UpdateBucketMetadataInventoryTableConfiguration
++ UpdateBucketMetadataJournalTableConfiguration
+
 ## Not routed at all
 
 Every other operation of the S3 API that isn't listed on this page has no route, and answers `501 NotImplemented`
 from the fallback handler, e.g. `LocalS3 does not implement PATCH /<bucket>.`
+
+That includes a request that carries a **subresource** of Amazon S3, i.e. a query parameter that names an operation,
+such as `?acl`, `?cors`, `?uploadId` or `?metadataConfiguration`, which no route of its method and path answers. Without
+this rule, such a request would reach the operation that its method and path name without parameters, and appear to
+succeed: `GET /<bucket>?cors` would be listed by `ListObjects`, `PUT /<bucket>?location` would create the bucket,
+`POST /<bucket>?tagging` would be taken for a form upload, and `DELETE /<bucket>/<key>?acl` would delete the object.
+A query parameter that names no operation, e.g. `?v=3` of a cache-busting link, is ignored, like Amazon S3 does. A CORS
+preflight (`OPTIONS`) is answered whatever its parameters.
+
+The `S3 Control` API (access points, batch operations, Storage Lens, …) isn't implemented either. Its requests, whose
+paths start with `/v20180820/` and which carry an `x-amz-account-id` or `x-amz-outpost-id` header or are signed for
+`s3-control`, answer `501 NotImplemented` with an error that names `S3 Control`, rather than `NoSuchBucket` of a bucket
+named `v20180820`.
+
+`LocalS3SdkOperationsTest` reads the HTTP binding of every operation of the `S3Client` of the AWS SDK for Java, and
+checks that each one reaches its own route: an operation that the SDK adds is either implemented or listed above, never
+answered by another operation.
 
 `GET /_admin/stats` counts the requests answered `501` under `notImplemented`, by operation, e.g.
 `SelectObjectContent`, or, for a request without a route, by its method, the shape of its path and its query

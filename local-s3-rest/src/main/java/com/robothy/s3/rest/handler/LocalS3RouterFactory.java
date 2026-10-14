@@ -4,6 +4,7 @@ import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.ANALYTICS;
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.INTELLIGENT_TIERING;
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.INVENTORY;
 import static com.robothy.s3.core.model.IdentifiedBucketConfiguration.METRICS;
+import static com.robothy.s3.core.model.StoredBucketConfiguration.ABAC;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.ACCELERATE;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.LOGGING;
 import static com.robothy.s3.core.model.StoredBucketConfiguration.OWNERSHIP_CONTROLS;
@@ -100,7 +101,31 @@ public class LocalS3RouterFactory {
       // Object retrieval and transformation.
       new NotImplementedOperation("GetObjectTorrent", GET, BUCKET_KEY_PATH, has("torrent")),
       new NotImplementedOperation("SelectObjectContent", POST, BUCKET_KEY_PATH, has("select")),
-      new NotImplementedOperation("WriteGetObjectResponse", POST, "/WriteGetObjectResponse", null)
+      new NotImplementedOperation("WriteGetObjectResponse", POST, "/WriteGetObjectResponse", null),
+      // Re-encrypting an object in place; without the route, its request would overwrite the object with the body.
+      new NotImplementedOperation("UpdateObjectEncryption", PUT, BUCKET_KEY_PATH, has("encryption")),
+      // Object annotations. Without these routes, their requests would reach GetObject, PutObject, which would
+      // overwrite the object with the annotation, or DeleteObject.
+      new NotImplementedOperation("DeleteObjectAnnotation", DELETE, BUCKET_KEY_PATH, has("annotation")),
+      new NotImplementedOperation("GetObjectAnnotation", GET, BUCKET_KEY_PATH, has("annotation", "annotationName")),
+      new NotImplementedOperation("ListObjectAnnotations", GET, BUCKET_KEY_PATH,
+          has("annotation").andHasNot("annotationName")),
+      new NotImplementedOperation("PutObjectAnnotation", PUT, BUCKET_KEY_PATH, has("annotation")),
+      // S3 Metadata. Without these routes, their requests would reach ListObjects, CreateBucket, PostObject or, worst,
+      // DeleteBucket.
+      new NotImplementedOperation("CreateBucketMetadataConfiguration", POST, BUCKET_PATH, has("metadataConfiguration")),
+      new NotImplementedOperation("CreateBucketMetadataTableConfiguration", POST, BUCKET_PATH, has("metadataTable")),
+      new NotImplementedOperation("DeleteBucketMetadataConfiguration", DELETE, BUCKET_PATH,
+          has("metadataConfiguration")),
+      new NotImplementedOperation("DeleteBucketMetadataTableConfiguration", DELETE, BUCKET_PATH, has("metadataTable")),
+      new NotImplementedOperation("GetBucketMetadataConfiguration", GET, BUCKET_PATH, has("metadataConfiguration")),
+      new NotImplementedOperation("GetBucketMetadataTableConfiguration", GET, BUCKET_PATH, has("metadataTable")),
+      new NotImplementedOperation("UpdateBucketMetadataAnnotationTableConfiguration", PUT, BUCKET_PATH,
+          has("metadataAnnotationTable")),
+      new NotImplementedOperation("UpdateBucketMetadataInventoryTableConfiguration", PUT, BUCKET_PATH,
+          has("metadataInventoryTable")),
+      new NotImplementedOperation("UpdateBucketMetadataJournalTableConfiguration", PUT, BUCKET_PATH,
+          has("metadataJournalTable"))
   );
 
   /**
@@ -347,6 +372,7 @@ public class LocalS3RouterFactory {
   private static void bucketReadRoutes(Routes routes, ServiceFactory factory, SharedControllers shared,
                                        SessionCredentialIssuer sessionCredentialIssuer) {
     routes
+        .add("GetBucketAbac", GET, BUCKET_PATH, has("abac"), shared.storedConfiguration().get(ABAC))
         .add("CreateSession", GET, BUCKET_PATH, has("session"),
             new CreateSessionController(sessionCredentialIssuer))
         .add("GetBucketAccelerateConfiguration", GET, BUCKET_PATH, has("accelerate"),
@@ -438,6 +464,7 @@ public class LocalS3RouterFactory {
         .add("DeletePublicAccessBlock", DELETE, BUCKET_PATH, has("publicAccessBlock"),
             new DeletePublicAccessBlockController(factory))
         .add(PostObjectController.OPERATION, POST, BUCKET_PATH, new PostObjectController(factory, signatureVerifier))
+        .add("PutBucketAbac", PUT, BUCKET_PATH, has("abac"), shared.storedConfiguration().put(ABAC))
         .add("PutBucketAccelerateConfiguration", PUT, BUCKET_PATH, has("accelerate"),
             shared.storedConfiguration().put(ACCELERATE))
         .add("PutBucketAcl", PUT, BUCKET_PATH, has("acl"), new PutBucketAclController(factory))
@@ -478,8 +505,8 @@ public class LocalS3RouterFactory {
         .add("GetObject", GET, BUCKET_KEY_PATH, HeaderCondition.hasNot(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES),
             new GetObjectController(factory))
         .add("GetObjectAcl", GET, BUCKET_KEY_PATH, has("acl"), new GetObjectAclController(factory))
-        .add("GetObjectAttributes", GET, BUCKET_KEY_PATH, HeaderCondition.has(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES),
-            new GetObjectAttributesController(factory))
+        .add("GetObjectAttributes", GET, BUCKET_KEY_PATH, has("attributes"),
+            HeaderCondition.has(AmzHeaderNames.X_AMZ_OBJECT_ATTRIBUTES), new GetObjectAttributesController(factory))
         .add("GetObjectLegalHold", GET, BUCKET_KEY_PATH, has("legal-hold"), shared.objectLock()::getLegalHold)
         .add("GetObjectRetention", GET, BUCKET_KEY_PATH, has("retention"), shared.objectLock()::getRetention)
         .add("GetObjectTagging", GET, BUCKET_KEY_PATH, has("tagging"), shared.objectTagging()::get)

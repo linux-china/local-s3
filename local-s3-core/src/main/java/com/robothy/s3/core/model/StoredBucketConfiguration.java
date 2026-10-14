@@ -5,7 +5,8 @@ import java.util.Optional;
 
 /**
  * The configurations of a bucket that LocalS3 <b>stores and returns but never applies</b>: nothing is accelerated,
- * logged, billed to the requester or hosted as a website, and ACLs aren't disabled by the ownership controls.
+ * logged, billed to the requester or hosted as a website, ACLs aren't disabled by the ownership controls, and no access
+ * is decided by the tags of a bucket under ABAC.
  *
  * <p>They exist so that the clients that read or write each of them, e.g. Terraform refreshing an
  * {@code aws_s3_bucket}, which reads every one of them, or CDK and SDK tool chains setting the ownership controls,
@@ -55,7 +56,14 @@ public enum StoredBucketConfiguration {
   OWNERSHIP_CONTROLS("OwnershipControls",
       "<OwnershipControls xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Rule>"
           + "<ObjectOwnership>BucketOwnerEnforced</ObjectOwnership></Rule></OwnershipControls>",
-      S3ErrorCode.OwnershipControlsNotFoundError);
+      S3ErrorCode.OwnershipControlsNotFoundError),
+
+  /**
+   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAbac.html">GetBucketAbac</a>: attribute-based
+   * access control is off until it is put, and there's no operation to delete it.
+   */
+  ABAC("AbacStatus",
+      "<AbacStatus xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>Disabled</Status></AbacStatus>", null);
 
   private final String rootElement;
 

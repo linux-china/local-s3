@@ -40,6 +40,7 @@ test relies on one of them; such a test has to run against Amazon S3.
 | `PutBucketAcl`, `PutObjectAcl`, `x-amz-acl`, `x-amz-grant-*` | Stored and returned | Not enforced against signed requests; only a public `READ` opens a bucket to anonymous [website](#which-buckets-are-public) reads. See [access control lists](#access-control-lists) |
 | `PutBucketPolicy`, `PutPublicAccessBlock` | Stored and returned | Not enforced against signed requests; only an `Allow` of `s3:GetObject` to `*` opens a bucket to anonymous [website](#which-buckets-are-public) reads, and conditions aren't evaluated. `GetBucketPolicyStatus` answers `IsPublic` for any policy, unless `BlockPublicPolicy` or `RestrictPublicBuckets` is set |
 | `PutBucketOwnershipControls` | Stored and returned | ACLs keep working under `BucketOwnerEnforced` |
+| `PutBucketAbac` | Stored and returned; `Disabled` until put | No access is decided by the tags of a bucket |
 | `PutBucketAccelerateConfiguration` | Stored and returned | Nothing is accelerated |
 | `PutBucketLogging` | Stored and returned | No access log is written |
 | `PutBucketRequestPayment` | Stored and returned | Nothing is billed to the requester |

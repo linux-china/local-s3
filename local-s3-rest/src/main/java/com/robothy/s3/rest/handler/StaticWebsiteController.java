@@ -28,6 +28,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Serves a bucket as a
@@ -52,15 +54,11 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
    * subresources, e.g. {@code ?acl}, and the parameters of the listings, e.g. {@code ?prefix=}. A website URL may
    * carry query parameters of its own, e.g. {@code ?v=3} of a cache-busting link, which Amazon S3 ignores as well.
    */
-  private static final Set<String> S3_OPERATION_PARAMETERS = Set.of(
-      "accelerate", "acl", "analytics", "attributes", "cors", "delete", "encryption", "intelligent-tiering",
-      "inventory", "legal-hold", "lifecycle", "location", "logging", "metrics", "notification", "object-lock",
-      "ownershipControls", "partNumber", "policy", "policyStatus", "publicAccessBlock", "renameObject", "replication",
-      "requestPayment", "restore", "retention", "select", "tagging", "torrent", "uploadId", "uploads", "versioning",
-      "versionId", "versions", "website",
+  private static final Set<String> S3_OPERATION_PARAMETERS = Stream.concat(S3Subresources.NAMES.stream(), Stream.of(
+      "partNumber", "versionId",
       // The parameters of ListObjects, ListObjectsV2 and ListObjectVersions, which address the bucket itself.
       "continuation-token", "delimiter", "encoding-type", "fetch-owner", "key-marker", "list-type", "marker",
-      "max-keys", "prefix", "start-after");
+      "max-keys", "prefix", "start-after")).collect(Collectors.toUnmodifiableSet());
 
   /**
    * The max number of parsed {@code WebsiteConfiguration}s kept, so that a service with many configured buckets

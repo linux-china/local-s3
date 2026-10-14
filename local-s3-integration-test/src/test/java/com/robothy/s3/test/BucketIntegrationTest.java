@@ -336,6 +336,46 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void abacIsStoredButNotApplied(S3Client s3) {
+    String bucketName = "abac-bucket";
+    s3.createBucket(b -> b.bucket(bucketName));
+
+    assertEquals(BucketAbacStatus.DISABLED, s3.getBucketAbac(b -> b.bucket(bucketName)).abacStatus().status());
+    s3.putBucketAbac(b -> b.bucket(bucketName).abacStatus(a -> a.status(BucketAbacStatus.ENABLED)));
+    assertEquals(BucketAbacStatus.ENABLED, s3.getBucketAbac(b -> b.bucket(bucketName)).abacStatus().status());
+    // A PUT of ?abac used to reach CreateBucket, and a GET ListObjects.
+    assertThrows(NoSuchBucketException.class, () -> s3.getBucketAbac(b -> b.bucket("no-such-bucket")));
+  }
+
+  @Test
+  @LocalS3
+  void s3MetadataOperationsAnswerNotImplementedAndLeaveTheBucketAlone(S3Client s3) {
+    String bucketName = "metadata-bucket";
+    s3.createBucket(b -> b.bucket(bucketName));
+
+    List<Runnable> operations = List.of(
+        () -> s3.getBucketMetadataConfiguration(b -> b.bucket(bucketName)),
+        () -> s3.getBucketMetadataTableConfiguration(b -> b.bucket(bucketName)),
+        () -> s3.createBucketMetadataConfiguration(b -> b.bucket(bucketName)
+            .metadataConfiguration(m -> m.journalTableConfiguration(j -> j.recordExpiration(
+                r -> r.expiration(ExpirationState.DISABLED))))),
+        () -> s3.updateBucketMetadataJournalTableConfiguration(b -> b.bucket(bucketName)
+            .journalTableConfiguration(j -> j.recordExpiration(r -> r.expiration(ExpirationState.DISABLED)))),
+        () -> s3.updateBucketMetadataInventoryTableConfiguration(b -> b.bucket(bucketName)
+            .inventoryTableConfiguration(i -> i.configurationState(InventoryConfigurationState.DISABLED))),
+        // A DELETE of ?metadataTable used to delete the bucket itself.
+        () -> s3.deleteBucketMetadataTableConfiguration(b -> b.bucket(bucketName)),
+        () -> s3.deleteBucketMetadataConfiguration(b -> b.bucket(bucketName)));
+    for (Runnable operation : operations) {
+      S3Exception e = assertThrows(S3Exception.class, operation::run);
+      assertEquals(501, e.statusCode());
+      assertEquals("NotImplemented", e.awsErrorDetails().errorCode());
+    }
+    s3.headBucket(b -> b.bucket(bucketName));
+  }
+
+  @Test
+  @LocalS3
   void testMetricsInventoryAndAnalyticsConfigurationsAreStoredButNotApplied(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());

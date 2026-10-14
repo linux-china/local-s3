@@ -36,4 +36,6 @@ dependencies {
     testImplementation(libs.mockitoCore)
     // Tests assert the levels that LocalS3 logs at.
     testImplementation(libs.logbackClassic)
+    // LocalS3SdkOperationsTest reads the HTTP binding of every operation of the S3 client of the SDK.
+    testImplementation(libs.awssdkS3)
 }

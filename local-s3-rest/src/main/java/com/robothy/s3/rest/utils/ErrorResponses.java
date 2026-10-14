@@ -34,7 +34,18 @@ public final class ErrorResponses {
    * @param response the response to write the error to.
    */
   public static void notImplemented(RouterHttpRequest request, RouterHttpResponse response) {
-    String message = "LocalS3 does not implement " + request.getMethod() + " " + request.getPath() + ".";
+    notImplemented(request, response, request.getMethod() + " " + request.getPath());
+  }
+
+  /**
+   * Respond to a request of something that LocalS3 doesn't implement.
+   *
+   * @param request the request.
+   * @param response the response to write the error to.
+   * @param what what isn't implemented, e.g. {@code GET /bucket?cors}, which the message of the error names.
+   */
+  public static void notImplemented(RouterHttpRequest request, RouterHttpResponse response, String what) {
+    String message = "LocalS3 does not implement " + what + ".";
     if (isJsonRequest(request)) {
       writeVectorsError(response, LocalS3VectorErrorType.NOT_FOUND, message);
     } else {

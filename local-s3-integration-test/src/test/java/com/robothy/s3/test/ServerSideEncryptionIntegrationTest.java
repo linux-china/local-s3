@@ -303,4 +303,22 @@ class ServerSideEncryptionIntegrationTest {
     }
   }
 
+
+  /**
+   * Without its route, the request of {@code UpdateObjectEncryption} would reach {@code PutObject} and overwrite the
+   * object with its body.
+   */
+  @Test
+  @LocalS3
+  void updateObjectEncryptionAnswersNotImplementedAndLeavesTheObjectAlone(S3Client s3) {
+    s3.createBucket(b -> b.bucket(BUCKET));
+    s3.putObject(b -> b.bucket(BUCKET).key("a.txt"), RequestBody.fromString("hello"));
+
+    S3Exception e = assertThrows(S3Exception.class, () -> s3.updateObjectEncryption(b -> b.bucket(BUCKET).key("a.txt")
+        .objectEncryption(o -> o.ssekms(k -> k.kmsKeyArn(KMS_KEY)))));
+    assertEquals(501, e.statusCode());
+    assertEquals("NotImplemented", e.awsErrorDetails().errorCode());
+    assertEquals("hello", s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("a.txt")).asUtf8String());
+  }
+
 }
