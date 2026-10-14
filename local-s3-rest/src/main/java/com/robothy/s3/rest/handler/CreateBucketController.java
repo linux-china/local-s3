@@ -16,6 +16,10 @@ import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import java.io.InputStream;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,9 +41,15 @@ class CreateBucketController extends BucketHttpRequestHandler {
     InputStream inputStream = RequestBodies.inputStream(request.getBody());
 
     String locationConstraint = LocalS3Constants.DEFAULT_LOCATION_CONSTRAINT;
+    Collection<Map<String, String>> tagging = null;
     if (RequestBodies.length(request.getBody()) != 0) {
       CreateBucketConfiguration createBucketConfig = xmlMapper.readValue(inputStream, CreateBucketConfiguration.class);
       locationConstraint = createBucketConfig.getLocationConstraint();
+      if (createBucketConfig.getTags() != null && !createBucketConfig.getTags().isEmpty()) {
+        Map<String, String> tags = new LinkedHashMap<>();
+        createBucketConfig.getTags().forEach(tag -> tags.put(tag.getKey(), tag.getValue()));
+        tagging = List.of(tags);
+      }
     }
 
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
@@ -48,7 +58,7 @@ class CreateBucketController extends BucketHttpRequestHandler {
         .map(value -> "true".equalsIgnoreCase(value.trim()))
         .orElse(false);
     try {
-      bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled);
+      bucketService.createBucket(bucketName, locationConstraint, objectLockEnabled, tagging);
     } catch (BucketAlreadyOwnedByYouException e) {
       // Amazon S3 answers the re-creation of a bucket that the requester owns in us-east-1 with 200 OK, for legacy
       // compatibility, and leaves the bucket and its objects as they are; in every other region it answers 409.

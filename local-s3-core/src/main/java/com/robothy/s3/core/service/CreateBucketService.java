@@ -10,7 +10,9 @@ import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.Grant;
 import com.robothy.s3.datatypes.Grantee;
 import com.robothy.s3.datatypes.Owner;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface CreateBucketService extends LocalS3MetadataApplicable {
 
@@ -25,6 +27,11 @@ public interface CreateBucketService extends LocalS3MetadataApplicable {
   }
 
   default Bucket createBucket(String bucketName, String region, boolean objectLockEnabled) {
+    return createBucket(bucketName, region, objectLockEnabled, null);
+  }
+
+  default Bucket createBucket(String bucketName, String region, boolean objectLockEnabled,
+                              Collection<Map<String, String>> tagging) {
     return changeBucket(bucketName, BucketGuard.Change.CREATE, () -> {
       BucketAssertions.assertBucketNameIsValid(bucketName);
       BucketAssertions.assertBucketNotExists(localS3Metadata(), bucketName);
@@ -36,6 +43,7 @@ public interface CreateBucketService extends LocalS3MetadataApplicable {
         bucketMetadata.setVersioningEnabled(true);
         bucketMetadata.setObjectLock(new BucketObjectLockConfiguration(null));
       }
+      bucketMetadata.setTagging(tagging);
       localS3Metadata().addBucketMetadata(bucketMetadata);
       publishChange(S3Change.bucketCreated("CreateBucket", bucketName, region));
       return Bucket.fromBucketMetadata(bucketMetadata);

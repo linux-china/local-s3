@@ -62,6 +62,9 @@ bucket doesn't have succeeds, except for the ones named by `id`, which answer `4
 An operation that LocalS3 doesn't have at all answers `501 NotImplemented` rather than pretending to succeed, and is
 counted under `notImplemented` by `GET /_admin/stats`; see [apis.md](apis.md#known-unimplemented-amazon-s3-apis).
 
+The `Tags` of a `CreateBucketConfiguration` become the tagging of the new bucket, which `GetBucketTagging` answers,
+like Amazon S3. They're dropped when a re-creation of a bucket in us-east-1 answers 200 and leaves the bucket as it was.
+
 ## Request validation
 
 + Bucket names must follow the [naming rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html)

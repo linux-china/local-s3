@@ -93,6 +93,20 @@ public class BucketIntegrationTest {
 
   @Test
   @LocalS3
+  void tagsOfCreateBucketConfigurationBecomeTheTaggingOfTheBucket(S3Client s3) {
+    s3.createBucket(b -> b.bucket("tagged-bucket").createBucketConfiguration(c -> c
+        .tags(Tag.builder().key("team").value("data").build(), Tag.builder().key("env").value("test").build())));
+
+    Map<String, String> tags = s3.getBucketTagging(b -> b.bucket("tagged-bucket")).tagSet().stream()
+        .collect(Collectors.toMap(Tag::key, Tag::value));
+    assertEquals(Map.of("team", "data", "env", "test"), tags);
+
+    s3.createBucket(b -> b.bucket("untagged-bucket").createBucketConfiguration(c -> c.locationConstraint("eu-west-1")));
+    assertThrows(S3Exception.class, () -> s3.getBucketTagging(b -> b.bucket("untagged-bucket")));
+  }
+
+  @Test
+  @LocalS3
   void bucketAcl(S3Client s3) {
     String bucketName = "my-bucket";
     s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
