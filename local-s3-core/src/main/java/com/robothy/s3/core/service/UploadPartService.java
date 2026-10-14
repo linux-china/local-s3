@@ -50,6 +50,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
             .contentMd5(data.md5())
             .checksum(Objects.isNull(checksum) ? null
                 : ObjectChecksum.fullObject(checksum.algorithm(), Checksums.encode(data.checksum())))
+            .defaultChecksum(Objects.isNull(checksum) ? Checksums.encode(data.checksum()) : null)
             .build();
         return commitUploadPart(bucket, key, uploadId, partNumber, uploadPartMetadata);
       } catch (Throwable e) {

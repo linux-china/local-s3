@@ -6,12 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.robothy.s3.jupiter.LocalS3;
+import com.robothy.s3.jupiter.LocalS3Endpoint;
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
 import software.amazon.awssdk.services.s3.model.ChecksumMode;
@@ -257,6 +264,86 @@ public class FlexibleChecksumIntegrationTest {
     assertEquals(Checksums.sha1("Hello"), sha1.copyObjectResult().checksumSHA1());
     assertEquals(Checksums.sha1("Hello"), s3.headObject(b -> b.bucket(BUCKET).key("c.txt")
         .checksumMode(ChecksumMode.ENABLED)).checksumSHA1());
+  }
+
+  /**
+   * Like Amazon S3, an object that a client stores without a checksum, e.g. DuckDB or curl, gets a CRC64NVME.
+   */
+  @Test
+  @LocalS3
+  void givesAnObjectStoredWithoutAChecksumTheDefaultOne(LocalS3Endpoint endpoint) {
+    try (S3Client s3 = clientWithoutChecksums(endpoint)) {
+      s3.createBucket(b -> b.bucket(BUCKET));
+      PutObjectResponse put = s3.putObject(b -> b.bucket(BUCKET).key("a.txt"), RequestBody.fromString("Hello"));
+      assertNull(put.checksumCRC32());
+      assertEquals(Checksums.crc64Nvme("Hello"), put.checksumCRC64NVME());
+      assertEquals(ChecksumType.FULL_OBJECT, put.checksumType());
+
+      HeadObjectResponse head = s3.headObject(b -> b.bucket(BUCKET).key("a.txt").checksumMode(ChecksumMode.ENABLED));
+      assertEquals(Checksums.crc64Nvme("Hello"), head.checksumCRC64NVME());
+      assertEquals(ChecksumType.FULL_OBJECT, head.checksumType());
+      assertEquals(Checksums.crc64Nvme("Hello"), s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("a.txt")
+          .checksumMode(ChecksumMode.ENABLED)).response().checksumCRC64NVME());
+
+      S3Object listed = s3.listObjectsV2(b -> b.bucket(BUCKET)).contents().get(0);
+      assertEquals(List.of(ChecksumAlgorithm.CRC64_NVME), listed.checksumAlgorithm());
+      assertEquals(ChecksumType.FULL_OBJECT, listed.checksumType());
+
+      // An object stored with a checksum keeps the algorithm of its own.
+      assertEquals(Checksums.sha1("Hello"), put(s3, "sha1", "Hello", ChecksumAlgorithm.SHA1).checksumSHA1());
+      HeadObjectResponse sha1 = s3.headObject(b -> b.bucket(BUCKET).key("sha1").checksumMode(ChecksumMode.ENABLED));
+      assertEquals(Checksums.sha1("Hello"), sha1.checksumSHA1());
+      assertNull(sha1.checksumCRC64NVME());
+    }
+  }
+
+  /**
+   * A multipart upload without a checksum algorithm gets a CRC64NVME combined from the CRCs of its parts, which answer
+   * none themselves.
+   */
+  @Test
+  @LocalS3
+  void givesAMultipartUploadWithoutAChecksumAlgorithmTheDefaultChecksum(LocalS3Endpoint endpoint) {
+    try (S3Client s3 = clientWithoutChecksums(endpoint)) {
+      s3.createBucket(b -> b.bucket(BUCKET));
+      String part1 = Parts.large("Hello", 3);
+      String part2 = "World";
+
+      CreateMultipartUploadResponse upload = s3.createMultipartUpload(b -> b.bucket(BUCKET).key("a.txt"));
+      UploadPartResponse uploaded1 = s3.uploadPart(b -> b.bucket(BUCKET).key("a.txt").uploadId(upload.uploadId())
+          .partNumber(1), RequestBody.fromString(part1));
+      UploadPartResponse uploaded2 = s3.uploadPart(b -> b.bucket(BUCKET).key("a.txt").uploadId(upload.uploadId())
+          .partNumber(2), RequestBody.fromString(part2));
+      assertNull(uploaded1.checksumCRC64NVME());
+      ListPartsResponse parts = s3.listParts(b -> b.bucket(BUCKET).key("a.txt").uploadId(upload.uploadId()));
+      assertNull(parts.parts().get(0).checksumCRC64NVME());
+
+      CompleteMultipartUploadResponse completed = s3.completeMultipartUpload(b -> b.bucket(BUCKET).key("a.txt")
+          .uploadId(upload.uploadId())
+          .multipartUpload(m -> m.parts(
+              CompletedPart.builder().partNumber(1).eTag(uploaded1.eTag()).build(),
+              CompletedPart.builder().partNumber(2).eTag(uploaded2.eTag()).build())));
+      assertEquals(Checksums.crc64Nvme(part1 + part2), completed.checksumCRC64NVME());
+      assertEquals(ChecksumType.FULL_OBJECT, completed.checksumType());
+
+      ResponseBytes<GetObjectResponse> get = s3.getObjectAsBytes(b -> b.bucket(BUCKET).key("a.txt")
+          .checksumMode(ChecksumMode.ENABLED));
+      assertArrayEquals((part1 + part2).getBytes(StandardCharsets.UTF_8), get.asByteArray());
+      assertEquals(Checksums.crc64Nvme(part1 + part2), get.response().checksumCRC64NVME());
+    }
+  }
+
+  private static S3Client clientWithoutChecksums(LocalS3Endpoint endpoint) {
+    return S3Client.builder()
+        .endpointOverride(URI.create(endpoint.endpoint()))
+        .forcePathStyle(true)
+        .region(Region.of(endpoint.region()))
+        // Without authentication, any credentials are accepted.
+        .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
+            Objects.requireNonNullElse(endpoint.accessKey(), "foo"),
+            Objects.requireNonNullElse(endpoint.secretKey(), "bar"))))
+        .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+        .build();
   }
 
   private static PutObjectResponse put(S3Client s3, String key, String content, ChecksumAlgorithm algorithm) {

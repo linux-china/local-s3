@@ -32,4 +32,12 @@ public class UploadPartMetadata {
    */
   private ObjectChecksum checksum;
 
+  /**
+   * The base64 encoded default checksum of a part uploaded without {@linkplain #checksum one}, which the default
+   * checksum of the object is combined from without reading the part again. It is kept apart from {@linkplain
+   * #checksum} because a part of an upload without a checksum algorithm answers none. {@code null} for a part with a
+   * checksum, or one that a LocalS3 before default checksums stored.
+   */
+  private String defaultChecksum;
+
 }

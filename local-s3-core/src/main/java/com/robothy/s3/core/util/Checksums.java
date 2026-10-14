@@ -48,6 +48,12 @@ public final class Checksums {
   }
 
   /**
+   * The algorithm of the checksum that an object stored without one gets, like on Amazon S3; see
+   * {@code docs/semantics.md#default-checksums}.
+   */
+  public static final CheckSumAlgorithm DEFAULT_ALGORITHM = CheckSumAlgorithm.CRC64NVME;
+
+  /**
    * A calculator of a checksum.
    *
    * @param algorithm the algorithm of the checksum.

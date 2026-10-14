@@ -58,8 +58,9 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     }
 
     RequestChecksum checksum = options.getChecksum();
+    CheckSumAlgorithm algorithm = Objects.isNull(checksum) ? Checksums.DEFAULT_ALGORITHM : checksum.algorithm();
     StoredContent content = storeContent(options.getContent(), options.getContentFile(), options.getHeapContent(),
-        Objects.isNull(checksum) ? null : checksum.algorithm());
+        algorithm);
     Long fileId = content.fileId();
     return deliverChangesAfter(() -> {
       try {
@@ -77,9 +78,8 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
         if (Objects.nonNull(checksum)) {
           Checksums.verify(checksum, content.checksum());
-          versionedObjectMetadata.setChecksum(
-              ObjectChecksum.fullObject(checksum.algorithm(), Checksums.encode(content.checksum())));
         }
+        versionedObjectMetadata.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(content.checksum())));
         options.getTagging().ifPresent(versionedObjectMetadata::setTagging);
         versionedObjectMetadata.setObjectLock(options.getObjectLock());
         versionedObjectMetadata.setCustomerEncryption(options.getCustomerEncryption());
@@ -147,7 +147,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     }
     CheckSumAlgorithm algorithm = Objects.nonNull(requestChecksum) ? requestChecksum.algorithm()
         : Optional.ofNullable(appendedTo).map(VersionedObjectMetadata::getChecksum).map(ObjectChecksum::getAlgorithm)
-        .orElse(null);
+        .orElse(Checksums.DEFAULT_ALGORITHM);
     StoredContent content = storeContent(Objects.isNull(target.content()) ? appended
         : new SequenceInputStream(target.content(), appended), null, algorithm);
     Long fileId = content.fileId();
@@ -180,9 +180,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         version.setSize(content.size());
         version.setFileId(fileId);
         version.setEtag(content.md5());
-        if (Objects.nonNull(algorithm)) {
-          version.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(content.checksum())));
-        }
+        version.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(content.checksum())));
 
         return changeBucket(bucketName, () -> {
           BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);

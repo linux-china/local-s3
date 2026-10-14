@@ -200,7 +200,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
                                         ChecksumType expectedType) {
     CheckSumAlgorithm algorithm = upload.getChecksumAlgorithm();
     if (Objects.isNull(algorithm)) {
-      return null;
+      return defaultObjectChecksum(upload, layout, expected);
     }
     ChecksumType type = Objects.requireNonNullElseGet(upload.getChecksumType(),
         () -> Checksums.defaultMultipartType(algorithm));
@@ -249,12 +249,44 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     return ObjectChecksum.fullObject(algorithm, Checksums.encode(fullObject));
   }
 
+  /**
+   * See {@code docs/semantics.md#default-checksums}. The checksum of the object isn't given to the parts of the
+   * layout, unlike {@linkplain #partChecksum}, since parts of an upload without a checksum algorithm answer none.
+   */
+  private ObjectChecksum defaultObjectChecksum(UploadMetadata upload, List<ObjectPartMetadata> layout,
+                                               RequestChecksum expected) {
+    CheckSumAlgorithm algorithm = Checksums.DEFAULT_ALGORITHM;
+    List<byte[]> partChecksums = new ArrayList<>(layout.size());
+    List<Long> partSizes = new ArrayList<>(layout.size());
+    for (ObjectPartMetadata part : layout) {
+      ObjectChecksum checksum = part.getChecksum();
+      String defaultChecksum = upload.getParts().get(part.getPartNumber()).getDefaultChecksum();
+      partChecksums.add(Objects.nonNull(checksum) && checksum.getAlgorithm() == algorithm
+          ? Checksums.decode(algorithm, checksum.getValue())
+          : Objects.nonNull(defaultChecksum) ? Checksums.decode(algorithm, defaultChecksum)
+          : computePartChecksum(algorithm, part));
+      partSizes.add(part.getSize());
+    }
+    byte[] fullObject = Checksums.combine(algorithm, partChecksums, partSizes);
+    // Without an algorithm of the upload, a checksum of another algorithm in the request was never verified.
+    if (Objects.nonNull(expected) && expected.algorithm() == algorithm) {
+      Checksums.verify(expected, fullObject);
+    }
+    return ObjectChecksum.fullObject(algorithm, Checksums.encode(fullObject));
+  }
+
   private byte[] partChecksum(CheckSumAlgorithm algorithm, ObjectPartMetadata part) {
     ObjectChecksum checksum = part.getChecksum();
     if (Objects.nonNull(checksum) && checksum.getAlgorithm() == algorithm) {
       return Checksums.decode(algorithm, checksum.getValue());
     }
 
+    byte[] computed = computePartChecksum(algorithm, part);
+    part.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(computed)));
+    return computed;
+  }
+
+  private byte[] computePartChecksum(CheckSumAlgorithm algorithm, ObjectPartMetadata part) {
     InputStream content;
     try {
       content = storage().getInputStream(part.getFileId());
@@ -267,7 +299,6 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read part " + part.getPartNumber() + ".", e);
     }
-    part.setChecksum(ObjectChecksum.fullObject(algorithm, Checksums.encode(computed)));
     return computed;
   }
 

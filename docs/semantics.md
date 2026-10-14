@@ -11,6 +11,7 @@ Amazon S3 would refuse.
 - [Conditional requests](#conditional-requests)
 - [Range requests](#range-requests)
 - [Versioning](#versioning)
+- [Default checksums](#default-checksums)
 - [Entity tags of multipart uploads](#entity-tags-of-multipart-uploads)
 - [Browser form uploads (POST Object)](#browser-form-uploads-post-object)
 - [CORS](#cors)
@@ -247,6 +248,21 @@ that version reports `null`.
   something is left after it.
 + Noncurrent versions and delete markers are never removed by themselves: a `NoncurrentVersionExpiration` or
   `ExpiredObjectDeleteMarker` rule removes them when a test [applies the lifecycle rules](#lifecycle-configuration).
+
+## Default checksums
+
+Like Amazon S3 since December 2024, every object stored without a checksum gets a `CRC64NVME` checksum of type
+`FULL_OBJECT`, computed while the content is stored, in the same pass as its MD5. Uploads by DuckDB, curl or older SDKs
+thus answer `x-amz-checksum-crc64nvme` to a `GetObject` or `HeadObject` with `x-amz-checksum-mode: ENABLED`, and
+`ChecksumAlgorithm` in `ListObjectsV2`, like the objects a client stored with a checksum.
+
++ `PutObject`, a browser form upload, an append to an object without a checksum and a copy of a source without one get
+  the default. An object stored with a checksum of another algorithm keeps that one.
++ A multipart upload created without `x-amz-checksum-algorithm` gives the object a `FULL_OBJECT` `CRC64NVME` checksum,
+  combined from the CRCs that are computed while its parts are stored, so completing it doesn't read the parts again.
+  Its parts answer no checksum, in `UploadPart`, `UploadPartCopy` or `ListParts`, since the upload has no algorithm; a
+  `x-amz-checksum-crc64nvme` in the `CompleteMultipartUpload` request is verified against the object.
++ An object stored before LocalS3 computed the default keeps having no checksum.
 
 ## Object attributes
 
