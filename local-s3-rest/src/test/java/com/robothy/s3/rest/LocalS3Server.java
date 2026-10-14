@@ -11,7 +11,7 @@ public class LocalS3Server {
                 .mode(LocalS3Mode.PERSISTENCE)
                 .dataPath("temp/local-s3-data")
                 .credentials("admin","admin")
-                .buckets("msst-test","demo1", "demo2", "demo3")
+                .buckets("msst-test","demo1", "demo2", "demo3","slatedb")
                 .website(website -> website.allBuckets(true))
                 .tls(TlsSettings::selfSigned)
                 //.tls(Path.of("local-s3-rest/src/test/resources/127.0.0.1.pem"), Path.of("local-s3-rest/src/test/resources/127.0.0.1-key.pem"))
