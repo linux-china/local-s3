@@ -394,6 +394,58 @@ LocalS3 localS3 = LocalS3.builder()
 localS3.start();
 ```
 
+### Inject faults
+
+`faults()` makes a running service fail the way Amazon S3 does now and then — `503 SlowDown`, `500 InternalError`, a
+slow response, a body that stops halfway — so that the retries and fallbacks of a client can be tested without a proxy
+in front of the service. A `Fault` matches requests by their S3 semantics: the operation, the bucket, the key, the HTTP
+method, and which of the matching requests it applies to.
+
+```java
+import static com.robothy.s3.rest.fault.FaultMatcher.op;
+
+localS3.faults().add(Fault.when(op("UploadPart").bucket("lake").times(2))
+    .respond(S3ErrorCode.SlowDown));                     // the first 2 UploadPart of bucket "lake"
+localS3.faults().add(Fault.when(op("GetObject").keyPrefix("data/"))
+    .delay(Duration.ofMillis(800)));                     // every GetObject under data/
+localS3.faults().add(Fault.when(op("GetObject")).probability(0.05)
+    .resetConnectionAfterBytes(1024));                   // 5% of the downloads break after 1 KiB
+localS3.faults().add(Fault.when(op("PutObject").nth(3))
+    .closeConnection());                                 // the 3rd PutObject gets no response at all
+
+localS3.faults().clear();
+```
+
+The conditions of a `FaultMatcher`:
+
+| Condition                         | Matches                                                                                     |
+|-----------------------------------|---------------------------------------------------------------------------------------------|
+| `op("GetObject", "HeadObject")`   | these operations, by the names that the request statistics report, see `/_admin/stats`      |
+| `anyOp()`                         | every operation                                                                             |
+| `bucket("lake")`                  | requests of this bucket                                                                     |
+| `key("a.txt")`, `keyPrefix("data/")` | requests of this object key, or of keys with this prefix                                 |
+| `method("PUT")`                   | requests of this HTTP method                                                                |
+| `skip(n)`, `times(n)`, `nth(n)`   | of the matching requests, counted from when the fault was added: not the first `n`; only `n` of them; only the `n`th |
+
+The actions of a `Fault`, of which `delay` and `throttle` combine with the others:
+
+| Action                          | Effect                                                                                       |
+|---------------------------------|----------------------------------------------------------------------------------------------|
+| `respond(S3ErrorCode.SlowDown)`, `respond(503, "SlowDown")` | answers with this error instead of performing the operation; an S3 Vectors request, which sends JSON, gets the error as JSON |
+| `delay(Duration)`               | waits before the operation is performed, so a client that times out meanwhile still finds it done, as with Amazon S3 |
+| `throttle(bytesPerSecond)`      | sends the response at most this fast                                                         |
+| `resetConnectionAfterBytes(n)`  | performs the operation, sends the headers and the first `n` bytes of the body, then closes the connection |
+| `closeConnection()`             | closes the connection without performing the operation or answering                        |
+
+`probability(p)` applies a fault to that share of the requests it matches. When several faults match a request, the
+one added first that applies to it wins; every matching fault counts the request for its `skip`, `times` and `nth`
+all the same. `fault.injected()` tells how often a fault was applied.
+
+- The health check, the admin endpoints and the console are never failed, so that a probe of the service isn't
+  either.
+- `reset()` removes the faults, like it clears the request statistics.
+- A delay holds the thread that handles the request, a virtual thread by default.
+
 ### Configure from the environment
 
 `fromEnvironment()` applies the environment variables of the Docker image, e.g. `LOCAL_S3_MODE` or `AWS_BUCKETS`, that

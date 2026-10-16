@@ -52,6 +52,8 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
 
     private final RequestRecorder requestRecorder;
 
+    private final FaultInjector faultInjector;
+
     /**
      * Creates the writers of the large request bodies that are received into the heap for the storage; {@code null} to
      * buffer them in files.
@@ -118,6 +120,21 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                                     RequestRecorder requestRecorder,
                                     @Nullable LongFunction<Optional<HeapContent.Writer>> heapBodyWriters,
                                     @Nullable EventExecutorGroup chunkedWriterGroup) {
+        this(config, executor, router, xmlMapper, requestBodyFileDirectory, inFlightRequests, requestRecorder,
+                heapBodyWriters, chunkedWriterGroup, FaultInjector.NONE);
+    }
+
+    /**
+     * Create a channel initializer whose connections fail the requests that {@code faultInjector} picks; see
+     * {@linkplain #LocalS3ServerInitializer(LocalS3Config, Executor, Router, XmlMapper, Path, InFlightRequests,
+     * RequestRecorder, LongFunction, EventExecutorGroup)}.
+     */
+    public LocalS3ServerInitializer(LocalS3Config config, Executor executor, Router router, XmlMapper xmlMapper,
+                                    @Nullable Path requestBodyFileDirectory, InFlightRequests inFlightRequests,
+                                    RequestRecorder requestRecorder,
+                                    @Nullable LongFunction<Optional<HeapContent.Writer>> heapBodyWriters,
+                                    @Nullable EventExecutorGroup chunkedWriterGroup, FaultInjector faultInjector) {
+        this.faultInjector = Objects.requireNonNull(faultInjector);
         this.config = Objects.requireNonNull(config);
         this.executor = Objects.requireNonNull(executor);
         this.router = Objects.requireNonNull(router);
@@ -165,7 +182,7 @@ public class LocalS3ServerInitializer extends ChannelInitializer<SocketChannel> 
                         heapBodyWriters))
                 .addLast("local-s3-response-encoder", new LocalS3HttpResponseEncoder())
                 .addLast("local-s3-message-handler", new LocalS3HttpMessageHandler(router, executor, inFlightRequests,
-                        requestRecorder));
+                        requestRecorder, faultInjector));
     }
 
     /**

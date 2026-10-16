@@ -14,6 +14,7 @@ import com.robothy.s3.core.service.manager.vectors.LocalS3VectorsManager;
 import com.robothy.s3.rest.admin.LocalS3Admin;
 import com.robothy.s3.rest.handler.iceberg.IcebergClientConfig;
 import com.robothy.s3.rest.admin.RequestStatistics;
+import com.robothy.s3.rest.fault.Faults;
 import com.robothy.s3.rest.admin.ServiceStatistics;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import com.robothy.s3.rest.handler.AwsSignatureV4Presigner;
@@ -100,6 +101,9 @@ public class LocalS3 implements AutoCloseable {
     private volatile RequestStatistics requestStatistics;
 
     private volatile Instant startedAt;
+
+    // Kept across restarts, like the configuration; a reset removes them.
+    private final Faults faults = new Faults();
 
     private Thread shutdownHook;
 
@@ -212,7 +216,7 @@ public class LocalS3 implements AutoCloseable {
         this.server = NettyServer.start(config,
                 LocalS3RouterFactory.create(serviceFactory, config.accessKeyId(), config.secretAccessKey()),
                 serviceFactory.getInstance(XmlMapper.class), requestBodyFileDirectory, recorder(requestStatistics),
-                heapBodyWriters());
+                heapBodyWriters(), faults);
         // The actual port, in case a random one was requested.
         this.port = server.port();
         if (config.tlsEnabled() && config.plainHttpAccepted()) {
@@ -586,7 +590,25 @@ public class LocalS3 implements AutoCloseable {
         if (statistics != null) {
             statistics.clear();
         }
+        faults.clear();
         log.info("LocalS3 was reset.");
+    }
+
+    /**
+     * The faults that the service injects into the requests it handles, e.g. {@code 503 SlowDown} for the first two
+     * {@code UploadPart} requests, to test the retries of a client:
+     *
+     * <pre>{@code
+     * localS3.faults().add(Fault.when(FaultMatcher.op("UploadPart").times(2)).respond(S3ErrorCode.SlowDown));
+     * }</pre>
+     *
+     * They may be added before the service is started and while it runs, take effect on the next request, and are
+     * removed by {@linkplain #reset()}. See {@code docs/embedding.md#inject-faults}.
+     *
+     * @return the faults of this service.
+     */
+    public Faults faults() {
+        return faults;
     }
 
     /**

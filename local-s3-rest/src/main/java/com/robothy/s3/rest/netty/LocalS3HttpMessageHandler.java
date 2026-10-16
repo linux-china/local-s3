@@ -49,6 +49,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
   private final RequestRecorder requestRecorder;
 
+  private final FaultInjector faultInjector;
+
   /**
    * Requests received, e.g. pipelined, while another request of the connection is in flight. Only accessed on the
    * event loop.
@@ -100,10 +102,25 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    */
   public LocalS3HttpMessageHandler(Router router, Executor executor, InFlightRequests inFlightRequests,
                                    RequestRecorder requestRecorder) {
+    this(router, executor, inFlightRequests, requestRecorder, FaultInjector.NONE);
+  }
+
+  /**
+   * Create a handler.
+   *
+   * @param router           routes requests to handlers.
+   * @param executor         runs the handlers of the requests, shared by all connections.
+   * @param inFlightRequests counts the requests in flight, shared by all connections.
+   * @param requestRecorder  receives the requests once their responses are written, shared by all connections.
+   * @param faultInjector    decides which requests fail on purpose, shared by all connections.
+   */
+  public LocalS3HttpMessageHandler(Router router, Executor executor, InFlightRequests inFlightRequests,
+                                   RequestRecorder requestRecorder, FaultInjector faultInjector) {
     this.router = router;
     this.executor = Objects.requireNonNull(executor);
     this.inFlightRequests = Objects.requireNonNull(inFlightRequests);
     this.requestRecorder = Objects.requireNonNull(requestRecorder);
+    this.faultInjector = Objects.requireNonNull(faultInjector);
   }
 
   @Override
@@ -167,9 +184,10 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
   }
 
   /**
-   * The operation that a request was routed to, and its response.
+   * The operation that a request was routed to, its response, and the fault injected into it, if any; no response if
+   * the fault closes the connection instead.
    */
-  private record Handled(String operation, StreamingRouterHttpResponse response) {
+  private record Handled(String operation, StreamingRouterHttpResponse response, FaultInjector.Injection fault) {
   }
 
   private void handleOnExecutor(ChannelHandlerContext ctx, ReceivedRequest received, Runnable end, long startNanos) {
@@ -177,6 +195,7 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     StreamingRouterHttpResponse response = null;
     Throwable failure = null;
     String operation = OperationHandler.UNKNOWN_OPERATION;
+    FaultInjector.Injection fault = null;
     // The operation that the router named, kept if the handler then fails.
     String[] routed = {operation};
     try {
@@ -184,10 +203,16 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
       Handled handled = received.handle(() -> {
         RouterHttpRequestHandler handler = router.match(request);
         routed[0] = OperationHandler.operationOf(handler);
-        return new Handled(routed[0], handle(request, handler));
+        FaultInjector.Injection injection = faultInjector.inject(routed[0], request);
+        return new Handled(routed[0], handle(request, handler, injection), injection);
       });
       operation = handled.operation();
       response = handled.response();
+      fault = handled.fault();
+      if (response == null) {
+        // Closed without an answer by the fault.
+        throw new ClosedByFault();
+      }
       boolean keepAlive = isKeepAlive(request);
       response.putHeader(HttpHeaderNames.CONNECTION.toString(), keepAlive ? HttpHeaderValues.KEEP_ALIVE : HttpHeaderValues.CLOSE);
       if (!response.isStreaming() && !hasNoContent(response.getStatus())) {
@@ -204,7 +229,8 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     StreamingRouterHttpResponse result = response;
     Throwable cause = failure;
     String matchedOperation = operation;
-    Runnable complete = () -> complete(ctx, request, result, cause, end, matchedOperation, startNanos);
+    FaultInjector.Injection injected = fault;
+    Runnable complete = () -> complete(ctx, request, result, cause, end, matchedOperation, startNanos, injected);
     if (ctx.executor().inEventLoop()) {
       complete.run();
       return;
@@ -224,7 +250,15 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
    * Write the response of a handled request on the event loop, and go on with the next request once it is written.
    */
   private void complete(ChannelHandlerContext ctx, RouterHttpRequest request, StreamingRouterHttpResponse response,
-                        Throwable failure, Runnable end, String operation, long startNanos) {
+                        Throwable failure, Runnable end, String operation, long startNanos,
+                        FaultInjector.Injection fault) {
+    if (failure instanceof ClosedByFault) {
+      end.run();
+      inFlight = false;
+      releasePendingRequests();
+      ctx.close();
+      return;
+    }
     if (failure != null) {
       if (response != null) {
         response.discard();
@@ -240,7 +274,17 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
 
     int status = response.getStatus().code();
     String requestId = response.getHeaders().get(AmzHeaderNames.X_AMZ_REQUEST_ID);
+    boolean shaped = false;
+    if (fault != null && fault.shapesResponse()) {
+      // A file sent zero-copy bypasses the handlers that cut and pace the body.
+      response.withoutZeroCopy();
+      shaped = ResponseFaultHandler.install(ctx.pipeline(), fault);
+    }
     ChannelFuture future = ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+    if (shaped) {
+      // Before the next response is written, which the listeners below may start.
+      future.addListener(written -> ResponseFaultHandler.uninstall(ctx.pipeline()));
+    }
     // The request is in flight until its response is written, or fails to be written.
     future.addListener(written -> {
       end.run();
@@ -328,6 +372,38 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
     return keepAlive;
   }
 
+  /**
+   * Handle a request as the injected fault says: delayed, answered with an error rather than handled, or not answered
+   * at all.
+   *
+   * @return the response; {@code null} if the connection is to be closed instead.
+   */
+  private StreamingRouterHttpResponse handle(RouterHttpRequest request, RouterHttpRequestHandler handler,
+                                             FaultInjector.Injection fault) {
+    if (fault == null) {
+      return handle(request, handler);
+    }
+    if (fault.delay().isPositive()) {
+      try {
+        Thread.sleep(fault.delay());
+      } catch (InterruptedException e) {
+        // The server is shutting down.
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("Interrupted while delaying " + request.getMethod() + " " + request.getUri()
+            + " by an injected fault.", e);
+      }
+    }
+    if (fault.closeConnection()) {
+      return null;
+    }
+    if (fault.error() != null) {
+      StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
+      ErrorResponses.error(request, response, fault.error().status(), fault.error().code(), fault.error().message());
+      return response;
+    }
+    return handle(request, handler);
+  }
+
   private StreamingRouterHttpResponse handle(RouterHttpRequest request, RouterHttpRequestHandler handler) {
     StreamingRouterHttpResponse response = new StreamingRouterHttpResponse();
     if (handler == null) {
@@ -392,6 +468,17 @@ public class LocalS3HttpMessageHandler extends ChannelInboundHandlerAdapter {
         values.forEach(value -> to.addHeader(name, value));
       }
     });
+  }
+
+  /**
+   * Ends a request that an injected fault answers by closing the connection.
+   */
+  private static final class ClosedByFault extends RuntimeException {
+
+    ClosedByFault() {
+      super(null, null, false, false);
+    }
+
   }
 
   @Override

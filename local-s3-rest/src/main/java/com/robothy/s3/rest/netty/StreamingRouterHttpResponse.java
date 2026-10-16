@@ -1,6 +1,7 @@
 package com.robothy.s3.rest.netty;
 
 import com.robothy.netty.http.RouterHttpResponse;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import org.jspecify.annotations.NonNull;
@@ -38,6 +39,17 @@ public class StreamingRouterHttpResponse extends RouterHttpResponse {
    */
   public boolean isStreaming() {
     return bodyStream != null;
+  }
+
+  /**
+   * Send the body stream as copied chunks, rather than zero-copy from a file, so that the handlers of the pipeline see
+   * every byte of it, e.g. to cut it off.
+   */
+  void withoutZeroCopy() {
+    if (bodyStream != null) {
+      bodyStream = new FilterInputStream(bodyStream) {
+      };
+    }
   }
 
   InputStream getBodyStream() {

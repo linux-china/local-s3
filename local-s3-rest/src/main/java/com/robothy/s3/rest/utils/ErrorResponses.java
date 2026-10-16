@@ -86,18 +86,42 @@ public final class ErrorResponses {
     }
   }
 
+  /**
+   * Respond with an arbitrary error, e.g. one that a test injects: an S3 {@code <Error>} document, or, for an S3
+   * Vectors request, a JSON error named by its code.
+   *
+   * @param request the request.
+   * @param response the response to write the error to.
+   * @param status the HTTP status.
+   * @param code the error code, e.g. {@code SlowDown}.
+   * @param message the message of the error.
+   */
+  public static void error(RouterHttpRequest request, RouterHttpResponse response, int status, String code,
+                           String message) {
+    if (isJsonRequest(request)) {
+      writeVectorsError(response, status, code, message);
+    } else {
+      writeS3Error(request, response, status, code, message);
+    }
+  }
+
   private static void writeS3Error(RouterHttpRequest request, RouterHttpResponse response, S3ErrorCode errorCode,
+                                   String message) {
+    writeS3Error(request, response, errorCode.httpStatus(), errorCode.code(), message);
+  }
+
+  private static void writeS3Error(RouterHttpRequest request, RouterHttpResponse response, int status, String code,
                                    String message) {
     // The headers and the body of an error report the same request and host IDs, like Amazon S3 does.
     String requestId = ResponseUtils.nextRequestId();
     String hostId = ResponseUtils.nextHostId();
-    response.status(HttpResponseStatus.valueOf(errorCode.httpStatus()))
+    response.status(HttpResponseStatus.valueOf(status))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
     ResponseUtils.addAmzIds(response, requestId, hostId);
     // A response to a HEAD request has no body.
     if (request == null || !HttpMethod.HEAD.equals(request.getMethod())) {
       response.write(XmlUtils.toXml(S3Error.builder()
-          .code(errorCode.code())
+          .code(code)
           .message(message)
           .requestId(requestId)
           .hostId(hostId)
@@ -106,8 +130,12 @@ public final class ErrorResponses {
   }
 
   private static void writeVectorsError(RouterHttpResponse response, LocalS3VectorErrorType errorType, String message) {
-    response.status(HttpResponseStatus.valueOf(errorType.getStatus()))
-        .putHeader(AmzHeaderNames.X_AMZN_ERRORTYPE, errorType.getCode())
+    writeVectorsError(response, errorType.getStatus(), errorType.getCode(), message);
+  }
+
+  private static void writeVectorsError(RouterHttpResponse response, int status, String code, String message) {
+    response.status(HttpResponseStatus.valueOf(status))
+        .putHeader(AmzHeaderNames.X_AMZN_ERRORTYPE, code)
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_JSON);
     try {
       response.write(JSON.writeValueAsString(new S3VectorsError(message)));

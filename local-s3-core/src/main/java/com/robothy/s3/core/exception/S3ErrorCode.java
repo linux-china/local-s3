@@ -104,7 +104,8 @@ public enum S3ErrorCode {
   ServerSideEncryptionConfigurationNotFoundError("ServerSideEncryptionConfigurationNotFoundError", 404, "The server side encryption configuration was not found"),
   // Not raised, nothing is unavailable; kept for simulating the failures of Amazon S3, e.g. to test the retries of a client.
   ServiceUnavailable("ServiceUnavailable", 503, "Service is unable to handle request."),
-  //SlowDown("SlowDown", 503, "Reduce your request rate."),
+  // Not raised either: LocalS3 doesn't limit the request rate; kept for the faults that a test injects.
+  SlowDown("SlowDown", 503, "Please reduce your request rate."),
   //TemporaryRedirect("TemporaryRedirect", 307, "You are being redirected to the bucket while DNS updates."),
   //TokenRefreshRequired("TokenRefreshRequired", 400, "The provided token must be refreshed."),
   //TooManyBuckets("TooManyBuckets", 400, "You have attempted to create more buckets than allowed."),

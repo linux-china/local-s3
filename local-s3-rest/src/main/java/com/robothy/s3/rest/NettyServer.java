@@ -2,6 +2,7 @@ package com.robothy.s3.rest;
 
 import com.robothy.netty.router.Router;
 import com.robothy.s3.core.storage.HeapContent;
+import com.robothy.s3.rest.netty.FaultInjector;
 import com.robothy.s3.rest.netty.InFlightRequests;
 import com.robothy.s3.rest.netty.RequestRecorder;
 import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
@@ -96,14 +97,17 @@ final class NettyServer {
      * @param heapBodyWriters          creates the writer of a large request body of the given expected length that is
      *                                 received into the heap for the storage; {@code null} to buffer large bodies in
      *                                 files.
+     * @param faultInjector            decides which requests fail on purpose.
      * @return the started server.
      */
     static NettyServer start(LocalS3Config config, Router router, XmlMapper xmlMapper,
                              Path requestBodyFileDirectory, RequestRecorder requestRecorder,
-                             LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
+                             LongFunction<Optional<HeapContent.Writer>> heapBodyWriters,
+                             FaultInjector faultInjector) {
         NettyServer server = new NettyServer(config);
         try {
-            server.bind(config.port(), router, xmlMapper, requestBodyFileDirectory, requestRecorder, heapBodyWriters);
+            server.bind(config.port(), router, xmlMapper, requestBodyFileDirectory, requestRecorder, heapBodyWriters,
+                    faultInjector);
         } catch (Throwable e) {
             server.stop();
             throw e;
@@ -112,7 +116,8 @@ final class NettyServer {
     }
 
     private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory,
-                      RequestRecorder requestRecorder, LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
+                      RequestRecorder requestRecorder, LongFunction<Optional<HeapContent.Writer>> heapBodyWriters,
+                      FaultInjector faultInjector) {
         this.parentGroup = new NioEventLoopGroup(config.nettyParentEventGroupThreadNum(),
                 new NamingThreadFactory("locals3-parent-event-group", config.daemonThreads()));
         this.childGroup = new NioEventLoopGroup(config.nettyChildEventGroupThreadNum(),
@@ -133,7 +138,7 @@ final class NettyServer {
                     .option(ChannelOption.SO_REUSEADDR, !PlatformDependent.isWindows())
                     .childHandler(new LocalS3ServerInitializer(config, executor, router, xmlMapper,
                             requestBodyFileDirectory, inFlightRequests, requestRecorder, heapBodyWriters,
-                            chunkedWriterGroup))
+                            chunkedWriterGroup, faultInjector))
                     .bind(config.bindHost(), port)
                     .sync()
                     .channel();
