@@ -195,7 +195,7 @@ logging variables, which the logging configuration of the jar and the image read
 | `LOCAL_S3_LIFECYCLE_INTERVAL` | `0`, off | Apply the [lifecycle configurations](semantics.md#lifecycle-configuration) of the buckets on a schedule: once the service has started, then every interval, e.g. `1h`, `30m` or `PT1H`. For a service that runs for a long time, so that what the rules expire doesn't pile up; a test applies them with `POST /_admin/lifecycle` instead. |
 | `LOCAL_S3_COMPOSITE_MULTIPART_ETAGS` | `true` | Give the object of a completed multipart upload the entity tag of Amazon S3, i.e. the digest of the digests of its parts with a `-<parts>` suffix. `false` answers the digest of the whole content, which LocalS3 answered before 2.5. |
 | `LOCAL_S3_ACCEPT_CHUNKED_UPLOADS` | `true` | Store a `PutObject` or `UploadPart` body sent with `Transfer-Encoding: chunked` and no `Content-Length`, e.g. of `curl -T -`. `false` answers `411 MissingContentLength`, like Amazon S3. See [request validation](semantics.md#request-validation). |
-| `LOCAL_S3_VIRTUAL_HOST_DOMAINS` | | Comma-separated base domains of virtual-hosted-style requests, e.g. `s3,s3.local` for `my-bucket.s3`. `localhost`, Amazon S3 (`*.amazonaws.com`), Alibaba Cloud OSS (`my-bucket.oss-cn-hangzhou.aliyuncs.com`), Cloudflare R2 (`my-bucket.<account-id>.r2.cloudflarestorage.com`) and Tigris (`my-bucket.t3.storage.dev`, `my-bucket.fly.storage.tigris.dev`) hosts always work. |
+| `LOCAL_S3_VIRTUAL_HOST_DOMAINS` | | Comma-separated base domains of virtual-hosted-style requests, e.g. `s3,s3.local` for `my-bucket.s3`. `localhost`, `127-0-0-1.nip.io` (see [Virtual-hosted-style requests](#virtual-hosted-style-requests)), Amazon S3 (`*.amazonaws.com`), Alibaba Cloud OSS (`my-bucket.oss-cn-hangzhou.aliyuncs.com`), Cloudflare R2 (`my-bucket.<account-id>.r2.cloudflarestorage.com`) and Tigris (`my-bucket.t3.storage.dev`, `my-bucket.fly.storage.tigris.dev`) hosts always work. |
 | `LOCAL_S3_VIRTUAL_THREADS` | `true` | Handle every request on a virtual thread of its own. `false` handles the requests on a pool of platform threads, as many as the machine has processors and at least 4. |
 | `LOCAL_S3_OBJECT_METADATA_CACHE_MAX_ENTRIES` | `50000` | `PERSISTENCE` mode: the number of objects whose metadata is kept in heap; see [Opening a large data path](#opening-a-large-data-path). |
 | `LOCAL_S3_INITIAL_DATA_CACHE_MAX_ENTRIES` | `1024` | `IN_MEMORY` mode with initial data: the max number of data paths whose loaded data the JVM caches. |
@@ -234,6 +234,33 @@ LocalS3 localS3 = LocalS3.builder()
     .fromEnvironment()
     .build();
 ```
+
+### Virtual-hosted-style requests
+
+A virtual-hosted-style request names the bucket in the host, e.g. `my-bucket.localhost:29090`, rather than in the path.
+LocalS3 takes the bucket from the host when the host is a subdomain of a base domain: `localhost`, `127.0.0.1`,
+`0.0.0.0` and `127-0-0-1.nip.io` always are, besides those of `LOCAL_S3_VIRTUAL_HOST_DOMAINS`. A request to a base
+domain itself is path-style.
+
+The client still has to resolve the host to LocalS3. `*.localhost` resolves to the loopback address in browsers and
+in curl, but not in every client, e.g. not in the resolver of the JVM; a configured domain needs an `/etc/hosts`
+entry or a DNS record per bucket. [nip.io](https://nip.io) is a public wildcard DNS that resolves every name under
+`127-0-0-1.nip.io` to `127.0.0.1`, so virtual-hosted-style requests work with no configuration at all:
+
+```shell
+aws s3 ls s3://my-bucket --endpoint-url http://127-0-0-1.nip.io:29090
+curl http://my-bucket.127-0-0-1.nip.io:29090/hello.txt
+```
+
+```java
+S3Client s3 = S3Client.builder()
+    .endpointOverride(URI.create("http://127-0-0-1.nip.io:29090"))
+    .region(Region.US_EAST_1)
+    .build();  // virtual-hosted style by default: my-bucket.127-0-0-1.nip.io
+```
+
+Resolving the names needs the DNS of nip.io, i.e. network access; a DNS resolver that blocks answers with private
+addresses (DNS rebinding protection, e.g. of some routers) drops them. Offline, use path-style requests or `localhost`.
 
 ## HTTPS
 

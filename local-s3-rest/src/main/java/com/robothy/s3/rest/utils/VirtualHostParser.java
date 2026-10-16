@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 
 /**
  * Parses the bucket of virtual-hosted-style requests from the {@code Host} header, e.g. {@code bucket.localhost},
+ * {@code bucket.127-0-0-1.nip.io},
  * {@code bucket.s3.local} with the base domain {@code s3.local}, {@code bucket.s3.{region}.amazonaws.com} of
  * Amazon S3, {@code bucket.oss-{region}.aliyuncs.com} of Alibaba Cloud OSS,
  * {@code bucket.{account-id}.r2.cloudflarestorage.com} of Cloudflare R2, or {@code bucket.t3.storage.dev} of Tigris.
@@ -40,9 +41,11 @@ public class VirtualHostParser {
   private static final String R2_REGION = "auto";
 
   /**
-   * Base domains whose subdomains are buckets, in addition to the configured ones.
+   * Base domains whose subdomains are buckets, in addition to the configured ones. The public wildcard DNS of nip.io
+   * resolves every name under {@code 127-0-0-1.nip.io} to 127.0.0.1, so virtual-hosted-style requests need no
+   * {@code /etc/hosts} entry.
    */
-  public static final Set<String> DEFAULT_DOMAINS = Set.of("localhost", "127.0.0.1", "0.0.0.0");
+  public static final Set<String> DEFAULT_DOMAINS = Set.of("localhost", "127.0.0.1", "0.0.0.0", "127-0-0-1.nip.io");
 
 
   /**

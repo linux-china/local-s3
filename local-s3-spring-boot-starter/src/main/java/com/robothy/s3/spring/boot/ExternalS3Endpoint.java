@@ -140,10 +140,12 @@ record ExternalS3Endpoint(String property, String endpoint) {
   }
 
   /**
-   * Whether a host is {@code localhost}, a name under it, or a loopback IP address. A name is never resolved.
+   * Whether a host is {@code localhost}, {@code 127-0-0-1.nip.io}, a name under them, or a loopback IP address. A name
+   * is never resolved.
    */
   private static boolean isLoopback(String host) {
-    if (host.equals("localhost") || host.endsWith(".localhost")) {
+    if (host.equals("localhost") || host.endsWith(".localhost")
+        || host.equals("127-0-0-1.nip.io") || host.endsWith(".127-0-0-1.nip.io")) {
       return true;
     }
     boolean ipAddress = host.contains(":") || host.chars().allMatch(c -> c == '.' || Character.isDigit(c));

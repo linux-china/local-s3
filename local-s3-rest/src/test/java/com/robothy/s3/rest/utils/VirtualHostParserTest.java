@@ -56,6 +56,20 @@ class VirtualHostParserTest {
   }
 
   @Test
+  void getBucketRegionFromNipIoDomain() {
+    assertEquals(new BucketRegion("local", "my-bucket"),
+        VirtualHostParser.getBucketRegionFromHost("my-bucket.127-0-0-1.nip.io:29090").get());
+    assertEquals(new BucketRegion("local", "www.example.com"),
+        VirtualHostParser.getBucketRegionFromHost("www.example.com.127-0-0-1.nip.io").get());
+    assertEquals(new BucketRegion("local", "My-Bucket"),
+        VirtualHostParser.getBucketRegionFromHost("My-Bucket.127-0-0-1.NIP.IO").get());
+
+    // Requests to the domain itself are path-style.
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("127-0-0-1.nip.io:29090").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("my-bucket.10-0-0-1.nip.io").isPresent());
+  }
+
+  @Test
   void getBucketRegionFromConfiguredDomains() {
     VirtualHostParser parser = new VirtualHostParser(List.of("s3", ".s3.local.", " ", "local"));
 

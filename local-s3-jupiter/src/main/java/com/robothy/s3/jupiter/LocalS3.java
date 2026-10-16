@@ -194,7 +194,8 @@ public @interface LocalS3 {
   boolean acceptChunkedUploads() default true;
 
   /**
-   * Set base domains of virtual-hosted-style requests besides {@code localhost}, e.g. {@code s3.local}, so that
+   * Set base domains of virtual-hosted-style requests besides {@code localhost} and
+   * {@code 127-0-0-1.nip.io}, e.g. {@code s3.local}, so that
    * a request to the host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}.
    *
    * @return additional virtual-host domains.

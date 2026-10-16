@@ -28,8 +28,8 @@ public final class S3ApiSettings {
      * Add base domains of virtual-hosted-style requests. With the domain {@code s3.local}, a request to the
      * host {@code my-bucket.s3.local} accesses the bucket {@code my-bucket}, while requests to {@code s3.local}
      * itself are path-style. This lets clients use virtual-hosted-style requests with a host name like the
-     * service name in docker-compose. {@code localhost}, {@code 127.0.0.1} and {@code 0.0.0.0} are always
-     * base domains; hosts of Amazon S3 ({@code amazonaws.com}), of Alibaba Cloud OSS ({@code aliyuncs.com},
+     * service name in docker-compose. {@code localhost}, {@code 127.0.0.1}, {@code 0.0.0.0} and
+     * {@code 127-0-0-1.nip.io} are always base domains; hosts of Amazon S3 ({@code amazonaws.com}), of Alibaba Cloud OSS ({@code aliyuncs.com},
      * e.g. {@code my-bucket.oss-cn-hangzhou.aliyuncs.com}) and of Cloudflare R2 ({@code r2.cloudflarestorage.com},
      * e.g. {@code my-bucket.<account-id>.r2.cloudflarestorage.com}) and of Tigris ({@code my-bucket.t3.storage.dev},
      * {@code my-bucket.fly.storage.tigris.dev}) are supported as well.

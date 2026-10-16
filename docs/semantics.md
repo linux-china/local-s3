@@ -479,7 +479,8 @@ http://localhost:29090/my-site/docs/     -> my-site/docs/index.html
 http://localhost:29090/my-site/gone.html -> 404, the error document of the bucket or a generic error page
 ```
 
-Virtual-hosted-style requests work too, e.g. `http://my-site.localhost:29090/`.
+Virtual-hosted-style requests work too, e.g. `http://my-site.localhost:29090/` or
+`http://my-site.127-0-0-1.nip.io:29090/`.
 
 ### Which requests are served as a website
 

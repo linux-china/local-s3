@@ -73,6 +73,8 @@ class ExternalS3EndpointTest {
     assertTheService("spring.cloud.aws.s3.endpoint=http://[::1]:29090");
     assertTheService("spring.cloud.aws.s3.endpoint=localhost:29090");
     assertTheService("spring.cloud.aws.s3.endpoint=http://bucket.localhost:29090");
+    assertTheService("spring.cloud.aws.s3.endpoint=http://127-0-0-1.nip.io:29090");
+    assertTheService("spring.cloud.aws.s3.endpoint=http://bucket.127-0-0-1.nip.io:29090");
     assertTheService("local-s3.port=9090", "spring.cloud.aws.s3.endpoint=http://127.0.0.1:9090");
     assertTheService("local-s3.bind-host=10.0.0.5", "spring.cloud.aws.s3.endpoint=http://10.0.0.5:29090");
     assertTheService("local-s3.virtual-host-domains=s3.local.dev",

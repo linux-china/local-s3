@@ -127,8 +127,9 @@ listed with `%20` and `%2B` under `encoding-type=url`, as Amazon S3 lists them. 
 all three.
 
 Without `URL_STYLE 'path'` / `s3_url_style = 'path'`, DuckDB sends virtual-hosted-style requests to
-`demo1.localhost:29090`, which work only where that name resolves to LocalS3; LocalS3 accepts them for `localhost` and
-the [virtual host domains](deployment.md#configuration) it is configured with.
+`demo1.localhost:29090`, which work only where that name resolves to LocalS3; LocalS3 accepts them for `localhost`,
+`127-0-0-1.nip.io` and the [virtual host domains](deployment.md#virtual-hosted-style-requests) it is configured with.
+An endpoint of `127-0-0-1.nip.io:29090` lets DuckDB send virtual-hosted-style requests without any `/etc/hosts` entry.
 
 DuckDB reads a Parquet file with range requests: the footer with a suffix range, then the row groups that a query
 needs, on as many threads as `SET threads` allows. Concurrent queries on one LocalS3 therefore mean many small,

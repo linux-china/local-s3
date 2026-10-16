@@ -479,7 +479,7 @@ properties names an endpoint other than the embedded service, and logs a warning
 The clients of the application, e.g. those of Spring Cloud AWS, then reach that endpoint. The embedded service still
 runs; `local-s3.enabled=false` leaves it out. An endpoint is taken for the embedded service, and the starter keeps its
 clients, when it names `${local.s3.endpoint}` or `${local.s3.port}`, also through a placeholder of the application, or
-when it is `localhost`, a loopback address, `local-s3.bind-host` or one of `local-s3.virtual-host-domains` at
+when it is `localhost`, `127-0-0-1.nip.io`, a loopback address, `local-s3.bind-host` or one of `local-s3.virtual-host-domains` at
 `local-s3.port` (at any port if that is random). The variables of the AWS SDK are taken for the service at any port of
 such a host: they are usually set in a shell for the AWS CLI, e.g. `AWS_ENDPOINT_URL=http://127.0.0.1:29090` for a
 standalone LocalS3, and never name a local endpoint in production. `local-s3.clients.enabled=true` points the clients at

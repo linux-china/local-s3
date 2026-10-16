@@ -343,6 +343,9 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   the static website redirects a request for the object to it.
 + **Virtual-hosted-style requests**, for `localhost`, Amazon S3, Alibaba Cloud OSS, Cloudflare R2 and Tigris hosts,
   and for the domains of `s3Api(s3 -> s3.virtualHostDomains(...))` / `LOCAL_S3_VIRTUAL_HOST_DOMAINS`.
+  `127-0-0-1.nip.io` is a default domain too: its public wildcard DNS resolves `my-bucket.127-0-0-1.nip.io` to
+  `127.0.0.1`, so virtual-hosted-style requests work without any `/etc/hosts` entry; see
+  [Virtual-hosted-style requests](docs/deployment.md#virtual-hosted-style-requests).
 + **Change listeners**: `changeListener` and `events(events -> events.listener(...).executor(...))` deliver an
   `S3Change` for every committed change of a bucket or an object, with its `eventTime()` and `sequencer()`, and the
   `contentType()` and `userMetadata()` of the version, so a listener routes an upload without a `HeadObject`;
