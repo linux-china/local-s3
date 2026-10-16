@@ -80,7 +80,9 @@ class IcebergRemoteSigningIntegrationTest {
           "client.region", "us-east-1",
           "s3.access-key-id", "unknown-key",
           "s3.secret-access-key", "unknown-secret",
-          "s3.remote-signing-enabled", "true")));
+          "s3.remote-signing-enabled", "true",
+          // Iceberg 1.12 dropped the default of v1/aws/s3/sign from its signer, so the route is named here.
+          "signer.endpoint", "v1/aws/s3/sign")));
 
       writeAndReadBack(catalog, TableIdentifier.of(Namespace.of("db"), "events"));
 

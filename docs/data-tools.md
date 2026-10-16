@@ -439,7 +439,8 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   (e.g. a Spark or Trino set up for a catalog that doesn't vend credentials): the catalog signs each S3 request with
   the **credentials of the service itself**, at the route of the table,
   `POST /v1/{prefix}/namespaces/{namespace}/tables/{table}/sign`, which a loaded table names in `s3.signer.uri` and
-  `s3.signer.endpoint`, and at `POST /v1/aws/s3/sign`, the default route of a client that was told none. Signing is
+  `s3.signer.endpoint`, and at `POST /v1/aws/s3/sign`, the default route of a client that was told none (Iceberg Java from 1.12 has no such
+  default, so a client configured by hand names it with `signer.endpoint=v1/aws/s3/sign`). Signing is
   not access control: like the rest of the catalog, the routes don't check who asks, so anyone who can reach the
   catalog can have any S3 request of this service signed. The payload is signed as `UNSIGNED-PAYLOAD`.
 + A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
