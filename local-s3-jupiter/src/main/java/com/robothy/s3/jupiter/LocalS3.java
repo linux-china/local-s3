@@ -10,6 +10,7 @@ import com.robothy.s3.jupiter.extensions.S3ClientResolver;
 import com.robothy.s3.jupiter.extensions.S3PresignerResolver;
 import com.robothy.s3.jupiter.extensions.S3TransferManagerResolver;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
+import com.robothy.s3.rest.LocalS3Seeder;
 import com.robothy.s3.rest.bootstrap.LocalS3Mode;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -111,6 +112,36 @@ public @interface LocalS3 {
    * @return default buckets with versioning enabled.
    */
   String[] versionedBuckets() default {};
+
+  /**
+   * Directory trees put into the service as {@code <bucket>/<key>} when it starts, and again after
+   * {@code reset()}: {@code classpath:fixtures/s3} names a directory of the classpath, any other value a directory of
+   * the file system, e.g. {@code src/test/fixtures}. The file {@code fixtures/s3/uploads/images/logo.png} becomes the
+   * object {@code images/logo.png} of the bucket {@code uploads}:
+   *
+   * <pre>{@code
+   *  @LocalS3(seed = "classpath:fixtures/s3")
+   *  class AppTest {
+   *    @Test
+   *    void test(S3Client s3) {
+   *      s3.getObject(b -> b.bucket("uploads").key("images/logo.png"));
+   *    }
+   *  }
+   * }</pre>
+   *
+   * <p>A location that doesn't exist fails the start of the service, rather than leaving it without its fixtures.
+   *
+   * @return the locations of the directory trees to seed.
+   */
+  String[] seed() default {};
+
+  /**
+   * {@linkplain LocalS3Seeder Seeders} that put the initial buckets and objects into the service, applied after
+   * {@linkplain #seed()} in the order they are listed. Each class must have a no-args constructor.
+   *
+   * @return the seeder classes.
+   */
+  Class<? extends LocalS3Seeder>[] seeders() default {};
 
   /**
    * Set the data path supplier class for LocalS3 service. The class implements

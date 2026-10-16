@@ -135,6 +135,11 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   (also `buckets("audit:versioned")` and `--buckets`), so that a local bucket matches a production bucket that has
   versioning enabled without a `PutBucketVersioning` in every test. They are created again on a reset. An existing
   bucket gets versioning enabled only if its versioning was never configured; a suspended one stays suspended.
++ **Seed `@LocalS3` from a directory tree**: `@LocalS3(seed = "classpath:fixtures/s3")` puts `<bucket>/<key>` of a
+  classpath or file system directory into the service, like `local-s3.seed.classpath` of the Spring Boot starter, and
+  `@LocalS3(seeders = MySeeder.class)` applies `LocalS3Seeder` classes. Embedded services use
+  `LocalS3Seeder.classpath("fixtures/s3")` and `LocalS3Seeder.directory(Path)`; see
+  [Seed a directory tree](docs/embedding.md#seed-a-directory-tree).
 + **A default CORS rule for browsers**, off by default: `LocalS3.builder().defaultCors(cors -> cors.allowedOrigins("*"))`,
   `LOCAL_S3_CORS_ALLOWED_ORIGINS=*` or `local-s3.cors.allowed-origins=http://localhost:5173`. It answers the
   cross-origin requests of a bucket that has **no** CORS configuration of its own, and of the requests that address no

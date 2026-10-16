@@ -142,6 +142,27 @@ writes whatever the application has at hand: files of the classpath, rows of a d
 replaces the one that its key already holds. Spring Boot applications map a directory tree of the classpath with
 [`local-s3.seed.classpath`](../local-s3-spring-boot-starter/README.md#initial-data) instead of writing a seeder.
 
+### Seed a directory tree
+
+`LocalS3Seeder.directory(Path)` and `LocalS3Seeder.classpath(String)` map a directory tree onto buckets and objects as
+`<bucket>/<key>`: the file `fixtures/s3/uploads/images/logo.png` of the location `fixtures/s3` becomes the object
+`images/logo.png` of the bucket `uploads`, with a content type guessed from the key.
+
+```java
+LocalS3 localS3 = LocalS3.builder()
+    .seeder(LocalS3Seeder.classpath("fixtures/s3"))       // src/test/resources/fixtures/s3
+    .seeder(LocalS3Seeder.directory(Path.of("data/s3")))  // a directory of the file system
+    .build();
+```
+
++ A classpath location is read from every classpath entry that holds it, directories and jars alike, so a jar of test
+  fixtures shared by several modules is seeded too. A jar is found by the entry of the directory, which the jars that
+  Gradle and Maven build have.
++ A file directly in the location names no bucket, so it is skipped with a warning, which leaves room for a `README`
+  or a `.gitkeep` next to the buckets. A directory that holds no files creates no bucket.
++ A location that doesn't exist fails the start of the service with a `FileNotFoundException`, rather than starting it
+  without its fixtures. The classpath root is rejected, since it would seed every class of the application.
+
 ### Require signed requests
 
 By default LocalS3 serves every request, signed or not. `credentials(...)` enables AWS Signature Version 4
@@ -795,6 +816,25 @@ test of a bucket that has versioning enabled in production needs no `PutBucketVe
 `@LocalS3(buckets = "plain", versionedBuckets = "audit")`. `LocalS3.builder().versionedBuckets("audit")` does the same
 for an embedded service.
 
+`seed` puts [directory trees](#seed-a-directory-tree) into the service, and `seeders` lists
+[`LocalS3Seeder`](#seed-the-initial-buckets-and-objects) classes with a no-args constructor, applied after the trees.
+Both run when the service starts and again after `reset()`:
+
+```java
+@LocalS3(seed = "classpath:fixtures/s3", seeders = UsersSeeder.class)
+class AppTest {
+
+  @Test
+  void test(S3Client s3) {
+    // src/test/resources/fixtures/s3/uploads/hello.txt
+    s3.getObject(b -> b.bucket("uploads").key("hello.txt"));
+  }
+}
+```
+
+A value of `seed` without the `classpath:` prefix names a directory of the file system, relative to the working
+directory of the tests.
+
 Example 4: inject the service itself, to use what it offers besides the S3 API: `reset()` between the tests of a shared
 service, `applyLifecycle(Instant)` to expire objects at a later time, or an `S3ChangeListener` to observe the changes
 that the code under test makes. The service shares its simple name with the annotation, so one of the two is written
@@ -822,7 +862,7 @@ class AppTest {
 ```
 
 The attributes of `@LocalS3` configure the service like the builder does: `port`, `mode`, `dataPath` or
-`dataPathSupplier`, `buckets`, `initialDataCacheEnabled`, `maxInMemoryBytes` (e.g. `"512m"`),
+`dataPathSupplier`, `buckets`, `versionedBuckets`, `seed`, `seeders`, `initialDataCacheEnabled`, `maxInMemoryBytes` (e.g. `"512m"`),
 `compositeMultipartEtags`, `acceptChunkedUploads`, `virtualHostDomains`, and `accessKey` with `secretKey`.
 
 ### Signed requests

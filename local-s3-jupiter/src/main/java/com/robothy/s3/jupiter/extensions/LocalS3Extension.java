@@ -3,8 +3,10 @@ package com.robothy.s3.jupiter.extensions;
 import com.robothy.s3.jupiter.LocalS3;
 import com.robothy.s3.jupiter.supplier.DataPathSupplier;
 import com.robothy.s3.rest.LocalS3Environment;
+import com.robothy.s3.rest.LocalS3Seeder;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.Optional;
 import lombok.SneakyThrows;
 import org.jspecify.annotations.NonNull;
@@ -35,6 +37,8 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
   private static final ExtensionContext.Namespace NAMESPACE = ExtensionContext.Namespace.create(LocalS3Extension.class);
 
   private static final String SERVICE_KEY = "service";
+
+  private static final String CLASSPATH_PREFIX = "classpath:";
 
   /**
    * The suffix of the key that the port of a service is also stored under in the global namespace, which the extension
@@ -139,10 +143,29 @@ public class LocalS3Extension implements BeforeAllCallback, AfterAllCallback, Be
     if (s3Config.icebergCatalog()) {
       builder.icebergCatalog(iceberg -> iceberg.warehouse(s3Config.icebergWarehouse()));
     }
+    for (String location : s3Config.seed()) {
+      builder.seeder(seeder(location));
+    }
+    for (Class<? extends LocalS3Seeder> seederClass : s3Config.seeders()) {
+      try {
+        builder.seeder(seederClass.getDeclaredConstructor().newInstance());
+      } catch (NoSuchMethodException _) {
+        throw new IllegalArgumentException("You must define no-args constructor in " + seederClass);
+      }
+    }
     com.robothy.s3.rest.LocalS3 localS3 = builder.build();
     localS3.start();
-      logger.debug("LocalS3 endpoint http://localhost:{}", localS3.getPort());
+    logger.debug("LocalS3 endpoint http://localhost:{}", localS3.getPort());
     return localS3;
+  }
+
+  static LocalS3Seeder seeder(String location) {
+    if (location.isBlank()) {
+      throw new IllegalArgumentException("@LocalS3 seed must name a directory, e.g. classpath:fixtures/s3.");
+    }
+    return location.startsWith(CLASSPATH_PREFIX)
+        ? LocalS3Seeder.classpath(location.substring(CLASSPATH_PREFIX.length()))
+        : LocalS3Seeder.directory(Path.of(location));
   }
 
   /**

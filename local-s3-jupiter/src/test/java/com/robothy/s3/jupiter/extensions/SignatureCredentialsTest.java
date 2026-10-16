@@ -114,6 +114,16 @@ class SignatureCredentialsTest {
       }
 
       @Override
+      public String[] seed() {
+        return defaults.seed();
+      }
+
+      @Override
+      public Class<? extends com.robothy.s3.rest.LocalS3Seeder>[] seeders() {
+        return defaults.seeders();
+      }
+
+      @Override
       public Class<? extends com.robothy.s3.jupiter.supplier.DataPathSupplier> dataPathSupplier() {
         return defaults.dataPathSupplier();
       }

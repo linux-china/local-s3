@@ -35,6 +35,33 @@ public interface LocalS3Seeder {
   void seed(Fixtures fixtures) throws IOException;
 
   /**
+   * A seeder that puts the directory tree of a directory into the service as {@code <bucket>/<key>}: the file
+   * {@code fixtures/uploads/images/logo.png} of the directory {@code fixtures} becomes the object
+   * {@code images/logo.png} of the bucket {@code uploads}. See {@code docs/embedding.md#seed-a-directory-tree}.
+   *
+   * @param directory the directory whose subdirectories are the buckets.
+   * @return the seeder; it fails the start of the service if the directory doesn't exist.
+   */
+  static LocalS3Seeder directory(Path directory) {
+    return DirectoryTreeSeeder.directory(directory);
+  }
+
+  /**
+   * A seeder that puts the directory tree of a classpath location into the service as {@code <bucket>/<key>}, like
+   * {@linkplain #directory(Path)} does, from every classpath entry that holds the location, directories and jars
+   * alike, resolved with the context class loader of the thread that builds the seeder.
+   *
+   * @param location the classpath location, e.g. {@code fixtures/s3}; a leading slash is ignored.
+   * @return the seeder; it fails the start of the service if no classpath entry holds the location.
+   * @throws IllegalArgumentException if the location is the classpath root.
+   */
+  static LocalS3Seeder classpath(String location) {
+    ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+    return DirectoryTreeSeeder.classpath(location,
+        classLoader != null ? classLoader : LocalS3Seeder.class.getClassLoader());
+  }
+
+  /**
    * The buckets and objects that a {@linkplain LocalS3Seeder} writes into a service. The bucket of an object is
    * created if it doesn't exist yet, so a seeder doesn't have to create it first.
    */
