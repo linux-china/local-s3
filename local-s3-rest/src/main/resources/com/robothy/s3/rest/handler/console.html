@@ -35,6 +35,8 @@
     }
   }
   * { box-sizing: border-box; }
+  /* The display of a button or a toolbar would otherwise show what the page hides. */
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -142,7 +144,7 @@
   .crumbs button { border: 0; background: none; padding: 2px 4px; border-radius: 5px; }
   .crumbs button:hover { background: var(--accent-soft); }
   .crumbs span { color: var(--muted); }
-  .toolbar .filter { margin-left: auto; width: 220px; }
+  .toolbar .filter { width: 220px; }
   .toolbar select {
     font: inherit;
     font-size: 13px;
@@ -288,7 +290,7 @@
     overflow: hidden;
   }
   dialog::backdrop { background: rgba(10, 12, 16, .5); }
-  dialog#preview .frame { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  dialog#preview .frame { display: grid; grid-template-rows: auto auto 1fr; height: 100%; }
   dialog#preview .bar {
     display: flex;
     align-items: center;
@@ -301,6 +303,7 @@
   dialog#preview .bar .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
   dialog#preview .body { overflow: auto; background: var(--bg); display: grid; }
   dialog#preview .body > img { max-width: 100%; max-height: 100%; margin: auto; display: block; }
+  dialog#preview .body > .pane { background: var(--bg); }
   dialog#preview .body > iframe, dialog#preview .body > video { width: 100%; height: 100%; border: 0; background: #000; }
   dialog#preview .body > audio { margin: auto; }
   dialog#preview pre {
@@ -380,6 +383,89 @@
     transition: opacity .15s;
   }
   .toast.on { opacity: .92; }
+  .modes { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+  .modes button { border: 0; background: none; padding: 3px 10px; border-radius: 6px; font-size: 13px; }
+  .modes button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .modes button[hidden] { display: none; }
+  .tools { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+  .tools[hidden] { display: none; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  dialog#preview .tabs { padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    white-space: nowrap;
+    margin-left: 6px;
+    font-family: system-ui, sans-serif;
+  }
+  .badge.accent { border-color: var(--accent); color: var(--accent); }
+  .badge.warn { border-color: var(--danger); color: var(--danger); }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .pane { padding: 14px 16px; display: grid; gap: 18px; align-content: start; }
+  .pane h3 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .pane h3 button { font-size: 12px; text-transform: none; letter-spacing: 0; padding: 2px 8px; }
+  .pane table { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .pane thead th { background: var(--panel-2); }
+  .pane tbody tr:last-child td { border-bottom: 0; }
+  table.kv td { padding: 5px 12px; }
+  table.kv td:first-child { color: var(--muted); white-space: nowrap; width: 1%; }
+  table.kv td:last-child { font-family: var(--mono); font-size: 12.5px; word-break: break-all; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--panel); min-width: 0; }
+  .card small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .card div { font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pane pre, dialog#detail pre {
+    margin: 0;
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .indent { display: inline-block; }
+  tr.expanded td { background: var(--panel-2); }
+  td.wrap { white-space: normal; word-break: break-all; }
+  .clip { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+  dialog#detail {
+    width: min(820px, 94vw);
+    max-height: 88vh;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+  dialog#detail .frame { display: grid; grid-template-rows: auto 1fr; max-height: 86vh; }
+  dialog#detail .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+  }
+  dialog#detail .bar .title { font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  dialog#detail .body { overflow: auto; padding: 14px; display: grid; gap: 14px; }
   @media (max-width: 760px) {
     .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
     aside { border-right: 0; border-bottom: 1px solid var(--border); max-height: 34vh; }
@@ -391,6 +477,11 @@
 <body>
 <header>
   <span class="brand"><span class="dot"></span>LocalS3</span>
+  <nav class="modes" id="modes">
+    <button data-mode="objects" class="on" title="Buckets and objects">Objects</button>
+    <button data-mode="tables" hidden title="The Iceberg REST catalog and the table buckets">Tables</button>
+    <button data-mode="vectors" hidden title="Vector buckets, indexes and vectors">Vectors</button>
+  </nav>
   <span class="endpoint" id="endpoint"></span>
   <span class="spacer"></span>
   <button id="connect-open" title="The configuration of DuckDB, the AWS CLI, boto3, PyIceberg and Spark">Connect</button>
@@ -401,10 +492,10 @@
   <aside>
     <div class="head">
       <h2>
-        <span>Buckets <span id="bucket-count"></span></span>
+        <span><span id="side-title">Buckets</span> <span id="bucket-count"></span></span>
         <button id="new-bucket-open" title="Create a bucket">+ NEW</button>
       </h2>
-      <input type="search" id="bucket-filter" placeholder="Filter buckets" autocomplete="off" spellcheck="false">
+      <input type="search" id="bucket-filter" placeholder="Filter" autocomplete="off" spellcheck="false">
     </div>
     <div class="buckets" id="buckets"></div>
   </aside>
@@ -412,16 +503,18 @@
   <main>
     <div class="toolbar">
       <nav class="crumbs" id="crumbs"></nav>
-      <input type="search" class="filter" id="key-filter" placeholder="Filter by prefix" autocomplete="off"
-             spellcheck="false">
-      <select id="share-expiry" title="How long a link that Share copies is valid">
-        <option value="900">Share for 15 min</option>
-        <option value="3600" selected>Share for 1 hour</option>
-        <option value="86400">Share for 1 day</option>
-        <option value="604800">Share for 7 days</option>
-      </select>
-      <button id="upload" title="Upload files into this prefix">Upload</button>
-      <input type="file" id="files" multiple hidden>
+      <div class="tools" id="object-tools">
+        <input type="search" class="filter" id="key-filter" placeholder="Filter by prefix" autocomplete="off"
+               spellcheck="false">
+        <select id="share-expiry" title="How long a link that Share copies is valid">
+          <option value="900">Share for 15 min</option>
+          <option value="3600" selected>Share for 1 hour</option>
+          <option value="86400">Share for 1 day</option>
+          <option value="604800">Share for 7 days</option>
+        </select>
+        <button id="upload" title="Upload files into this prefix">Upload</button>
+        <input type="file" id="files" multiple hidden>
+      </div>
     </div>
     <div class="content" id="content"></div>
     <div class="dropzone" id="dropzone">
@@ -444,7 +537,23 @@
       <a class="btn" id="preview-download" download>Download</a>
       <button id="preview-close">Close</button>
     </div>
+    <div class="tabs seg" id="preview-tabs">
+      <button data-tab="preview" class="on">Preview</button>
+      <button data-tab="properties" title="System and user metadata, and tags">Properties</button>
+      <button data-tab="versions" title="The versions and delete markers of this key">Versions</button>
+    </div>
     <div class="body" id="preview-body"></div>
+  </div>
+</dialog>
+
+<dialog id="detail">
+  <div class="frame">
+    <div class="bar">
+      <span class="title" id="detail-title"></span>
+      <button id="detail-copy">Copy JSON</button>
+      <button id="detail-close">Close</button>
+    </div>
+    <div class="body" id="detail-body"></div>
   </div>
 </dialog>
 
@@ -509,7 +618,14 @@
   "use strict";
 
   var API = "/_admin/ui";
-  var state = {buckets: [], bucket: null, prefix: "", filter: "", rows: null, token: null, truncated: false};
+  var state = {
+    mode: "objects", features: {tables: false, vectors: false},
+    buckets: [], bucket: null, prefix: "", filter: "", rows: null, token: null, truncated: false,
+    // The object that the preview shows, with the version it shows; null for the current version.
+    current: null,
+    tables: {catalogs: null, catalog: null, namespace: [], table: null},
+    vectors: {buckets: null, bucket: null, index: null, rows: null, token: null}
+  };
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -528,7 +644,11 @@
 
   var ICONS = {
     folder: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z",
-    file: "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5"
+    file: "M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1.5V9h4.5",
+    table: "M4 5h16v14H4zM4 10h16M4 15h16M10 10v9",
+    view: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+    index: "M5 4h14v16H5zM9 8h6M9 12h6M9 16h3",
+    vector: "M5 19L19 5M19 5h-6M19 5v6"
   };
 
   function icon(name) {
@@ -680,8 +800,9 @@
     });
   }
 
-  function objectUrl(bucket, key, download) {
-    return API + "/object?" + query({bucket: bucket, key: key, download: download ? "1" : null});
+  function objectUrl(bucket, key, download, versionId) {
+    return API + "/object?" + query({bucket: bucket, key: key, download: download ? "1" : null,
+      versionId: versionId || null});
   }
 
   /* How long a shared link is valid, in seconds: the choice of the toolbar, which is remembered in this browser. */
@@ -771,7 +892,75 @@
 
   function go(bucket, prefix) {
     var hash = bucket ? "#/" + encodeURIComponent(bucket + "/" + (prefix || "")).replace(/%2F/g, "/") : "#/";
-    if (location.hash === hash) { open(bucket, prefix); } else { location.hash = hash; }
+    if (location.hash === hash) { route(); } else { location.hash = hash; }
+  }
+
+  /*
+   * The views of the page. Objects keep the #/bucket/prefix of the first console, so its links still work; the
+   * others are #tables?... and #vectors?..., whose parameters name what is open.
+   */
+  function goView(mode, params) {
+    var rest = query(params || {});
+    var hash = "#" + mode + (rest ? "?" + rest : "");
+    if (location.hash === hash) { route(); } else { location.hash = hash; }
+  }
+
+  function route() {
+    var match = /^#(tables|vectors)(?:\?(.*))?$/.exec(location.hash);
+    if (!match) {
+      setMode("objects");
+      var target = readHash();
+      open(target.bucket, target.prefix);
+      return;
+    }
+    var params = new URLSearchParams(match[2] || "");
+    setMode(match[1]);
+    if (match[1] === "tables") {
+      openTables(params.get("tableBucket") ? {tableBucket: params.get("tableBucket")}
+          : params.get("catalog") === "iceberg" ? {tableBucket: ""} : null,
+        params.get("namespace") ? params.get("namespace").split(NS) : [], params.get("table"));
+    } else {
+      openVectors(params.get("bucket"), params.get("index"));
+    }
+  }
+
+  function setMode(mode) {
+    var changed = state.mode !== mode;
+    state.mode = mode;
+    Array.prototype.forEach.call($("modes").children, function (button) {
+      button.classList.toggle("on", button.getAttribute("data-mode") === mode);
+    });
+    $("object-tools").hidden = mode !== "objects";
+    $("new-bucket-open").hidden = mode !== "objects";
+    $("side-title").textContent = {objects: "Buckets", tables: "Catalogs", vectors: "Vector buckets"}[mode];
+    if (changed) {
+      $("bucket-filter").value = "";
+      if (mode === "tables" && !state.tables.catalogs) { loadCatalogs(); }
+      if (mode === "vectors" && !state.vectors.buckets) { loadVectorBuckets(); }
+    }
+    renderSidebar();
+  }
+
+  function renderSidebar() {
+    if (state.mode === "tables") { renderCatalogs(); }
+    else if (state.mode === "vectors") { renderVectorBuckets(); }
+    else { renderBuckets(); }
+  }
+
+  /* The items of the sidebar that match its filter, or what to say when none does. */
+  function sidebar(items, name, empty, render) {
+    var filter = $("bucket-filter").value.trim().toLowerCase();
+    var shown = (items || []).filter(function (item) {
+      return !filter || name(item).toLowerCase().indexOf(filter) >= 0;
+    });
+    $("bucket-count").textContent = items && items.length ? String(items.length) : "";
+    if (!items) {
+      $("buckets").replaceChildren(el("div", {class: "state", text: "Loading…"}));
+    } else if (!shown.length) {
+      $("buckets").replaceChildren(el("div", {class: "state", text: items.length ? "Nothing matches." : empty}));
+    } else {
+      $("buckets").replaceChildren.apply($("buckets"), shown.map(render));
+    }
   }
 
   /* Buckets. */
@@ -779,9 +968,11 @@
   function loadBuckets() {
     return api("/buckets").then(function (body) {
       state.buckets = body.buckets || [];
-      renderBuckets();
+      if (state.mode === "objects") { renderBuckets(); }
     }).catch(function (error) {
-      $("buckets").replaceChildren(el("div", {class: "state error", text: error.message}));
+      if (state.mode === "objects") {
+        $("buckets").replaceChildren(el("div", {class: "state error", text: error.message}));
+      }
     });
   }
 
@@ -812,6 +1003,7 @@
   /* Objects. */
 
   function open(bucket, prefix) {
+    state.current = null;
     state.bucket = bucket;
     state.prefix = prefix || "";
     state.rows = null;
@@ -956,16 +1148,36 @@
   var FRAME = /\.(pdf|html?|xhtml)$/i;
   var MAX_TEXT = 2 * 1024 * 1024;
 
-  function preview(object) {
-    var url = objectUrl(state.bucket, object.key, false);
-    $("preview-title").textContent = object.key;
-    $("preview-title").title = object.key;
+  /**
+   * Open the preview of an object: of its current version, or of the version that object.versionId names, which the
+   * Versions tab opens.
+   */
+  function preview(object, tab) {
+    state.current = {key: object.key, size: object.size, lastModified: object.lastModified,
+      versionId: object.versionId || null};
+    var label = object.key + (object.versionId ? "  @ " + object.versionId : "");
+    $("preview-title").textContent = label;
+    $("preview-title").title = label;
     $("preview-meta").textContent = size(object.size) + " · " + when(object.lastModified);
-    $("preview-download").href = objectUrl(state.bucket, object.key, true);
+    $("preview-download").href = objectUrl(state.bucket, object.key, true, object.versionId);
+    if (!$("preview").open) { $("preview").showModal(); }
+    showTab(tab || "preview");
+  }
+
+  function showTab(tab) {
+    Array.prototype.forEach.call($("preview-tabs").children, function (button) {
+      button.classList.toggle("on", button.getAttribute("data-tab") === tab);
+    });
     var body = $("preview-body");
     body.replaceChildren(el("div", {class: "state", text: "Loading…"}));
-    $("preview").showModal();
+    if (tab === "properties") { showProperties(state.current); }
+    else if (tab === "versions") { showVersions(state.current); }
+    else { showContent(state.current); }
+  }
 
+  function showContent(object) {
+    var url = objectUrl(state.bucket, object.key, false, object.versionId);
+    var body = $("preview-body");
     if (IMAGE.test(object.key)) {
       body.replaceChildren(el("img", {src: url, alt: object.key}));
     } else if (VIDEO.test(object.key)) {
@@ -979,9 +1191,135 @@
     } else {
       body.replaceChildren(el("div", {class: "state"}, [
         el("p", {text: "No preview for this file type."}),
-        el("a", {class: "btn", href: objectUrl(state.bucket, object.key, true), download: "", text: "Download it"})
+        el("a", {class: "btn", href: objectUrl(state.bucket, object.key, true, object.versionId), download: "",
+          text: "Download it"})
       ]));
     }
+  }
+
+  /* A table of names and values, e.g. the metadata of an object or the properties of a table. */
+  function kv(rows) {
+    return el("table", {class: "kv"}, [el("tbody", {}, rows.filter(function (row) {
+      return row[1] !== null && row[1] !== undefined && row[1] !== "";
+    }).map(function (row) {
+      var value = row[1];
+      return el("tr", {}, [
+        el("td", {text: row[0]}),
+        value instanceof Node ? el("td", {}, [value]) : el("td", {text: String(value)})
+      ]);
+    }))]);
+  }
+
+  function section(title, content, extra) {
+    return el("div", {}, [el("h3", {}, [el("span", {text: title})].concat(extra || [])), content]);
+  }
+
+  function entries(map) {
+    return Object.keys(map || {}).sort().map(function (name) { return [name, map[name]]; });
+  }
+
+  function showProperties(object) {
+    var body = $("preview-body");
+    api("/metadata", {bucket: state.bucket, key: object.key, versionId: object.versionId}).then(function (meta) {
+      if (state.current !== object) { return; }
+      var parts = [section("Object", kv([
+        ["Key", meta.key],
+        ["Version", meta.versionId],
+        ["Delete marker", meta.deleteMarker ? "yes" : null],
+        ["Size", meta.deleteMarker ? null : size(meta.size) + " (" + meta.size + " bytes)"],
+        ["Last modified", when(meta.lastModified)],
+        ["ETag", meta.etag],
+        ["Content-Type", meta.contentType],
+        ["Storage class", meta.storageClass],
+        ["Parts", meta.partsCount],
+        ["Checksum", meta.checksum],
+        ["Encryption", meta.encryption],
+        ["Retention", meta.retention],
+        ["Legal hold", meta.legalHold === null || meta.legalHold === undefined ? null : meta.legalHold ? "ON" : "OFF"]
+      ]))];
+      if (!meta.deleteMarker) {
+        var headers = entries(meta.headers);
+        if (headers.length) { parts.push(section("System metadata", kv(headers))); }
+        var user = entries(meta.userMetadata).map(function (row) { return ["x-amz-meta-" + row[0], row[1]]; });
+        parts.push(section("User metadata", user.length ? kv(user)
+          : el("div", {class: "state", text: "No user metadata."})));
+        var tags = (meta.tags || []).map(function (tag) { return [tag.key, tag.value]; });
+        parts.push(section("Tags", tags.length ? kv(tags) : el("div", {class: "state", text: "No tags."}),
+          [el("span", {class: "badge", text: tags.length + " / 10"})]));
+      }
+      body.replaceChildren(el("div", {class: "pane"}, parts));
+    }).catch(function (error) {
+      body.replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function showVersions(object) {
+    var body = $("preview-body");
+    var bucket = state.bucket;
+    api("/versions", {bucket: bucket, key: object.key}).then(function (answer) {
+      if (state.current !== object) { return; }
+      var rows = (answer.versions || []).map(function (version) {
+        var shown = (version.versionId || null) === (object.versionId || null)
+          || (!object.versionId && version.latest);
+        var name = el("span", {class: "mono", text: version.versionId || "null"});
+        var badges = [];
+        if (version.latest) { badges.push(el("span", {class: "badge accent", text: "latest"})); }
+        if (version.deleteMarker) { badges.push(el("span", {class: "badge warn", text: "delete marker"})); }
+        if (shown && !version.deleteMarker) { badges.push(el("span", {class: "badge", text: "shown"})); }
+        var target = {key: object.key, size: version.size, lastModified: version.lastModified,
+          versionId: version.versionId};
+        var actions = [];
+        if (!version.deleteMarker) {
+          actions.push(el("button", {text: "Open", title: "Preview this version", onclick: function () {
+            preview(target, "preview");
+          }}));
+          actions.push(el("a", {class: "btn", href: objectUrl(bucket, object.key, true, version.versionId),
+            download: "", text: "Download"}));
+        }
+        actions.push(el("button", {
+          class: "danger",
+          text: "Delete",
+          title: "Delete this version for good, which a delete of the key never does in a versioned bucket",
+          onclick: function () { removeVersion(object, version); }
+        }));
+        return el("tr", {}, [
+          el("td", {class: "name"}, [name].concat(badges)),
+          el("td", {class: "num", text: version.deleteMarker ? "—" : size(version.size)}),
+          el("td", {class: "date", text: when(version.lastModified)}),
+          el("td", {class: "actions"}, actions)
+        ]);
+      });
+      var table = el("table", {}, [
+        el("thead", {}, [el("tr", {}, [
+          el("th", {text: "Version"}), el("th", {class: "num", text: "Size"}),
+          el("th", {class: "date", text: "Last modified"}), el("th", {text: ""})
+        ])]),
+        el("tbody", {}, rows)
+      ]);
+      var note = answer.versioning === "Unversioned"
+        ? "Versioning was never enabled on this bucket: a write replaces the object, which keeps the version null."
+        : answer.truncated ? "The newest " + rows.length + " versions." : null;
+      body.replaceChildren(el("div", {class: "pane"}, [
+        section("Versions", table, [el("span", {class: "badge", text: "Bucket versioning: " + answer.versioning})])
+      ].concat(note ? [el("div", {class: "state", text: note})] : [])));
+    }).catch(function (error) {
+      body.replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function removeVersion(object, version) {
+    var bucket = state.bucket;
+    var id = version.versionId || "null";
+    ask(bucket + "/" + object.key + " @ " + id, "Delete this version for good?").then(function (yes) {
+      if (!yes) { return; }
+      del({bucket: bucket, key: object.key, versionId: id}).then(function () {
+        toast("Deleted version " + id);
+        if (state.current) { showTab("versions"); }
+        if (bucket === state.bucket) { reload(); }
+      }, function (error) {
+        toast(error.message);
+      });
+    });
   }
 
   /* Text is fetched and written as text, so that a stored page is read rather than rendered as the console. */
@@ -995,6 +1333,539 @@
       body.replaceChildren(el("pre", {text: clipped ? text.slice(0, MAX_TEXT) + "\n\n… truncated" : text}));
     }).catch(function (error) {
       body.replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  /* Tables: the Iceberg REST catalog and the table buckets, each a catalog of namespaces, tables and snapshots. */
+
+  /* What separates the levels of a namespace, like a path segment of the Iceberg REST API does. */
+  var NS = "\u001f";
+
+  function catalogKey(catalog) {
+    return catalog ? (catalog.tableBucket ? "b:" + catalog.tableBucket : "iceberg") : null;
+  }
+
+  function catalogParams(catalog) {
+    return catalog.tableBucket ? {tableBucket: catalog.tableBucket} : {catalog: "iceberg"};
+  }
+
+  function goTable(catalog, namespace, table) {
+    var params = catalog ? catalogParams(catalog) : {};
+    params.namespace = namespace && namespace.length ? namespace.join(NS) : null;
+    params.table = table || null;
+    goView("tables", params);
+  }
+
+  function loadCatalogs() {
+    return api("/catalogs").then(function (body) {
+      state.tables.catalogs = body.catalogs || [];
+      if (state.mode === "tables") { renderCatalogs(); }
+    }).catch(function (error) {
+      state.tables.catalogs = [];
+      if (state.mode === "tables") {
+        $("buckets").replaceChildren(el("div", {class: "state error", text: error.message}));
+      }
+    });
+  }
+
+  function renderCatalogs() {
+    var active = catalogKey(state.tables.catalog);
+    sidebar(state.tables.catalogs, function (catalog) { return catalog.name; },
+      "No catalogs: create a table bucket, or serve the Iceberg REST catalog.", function (catalog) {
+        var info = catalog.type === "iceberg" ? "Iceberg REST · " + (catalog.warehouse || "")
+          : "Table bucket · " + when(catalog.createdAt);
+        var target = catalog.type === "iceberg" ? {tableBucket: ""} : {tableBucket: catalog.tableBucket};
+        return el("button", {
+          class: "bucket" + (catalogKey(target) === active ? " active" : ""),
+          title: catalog.arn || catalog.warehouse || "",
+          onclick: function () { goTable(target, [], null); }
+        }, [el("span", {text: catalog.name}), el("small", {text: info})]);
+      });
+  }
+
+  function catalogName(catalog) {
+    if (!catalog.tableBucket) { return "Iceberg REST catalog"; }
+    return catalog.tableBucket;
+  }
+
+  function openTables(catalog, namespace, table) {
+    state.tables.catalog = catalog;
+    state.tables.namespace = namespace;
+    state.tables.table = table;
+    renderSidebar();
+    renderTableCrumbs();
+    if (!catalog) {
+      $("content").replaceChildren(el("div", {class: "state", text: "Pick a catalog to see its namespaces."}));
+      return;
+    }
+    $("content").replaceChildren(el("div", {class: "state", text: "Loading…"}));
+    if (table) { showTable(catalog, namespace, table); } else { showNamespace(catalog, namespace); }
+  }
+
+  function stillOpen(catalog, namespace, table) {
+    var open = state.tables;
+    return state.mode === "tables" && catalogKey(open.catalog) === catalogKey(catalog)
+      && open.namespace.join(NS) === namespace.join(NS) && (open.table || null) === (table || null);
+  }
+
+  function renderTableCrumbs() {
+    var crumbs = $("crumbs");
+    var catalog = state.tables.catalog;
+    if (!catalog) { crumbs.replaceChildren(); return; }
+    var nodes = [el("button", {text: catalogName(catalog), onclick: function () { goTable(catalog, [], null); }})];
+    state.tables.namespace.forEach(function (level, index) {
+      var target = state.tables.namespace.slice(0, index + 1);
+      nodes.push(el("span", {text: "/"}));
+      nodes.push(el("button", {text: level, onclick: function () { goTable(catalog, target, null); }}));
+    });
+    if (state.tables.table) {
+      nodes.push(el("span", {text: "/"}));
+      nodes.push(el("button", {text: state.tables.table, onclick: function () {
+        goTable(catalog, state.tables.namespace, state.tables.table);
+      }}));
+    }
+    crumbs.replaceChildren.apply(crumbs, nodes);
+  }
+
+  function entryButton(iconName, label, onclick, title) {
+    return el("button", {class: "entry", title: title || label, onclick: onclick}, [
+      icon(iconName), el("span", {class: "label", text: label})
+    ]);
+  }
+
+  function showNamespace(catalog, namespace) {
+    api("/namespace", {tableBucket: catalog.tableBucket || null, namespace: namespace.join(NS) || null})
+      .then(function (answer) {
+        if (!stillOpen(catalog, namespace, null)) { return; }
+        var rows = [];
+        (answer.namespaces || []).forEach(function (levels) {
+          rows.push(el("tr", {}, [
+            el("td", {class: "name"}, [entryButton("folder", levels[levels.length - 1], function () {
+              goTable(catalog, levels, null);
+            }, levels.join("."))]),
+            el("td", {text: "namespace", class: "date"})
+          ]));
+        });
+        (answer.tables || []).forEach(function (name) {
+          rows.push(el("tr", {}, [
+            el("td", {class: "name"}, [entryButton("table", name, function () {
+              goTable(catalog, namespace, name);
+            })]),
+            el("td", {text: "table", class: "date"})
+          ]));
+        });
+        (answer.views || []).forEach(function (name) {
+          rows.push(el("tr", {}, [
+            el("td", {class: "name"}, [el("span", {class: "entry"}, [icon("view"), el("span", {text: name})])]),
+            el("td", {text: "view", class: "date"})
+          ]));
+        });
+        var parts = [];
+        var properties = entries(answer.properties);
+        if (properties.length) { parts.push(section("Namespace properties", kv(properties))); }
+        parts.push(rows.length ? el("table", {}, [
+          el("thead", {}, [el("tr", {}, [el("th", {text: "Name"}), el("th", {class: "date", text: "Kind"})])]),
+          el("tbody", {}, rows)
+        ]) : el("div", {class: "state", text: namespace.length ? "This namespace has no tables yet."
+          : "This catalog has no namespaces yet."}));
+        $("content").replaceChildren(el("div", {class: "pane"}, parts));
+      }).catch(function (error) {
+        if (!stillOpen(catalog, namespace, null)) { return; }
+        $("content").replaceChildren(el("div", {class: "state error", text: error.message}));
+      });
+  }
+
+  /* The type of an Iceberg field as it is written in a schema: a name, or a struct, a list or a map of types. */
+  function typeText(type) {
+    if (typeof type === "string") { return type; }
+    if (!type) { return ""; }
+    if (type.type === "struct") {
+      return "struct<" + (type.fields || []).map(function (field) {
+        return field.name + ": " + typeText(field.type);
+      }).join(", ") + ">";
+    }
+    if (type.type === "list") { return "list<" + typeText(type.element) + ">"; }
+    if (type.type === "map") { return "map<" + typeText(type.key) + ", " + typeText(type.value) + ">"; }
+    return JSON.stringify(type);
+  }
+
+  /* The fields of a schema, with the fields of a struct under it, indented. */
+  function fieldRows(fields, depth, rows) {
+    (fields || []).forEach(function (field) {
+      var nested = field.type && field.type.type === "struct";
+      rows.push(el("tr", {}, [
+        el("td", {class: "num", text: String(field.id)}),
+        el("td", {class: "name"}, [
+          el("span", {class: "indent", style: "width:" + depth * 16 + "px"}),
+          el("span", {class: "mono", text: field.name})
+        ]),
+        el("td", {class: "mono wrap", text: nested ? "struct" : typeText(field.type)}),
+        el("td", {text: field.required ? "required" : "optional", class: "date"}),
+        el("td", {class: "wrap", text: field.doc || ""})
+      ]));
+      if (nested) { fieldRows(field.type.fields, depth + 1, rows); }
+    });
+    return rows;
+  }
+
+  function s3Location(location) {
+    var match = /^s3a?:\/\/([^\/]+)\/?(.*)$/.exec(location || "");
+    return match ? {bucket: match[1], key: match[2]} : null;
+  }
+
+  /*
+   * A button that opens an s3:// location in the Objects view: the folder that it is, e.g. the location of a table,
+   * or the folder of the file that it is, e.g. a manifest list.
+   */
+  function browse(location, label, folder) {
+    var target = s3Location(location);
+    if (!target) { return null; }
+    var prefix = !folder ? target.key.replace(/[^\/]*$/, "")
+      : target.key && !/\/$/.test(target.key) ? target.key + "/" : target.key;
+    return el("button", {text: label || "Browse", title: "Open " + location + " in the Objects view", onclick: function () {
+      go(target.bucket, prefix);
+    }});
+  }
+
+  function showTable(catalog, namespace, name) {
+    api("/table", {tableBucket: catalog.tableBucket || null, namespace: namespace.join(NS), table: name})
+      .then(function (answer) {
+        if (!stillOpen(catalog, namespace, name)) { return; }
+        renderTable(answer);
+      }).catch(function (error) {
+        if (!stillOpen(catalog, namespace, name)) { return; }
+        $("content").replaceChildren(el("div", {class: "state error", text: error.message}));
+      });
+  }
+
+  var TABLE_TABS = ["Snapshots", "Schema", "Partitioning", "Properties", "Metadata JSON"];
+  var tableTab = "Snapshots";
+
+  function renderTable(answer) {
+    var metadata = answer.metadata || {};
+    var snapshots = (metadata.snapshots || []).slice().sort(function (a, b) {
+      return (b["timestamp-ms"] || 0) - (a["timestamp-ms"] || 0);
+    });
+    var currentId = metadata["current-snapshot-id"];
+    var current = snapshots.find(function (snapshot) { return snapshot["snapshot-id"] === currentId; });
+    var summary = (current && current.summary) || {};
+
+    var cards = el("div", {class: "cards"}, [
+      ["Format version", metadata["format-version"]],
+      ["Snapshots", snapshots.length],
+      ["Records", summary["total-records"]],
+      ["Data files", summary["total-data-files"]],
+      ["Size", summary["total-files-size"] !== undefined ? size(Number(summary["total-files-size"])) : null],
+      ["Last updated", metadata["last-updated-ms"] ? when(new Date(metadata["last-updated-ms"]).toISOString()) : null]
+    ].filter(function (card) { return card[1] !== null && card[1] !== undefined; }).map(function (card) {
+      return el("div", {class: "card"}, [el("small", {text: card[0]}), el("div", {text: String(card[1]),
+        title: String(card[1])})]);
+    }));
+
+    var location = metadata.location;
+    var query = answer["metadata-location"]
+      ? "SELECT * FROM iceberg_scan('" + answer["metadata-location"].replace(/'/g, "''") + "') LIMIT 10;" : null;
+    var overview = kv([
+      ["Table UUID", metadata["table-uuid"]],
+      ["Location", location],
+      ["Metadata location", answer["metadata-location"]],
+      ["Current snapshot", currentId === undefined || currentId === null || currentId === "-1" ? "none" : currentId]
+    ]);
+    var actions = [browse(location, "Browse files", true), browse(answer["metadata-location"], "Browse metadata")]
+      .filter(Boolean);
+    if (query) {
+      actions.push(el("button", {text: "Copy DuckDB query", title: query, onclick: function () { copy(query); }}));
+    }
+
+    var tabs = el("div", {class: "seg"}, TABLE_TABS.map(function (name) {
+      return el("button", {class: name === tableTab ? "on" : "", text: name, onclick: function () {
+        tableTab = name;
+        renderTable(answer);
+      }});
+    }));
+
+    var detail;
+    if (tableTab === "Schema") { detail = schemaPane(metadata); }
+    else if (tableTab === "Partitioning") { detail = partitionPane(metadata); }
+    else if (tableTab === "Properties") {
+      var properties = entries(metadata.properties);
+      detail = properties.length ? kv(properties) : el("div", {class: "state", text: "No properties."});
+    } else if (tableTab === "Metadata JSON") {
+      detail = el("pre", {text: JSON.stringify(metadata, null, 2)});
+    } else { detail = snapshotsPane(metadata, snapshots, currentId); }
+
+    $("content").replaceChildren(el("div", {class: "pane"}, [
+      cards,
+      section("Table", overview, actions),
+      tabs,
+      detail
+    ]));
+  }
+
+  function currentSchema(metadata) {
+    var schemas = metadata.schemas || (metadata.schema ? [metadata.schema] : []);
+    return schemas.find(function (schema) { return schema["schema-id"] === metadata["current-schema-id"]; })
+      || schemas[schemas.length - 1] || {fields: []};
+  }
+
+  function schemaPane(metadata) {
+    var schema = currentSchema(metadata);
+    var identifiers = schema["identifier-field-ids"] || [];
+    return section("Schema " + (schema["schema-id"] !== undefined ? schema["schema-id"] : ""), el("table", {}, [
+      el("thead", {}, [el("tr", {}, [
+        el("th", {class: "num", text: "Id"}), el("th", {text: "Field"}), el("th", {text: "Type"}),
+        el("th", {class: "date", text: ""}), el("th", {text: "Doc"})
+      ])]),
+      el("tbody", {}, fieldRows(schema.fields, 0, []))
+    ]), [
+      el("span", {class: "badge", text: (metadata.schemas || []).length + " schema(s)"})
+    ].concat(identifiers.length ? [el("span", {class: "badge", text: "identifier fields " + identifiers.join(", ")})]
+      : []));
+  }
+
+  function partitionPane(metadata) {
+    var schema = currentSchema(metadata);
+    var names = {};
+    (function collect(fields) {
+      (fields || []).forEach(function (field) {
+        names[field.id] = field.name;
+        if (field.type && field.type.type === "struct") { collect(field.type.fields); }
+      });
+    })(schema.fields);
+    var spec = (metadata["partition-specs"] || []).find(function (candidate) {
+      return candidate["spec-id"] === metadata["default-spec-id"];
+    }) || {fields: metadata["partition-spec"] || []};
+    var order = (metadata["sort-orders"] || []).find(function (candidate) {
+      return candidate["order-id"] === metadata["default-sort-order-id"];
+    }) || {fields: []};
+    var specFields = spec.fields || [];
+    var orderFields = order.fields || [];
+    return el("div", {class: "pane", style: "padding:0"}, [
+      section("Partition spec " + (spec["spec-id"] !== undefined ? spec["spec-id"] : ""), specFields.length
+        ? el("table", {}, [
+          el("thead", {}, [el("tr", {}, [el("th", {text: "Partition field"}), el("th", {text: "Source"}),
+            el("th", {text: "Transform"})])]),
+          el("tbody", {}, specFields.map(function (field) {
+            return el("tr", {}, [el("td", {class: "mono", text: field.name}),
+              el("td", {class: "mono", text: names[field["source-id"]] || String(field["source-id"])}),
+              el("td", {class: "mono", text: field.transform})]);
+          }))
+        ]) : el("div", {class: "state", text: "Unpartitioned."})),
+      section("Sort order", orderFields.length ? el("table", {}, [
+        el("thead", {}, [el("tr", {}, [el("th", {text: "Source"}), el("th", {text: "Transform"}),
+          el("th", {text: "Direction"}), el("th", {text: "Nulls"})])]),
+        el("tbody", {}, orderFields.map(function (field) {
+          return el("tr", {}, [el("td", {class: "mono", text: names[field["source-id"]] || String(field["source-id"])}),
+            el("td", {class: "mono", text: field.transform}), el("td", {text: field.direction}),
+            el("td", {text: field["null-order"]})]);
+        }))
+      ]) : el("div", {class: "state", text: "Unsorted."}))
+    ]);
+  }
+
+  function snapshotsPane(metadata, snapshots, currentId) {
+    if (!snapshots.length) {
+      return el("div", {class: "state", text: "No snapshots: the table holds no data yet."});
+    }
+    var refs = {};
+    Object.keys(metadata.refs || {}).forEach(function (name) {
+      var ref = metadata.refs[name];
+      (refs[ref["snapshot-id"]] = refs[ref["snapshot-id"]] || []).push({name: name, type: ref.type});
+    });
+    var body = el("tbody");
+    snapshots.forEach(function (snapshot) {
+      var id = snapshot["snapshot-id"];
+      var summary = snapshot.summary || {};
+      var badges = (refs[id] || []).map(function (ref) {
+        return el("span", {class: "badge" + (ref.name === "main" ? " accent" : ""), text: ref.type + ": " + ref.name});
+      });
+      if (id === currentId) { badges.unshift(el("span", {class: "badge accent", text: "current"})); }
+      var row = el("tr", {}, [
+        el("td", {class: "name"}, [el("button", {class: "entry", title: "Show the summary of this snapshot",
+          onclick: function () { toggle(); }}, [icon("file"), el("span", {class: "label mono", text: String(id)})])]
+          .concat(badges)),
+        el("td", {text: summary.operation || ""}),
+        el("td", {class: "num", text: summary["added-records"] !== undefined ? "+" + summary["added-records"] : ""}),
+        el("td", {class: "num", text: summary["total-records"] || ""}),
+        el("td", {class: "date", text: snapshot["timestamp-ms"] ? when(new Date(snapshot["timestamp-ms"]).toISOString())
+          : ""})
+      ]);
+      var detail = null;
+      var toggle = function () {
+        if (detail) { detail.remove(); detail = null; row.classList.remove("expanded"); return; }
+        row.classList.add("expanded");
+        var location = snapshot["manifest-list"];
+        detail = el("tr", {class: "expanded"}, [el("td", {colspan: "5"}, [kv([
+          ["Snapshot", String(id)],
+          ["Parent", snapshot["parent-snapshot-id"] !== undefined ? String(snapshot["parent-snapshot-id"]) : null],
+          ["Sequence number", snapshot["sequence-number"]],
+          ["Schema", snapshot["schema-id"]],
+          ["Manifest list", location ? el("span", {}, [el("span", {class: "mono", text: location + " "}),
+            browse(location, "Browse")].filter(Boolean)) : null]
+        ].concat(entries(summary)))])]);
+        row.after(detail);
+      };
+      body.appendChild(row);
+    });
+    return el("table", {}, [
+      el("thead", {}, [el("tr", {}, [
+        el("th", {text: "Snapshot"}), el("th", {text: "Operation"}), el("th", {class: "num", text: "Added"}),
+        el("th", {class: "num", text: "Records"}), el("th", {class: "date", text: "Committed"})
+      ])]),
+      body
+    ]);
+  }
+
+  /* Vectors: the vector buckets, their indexes, and the vectors of an index with their metadata. */
+
+  function loadVectorBuckets() {
+    return api("/vector-buckets").then(function (body) {
+      state.vectors.buckets = body.vectorBuckets || [];
+      if (state.mode === "vectors") { renderVectorBuckets(); }
+    }).catch(function (error) {
+      state.vectors.buckets = [];
+      if (state.mode === "vectors") {
+        $("buckets").replaceChildren(el("div", {class: "state error", text: error.message}));
+      }
+    });
+  }
+
+  /* The S3 Vectors API answers its times in seconds. */
+  function seconds(value) {
+    return value ? when(new Date(value * 1000).toISOString()) : "";
+  }
+
+  function renderVectorBuckets() {
+    sidebar(state.vectors.buckets, function (bucket) { return bucket.vectorBucketName; },
+      "No vector buckets yet.", function (bucket) {
+        return el("button", {
+          class: "bucket" + (bucket.vectorBucketName === state.vectors.bucket ? " active" : ""),
+          title: bucket.vectorBucketArn,
+          onclick: function () { goView("vectors", {bucket: bucket.vectorBucketName}); }
+        }, [el("span", {text: bucket.vectorBucketName}), el("small", {text: seconds(bucket.creationTime)})]);
+      });
+  }
+
+  function openVectors(bucket, index) {
+    state.vectors.bucket = bucket;
+    state.vectors.index = index;
+    state.vectors.rows = null;
+    state.vectors.token = null;
+    renderSidebar();
+    var crumbs = [];
+    if (bucket) {
+      crumbs.push(el("button", {text: bucket, onclick: function () { goView("vectors", {bucket: bucket}); }}));
+      if (index) {
+        crumbs.push(el("span", {text: "/"}));
+        crumbs.push(el("button", {text: index, onclick: function () {
+          goView("vectors", {bucket: bucket, index: index});
+        }}));
+      }
+    }
+    $("crumbs").replaceChildren.apply($("crumbs"), crumbs);
+    if (!bucket) {
+      $("content").replaceChildren(el("div", {class: "state", text: "Pick a vector bucket to see its indexes."}));
+      return;
+    }
+    $("content").replaceChildren(el("div", {class: "state", text: "Loading…"}));
+    if (index) { listVectors(); } else { showIndexes(bucket); }
+  }
+
+  function showIndexes(bucket) {
+    api("/vector-indexes", {vectorBucket: bucket}).then(function (answer) {
+      if (state.mode !== "vectors" || state.vectors.bucket !== bucket || state.vectors.index) { return; }
+      var indexes = answer.indexes || [];
+      if (!indexes.length) {
+        $("content").replaceChildren(el("div", {class: "state", text: "This vector bucket has no indexes yet."}));
+        return;
+      }
+      $("content").replaceChildren(el("table", {}, [
+        el("thead", {}, [el("tr", {}, [
+          el("th", {text: "Index"}), el("th", {class: "num", text: "Dimension"}), el("th", {text: "Metric"}),
+          el("th", {text: "Type"}), el("th", {class: "num", text: "Vectors"}),
+          el("th", {text: "Non-filterable metadata"}), el("th", {class: "date", text: "Created"})
+        ])]),
+        el("tbody", {}, indexes.map(function (index) {
+          var keys = ((index.metadataConfiguration || {}).nonFilterableMetadataKeys || []).join(", ");
+          return el("tr", {}, [
+            el("td", {class: "name"}, [entryButton("index", index.indexName, function () {
+              goView("vectors", {bucket: bucket, index: index.indexName});
+            }, index.indexArn)]),
+            el("td", {class: "num", text: String(index.dimension)}),
+            el("td", {text: index.distanceMetric || ""}),
+            el("td", {text: index.dataType || ""}),
+            el("td", {class: "num", text: index.vectorCount === null || index.vectorCount === undefined ? ""
+              : String(index.vectorCount)}),
+            el("td", {class: "mono", text: keys}),
+            el("td", {class: "date", text: seconds(index.creationTime)})
+          ]);
+        }))
+      ]));
+    }).catch(function (error) {
+      $("content").replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function listVectors() {
+    var bucket = state.vectors.bucket;
+    var index = state.vectors.index;
+    return api("/vectors", {vectorBucket: bucket, index: index, nextToken: state.vectors.token}).then(function (body) {
+      if (state.mode !== "vectors" || state.vectors.bucket !== bucket || state.vectors.index !== index) { return; }
+      state.vectors.rows = (state.vectors.rows || []).concat(body.vectors || []);
+      state.vectors.token = body.nextToken || null;
+      renderVectors();
+    }).catch(function (error) {
+      $("content").replaceChildren(el("div", {class: "state error", text: error.message}));
+    });
+  }
+
+  function renderVectors() {
+    var rows = state.vectors.rows || [];
+    if (!rows.length) {
+      $("content").replaceChildren(el("div", {class: "state", text: "This index holds no vectors yet."}));
+      return;
+    }
+    var table = el("table", {}, [
+      el("thead", {}, [el("tr", {}, [el("th", {text: "Key"}), el("th", {text: "Metadata"}), el("th", {text: ""})])]),
+      el("tbody", {}, rows.map(function (vector) {
+        var metadata = vector.metadata === null || vector.metadata === undefined ? "" : JSON.stringify(vector.metadata);
+        return el("tr", {}, [
+          el("td", {class: "name"}, [entryButton("vector", vector.key, function () { showVector(vector.key); })]),
+          el("td", {}, [el("div", {class: "clip mono", text: metadata, title: metadata})]),
+          el("td", {class: "actions"}, [el("button", {text: "Show", onclick: function () { showVector(vector.key); }})])
+        ]);
+      }))
+    ]);
+    var children = [table];
+    if (state.vectors.token) {
+      var more = el("button", {text: "Load more", onclick: function () {
+        more.disabled = true;
+        more.textContent = "Loading…";
+        listVectors();
+      }});
+      children.push(el("div", {class: "more"}, [more]));
+    }
+    $("content").replaceChildren.apply($("content"), children);
+  }
+
+  var detailJson = "";
+
+  function showVector(key) {
+    $("detail-title").textContent = state.vectors.index + " / " + key;
+    $("detail-body").replaceChildren(el("div", {class: "state", text: "Loading…"}));
+    detailJson = "";
+    $("detail").showModal();
+    api("/vector", {vectorBucket: state.vectors.bucket, index: state.vectors.index, key: key}).then(function (vector) {
+      var values = (vector.data && vector.data.float32) || [];
+      var norm = Math.sqrt(values.reduce(function (sum, value) { return sum + value * value; }, 0));
+      detailJson = JSON.stringify(vector, null, 2);
+      $("detail-body").replaceChildren(
+        kv([["Key", vector.key], ["Dimension", values.length], ["L2 norm", values.length ? norm.toFixed(6) : null]]),
+        section("Metadata", el("pre", {text: vector.metadata === null || vector.metadata === undefined ? "{}"
+          : JSON.stringify(vector.metadata, null, 2)})),
+        section("Data (float32)", el("pre", {text: "[" + values.join(", ") + "]"})));
+    }).catch(function (error) {
+      $("detail-body").replaceChildren(el("div", {class: "state error", text: error.message}));
     });
   }
 
@@ -1130,7 +2001,8 @@
 
   var confirmed;
 
-  function ask(target) {
+  function ask(target, title) {
+    $("confirm-title").textContent = title || "Delete this object?";
     $("confirm-target").textContent = target;
     $("confirm").showModal();
     return new Promise(function (resolve) { confirmed = resolve; });
@@ -1233,13 +2105,31 @@
       listObjects();
     }, 200);
   });
-  $("bucket-filter").addEventListener("input", renderBuckets);
+  $("bucket-filter").addEventListener("input", renderSidebar);
   $("refresh").addEventListener("click", function () {
+    if (state.mode === "tables") { state.tables.catalogs = null; loadCatalogs(); route(); return; }
+    if (state.mode === "vectors") { state.vectors.buckets = null; loadVectorBuckets(); route(); return; }
     loadBuckets();
     if (state.bucket) { open(state.bucket, state.prefix); }
   });
+  Array.prototype.forEach.call($("modes").children, function (button) {
+    button.addEventListener("click", function () {
+      var mode = button.getAttribute("data-mode");
+      if (mode === state.mode) { return; }
+      if (mode === "objects") { go(state.bucket, state.bucket ? state.prefix : ""); }
+      else if (mode === "tables") { goTable(state.tables.catalog, state.tables.namespace, state.tables.table); }
+      else { goView("vectors", {bucket: state.vectors.bucket, index: state.vectors.index}); }
+    });
+  });
+  $("detail-close").addEventListener("click", function () { $("detail").close(); });
+  $("detail-copy").addEventListener("click", function () { if (detailJson) { copy(detailJson, "the vector"); } });
   $("preview-close").addEventListener("click", function () { $("preview").close(); });
-  $("preview-share").addEventListener("click", function () { share(state.bucket, $("preview-title").textContent); });
+  $("preview-share").addEventListener("click", function () {
+    if (state.current) { share(state.bucket, state.current.key); }
+  });
+  Array.prototype.forEach.call($("preview-tabs").children, function (button) {
+    button.addEventListener("click", function () { if (state.current) { showTab(button.getAttribute("data-tab")); } });
+  });
   try {
     var remembered = localStorage.getItem(SHARE_EXPIRY_KEY);
     if (remembered && $("share-expiry").querySelector("option[value='" + remembered + "']")) {
@@ -1251,7 +2141,7 @@
   });
   $("preview-query").addEventListener("click", function () {
     connect.selected = "duckdb";
-    openConnect(state.bucket, $("preview-title").textContent);
+    openConnect(state.bucket, state.current ? state.current.key : null);
   });
   $("connect-open").addEventListener("click", function () { openConnect(state.bucket, state.prefix); });
   $("connect-close").addEventListener("click", function () { $("connect").close(); });
@@ -1292,7 +2182,7 @@
   var dropTarget = window.document.querySelector("main");
   ["dragenter", "dragover"].forEach(function (name) {
     dropTarget.addEventListener(name, function (event) {
-      if (!state.bucket) { return; }
+      if (!state.bucket || state.mode !== "objects") { return; }
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
       if (name === "dragenter") { dragDepth++; }
@@ -1304,7 +2194,7 @@
     if (--dragDepth <= 0) { dragDepth = 0; $("dropzone").classList.remove("on"); }
   });
   dropTarget.addEventListener("drop", function (event) {
-    if (!state.bucket) { return; }
+    if (!state.bucket || state.mode !== "objects") { return; }
     event.preventDefault();
     dragDepth = 0;
     $("dropzone").classList.remove("on");
@@ -1313,15 +2203,18 @@
   window.addEventListener("dragover", function (event) { event.preventDefault(); });
   window.addEventListener("drop", function (event) { event.preventDefault(); });
   $("preview").addEventListener("close", function () { $("preview-body").replaceChildren(); });
-  window.addEventListener("hashchange", function () {
-    var target = readHash();
-    open(target.bucket, target.prefix);
-  });
+  window.addEventListener("hashchange", route);
 
   $("endpoint").textContent = location.origin;
-  var initial = readHash();
-  open(initial.bucket, initial.prefix);
+  route();
   loadBuckets();
+  api("/features").then(function (features) {
+    state.features = features;
+    Array.prototype.forEach.call($("modes").children, function (button) {
+      var mode = button.getAttribute("data-mode");
+      if (mode !== "objects") { button.hidden = !features[mode] && state.mode !== mode; }
+    });
+  }).catch(function () { /* The Objects view alone. */ });
 })();
 </script>
 </body>

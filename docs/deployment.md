@@ -627,7 +627,9 @@ deployment would each hold data of their own.
 
 LocalS3 serves a built-in console at `GET /_admin/ui`: a single self-contained HTML page, with no build step and no
 frontend framework, that lists the buckets and creates one, walks the objects of a bucket by their prefixes, previews
-or downloads what is in them, and uploads or deletes an object. Open `http://localhost:29090/_admin/ui` in a browser.
+or downloads what is in them, shows their metadata, tags and versions, and uploads or deletes an object. Its `Tables`
+and `Vectors` views browse the Iceberg catalogs and the vector buckets of the service. Open
+`http://localhost:29090/_admin/ui` in a browser.
 
 It answers the question a mock service otherwise leaves to `aws s3 ls`: what is actually in there? That matters when
 LocalS3 is embedded in an IDE or an application, and when an AI agent stores artifacts in it — a person then reads the
@@ -639,7 +641,11 @@ charts, reports and datasets the agent produced instead of listing keys.
 | Objects | The objects and the directories under a prefix, with size and last-modified time, a prefix filter, and a page of 200 at a time. |
 | An object | A preview of text, JSON, CSV, Markdown, images, audio, video, PDF and HTML, the rest as a download; `Download` saves it, and `Share`, on the row or in the preview, copies a presigned URL of the object that reads it without credentials, valid for the time chosen next to `Upload` (15 minutes to 7 days, an hour by default); a service without credentials copies the plain URL instead, which never expires. |
 | Upload | **Drop files or folders** anywhere on the listing, or use `Upload`: each file is stored under the prefix that is open, a dropped folder becomes a prefix, and a panel shows the progress of the batch, three files at a time. A file that the browser knows no type for is stored with the content type of its extension. |
+| Properties | The `Properties` tab of the preview: size, ETag, content type, storage class, checksum, the encryption and the Object Lock retention and legal hold recorded with it, the system metadata it is served with (`Cache-Control`, `Content-Disposition` and the rest), its `x-amz-meta-*` user metadata, and its tags. |
+| Versions | The `Versions` tab of the preview: the versioning of the bucket, and the versions and the delete markers of the key, newest first (at most 1000). `Open` previews a version, with its own properties, `Download` saves it, and `Delete` deletes that version for good, after a confirmation. A bucket that was never versioned has the one version, `null`. |
 | Delete | `Delete` on a row, after a confirmation. In a versioned bucket it puts a delete marker, like `DeleteObject` does. |
+| Tables | Shown when the service serves the [Iceberg REST catalog](data-tools.md#the-built-in-iceberg-rest-catalog) or [table buckets](data-tools.md#amazon-s3-tables). The sidebar lists the catalogs: the one at `/iceberg`, and one per table bucket. A catalog is walked namespace by namespace, down to its tables and views; a table shows its record count, data files and size, its location, with `Browse files` that opens it in the objects view, `Copy DuckDB query` that copies an `iceberg_scan` of its metadata file, and tabs of its snapshots (the current one and the branches and tags that point at each, with its summary and manifest list on a click), its current schema, its partition spec and sort order, its properties, and its metadata as JSON. |
+| Vectors | Shown when the service serves the S3 Vectors API. The sidebar lists the vector buckets; a bucket lists its indexes with their dimension, distance metric, data type, number of vectors and non-filterable metadata keys; an index lists its vectors with their metadata, 100 at a time, and `Show` shows the data of one, with its L2 norm, and copies it as JSON. |
 | Connect | `Connect` shows what DuckDB, s5cmd, the AWS CLI, boto3, Polars, PyIceberg and Spark need to reach the service, written by the service itself, with a `Copy` button: the [connection snippets](#admin-endpoints) of the bucket or the folder that is open. `DuckDB SQL` in the preview of an object shows the DuckDB script that ends with a query of that object, e.g. `SELECT * FROM 's3://lake/events.parquet' LIMIT 10;`, which `Copy query` copies alone. |
 
 Behind the page are endpoints of its own, which call the same services the S3 operations do:
@@ -647,6 +653,13 @@ Behind the page are endpoints of its own, which call the same services the S3 op
 `GET /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/object?bucket=&key=`,
 `DELETE /_admin/ui/object?bucket=&key=`, `PUT /_admin/ui/bucket?bucket=`, `GET /_admin/ui/snippets?bucket=&key=`,
 `GET /_admin/ui/presign?bucket=&key=&expires=<seconds>&method=GET|PUT`,
+`GET /_admin/ui/metadata?bucket=&key=&versionId=`, `GET /_admin/ui/versions?bucket=&key=`, `GET /_admin/ui/object` and
+`DELETE /_admin/ui/object` with a `versionId=` for a version, `GET /_admin/ui/features`, which says whether the
+`Tables` and `Vectors` views are shown, `GET /_admin/ui/catalogs`, `GET /_admin/ui/namespace?tableBucket=&namespace=`,
+`GET /_admin/ui/table?tableBucket=&namespace=&table=`, where no `tableBucket` is the catalog at `/iceberg` and the
+levels of a namespace are separated by `%1F` like in the Iceberg REST API, `GET /_admin/ui/vector-buckets`,
+`GET /_admin/ui/vector-indexes?vectorBucket=`, `GET /_admin/ui/vectors?vectorBucket=&index=&nextToken=` and
+`GET /_admin/ui/vector?vectorBucket=&index=&key=`,
 and the multipart upload of a large file: `POST /_admin/ui/multipart?bucket=&key=` starts it and answers its
 `uploadId`, `PUT /_admin/ui/multipart?bucket=&key=&uploadId=&partNumber=` stores a part,
 `POST /_admin/ui/multipart/complete?bucket=&key=&uploadId=` completes it with `{"parts": [{"partNumber": 1, "etag":
@@ -656,7 +669,10 @@ the object.
 A file of up to 64 MiB is uploaded with a single `PutObject`; a larger one is uploaded **in parts** of 16 MiB, three
 at a time, like an S3 client would, so a large dataset dragged onto the page is stored even when it is larger than
 `maxRequestBodySize`, and a failed upload is aborted. The console **deletes no bucket** and
-changes no bucket configuration — versioning, policies, CORS and the rest: for those, use the S3 API.
+changes no bucket configuration — versioning, policies, CORS and the rest: for those, use the S3 API. It changes no
+metadata or tags of an object either, and the `Tables` and `Vectors` views only read: the catalogs and the vector
+buckets are changed by the clients that own them. The table endpoint answers the IDs of snapshots as strings rather
+than numbers, which JavaScript would round.
 
 A browser can't sign a request with AWS Signature Version 4, so the console is guarded with **HTTP Basic
 authentication** rather than a signature: a service configured with credentials asks for the access key ID as the user

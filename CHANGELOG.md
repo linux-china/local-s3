@@ -184,6 +184,13 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
   something also wants the `X-LocalS3-Console` header, which no other origin can send, so a page open elsewhere in
   the browser can't write through it. The S3 API is unaffected, and the requests of the console aren't recorded in
   the statistics. See [Console](docs/deployment.md#console).
++ **The console shows the metadata, tags and versions of an object, the Iceberg catalogs and the vector buckets.** The
+  preview has `Properties` (system and user metadata, tags, checksum, encryption, Object Lock) and `Versions` (the
+  versions and delete markers of the key, each of which is previewed, downloaded or deleted for good) tabs. The
+  `Tables` view walks the Iceberg REST catalog and every table bucket namespace by namespace, down to the snapshots,
+  schema, partitioning and properties of a table; the `Vectors` view lists the indexes of a vector bucket and the
+  vectors of an index with their metadata and data. Both only read, and are shown when the service serves them. See
+  [Console](docs/deployment.md#console).
 + **Connection snippets**, written by the service for the service: `GET /_admin/snippets` answers the configuration
   that DuckDB, s5cmd and the AWS CLI (as environment variables, and as a profile), boto3, Polars (`storage_options`),
   PyIceberg and Spark need to reach it — the host the request addressed, plain HTTP

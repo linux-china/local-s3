@@ -5,6 +5,21 @@ import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.exception.LocalS3Exception;
+import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
+import com.robothy.s3.core.iceberg.IcebergCatalogException;
+import com.robothy.s3.core.iceberg.IcebergCatalogService;
+import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
+import com.robothy.s3.core.model.internal.ObjectChecksum;
+import com.robothy.s3.core.model.internal.ObjectLock;
+import com.robothy.s3.core.model.internal.ServerSideEncryption;
+import com.robothy.s3.core.model.internal.SystemMetadata;
+import com.robothy.s3.core.s3tables.S3TablesException;
+import com.robothy.s3.core.s3tables.S3TablesService;
+import com.robothy.s3.core.service.s3vectors.S3VectorsService;
+import com.robothy.s3.datatypes.response.DeleteMarkerEntry;
+import com.robothy.s3.datatypes.response.ObjectVersion;
+import com.robothy.s3.datatypes.response.VersionItem;
+import com.robothy.s3.rest.LocalS3Features;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
@@ -39,12 +54,16 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -98,10 +117,32 @@ class ConsoleController implements RouterHttpRequestHandler {
 
   static final String ABORT_MULTIPART_UPLOAD_OPERATION = "ConsoleAbortMultipartUpload";
 
+  static final String FEATURES_OPERATION = "ConsoleFeatures";
+
+  static final String METADATA_OPERATION = "ConsoleGetObjectMetadata";
+
+  static final String VERSIONS_OPERATION = "ConsoleListObjectVersions";
+
+  static final String CATALOGS_OPERATION = "ConsoleListCatalogs";
+
+  static final String NAMESPACE_OPERATION = "ConsoleGetNamespace";
+
+  static final String TABLE_OPERATION = "ConsoleGetTable";
+
+  static final String VECTOR_BUCKETS_OPERATION = "ConsoleListVectorBuckets";
+
+  static final String VECTOR_INDEXES_OPERATION = "ConsoleListVectorIndexes";
+
+  static final String VECTORS_OPERATION = "ConsoleListVectors";
+
+  static final String VECTOR_OPERATION = "ConsoleGetVector";
+
   static final Set<String> OPERATIONS = Set.of(PAGE_OPERATION, BUCKETS_OPERATION, OBJECTS_OPERATION, OBJECT_OPERATION,
       PUT_OBJECT_OPERATION, DELETE_OBJECT_OPERATION, CREATE_BUCKET_OPERATION, SNIPPETS_OPERATION,
       PRESIGN_OPERATION, CREATE_MULTIPART_UPLOAD_OPERATION, UPLOAD_PART_OPERATION, COMPLETE_MULTIPART_UPLOAD_OPERATION,
-      ABORT_MULTIPART_UPLOAD_OPERATION);
+      ABORT_MULTIPART_UPLOAD_OPERATION, FEATURES_OPERATION, METADATA_OPERATION, VERSIONS_OPERATION,
+      CATALOGS_OPERATION, NAMESPACE_OPERATION, TABLE_OPERATION, VECTOR_BUCKETS_OPERATION, VECTOR_INDEXES_OPERATION,
+      VECTORS_OPERATION, VECTOR_OPERATION);
 
   /**
    * The methods of the console: reading the page and the data, creating a bucket, uploading an object, in one
@@ -133,6 +174,26 @@ class ConsoleController implements RouterHttpRequestHandler {
 
   private static final String COMPLETE_PATH = MULTIPART_PATH + "/complete";
 
+  private static final String FEATURES_PATH = PATH + "/features";
+
+  private static final String METADATA_PATH = PATH + "/metadata";
+
+  private static final String VERSIONS_PATH = PATH + "/versions";
+
+  private static final String CATALOGS_PATH = PATH + "/catalogs";
+
+  private static final String NAMESPACE_PATH = PATH + "/namespace";
+
+  private static final String TABLE_PATH = PATH + "/table";
+
+  private static final String VECTOR_BUCKETS_PATH = PATH + "/vector-buckets";
+
+  private static final String VECTOR_INDEXES_PATH = PATH + "/vector-indexes";
+
+  private static final String VECTORS_PATH = PATH + "/vectors";
+
+  private static final String VECTOR_PATH = PATH + "/vector";
+
   /**
    * The HTML page, which is on the classpath beside this class. It is read once: the page of a build never changes.
    */
@@ -143,6 +204,12 @@ class ConsoleController implements RouterHttpRequestHandler {
    * is truncated, so a bucket of many objects is walked rather than rendered at once.
    */
   private static final int PAGE_SIZE = 200;
+
+  /**
+   * The versions of an object that the console lists at most. A key rewritten in a loop by a test can have many more,
+   * and the newest are the ones a person looks for.
+   */
+  private static final int MAX_VERSIONS = 1000;
 
   /**
    * How long a presigned URL of the console is valid when the page asks for no expiration.
@@ -197,6 +264,8 @@ class ConsoleController implements RouterHttpRequestHandler {
    */
   private final MultipartUploadPolicy multipartUploadPolicy;
 
+  private final ConsoleExplorer explorer;
+
   private final byte[] page;
 
   ConsoleController(ServiceFactory serviceFactory, @Nullable String accessKeyId, @Nullable String secretAccessKey) {
@@ -214,6 +283,14 @@ class ConsoleController implements RouterHttpRequestHandler {
     this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
         ? serviceFactory.getInstance(MultipartUploadPolicy.class)
         : MultipartUploadPolicy.of(true);
+    LocalS3Features features = config == null ? LocalS3Features.defaults() : config.features();
+    this.explorer = new ConsoleExplorer(
+        serviceFactory.containsInstance(IcebergCatalogService.class)
+            ? serviceFactory.getInstance(IcebergCatalogService.class) : null,
+        features.s3Tables() && serviceFactory.containsInstance(S3TablesService.class)
+            ? serviceFactory.getInstance(S3TablesService.class) : null,
+        features.vector() && serviceFactory.containsInstance(S3VectorsService.class)
+            ? serviceFactory.getInstance(S3VectorsService.class) : null);
     this.page = readPage();
   }
 
@@ -254,6 +331,16 @@ class ConsoleController implements RouterHttpRequestHandler {
       case OBJECT_PATH -> OBJECT_OPERATION;
       case SNIPPETS_PATH -> SNIPPETS_OPERATION;
       case PRESIGN_PATH -> PRESIGN_OPERATION;
+      case FEATURES_PATH -> FEATURES_OPERATION;
+      case METADATA_PATH -> METADATA_OPERATION;
+      case VERSIONS_PATH -> VERSIONS_OPERATION;
+      case CATALOGS_PATH -> CATALOGS_OPERATION;
+      case NAMESPACE_PATH -> NAMESPACE_OPERATION;
+      case TABLE_PATH -> TABLE_OPERATION;
+      case VECTOR_BUCKETS_PATH -> VECTOR_BUCKETS_OPERATION;
+      case VECTOR_INDEXES_PATH -> VECTOR_INDEXES_OPERATION;
+      case VECTORS_PATH -> VECTORS_OPERATION;
+      case VECTOR_PATH -> VECTOR_OPERATION;
       default -> PAGE_OPERATION;
     };
   }
@@ -280,6 +367,25 @@ class ConsoleController implements RouterHttpRequestHandler {
         case SNIPPETS_PATH -> json(response, HttpResponseStatus.OK, snippets.all(request,
             request.parameter("bucket").orElse(null), request.parameter("key").orElse(null)));
         case PRESIGN_PATH -> presign(request, response);
+        case FEATURES_PATH -> json(response, HttpResponseStatus.OK,
+            new ConsoleFeatures(explorer.hasTables(), explorer.hasVectors()));
+        case METADATA_PATH -> metadata(request, response);
+        case VERSIONS_PATH -> versions(request, response);
+        case CATALOGS_PATH -> json(response, HttpResponseStatus.OK, explorer.catalogs());
+        case NAMESPACE_PATH -> json(response, HttpResponseStatus.OK, explorer.namespace(
+            request.parameter("tableBucket").orElse(null), request.parameter("namespace").orElse(null)));
+        case TABLE_PATH -> json(response, HttpResponseStatus.OK, explorer.table(
+            request.parameter("tableBucket").orElse(null), request.parameter("namespace").orElse(null),
+            required(request, "table")));
+        case VECTOR_BUCKETS_PATH -> json(response, HttpResponseStatus.OK,
+            Map.of("vectorBuckets", explorer.vectorBuckets()));
+        case VECTOR_INDEXES_PATH -> json(response, HttpResponseStatus.OK,
+            Map.of("indexes", explorer.vectorIndexes(required(request, "vectorBucket"))));
+        case VECTORS_PATH -> json(response, HttpResponseStatus.OK, explorer.vectors(
+            required(request, "vectorBucket"), required(request, "index"),
+            request.parameter("nextToken").orElse(null)));
+        case VECTOR_PATH -> json(response, HttpResponseStatus.OK, explorer.vector(
+            required(request, "vectorBucket"), required(request, "index"), required(request, "key")));
         default -> error(response, HttpResponseStatus.NOT_FOUND, "NotFound",
             "The console has no endpoint " + path + ".");
       }
@@ -287,6 +393,16 @@ class ConsoleController implements RouterHttpRequestHandler {
       // What the S3 API would answer with an XML error, e.g. a bucket that was deleted while the page showed it.
       error(response, HttpResponseStatus.valueOf(e.getS3ErrorCode().httpStatus()), e.getS3ErrorCode().code(),
           Objects.toString(e.getMessage(), e.getS3ErrorCode().description()));
+    } catch (IcebergCatalogException e) {
+      error(response, HttpResponseStatus.valueOf(e.status()), e.type(), e.getMessage());
+    } catch (S3TablesException e) {
+      error(response, HttpResponseStatus.valueOf(e.status()), e.errorType(), e.getMessage());
+    } catch (LocalS3VectorException e) {
+      error(response, HttpResponseStatus.valueOf(e.getErrorType().getStatus()), e.getErrorType().getCode(),
+          e.getMessage());
+    } catch (NoSuchElementException e) {
+      // A catalog, a table bucket or the vectors of a service that serves none of them.
+      error(response, HttpResponseStatus.NOT_FOUND, "NotFound", e.getMessage());
     } catch (IllegalArgumentException e) {
       error(response, HttpResponseStatus.BAD_REQUEST, "InvalidRequest", e.getMessage());
     }
@@ -354,6 +470,104 @@ class ConsoleController implements RouterHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addServerHeader(response);
     writeContent(response, object.getContent());
+  }
+
+  /**
+   * What the {@code Properties} tab of the preview shows: the system and the user metadata of a version of an
+   * object, and its tags, which {@code HeadObject} and {@code GetObjectTagging} answer as headers and XML.
+   */
+  private void metadata(RouterHttpRequest request, RouterHttpResponse response) {
+    String bucket = required(request, "bucket");
+    String key = required(request, "key");
+    GetObjectAns object = objectService.headObject(bucket, key, GetObjectOptions.builder()
+        .versionId(request.parameter("versionId").orElse(null))
+        .build());
+    if (object.isDeleteMarker()) {
+      json(response, HttpResponseStatus.OK, new ConsoleMetadata(bucket, key, object.getVersionId(), true,
+          0, null, Instant.ofEpochMilli(object.getLastModified()).toString(), null, null, Map.of(), Map.of(),
+          List.of(), null, null, null, null, null));
+      return;
+    }
+
+    SystemMetadata system = object.getSystemMetadata();
+    Map<String, String> headers = new LinkedHashMap<>();
+    if (system != null) {
+      putIfPresent(headers, "Cache-Control", system.getCacheControl());
+      putIfPresent(headers, "Content-Disposition", system.getContentDisposition());
+      putIfPresent(headers, "Content-Encoding", system.getContentEncoding());
+      putIfPresent(headers, "Content-Language", system.getContentLanguage());
+      putIfPresent(headers, "Expires", system.getExpires());
+      putIfPresent(headers, "x-amz-website-redirect-location", system.getWebsiteRedirectLocation());
+    }
+    List<ConsoleTag> tags = new ArrayList<>();
+    if (object.getTagging() != null) {
+      for (String[] tag : object.getTagging()) {
+        tags.add(new ConsoleTag(tag[0], tag.length > 1 ? tag[1] : ""));
+      }
+    }
+    ObjectChecksum checksum = object.getChecksum();
+    ServerSideEncryption encryption = object.getServerSideEncryption();
+    ObjectLock lock = object.getObjectLock();
+    json(response, HttpResponseStatus.OK, new ConsoleMetadata(bucket, key, object.getVersionId(), false,
+        object.getSize(), object.getEtag(), Instant.ofEpochMilli(object.getLastModified()).toString(),
+        object.getContentType(), SystemMetadata.storageClassOf(system).name(), headers,
+        object.getUserMetadata() == null ? Map.of() : new TreeMap<>(object.getUserMetadata()), tags,
+        object.getPartsCount(),
+        checksum == null || checksum.getAlgorithm() == null ? null
+            : checksum.getAlgorithm().name() + (checksum.getValue() == null ? "" : " " + checksum.getValue()),
+        encryption == null ? null
+            : encryption.algorithm() + (encryption.kmsKeyId() == null ? "" : " " + encryption.kmsKeyId()),
+        lock == null || !lock.hasRetention() ? null : lock.mode() + " until "
+            + Instant.ofEpochMilli(lock.retainUntilDate()),
+        lock == null ? null : lock.isLegalHoldOn()));
+  }
+
+  /**
+   * The versions of an object, newest first, and the delete markers between them, which {@code ListObjectVersions}
+   * answers for a prefix rather than for a key.
+   */
+  private void versions(RouterHttpRequest request, RouterHttpResponse response) {
+    String bucket = required(request, "bucket");
+    String key = required(request, "key");
+    Boolean versioning = bucketService.getVersioningEnabled(bucket);
+    List<ConsoleVersion> versions = new ArrayList<>();
+    String keyMarker = null;
+    String versionIdMarker = null;
+    boolean truncated = false;
+    // The versions of the key come first among those of the keys it is a prefix of, so walking stops at the next key.
+    walk:
+    while (true) {
+      ListObjectVersionsAns page = objectService.listObjectVersions(bucket, null, keyMarker, PAGE_SIZE, key,
+          versionIdMarker);
+      for (VersionItem item : page.getVersions()) {
+        if (!key.equals(item.key())) {
+          break walk;
+        }
+        if (versions.size() == MAX_VERSIONS) {
+          truncated = true;
+          break walk;
+        }
+        versions.add(switch (item) {
+          case ObjectVersion version -> new ConsoleVersion(version.versionId(), version.latest(), false,
+              version.size(), version.etag(), Objects.toString(version.lastModified(), null));
+          case DeleteMarkerEntry marker -> new ConsoleVersion(marker.versionId(), marker.latest(), true, 0, null,
+              Objects.toString(marker.lastModified(), null));
+        });
+      }
+      if (page.getNextKeyMarker().isEmpty() || !key.equals(page.getNextKeyMarker().get())) {
+        break;
+      }
+      keyMarker = page.getNextKeyMarker().get();
+      versionIdMarker = page.getNextVersionIdMarker().orElse(null);
+    }
+    json(response, HttpResponseStatus.OK, new ConsoleVersions(bucket, key,
+        versioning == null ? "Unversioned" : versioning ? "Enabled" : "Suspended", versions, truncated));
+  }
+
+  private static void putIfPresent(Map<String, String> map, String name, @Nullable String value) {
+    if (value != null && !value.isEmpty()) {
+      map.put(name, value);
+    }
   }
 
   /**
@@ -662,6 +876,58 @@ class ConsoleController implements RouterHttpRequestHandler {
    * What the endpoints answer with. The page reads these, and nothing else does, so they carry what it shows rather
    * than the shape of the Amazon S3 documents.
    */
+
+  /**
+   * What the service serves besides its buckets, which decides the views of the page.
+   *
+   * @param tables whether it serves an Iceberg REST catalog or table buckets.
+   * @param vectors whether it serves the S3 Vectors API.
+   */
+  private record ConsoleFeatures(boolean tables, boolean vectors) {
+  }
+
+  /**
+   * The metadata of a version of an object.
+   *
+   * @param versionId the version; {@code null} in a bucket that was never versioned.
+   * @param deleteMarker whether the version is a delete marker, which has no metadata but its date.
+   * @param headers the system metadata that the object is served with, by the name of its header.
+   * @param userMetadata the {@code x-amz-meta-*} metadata, by its name without the prefix.
+   * @param checksum the algorithm of the checksum it was stored with, and the checksum.
+   * @param encryption the server-side encryption that it was stored with, which LocalS3 records but doesn't apply.
+   * @param retention the Object Lock retention; {@code null} if it has none.
+   * @param legalHold whether a legal hold is on; {@code null} if it never had one.
+   */
+  private record ConsoleMetadata(String bucket, String key, @Nullable String versionId, boolean deleteMarker,
+                                 long size, @Nullable String etag, String lastModified, @Nullable String contentType,
+                                 @Nullable String storageClass, Map<String, String> headers,
+                                 Map<String, String> userMetadata, List<ConsoleTag> tags, @Nullable Integer partsCount,
+                                 @Nullable String checksum, @Nullable String encryption, @Nullable String retention,
+                                 @Nullable Boolean legalHold) {
+  }
+
+  private record ConsoleTag(String key, String value) {
+  }
+
+  /**
+   * The versions of an object.
+   *
+   * @param versioning {@code Enabled}, {@code Suspended}, or {@code Unversioned}: the versioning of the bucket.
+   * @param versions the versions and the delete markers, newest first.
+   * @param truncated whether the object has more versions than the console lists.
+   */
+  private record ConsoleVersions(String bucket, String key, String versioning, List<ConsoleVersion> versions,
+                                 boolean truncated) {
+  }
+
+  /**
+   * @param versionId the version; {@code null} for the version of a bucket that was never versioned.
+   * @param latest whether it is the current version of the key.
+   * @param deleteMarker whether it is a delete marker rather than a version of the object.
+   */
+  private record ConsoleVersion(@Nullable String versionId, boolean latest, boolean deleteMarker, long size,
+                                @Nullable String etag, @Nullable String lastModified) {
+  }
 
   /**
    * The buckets of the service.
