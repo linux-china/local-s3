@@ -99,11 +99,11 @@ The `S3AsyncClient` is built on the asynchronous HTTP client of the AWS SDK that
 e.g. for the `S3CrtAsyncClient` of Spring Cloud AWS, it is an `S3CrtAsyncClient` of `S3AsyncClient.crtBuilder()`, which
 uploads and downloads in parts of its own; the `S3TransferManager` is built on the same.
 
-The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. `netty-nio-client`
-depends on Netty 4.1, while LocalS3 needs Netty 4.2: let the dependency management of Spring Boot (the
+The versions come from the AWS SDK BOM (`software.amazon.awssdk:bom`), or set them explicitly. LocalS3 runs on Netty
+4.1 and 4.2, but every Netty module must be on the same version: let the dependency management of Spring Boot (the
 `spring-boot-starter-parent` or the `spring-boot-dependencies` BOM) pick the Netty version, rather than the nearest
-declaration, or LocalS3 fails to start with a `NoClassDefFoundError`. Spring Boot 4 manages Netty 4.2; on Spring Boot 3,
-override it as below.
+declaration, or a mix of 4.1 and 4.2 modules fails with a `NoClassDefFoundError`. Spring Boot 4 manages Netty 4.2, and
+Spring Boot 3 manages Netty 4.1.
 
 ## Spring Boot 3
 
@@ -117,8 +117,8 @@ own ship with an adapter per layout, of which only the one whose API is on the c
 | Actuator endpoint (`locals3`)       | `spring-boot-actuator`            | `spring-boot-actuator`   |
 | `@AutoConfigureLocalS3` properties  | `spring-boot-test-autoconfigure`  | `spring-boot-test`       |
 
-Spring Boot 3 pins Netty to 4.1, which LocalS3 does not run on, so an application on Spring Boot 3 has to raise it to
-4.2. With Maven, in the properties of the POM that inherits `spring-boot-starter-parent`:
+Spring Boot 3 pins Netty to 4.1, which LocalS3 runs on as it is. An application that wants Netty 4.2 instead raises
+every Netty module at once. With Maven, in the properties of the POM that inherits `spring-boot-starter-parent`:
 
 ```xml
 <properties>

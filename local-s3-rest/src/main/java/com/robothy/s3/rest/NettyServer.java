@@ -8,8 +8,7 @@ import com.robothy.s3.rest.netty.LocalS3ServerInitializer;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelOption;
-import io.netty.channel.MultiThreadIoEventLoopGroup;
-import io.netty.channel.nio.NioIoHandler;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
@@ -54,9 +53,11 @@ final class NettyServer {
 
     private final LocalS3Config config;
 
-    private MultiThreadIoEventLoopGroup parentGroup;
+    // NioEventLoopGroup rather than 4.2's MultiThreadIoEventLoopGroup: it exists in both Netty 4.1 and 4.2 (where it is
+    // deprecated but backed by NioIoHandler), so the server runs on either line.
+    private NioEventLoopGroup parentGroup;
 
-    private MultiThreadIoEventLoopGroup childGroup;
+    private NioEventLoopGroup childGroup;
 
     /**
      * Writes the streamed responses of TLS connections, which are read from the storage and encrypted chunk by chunk,
@@ -112,12 +113,10 @@ final class NettyServer {
 
     private void bind(int port, Router router, XmlMapper xmlMapper, Path requestBodyFileDirectory,
                       RequestRecorder requestRecorder, LongFunction<Optional<HeapContent.Writer>> heapBodyWriters) {
-        this.parentGroup = new MultiThreadIoEventLoopGroup(config.nettyParentEventGroupThreadNum(),
-                new NamingThreadFactory("locals3-parent-event-group", config.daemonThreads()),
-                NioIoHandler.newFactory());
-        this.childGroup = new MultiThreadIoEventLoopGroup(config.nettyChildEventGroupThreadNum(),
-                new NamingThreadFactory("locals3-child-event-group", config.daemonThreads()),
-                NioIoHandler.newFactory());
+        this.parentGroup = new NioEventLoopGroup(config.nettyParentEventGroupThreadNum(),
+                new NamingThreadFactory("locals3-parent-event-group", config.daemonThreads()));
+        this.childGroup = new NioEventLoopGroup(config.nettyChildEventGroupThreadNum(),
+                new NamingThreadFactory("locals3-child-event-group", config.daemonThreads()));
         if (config.tls() != null) {
             this.chunkedWriterGroup = new DefaultEventExecutorGroup(childGroup.executorCount(),
                     new NamingThreadFactory("locals3-chunked-writer-group", config.daemonThreads()));

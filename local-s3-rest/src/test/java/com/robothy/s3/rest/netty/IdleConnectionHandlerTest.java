@@ -18,11 +18,23 @@ import org.junit.jupiter.api.Test;
 
 class IdleConnectionHandlerTest {
 
-  private static final long TIMEOUT_SECONDS = 10;
+  private static final long TIMEOUT_MILLIS = 50;
 
+  // Netty 4.2's IdleStateHandler reads the event loop's ticker, which advanceTimeBy() moves, while 4.1's reads
+  // System.nanoTime(); passing real time as well makes the connection idle on both.
   private static void idle(EmbeddedChannel channel) {
-    channel.advanceTimeBy(TIMEOUT_SECONDS + 1, TimeUnit.SECONDS);
+    try {
+      Thread.sleep(TIMEOUT_MILLIS * 2);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+    channel.advanceTimeBy(TIMEOUT_MILLIS * 2, TimeUnit.MILLISECONDS);
     channel.runScheduledPendingTasks();
+  }
+
+  private static EmbeddedChannel newChannel() {
+    return new EmbeddedChannel(new IdleConnectionHandler(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS));
   }
 
   private static void receiveRequest(EmbeddedChannel channel) {
@@ -31,7 +43,7 @@ class IdleConnectionHandlerTest {
 
   @Test
   void closesIdleConnection() {
-    EmbeddedChannel channel = new EmbeddedChannel(new IdleConnectionHandler(TIMEOUT_SECONDS));
+    EmbeddedChannel channel = newChannel();
 
     idle(channel);
 
@@ -40,7 +52,7 @@ class IdleConnectionHandlerTest {
 
   @Test
   void keepsConnectionWithRequestInFlightOpen() {
-    EmbeddedChannel channel = new EmbeddedChannel(new IdleConnectionHandler(TIMEOUT_SECONDS));
+    EmbeddedChannel channel = newChannel();
     receiveRequest(channel);
 
     idle(channel);
@@ -54,7 +66,7 @@ class IdleConnectionHandlerTest {
 
   @Test
   void interimResponseDoesNotEndRequest() {
-    EmbeddedChannel channel = new EmbeddedChannel(new IdleConnectionHandler(TIMEOUT_SECONDS));
+    EmbeddedChannel channel = newChannel();
     receiveRequest(channel);
 
     channel.writeOutbound(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE));
@@ -66,7 +78,7 @@ class IdleConnectionHandlerTest {
 
   @Test
   void streamedResponseEndsRequest() {
-    EmbeddedChannel channel = new EmbeddedChannel(new IdleConnectionHandler(TIMEOUT_SECONDS));
+    EmbeddedChannel channel = newChannel();
     receiveRequest(channel);
 
     channel.writeOutbound(new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK));

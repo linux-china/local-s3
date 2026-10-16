@@ -516,9 +516,12 @@ class LocalS3Test {
         }
       });
       assertInstanceOf(BindException.class, thrown, "close() must not hide the exception of start().");
-      // Netty's sync() records its call site as a suppressed CompletionException; close() adds nothing.
+      // Netty's sync() records its call site as a suppressed exception: a CompletionException in 4.2, a
+      // RuntimeException in 4.1; close() adds nothing.
       for (Throwable suppressed : thrown.getSuppressed()) {
-        assertInstanceOf(CompletionException.class, suppressed);
+        assertTrue(suppressed instanceof CompletionException
+                || "Rethrowing promise failure cause".equals(suppressed.getMessage()),
+            () -> "Unexpected suppressed exception: " + suppressed);
       }
 
       long deadline = System.currentTimeMillis() + 5_000;

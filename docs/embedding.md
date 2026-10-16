@@ -591,8 +591,9 @@ The other side of it is that nothing waits for a daemon thread when the JVM exit
 on the spot, and a service that wasn't shut down leaves its data directory as a killed process does. That is why
 `dispose()` must call `close()`, rather than leave the service to the exit of the JVM.
 
-LocalS3 needs every Netty module on 4.2, which a plugin bundles. A single Netty 4.1 module that the plugin sees next to
-them, e.g. one that the IDE ships, fails at runtime, since Netty 4.2 moved classes between modules;
+LocalS3 runs on Netty 4.1 or 4.2, but needs every Netty module on the same version, which a plugin bundles. A single
+module of the other line that the plugin sees next to them, e.g. one that the IDE ships, fails at runtime, since Netty
+4.2 moved classes between modules;
 `io.netty.util.Version.identify()` lists the versions that the plugin actually runs with.
 
 The IDE inherits the `AWS_*` variables of the shell it was launched from; a plugin that builds its service with

@@ -20,8 +20,8 @@ class HelloWorld {
     DefaultEventExecutorGroup executor = new DefaultEventExecutorGroup(2);
     HttpServerInitializer serverInitializer = new HttpServerInitializer(executor, router);
 
-    EventLoopGroup parentGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
-    EventLoopGroup childGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+    EventLoopGroup parentGroup = new NioEventLoopGroup(1);
+    EventLoopGroup childGroup = new NioEventLoopGroup();
     try {
       Channel serverSocketChannel = new ServerBootstrap().group(parentGroup, childGroup)
           .handler(new LoggingHandler(LogLevel.DEBUG))

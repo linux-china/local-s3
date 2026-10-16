@@ -37,7 +37,11 @@ public class IdleConnectionHandler extends IdleStateHandler {
    * @param idleTimeoutSeconds seconds without reads or writes after which an idle connection is closed.
    */
   public IdleConnectionHandler(long idleTimeoutSeconds) {
-    super(0, 0, idleTimeoutSeconds, TimeUnit.SECONDS);
+    this(idleTimeoutSeconds, TimeUnit.SECONDS);
+  }
+
+  IdleConnectionHandler(long idleTimeout, TimeUnit unit) {
+    super(0, 0, idleTimeout, unit);
   }
 
   @Override

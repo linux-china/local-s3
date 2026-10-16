@@ -8,7 +8,7 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 - S3 API 兼容性：兼容核心 API，对一些未必要真的实现，如加密等，要做到让客户端的逻辑能跑通，不影响正常的功能
 - Iceberg REST Catalog: 方便 Iceberg 对接
 - S3 Tables API: AWS 托管 Iceberg 的入口，每个 table bucket 同时以 Iceberg REST catalog 形式提供（`s3tables` 签名作用域路由，未签名客户端走 `/s3tables` 前缀）
-- 内置 Spring Boot Starter 支持：local-s3-spring-boot-starter，请忽略 Spring Boot 3 和 Netty 4.2的兼容问题，Spring Boot 能够保证兼容。
+- 内置 Spring Boot Starter 支持：local-s3-spring-boot-starter，LocalS3 同时兼容 Netty 4.1 和 4.2，Spring Boot 3（Netty 4.1）和 Spring Boot 4（Netty 4.2）均可直接使用。
 
 主要使用场景：
 
@@ -34,7 +34,7 @@ LocalS3 是一个基于 Netty 的 Amazon S3 服务模拟实现，面向 **测试
 
 - Gradle 9.7
 - Java 25
-- Netty 4.2: netty-http-router
+- Netty 4.1 / 4.2（同时兼容，只使用两者共有的 API，如 `NioEventLoopGroup`）: netty-http-router
 - Jackson 3.x（`tools.jackson`；注解仍是 `com.fasterxml.jackson.annotation`；mapper 使用 Jackson 2 默认配置构建）
 - Lombok
 - H2 MVStore: a persistent, log structured key-value store
