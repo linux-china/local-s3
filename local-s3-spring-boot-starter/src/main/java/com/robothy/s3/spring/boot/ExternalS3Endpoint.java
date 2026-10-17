@@ -145,7 +145,8 @@ record ExternalS3Endpoint(String property, String endpoint) {
    */
   private static boolean isLoopback(String host) {
     if (host.equals("localhost") || host.endsWith(".localhost")
-        || host.equals("127-0-0-1.nip.io") || host.endsWith(".127-0-0-1.nip.io")) {
+        || host.equals("127-0-0-1.nip.io") || host.endsWith(".127-0-0-1.nip.io")
+        || host.endsWith(".localtest.me")) {
       return true;
     }
     boolean ipAddress = host.contains(":") || host.chars().allMatch(c -> c == '.' || Character.isDigit(c));

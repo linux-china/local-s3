@@ -45,7 +45,7 @@ public class VirtualHostParser {
    * resolves every name under {@code 127-0-0-1.nip.io} to 127.0.0.1, so virtual-hosted-style requests need no
    * {@code /etc/hosts} entry.
    */
-  public static final Set<String> DEFAULT_DOMAINS = Set.of("localhost", "127.0.0.1", "0.0.0.0", "127-0-0-1.nip.io");
+  public static final Set<String> DEFAULT_DOMAINS = Set.of("localhost", "127.0.0.1", "0.0.0.0", "127-0-0-1.nip.io", "localtest.me");
 
 
   /**
