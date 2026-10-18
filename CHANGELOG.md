@@ -523,6 +523,13 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 + `PutObject`, `CopyObject`, `POST Object` and `CompleteMultipartUpload` to a bucket whose versioning is suspended
   answer no `x-amz-version-id`, like Amazon S3; they answered `null`. Reading or deleting the null version still
   answers `null`.
++ `ListMultipartUploads` pages through the uploads like `ListObjectVersions` pages through the versions. A page that
+  cut the uploads of a key answered no `NextUploadIdMarker`, and the next page skipped the rest of the key, so
+  `listMultipartUploadsPaginator` lost uploads; an `upload-id-marker` filtered the uploads of every key rather than of
+  the `key-marker`; and the common prefixes were taken from the start of the key rather than after the `prefix`, so
+  `prefix=dir/&delimiter=/` rolled every key up into `dir/`, e.g. for the job cleanup of the S3A committers. The
+  response echoes `KeyMarker`, `UploadIdMarker`, `Prefix` and `EncodingType`, without which the AWS SDKs don't decode
+  an url-encoded listing.
 + `ListObjectVersions` answers `null` as the `NextVersionIdMarker` of a page that ends with the null version, rather
   than the ID that LocalS3 holds the version by inside; a `null` marker whose null version was deleted since lists every
   version left of the key, so a client that empties a bucket page by page skips none. A `key-marker` without a

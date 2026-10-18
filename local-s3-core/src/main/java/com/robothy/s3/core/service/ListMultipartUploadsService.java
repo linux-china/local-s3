@@ -14,6 +14,11 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 
+/**
+ * Pages through the uploads like {@linkplain ListObjectVersionsService} pages through the versions: the
+ * {@code (key-marker, upload-id-marker)} pair is a cursor into the uploads of a key, and the common prefixes are taken
+ * after the prefix of the request.
+ */
 public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
 
   default ListMultipartUploadsAns listMultipartUploads(
@@ -25,107 +30,165 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
       String prefix,
       String uploadIdMarker
   ) {
-    BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> filteredByKeyMarkerAndDelimiter = ListItemUtils
-        .filterByKeyMarkerAndDelimiter(bucketMetadata.getUploads(), keyMarker, delimiter);
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> filteredByPrefix = ListItemUtils
-        .filterByPrefix(filteredByKeyMarkerAndDelimiter, prefix);
-    ListMultipartUploadsAns listMultipartUploadsAns =
-        listMultipartUploads(filteredByPrefix, delimiter, maxUploads, uploadIdMarker);
-    return encodeResultIfNeeded(listMultipartUploadsAns, encodingType);
+    return withBucketReadLock(bucketName, () -> {
+      BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
+      ListMultipartUploadsAns listMultipartUploadsAns = listMultipartUploads(bucketMetadata.getUploads(), delimiter,
+          keyMarker, maxUploads, prefix, uploadIdMarker);
+      listMultipartUploadsAns.setBucket(bucketName);
+      return encodeResultIfNeeded(listMultipartUploadsAns, encodingType);
+    });
   }
 
   static ListMultipartUploadsAns listMultipartUploads(
       NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads,
       String delimiter,
+      String keyMarker,
       int maxUploads,
+      String prefix,
       String uploadIdMarker
   ) {
+    // An empty marker, which some clients send on their first request, is no marker.
+    String startKey = Objects.isNull(keyMarker) || keyMarker.isEmpty() ? null : keyMarker;
+    // Amazon S3 ignores an upload-id marker without a key marker.
+    String startUploadId = Objects.isNull(startKey) || Objects.isNull(uploadIdMarker) || uploadIdMarker.isEmpty()
+        ? null : uploadIdMarker;
 
-    List<ListMultipartUploadsAns.UploadItem> listedUploads = new ArrayList<>();
-    // Distinct and in order: the keys of a common prefix are skipped once it is listed.
-    List<String> listedCommonPrefixes = new ArrayList<>();
-    ListMultipartUploadsAns result = ListMultipartUploadsAns.builder()
-        .delimiter(delimiter)
-        .maxUploads(maxUploads)
-        .build();
+    Page page = new Page(keyMarker, uploadIdMarker, prefix, delimiter, maxUploads);
+    if (maxUploads <= 0) {
+      return page.answer(false, null, null);
+    }
 
-    String nextKeyMarker = null;
-    String nextUploadIdMarker = null;
-    String lastKey = null;
-    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = uploads.entrySet().iterator();
-    while (iterator.hasNext()) {
-      Map.Entry<String, NavigableMap<String, UploadMetadata>> entry = iterator.next();
+    int prefixLen = Objects.isNull(prefix) ? 0 : prefix.length();
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> candidates = uploads;
+    String commonPrefixOfKeyMarker = null;
+    Fetched fetchedOfKeyMarker = null;
+    if (Objects.nonNull(startKey)) {
+      boolean keyMarkerHasPrefix = Objects.isNull(prefix) || startKey.startsWith(prefix);
+      int delimiterIndex;
+      if (keyMarkerHasPrefix && Objects.nonNull(delimiter)
+          && -1 != (delimiterIndex = startKey.indexOf(delimiter, prefixLen))) {
+        // The key marker is in a common prefix, which the previous page listed.
+        commonPrefixOfKeyMarker = startKey.substring(0, delimiterIndex + delimiter.length());
+      } else if (keyMarkerHasPrefix && Objects.nonNull(startUploadId)) {
+        NavigableMap<String, UploadMetadata> uploadsOfKeyMarker = uploads.get(startKey);
+        if (Objects.nonNull(uploadsOfKeyMarker)) {
+          fetchedOfKeyMarker = page.fetch(startKey, uploadsOfKeyMarker.tailMap(startUploadId, false));
+        }
+      }
+      candidates = candidates.tailMap(startKey, false);
+    }
+    // Only the keys with the prefix are visited, rather than every key after the marker.
+    candidates = ListItemUtils.filterByPrefix(candidates, prefix);
+    if (Objects.nonNull(commonPrefixOfKeyMarker)) {
+      candidates = ListItemUtils.skipPrefix(candidates, commonPrefixOfKeyMarker);
+    }
+
+    if (page.isFull()) {
+      // The page is full of the uploads of the key marker; it is truncated only if something is left to list.
+      return page.answer(fetchedOfKeyMarker.truncated() || !candidates.isEmpty(), startKey,
+          fetchedOfKeyMarker.lastUploadId());
+    }
+
+    // Once a key rolls up into a common prefix, the other keys of the prefix are skipped with a single lookup, so that
+    // each common prefix is listed once, and a page takes O(page size * log N) steps however many keys it rolls up.
+    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> entries = candidates.entrySet().iterator();
+    while (entries.hasNext()) {
+      Map.Entry<String, NavigableMap<String, UploadMetadata>> entry = entries.next();
       String key = entry.getKey();
-      if (Objects.nonNull(delimiter) && key.contains(delimiter)) {
-        String commonPrefix = ListItemUtils.calculateCommonPrefix(key, delimiter);
-        listedCommonPrefixes.add(commonPrefix);
-        // The other keys of the common prefix are skipped with a single lookup rather than visited one by one.
-        iterator = ListItemUtils.skipPrefix(uploads, commonPrefix).entrySet().iterator();
+      String nextKeyMarker;
+      String nextUploadIdMarker;
+      boolean truncatedInKey;
+      int delimiterIndex;
+      if (Objects.nonNull(delimiter) && -1 != (delimiterIndex = key.indexOf(delimiter, prefixLen))) {
+        String commonPrefix = key.substring(0, delimiterIndex + delimiter.length());
+        page.commonPrefixes.add(commonPrefix);
+        nextKeyMarker = commonPrefix;
+        nextUploadIdMarker = null;
+        truncatedInKey = false;
+        entries = ListItemUtils.skipPrefix(candidates, commonPrefix).entrySet().iterator();
       } else {
-        NavigableMap<String, UploadMetadata> uploadMetadataMap = entry.getValue();
-        if (uploadMetadataMap == null || uploadMetadataMap.isEmpty()) {
+        if (entry.getValue().isEmpty()) {
           continue;
         }
-
-        NavigableMap<String, UploadMetadata> uploadsFilteredByUploadIdMarker = filterByUploadIdMarker(uploadMetadataMap, uploadIdMarker);
-        for (Iterator<Map.Entry<String, UploadMetadata>> uploadItr = uploadsFilteredByUploadIdMarker.entrySet().iterator();
-             uploadItr.hasNext(); ) {
-          Map.Entry<String, UploadMetadata> uploadEntry = uploadItr.next();
-          UploadMetadata upload = uploadEntry.getValue();
-          listedUploads.add(ListMultipartUploadsAns.UploadItem.builder()
-              .key(key)
-              .uploadId(uploadEntry.getKey())
-              .initiated(upload.getCreateDate())
-              .storageClass(SystemMetadata.storageClassOf(upload.getSystemMetadata()))
-              .build());
-          if (listedUploads.size() + listedCommonPrefixes.size() >= maxUploads) {
-            if (uploadItr.hasNext()) {
-              nextKeyMarker = lastKey;
-              nextUploadIdMarker = uploadEntry.getKey();
-            }
-            break;
-          }
-        }
+        Fetched fetched = page.fetch(key, entry.getValue());
+        nextKeyMarker = key;
+        nextUploadIdMarker = fetched.lastUploadId();
+        truncatedInKey = fetched.truncated();
       }
 
-      if (listedUploads.size() + listedCommonPrefixes.size() >= maxUploads) {
-        // After a common prefix, the iterator is past its keys already.
-        boolean isCalculatedNextMarkers = Objects.nonNull(nextKeyMarker);
-        if (!isCalculatedNextMarkers) {
-          nextKeyMarker = calculateNextKeyMarker(iterator, key, delimiter);
-          nextUploadIdMarker = null;
-        }
-        break;
+      if (page.isFull()) {
+        return page.answer(truncatedInKey || entries.hasNext(), nextKeyMarker, nextUploadIdMarker);
       }
-
-      lastKey = key;
     }
 
-    result.setNextKeyMarker(nextKeyMarker);
-    result.setUploadIdMarker(nextUploadIdMarker);
-    result.setUploads(listedUploads);
-    result.setTruncated(Objects.nonNull(nextKeyMarker));
-    result.setCommonPrefixes(new ArrayList<>(listedCommonPrefixes));
-    return result;
+    return page.answer(false, null, null);
   }
 
+  /**
+   * @param lastUploadId the ID of the last upload listed, {@code null} if none was.
+   * @param truncated    whether uploads of the key are left that didn't fit in the page.
+   */
+  record Fetched(String lastUploadId, boolean truncated) {
+  }
 
-  static String calculateNextKeyMarker(Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator,
-                                       String currentKey,
-                                       String delimiter) {
-    if (Objects.isNull(delimiter) || !currentKey.contains(delimiter)) {
-      return iterator.hasNext() ? currentKey : null;
+  /**
+   * The uploads and common prefixes of a page, and the parameters of the request that it echoes.
+   */
+  final class Page {
+
+    private final String keyMarker;
+    private final String uploadIdMarker;
+    private final String prefix;
+    private final String delimiter;
+    private final int maxUploads;
+    private final List<ListMultipartUploadsAns.UploadItem> uploads = new ArrayList<>();
+    private final List<String> commonPrefixes = new ArrayList<>();
+
+    private Page(String keyMarker, String uploadIdMarker, String prefix, String delimiter, int maxUploads) {
+      this.keyMarker = keyMarker;
+      this.uploadIdMarker = uploadIdMarker;
+      this.prefix = prefix;
+      this.delimiter = delimiter;
+      this.maxUploads = maxUploads;
     }
 
-    String commonPrefix = ListItemUtils.calculateCommonPrefix(currentKey, delimiter);
-    while (iterator.hasNext()) {
-      if (!iterator.next().getKey().startsWith(commonPrefix)) {
-        return commonPrefix;
+    private boolean isFull() {
+      return uploads.size() + commonPrefixes.size() >= maxUploads;
+    }
+
+    private Fetched fetch(String key, NavigableMap<String, UploadMetadata> uploadsOfKey) {
+      String lastUploadId = null;
+      for (Map.Entry<String, UploadMetadata> uploadEntry : uploadsOfKey.entrySet()) {
+        if (isFull()) {
+          return new Fetched(lastUploadId, true);
+        }
+        UploadMetadata upload = uploadEntry.getValue();
+        uploads.add(ListMultipartUploadsAns.UploadItem.builder()
+            .key(key)
+            .uploadId(uploadEntry.getKey())
+            .initiated(upload.getCreateDate())
+            .storageClass(SystemMetadata.storageClassOf(upload.getSystemMetadata()))
+            .build());
+        lastUploadId = uploadEntry.getKey();
       }
+      return new Fetched(lastUploadId, false);
     }
-    return null;
+
+    // A page that happens to end with the last upload carries no markers, so that no empty page follows it.
+    private ListMultipartUploadsAns answer(boolean truncated, String nextKeyMarker, String nextUploadIdMarker) {
+      return ListMultipartUploadsAns.builder()
+          .keyMarker(keyMarker)
+          .uploadIdMarker(uploadIdMarker)
+          .prefix(prefix)
+          .delimiter(delimiter)
+          .maxUploads(maxUploads)
+          .truncated(truncated)
+          .nextKeyMarker(truncated ? nextKeyMarker : null)
+          .nextUploadIdMarker(truncated ? nextUploadIdMarker : null)
+          .uploads(uploads)
+          .commonPrefixes(commonPrefixes)
+          .build();
+    }
   }
 
   static ListMultipartUploadsAns encodeResultIfNeeded(ListMultipartUploadsAns result, String encodingType) {
@@ -153,14 +216,6 @@ public interface ListMultipartUploadsService extends LocalS3MetadataApplicable {
     result.setUploadIdMarker(S3ObjectUtils.urlEncodeEscapeSlash(result.getUploadIdMarker()));
     result.setNextUploadIdMarker(S3ObjectUtils.urlEncodeEscapeSlash(result.getNextUploadIdMarker()));
     return result;
-  }
-
-
-  static NavigableMap<String, UploadMetadata> filterByUploadIdMarker(NavigableMap<String, UploadMetadata> uploadMetadataMap, String uploadIdMarker) {
-    if (Objects.isNull(uploadIdMarker)) {
-      return uploadMetadataMap;
-    }
-    return uploadMetadataMap.tailMap(uploadIdMarker, false);
   }
 
 }

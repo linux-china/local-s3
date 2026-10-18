@@ -32,6 +32,9 @@ public class ListMultipartUploadsResult {
   @JacksonXmlProperty(localName = "NextKeyMarker")
   private String nextKeyMarker;
 
+  @JacksonXmlProperty(localName = "Prefix")
+  private String prefix;
+
   @JacksonXmlProperty(localName = "NextUploadIdMarker")
   private String nextUploadIdMarker;
 
@@ -51,6 +54,9 @@ public class ListMultipartUploadsResult {
   @JacksonXmlProperty(localName = "CommonPrefixes")
   @JacksonXmlElementWrapper(useWrapping = false)
   private List<CommonPrefix> commonPrefixes;
+
+  @JacksonXmlProperty(localName = "EncodingType")
+  private String encodingType;
 
   @Builder
   @Getter // Add this annotation

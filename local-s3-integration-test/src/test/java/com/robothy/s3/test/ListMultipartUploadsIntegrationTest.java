@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.List;
 import java.util.UUID;
 
 public class ListMultipartUploadsIntegrationTest {
@@ -157,5 +158,74 @@ public class ListMultipartUploadsIntegrationTest {
     // Verify that "foo/" is a common prefix
     assertTrue(response.commonPrefixes().stream()
         .anyMatch(prefix -> prefix.prefix().equals("foo/")));
+  }
+
+  /**
+   * The paginator follows NextKeyMarker and NextUploadIdMarker, so a page that cuts the uploads of a key loses none.
+   */
+  @LocalS3
+  @Test
+  void paginatesThroughSeveralUploadsOfTheSameKey(S3Client s3Client) {
+    String bucketName = "test-bucket-" + UUID.randomUUID();
+    s3Client.createBucket(b -> b.bucket(bucketName));
+    List<String> keys = List.of("a", "a", "a", "b", "b", "b", "dir/x/1", "dir/y");
+    List<String> created = keys.stream()
+        .map(key -> key + " " + s3Client.createMultipartUpload(b -> b.bucket(bucketName).key(key)).uploadId())
+        .toList();
+
+    List<String> listed = s3Client.listMultipartUploadsPaginator(b -> b.bucket(bucketName).maxUploads(2)).uploads()
+        .stream().map(upload -> upload.key() + " " + upload.uploadId()).toList();
+
+    assertEquals(created, listed);
+
+    ListMultipartUploadsResponse firstPage = s3Client.listMultipartUploads(b -> b.bucket(bucketName).maxUploads(2));
+    assertTrue(firstPage.isTruncated());
+    assertEquals("a", firstPage.nextKeyMarker());
+    assertEquals(created.get(1).split(" ")[1], firstPage.nextUploadIdMarker());
+
+    ListMultipartUploadsResponse secondPage = s3Client.listMultipartUploads(b -> b.bucket(bucketName).maxUploads(2)
+        .keyMarker(firstPage.nextKeyMarker()).uploadIdMarker(firstPage.nextUploadIdMarker()));
+    assertEquals("a", secondPage.keyMarker());
+    assertEquals(firstPage.nextUploadIdMarker(), secondPage.uploadIdMarker());
+    assertEquals(List.of(created.get(2), created.get(3)),
+        secondPage.uploads().stream().map(upload -> upload.key() + " " + upload.uploadId()).toList());
+  }
+
+  @LocalS3
+  @Test
+  void rollsUpTheKeysAfterThePrefix(S3Client s3Client) {
+    String bucketName = "test-bucket-" + UUID.randomUUID();
+    s3Client.createBucket(b -> b.bucket(bucketName));
+    for (String key : List.of("dir/x/1", "dir/x/2", "dir/y", "other/z")) {
+      s3Client.createMultipartUpload(b -> b.bucket(bucketName).key(key));
+    }
+
+    ListMultipartUploadsResponse response = s3Client.listMultipartUploads(b -> b.bucket(bucketName)
+        .prefix("dir/").delimiter("/"));
+
+    assertEquals("dir/", response.prefix());
+    assertEquals("/", response.delimiter());
+    assertEquals(List.of("dir/y"), response.uploads().stream().map(MultipartUpload::key).toList());
+    assertEquals(List.of("dir/x/"), response.commonPrefixes().stream().map(CommonPrefix::prefix).toList());
+    assertFalse(response.isTruncated());
+  }
+
+  /**
+   * The SDK decodes the keys of an url-encoded listing only if the response names its EncodingType.
+   */
+  @LocalS3
+  @Test
+  void answersTheEncodingTypeOfAnUrlEncodedListing(S3Client s3Client) {
+    String bucketName = "test-bucket-" + UUID.randomUUID();
+    s3Client.createBucket(b -> b.bucket(bucketName));
+    String key = "dir with space/a+b.txt";
+    s3Client.createMultipartUpload(b -> b.bucket(bucketName).key(key));
+
+    ListMultipartUploadsResponse response = s3Client.listMultipartUploads(b -> b.bucket(bucketName)
+        .prefix("dir with space/").encodingType(EncodingType.URL));
+
+    assertEquals(EncodingType.URL, response.encodingType());
+    assertEquals("dir with space/", response.prefix());
+    assertEquals(List.of(key), response.uploads().stream().map(MultipartUpload::key).toList());
   }
 }

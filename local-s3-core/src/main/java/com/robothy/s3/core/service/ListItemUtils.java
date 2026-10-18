@@ -42,27 +42,6 @@ public class ListItemUtils {
     return skipPrefix(filteredByMarker, commonPrefix);
   }
 
-  public static <T> NavigableMap<String, T> filterByKeyMarkerAndDelimiter(NavigableMap<String, T> keyToItems, String keyMarker, String delimiter) {
-    if (Objects.isNull(keyMarker)) {
-      return keyToItems;
-    }
-
-    NavigableMap<String, T> filteredByMarker = keyToItems.tailMap(keyMarker, false);
-    if (Objects.isNull(delimiter) || filteredByMarker.isEmpty()) {
-      return filteredByMarker;
-    }
-
-    String firstKey = filteredByMarker.firstKey();
-    String firstKeyCommonPrefix;
-    if (!firstKey.contains(delimiter) || ObjectKeys.compare(firstKeyCommonPrefix = calculateCommonPrefix(firstKey, delimiter), keyMarker) > 0) {
-      return filteredByMarker;
-    }
-
-    return skipPrefix(filteredByMarker, firstKeyCommonPrefix);
-  }
-
-
-
   public static <T> NavigableMap<String, T> filterByPrefix(NavigableMap<String, T> filteredByKeyMarker, String prefix) {
     if (Objects.isNull(prefix) || filteredByKeyMarker.isEmpty()) {
       return filteredByKeyMarker;
@@ -125,10 +104,6 @@ public class ListItemUtils {
    */
   static String prefixSuccessor(String prefix) {
     return ObjectKeys.prefixSuccessor(prefix);
-  }
-
-  public static String calculateCommonPrefix(String key, String delimiter) {
-    return key.substring(0, key.indexOf(delimiter) + delimiter.length());
   }
 
   public static Optional<String> commonPrefix(String key, String effectivePrefix, String delimiter) {

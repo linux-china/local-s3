@@ -46,6 +46,7 @@ public class ListMultipartUploadsController implements RouterHttpRequestHandler 
         .keyMarker(answer.getKeyMarker())
         .uploadIdMarker(answer.getUploadIdMarker())
         .nextKeyMarker(answer.getNextKeyMarker())
+        .prefix(answer.getPrefix())
         .nextUploadIdMarker(answer.getNextUploadIdMarker())
         .delimiter(answer.getDelimiter())
         .maxUploads(answer.getMaxUploads())
@@ -63,6 +64,7 @@ public class ListMultipartUploadsController implements RouterHttpRequestHandler 
                 .initiator(Initiator.SYSTEM)
                 .build())
             .toList())
+        .encodingType(answer.getEncodingType())
         .build();
 
     httpResponse.status(HttpResponseStatus.OK);

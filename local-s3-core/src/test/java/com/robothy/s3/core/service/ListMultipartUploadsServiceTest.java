@@ -5,11 +5,9 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListMultipartUploadsAns;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import java.util.Collections;
-import java.util.Iterator;
 import org.junit.jupiter.api.Test;
 import java.util.NavigableMap;
 import java.util.TreeMap;
-import java.util.Map;
 import com.robothy.s3.core.model.answers.ListMultipartUploadsAns.UploadItem;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import java.util.Arrays;
@@ -56,7 +54,7 @@ class ListMultipartUploadsServiceTest {
     uploadMap.put("uploadId1", new UploadMetadata());
     uploads.put("key1", uploadMap);
 
-    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 1, null);
+    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 1, null, null);
 
     assertEquals(1, result.getUploads().size());
     assertEquals("key1", result.getUploads().get(0).getKey());
@@ -70,7 +68,7 @@ class ListMultipartUploadsServiceTest {
     uploadMap.put("uploadId1", new UploadMetadata());
     uploads.put("key1/test", uploadMap);
 
-    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 1, null);
+    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 1, null, null);
 
     assertEquals(1, result.getCommonPrefixes().size());
     assertEquals("key1/", result.getCommonPrefixes().get(0));
@@ -84,7 +82,8 @@ class ListMultipartUploadsServiceTest {
     uploadMap.put("uploadId2", new UploadMetadata());
     uploads.put("key1", uploadMap);
 
-    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, null, 1, "uploadId1");
+    ListMultipartUploadsAns result =
+        ListMultipartUploadsService.listMultipartUploads(uploads, null, "key1", 1, null, "uploadId1");
 
     assertEquals(1, result.getUploads().size());
     assertEquals("key1", result.getUploads().get(0).getKey());
@@ -103,52 +102,12 @@ class ListMultipartUploadsServiceTest {
     uploadMetadataMap2.put("uploadId2", UploadMetadata.builder().createDate(987654321L).contentType("contentType").build());
     uploads.put("key2", uploadMetadataMap2);
 
-    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, null, 1, null);
+    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, null, null, 1, null, null);
 
     assertEquals(1, result.getUploads().size());
     assertTrue(result.isTruncated());
     assertEquals("key1", result.getNextKeyMarker());
-    assertNull(result.getNextUploadIdMarker());
-  }
-
-  @Test
-  void testCalculateNextKeyMarker_NoDelimiter() {
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> map = new TreeMap<>();
-    map.put("key1", new TreeMap<>());
-    map.put("key2", new TreeMap<>());
-    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = map.entrySet().iterator();
-    String nextKeyMarker = ListMultipartUploadsService.calculateNextKeyMarker(iterator, "key1", null);
-    assertEquals("key1", nextKeyMarker);
-  }
-
-  @Test
-  void testCalculateNextKeyMarker_WithDelimiter_NoCommonPrefix() {
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> map = new TreeMap<>();
-    map.put("key1/part1", new TreeMap<>());
-    map.put("key2/part1", new TreeMap<>());
-    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = map.entrySet().iterator();
-    String nextKeyMarker = ListMultipartUploadsService.calculateNextKeyMarker(iterator, "key1/part1", "/");
-    assertEquals("key1/", nextKeyMarker);
-  }
-
-  @Test
-  void testCalculateNextKeyMarker_WithDelimiter_CommonPrefix() {
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> map = new TreeMap<>();
-    map.put("key1/part1", new TreeMap<>());
-    map.put("key1/part2", new TreeMap<>());
-    map.put("key2/part1", new TreeMap<>());
-    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = map.entrySet().iterator();
-    String nextKeyMarker = ListMultipartUploadsService.calculateNextKeyMarker(iterator, "key1/part1", "/");
-    assertEquals("key1/", nextKeyMarker);
-  }
-
-  @Test
-  void testCalculateNextKeyMarker_NoMoreKeys() {
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> map = new TreeMap<>();
-    map.put("key1/part1", new TreeMap<>());
-    Iterator<Map.Entry<String, NavigableMap<String, UploadMetadata>>> iterator = map.entrySet().iterator();
-    String nextKeyMarker = ListMultipartUploadsService.calculateNextKeyMarker(iterator, "key1/part1", "/");
-    assertNull(nextKeyMarker);
+    assertEquals("uploadId1", result.getNextUploadIdMarker());
   }
 
   @Test
@@ -224,27 +183,131 @@ class ListMultipartUploadsServiceTest {
     uploads.put("logs/\uFFFF\uFFFF", uploadsOf("uploadMax"));
     uploads.put("z", uploadsOf("uploadZ"));
 
-    ListMultipartUploadsAns all = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 10, null);
+    ListMultipartUploadsAns all = ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 10, null, null);
     assertEquals(List.of("a", "z"), all.getUploads().stream().map(UploadItem::getKey).toList());
     assertEquals(List.of("logs/"), all.getCommonPrefixes());
     assertFalse(all.isTruncated());
 
-    ListMultipartUploadsAns firstPage = ListMultipartUploadsService.listMultipartUploads(uploads, "/", 2, null);
+    ListMultipartUploadsAns firstPage = ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 2, null, null);
     assertEquals(List.of("logs/"), firstPage.getCommonPrefixes());
     assertTrue(firstPage.isTruncated());
     assertEquals("logs/", firstPage.getNextKeyMarker());
 
-    NavigableMap<String, NavigableMap<String, UploadMetadata>> afterMarker =
-        ListItemUtils.filterByKeyMarkerAndDelimiter(uploads, "logs/", "/");
-    ListMultipartUploadsAns secondPage = ListMultipartUploadsService.listMultipartUploads(afterMarker, "/", 2, null);
+    ListMultipartUploadsAns secondPage =
+        ListMultipartUploadsService.listMultipartUploads(uploads, "/", "logs/", 2, null, null);
     assertEquals(List.of("z"), secondPage.getUploads().stream().map(UploadItem::getKey).toList());
     assertTrue(secondPage.getCommonPrefixes().isEmpty());
     assertEquals(0, visits[0], "The uploads of the keys under the common prefix aren't visited.");
   }
 
-  private static NavigableMap<String, UploadMetadata> uploadsOf(String uploadId) {
+  /**
+   * The uploads of a key that a page cuts are listed by the next page, from the (key-marker, upload-id-marker) cursor.
+   */
+  @Test
+  void testListMultipartUploadsPagesThroughTheUploadsOfAKey() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    uploads.put("a", uploadsOf("1", "2", "3"));
+    uploads.put("b", uploadsOf("4", "5", "6"));
+
+    List<String> listed = new java.util.ArrayList<>();
+    String keyMarker = null;
+    String uploadIdMarker = null;
+    int pages = 0;
+    ListMultipartUploadsAns page;
+    do {
+      page = ListMultipartUploadsService.listMultipartUploads(uploads, null, keyMarker, 2, null, uploadIdMarker);
+      page.getUploads().forEach(upload -> listed.add(upload.getKey() + upload.getUploadId()));
+      keyMarker = page.getNextKeyMarker();
+      uploadIdMarker = page.getNextUploadIdMarker();
+      pages++;
+    } while (page.isTruncated());
+
+    assertEquals(List.of("a1", "a2", "a3", "b4", "b5", "b6"), listed);
+    assertEquals(3, pages);
+  }
+
+  @Test
+  void testListMultipartUploadsAfterTheUploadIdMarkerOfTheKeyMarkerOnly() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    uploads.put("a", uploadsOf("5", "7"));
+    // Started before the uploads of the key marker, so its IDs sort before the upload-id marker.
+    uploads.put("b", uploadsOf("1", "2"));
+
+    ListMultipartUploadsAns result =
+        ListMultipartUploadsService.listMultipartUploads(uploads, null, "a", 10, null, "5");
+
+    assertEquals(List.of("a7", "b1", "b2"), keysAndIds(result));
+    assertFalse(result.isTruncated());
+    assertEquals("a", result.getKeyMarker());
+    assertEquals("5", result.getUploadIdMarker());
+  }
+
+  @Test
+  void testListMultipartUploadsAfterAKeyMarkerWithoutUploadIdMarker() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    uploads.put("a", uploadsOf("1", "2"));
+    uploads.put("b", uploadsOf("3"));
+
+    assertEquals(List.of("b3"), keysAndIds(ListMultipartUploadsService.listMultipartUploads(uploads, null, "a", 10,
+        null, null)));
+    // Amazon S3 ignores an upload-id marker without a key marker.
+    assertEquals(List.of("a1", "a2", "b3"), keysAndIds(ListMultipartUploadsService.listMultipartUploads(uploads, null,
+        null, 10, null, "1")));
+  }
+
+  @Test
+  void testListMultipartUploadsRollsUpTheKeysAfterThePrefix() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    uploads.put("dir/x/1", uploadsOf("1"));
+    uploads.put("dir/x/2", uploadsOf("2"));
+    uploads.put("dir/y", uploadsOf("3"));
+    uploads.put("other/z", uploadsOf("4"));
+
+    ListMultipartUploadsAns result =
+        ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 10, "dir/", null);
+
+    assertEquals(List.of("dir/y3"), keysAndIds(result));
+    assertEquals(List.of("dir/x/"), result.getCommonPrefixes());
+    assertEquals("dir/", result.getPrefix());
+    assertEquals("/", result.getDelimiter());
+    assertFalse(result.isTruncated());
+
+    ListMultipartUploadsAns firstPage =
+        ListMultipartUploadsService.listMultipartUploads(uploads, "/", null, 1, "dir/", null);
+    assertEquals(List.of("dir/x/"), firstPage.getCommonPrefixes());
+    assertTrue(firstPage.isTruncated());
+    assertEquals("dir/x/", firstPage.getNextKeyMarker());
+    assertNull(firstPage.getNextUploadIdMarker());
+
+    ListMultipartUploadsAns secondPage = ListMultipartUploadsService.listMultipartUploads(uploads, "/",
+        firstPage.getNextKeyMarker(), 1, "dir/", firstPage.getNextUploadIdMarker());
+    assertEquals(List.of("dir/y3"), keysAndIds(secondPage));
+    assertTrue(secondPage.getCommonPrefixes().isEmpty());
+    assertFalse(secondPage.isTruncated());
+  }
+
+  @Test
+  void testListMultipartUploadsEndingWithTheLastUploadIsNotTruncated() {
+    NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = new TreeMap<>();
+    uploads.put("a", uploadsOf("1", "2"));
+
+    ListMultipartUploadsAns result = ListMultipartUploadsService.listMultipartUploads(uploads, null, null, 2, null, null);
+
+    assertEquals(List.of("a1", "a2"), keysAndIds(result));
+    assertFalse(result.isTruncated());
+    assertNull(result.getNextKeyMarker());
+    assertNull(result.getNextUploadIdMarker());
+  }
+
+  private static List<String> keysAndIds(ListMultipartUploadsAns result) {
+    return result.getUploads().stream().map(upload -> upload.getKey() + upload.getUploadId()).toList();
+  }
+
+  private static NavigableMap<String, UploadMetadata> uploadsOf(String... uploadIds) {
     NavigableMap<String, UploadMetadata> uploads = new TreeMap<>();
-    uploads.put(uploadId, UploadMetadata.builder().createDate(1L).build());
+    for (String uploadId : uploadIds) {
+      uploads.put(uploadId, UploadMetadata.builder().createDate(1L).build());
+    }
     return uploads;
   }
 
