@@ -4,7 +4,6 @@
 [![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](https://github.com/robothy/local-s3/blob/main/LICENSE)
 [![Maven Central](https://img.shields.io/maven-central/v/org.mvnsearch/local-s3-rest.svg)](https://search.maven.org/artifact/org.mvnsearch/local-s3-rest/)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://hub.docker.com/r/linuxchina/local-s3)
-[![codecov](https://codecov.io/gh/Robothy/local-s3/branch/main/graph/badge.svg?token=9YLOKDU03D)](https://codecov.io/gh/Robothy/local-s3)
 
 LocalS3 is an Amazon S3 mock service for testing and local development. 
 It is based on Netty and has no heavy dependencies, so it starts quickly and handles requests efficiently. 
@@ -29,9 +28,7 @@ Testcontainers, Spark with Iceberg, PyIceberg and delta-rs, each with a snippet 
 **Docker**
 
 ```shell
-docker run -d -p 29090:29090 -e LOCAL_S3_MODE=IN_MEMORY -e AWS_BUCKETS=my-bucket linuxchina/local-s3
-AWS_ACCESS_KEY_ID=any AWS_SECRET_ACCESS_KEY=any AWS_REGION=us-east-1 \
-    aws --endpoint-url http://localhost:29090 s3 cp README.md s3://my-bucket/
+docker run -d -p 29090:29090 -e AWS_BUCKETS=my-bucket linuxchina/local-s3
 ```
 
 **JUnit 5**
