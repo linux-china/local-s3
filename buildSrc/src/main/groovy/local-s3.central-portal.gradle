@@ -13,11 +13,11 @@ ext {
 }
 
 publishOnCentral {
-    repoOwner.set('Robothy')
+    repoOwner.set('linux-china')
     projectLongName.set("LocalS3")
     projectDescription.set('An AmazonS3 service implementation for local development and testing')
-    projectUrl.set("https://github.com/Robothy/local-s3")
-    scmConnection.set("scm:git:https://github.com/Robothy/local-s3")
+    projectUrl.set("https://github.com/linux-china/local-s3")
+    scmConnection.set("scm:git:https://github.com/linux-china/local-s3")
     licenseName.set('Apache License, Version 2.0')
     licenseUrl.set('https://www.apache.org/licenses/LICENSE-2.0')
 }
@@ -31,6 +31,11 @@ publishing {
                         name.set('Fuxiang Luo')
                         email.set('robothyluo@gmail.com')
                         url.set('https://github.com/Robothy')
+                    }
+                    developer {
+                        name.set('Libing Chen')
+                        email.set('libing.chen@gmail.com')
+                        url.set('https://github.com/linux-china')
                     }
                 }
             }
