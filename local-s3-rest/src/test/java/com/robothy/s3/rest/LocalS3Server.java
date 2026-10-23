@@ -9,10 +9,11 @@ public class LocalS3Server {
     public static void main(String[] args) throws Exception {
         LocalS3 localS3 = LocalS3.builder()
                 .mode(LocalS3Mode.PERSISTENCE)
+                .port(39090)
                 .dataPath("temp/local-s3-data")
                 .credentials("admin","admin")
                 .buckets("msst-test","demo1", "demo2", "demo3","slatedb")
-                .website(website -> website.allBuckets(true))
+                .website(website -> website.enabled(true).allBuckets(true))
                 .icebergCatalog(true)
                 .tls(TlsSettings::selfSigned)
                 //.tls(Path.of("local-s3-rest/src/test/resources/127.0.0.1.pem"), Path.of("local-s3-rest/src/test/resources/127.0.0.1-key.pem"))
