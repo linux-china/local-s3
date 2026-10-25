@@ -49,8 +49,8 @@ record CopySource(String bucket, String key, String versionId) {
 
     String bucket = path.charAt(0) == '/' ? path.substring(1, delimiterIndex)
         : path.substring(0, delimiterIndex);
-    String key = path.charAt(path.length() - 1) == '/' ? path.substring(delimiterIndex + 1, path.length() - 1)
-        : path.substring(delimiterIndex + 1);
+    // A trailing '/' belongs to the key: "dir/" and "dir" are distinct objects.
+    String key = path.substring(delimiterIndex + 1);
 
     try {
       return new CopySource(urlDecode(bucket), urlDecode(key), urlDecode(versionId(slices)));

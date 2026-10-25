@@ -92,10 +92,13 @@ class CopyObjectControllerTest {
     return Stream.of(
       arguments("/my-bucket/a.txt?versionId=666", parsedOptionsWithVersion),
       arguments("my-bucket/a.txt?versionId=666", parsedOptionsWithVersion),
-      arguments("my-bucket/a.txt/?versionId=666", parsedOptionsWithVersion),
-      arguments("my-bucket/a.txt/?versionId", parsedOptionsWithoutVersion),
-      arguments("my-bucket/a.txt/", parsedOptionsWithoutVersion),
-      arguments("/my-bucket/a.txt/", parsedOptionsWithoutVersion),
+      arguments("my-bucket/a.txt?versionId", parsedOptionsWithoutVersion),
+      arguments("my-bucket/folder/?versionId=666", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("folder/").sourceVersion("666").build()),
+      arguments("my-bucket/folder/", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("folder/").build()),
+      arguments("/my-bucket/a/b/", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("a/b/").build()),
       arguments("a.txt", null),
       arguments("/a.txt/", null),
       arguments("/a.txt", null),
