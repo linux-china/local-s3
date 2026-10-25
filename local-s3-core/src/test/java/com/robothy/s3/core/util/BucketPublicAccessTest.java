@@ -144,6 +144,68 @@ class BucketPublicAccessTest {
     }
 
     @Test
+    void actionsMayUseWildcards() {
+      assertTrue(BucketPublicAccess.allowsAnonymousRead(withPolicy(
+          "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"S3:Get*\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy(
+          "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:Put*\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+    }
+
+    @Test
+    void aWildcardDenyWinsOverAnAllow() {
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy(
+          "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"},"
+              + "{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:Get*\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+    }
+
+    @Test
+    void aDenyWithAConditionIsTakenToHold() {
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy(
+          "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"},"
+              + "{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\","
+              + "\"Resource\":[\"arn:aws:s3:::site\",\"arn:aws:s3:::site/*\"],"
+              + "\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"}}}]}"), KEY),
+          "LocalS3 evaluates no conditions, so a deny errs on the private side.");
+    }
+
+    @Test
+    void aDenyWithNotElementsAppliesUnlessTheyExcludeTheRead() {
+      String allow = "{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\","
+          + "\"Resource\":\"arn:aws:s3:::site/*\"}";
+
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy("{\"Statement\":[" + allow
+          + ",{\"Effect\":\"Deny\",\"NotPrincipal\":{\"AWS\":\"arn:aws:iam::1:root\"},\"Action\":\"s3:*\","
+          + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy("{\"Statement\":[" + allow
+          + ",{\"Effect\":\"Deny\",\"Principal\":\"*\",\"NotAction\":\"s3:PutObject\","
+          + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+      assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy("{\"Statement\":[" + allow
+          + ",{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\","
+          + "\"NotResource\":\"arn:aws:s3:::site/public/*\"}]}"), KEY));
+
+      assertTrue(BucketPublicAccess.allowsAnonymousRead(withPolicy("{\"Statement\":[" + allow
+          + ",{\"Effect\":\"Deny\",\"Principal\":\"*\",\"NotAction\":\"s3:Get*\","
+          + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+      assertTrue(BucketPublicAccess.allowsAnonymousRead(withPolicy("{\"Statement\":[" + allow
+          + ",{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\","
+          + "\"NotResource\":\"arn:aws:s3:::site/*.html\"}]}"), KEY));
+    }
+
+    @Test
+    void aDenyOfAnotherPrincipalDoesNotApply() {
+      assertTrue(BucketPublicAccess.allowsAnonymousRead(withPolicy(
+          "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"s3:GetObject\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"},"
+              + "{\"Effect\":\"Deny\",\"Principal\":{\"AWS\":\"arn:aws:iam::1:root\"},\"Action\":\"s3:*\","
+              + "\"Resource\":\"arn:aws:s3:::site/*\"}]}"), KEY));
+    }
+
+    @Test
     void aPolicyThatIsNotJsonMakesNothingPublic() {
       assertFalse(BucketPublicAccess.allowsAnonymousRead(withPolicy("not json"), KEY));
     }

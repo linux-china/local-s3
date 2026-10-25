@@ -39,9 +39,9 @@ public final class BucketPublicAccess {
   private static final List<String> READ_PERMISSIONS = List.of("READ", "FULL_CONTROL");
 
   /**
-   * The actions of a statement that cover reading an object.
+   * The actions that reading an object is, which the action patterns of a statement are matched against.
    */
-  private static final List<String> READ_ACTIONS = List.of("s3:getobject", "s3:getobjectversion", "s3:*", "*");
+  private static final List<String> READ_ACTIONS = List.of("s3:GetObject", "s3:GetObjectVersion");
 
   private static final JsonMapper JSON = JsonMapper.builderWithJackson2Defaults().build();
 
@@ -128,13 +128,11 @@ public final class BucketPublicAccess {
 
     boolean allowed = false;
     for (JsonNode statement : asList(policy.path("Statement"))) {
-      if (!matchesRead(statement, bucketName, key)) {
-        continue;
-      }
-      if ("Deny".equalsIgnoreCase(statement.path("Effect").asString(""))) {
+      String effect = statement.path("Effect").asString("");
+      if ("Deny".equalsIgnoreCase(effect) && deniesRead(statement, bucketName, key)) {
         return PolicyDecision.DENY;
       }
-      if ("Allow".equalsIgnoreCase(statement.path("Effect").asString(""))) {
+      if ("Allow".equalsIgnoreCase(effect) && allowsRead(statement, bucketName, key)) {
         allowed = true;
       }
     }
@@ -142,14 +140,14 @@ public final class BucketPublicAccess {
   }
 
   /**
-   * Whether a statement applies to an anonymous {@code s3:GetObject} of a key: it must name every principal, an
+   * Whether an {@code Allow} statement lets an anonymous request read a key: it must name every principal, an
    * action that covers reading an object, and a resource that the key matches.
    *
-   * <p>A statement with a {@code Condition} is skipped rather than guessed at: LocalS3 evaluates no conditions, and a
-   * statement that is meant to narrow a public policy, e.g. one that requires a referer, would otherwise open the
-   * bucket wider than the policy says.
+   * <p>A statement with a {@code Condition} or a {@code Not*} element is skipped rather than guessed at: LocalS3
+   * evaluates no conditions, and a statement that is meant to narrow a public policy, e.g. one that requires a
+   * referer, would otherwise open the bucket wider than the policy says.
    */
-  private static boolean matchesRead(JsonNode statement, String bucketName, String key) {
+  private static boolean allowsRead(JsonNode statement, String bucketName, String key) {
     return !statement.has("Condition")
         && !statement.has("NotPrincipal")
         && !statement.has("NotAction")
@@ -157,6 +155,25 @@ public final class BucketPublicAccess {
         && matchesEveryPrincipal(statement.path("Principal"))
         && matchesReadAction(statement.path("Action"))
         && matchesResource(statement.path("Resource"), bucketName, key);
+  }
+
+  /**
+   * Whether a {@code Deny} statement forbids an anonymous request to read a key. It errs the other way from
+   * {@link #allowsRead}: its {@code Condition} is taken to hold, e.g. {@code aws:SecureTransport} being
+   * {@code false}, which the plain-HTTP website endpoint would meet anyway, and its {@code Not*} elements apply
+   * unless they exclude the read.
+   */
+  private static boolean deniesRead(JsonNode statement, String bucketName, String key) {
+    boolean principal = statement.has("NotPrincipal")
+        ? !matchesEveryPrincipal(statement.path("NotPrincipal"))
+        : matchesEveryPrincipal(statement.path("Principal"));
+    boolean action = statement.has("NotAction")
+        ? !matchesReadAction(statement.path("NotAction"))
+        : matchesReadAction(statement.path("Action"));
+    boolean resource = statement.has("NotResource")
+        ? !matchesResource(statement.path("NotResource"), bucketName, key)
+        : matchesResource(statement.path("Resource"), bucketName, key);
+    return principal && action && resource;
   }
 
   /**
@@ -169,10 +186,14 @@ public final class BucketPublicAccess {
     return asList(principal).stream().anyMatch(value -> "*".equals(value.asString("")));
   }
 
+  /**
+   * Whether an {@code Action} covers reading an object. Action names are case-insensitive and may use the same
+   * wildcards as resources, e.g. {@code s3:Get*}.
+   */
   private static boolean matchesReadAction(JsonNode action) {
     return asList(action).stream()
-        .map(value -> value.asString("").trim().toLowerCase(Locale.ROOT))
-        .anyMatch(READ_ACTIONS::contains);
+        .map(value -> wildcardPattern(value.asString("").trim(), Pattern.CASE_INSENSITIVE))
+        .anyMatch(pattern -> READ_ACTIONS.stream().anyMatch(read -> pattern.matcher(read).matches()));
   }
 
   /**
@@ -183,14 +204,14 @@ public final class BucketPublicAccess {
     String arn = "arn:aws:s3:::" + bucketName + "/" + Objects.toString(key, "");
     return asList(resource).stream()
         .map(value -> value.asString(""))
-        .anyMatch(pattern -> arnPattern(pattern).matcher(arn).matches());
+        .anyMatch(pattern -> wildcardPattern(pattern, 0).matcher(arn).matches());
   }
 
   /**
-   * The ARN pattern of a policy as a regular expression: {@code *} stands for any characters and {@code ?} for one,
-   * and everything else is matched literally.
+   * A resource or action pattern of a policy as a regular expression: {@code *} stands for any characters and
+   * {@code ?} for one, and everything else is matched literally.
    */
-  private static Pattern arnPattern(String pattern) {
+  private static Pattern wildcardPattern(String pattern, int flags) {
     StringBuilder regex = new StringBuilder();
     StringBuilder literal = new StringBuilder();
     for (int i = 0; i < pattern.length(); i++) {
@@ -208,7 +229,7 @@ public final class BucketPublicAccess {
     if (literal.length() > 0) {
       regex.append(Pattern.quote(literal.toString()));
     }
-    return Pattern.compile(regex.toString(), Pattern.DOTALL);
+    return Pattern.compile(regex.toString(), Pattern.DOTALL | flags);
   }
 
   /**

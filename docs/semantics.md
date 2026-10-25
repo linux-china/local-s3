@@ -533,9 +533,17 @@ bucket doesn't take it away:
   }]}
   ```
 
-  The resources are matched against the key, so a policy on `my-site/public/*` publishes that prefix alone. An
-  explicit `Deny` wins over every `Allow`. A statement with a `Condition` is skipped: LocalS3 evaluates no conditions,
-  and a policy that a condition narrows must not open the bucket wider than it says.
+  The resources are matched against the key, so a policy on `my-site/public/*` publishes that prefix alone, and the
+  actions may use wildcards, e.g. `s3:Get*`. An explicit `Deny` wins over every `Allow`. LocalS3 evaluates no
+  conditions, so it errs on the private side both ways:
+
+  | Statement                                                         | `Allow`                    | `Deny` of every principal (`"*"`)          |
+  |-------------------------------------------------------------------|----------------------------|--------------------------------------------|
+  | has a `Condition`, e.g. `{"Bool": {"aws:SecureTransport": "false"}}` | skipped, publishes nothing | applies, as if the condition held          |
+  | uses `NotPrincipal`, `NotAction` or `NotResource`                 | skipped, publishes nothing | applies unless it excludes the read        |
+
+  A `NotPrincipal` excludes the anonymous read only when it names every principal, a `NotAction` when it covers
+  `s3:GetObject`, and a `NotResource` when it covers the key.
 
 `IgnorePublicAcls` takes the ACL away, `BlockPublicPolicy` the policy, and `RestrictPublicBuckets` either of them.
 
