@@ -26,6 +26,7 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.crypto.Mac;
@@ -532,6 +533,34 @@ class AwsSignatureV4VerifierTest {
         + "&Expires=1369353600&Signature=abc%3D", HttpMethod.GET).authenticated());
     assertEquals(S3ErrorCode.InvalidAccessKeyId, verifyHead(host, PUT_OBJECT_PATH
         + "?AWSAccessKeyId=UNKNOWNKEY&Expires=1369353600&Signature=abc%3D", HttpMethod.GET).errorCode());
+  }
+
+  /**
+   * A repeated header is signed with its values joined by commas, which is how the request carries it; an
+   * unnecessarily encoded unreserved character of the path is signed decoded.
+   */
+  @Test
+  void verifiesRepeatedHeadersAndUnnecessarilyEncodedCharacters() {
+    String signedHeaders = "host;x-amz-content-sha256;x-amz-date;x-amz-meta-tag";
+    Map<String, String> signed = new HashMap<>();
+    signed.put("host", "examplebucket.s3.amazonaws.com");
+    signed.put("x-amz-content-sha256", "UNSIGNED-PAYLOAD");
+    signed.put("x-amz-date", AMZ_DATE);
+    signed.put("x-amz-meta-tag", "first,second");
+    String signature = sign("GET", "/a~b%2Fc", signed, signedHeaders, AMZ_DATE, "UNSIGNED-PAYLOAD");
+
+    Map<String, String> headers = new LinkedHashMap<>(signed);
+    headers.remove("x-amz-meta-tag");
+    headers.put("x-amz-meta-tag", "first");
+    headers.put("X-Amz-Meta-Tag", "second");
+    headers.put("authorization", authorization(signedHeaders, signature));
+    String path = "/a%7eb%2fc";
+    VerificationResult result = verifier.verifyHead(RouterHttpRequest.builder().method(HttpMethod.GET).uri(path)
+        .path(path).httpVersion(HttpVersion.HTTP_1_1).headers(headers).params(new HashMap<>()).build());
+    assertTrue(result.authenticated(), () -> result.errorCode() + ": " + result.message());
+
+    assertEquals("/a~b%2Fc~%20", AwsSignatureV4Verifier.canonicalizeRaw("/a%7Eb%2fc%7e%20", true));
+    assertEquals("a~b%2Fc", AwsSignatureV4Verifier.canonicalizeRaw("a%7Eb%2fc", false));
   }
 
   private static Map<String, String> dateSignedHeaders(String date) {

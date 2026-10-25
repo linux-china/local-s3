@@ -1022,9 +1022,16 @@ final class AwsSignatureV4Verifier {
       char current = value.charAt(index);
       if (current == '%' && index + 2 < value.length()
           && isHex(value.charAt(index + 1)) && isHex(value.charAt(index + 2))) {
-        result.append('%')
-            .append(Character.toUpperCase(value.charAt(index + 1)))
-            .append(Character.toUpperCase(value.charAt(index + 2)));
+        // AWS decodes before encoding, so an unnecessarily encoded unreserved character, e.g. "%7E", is signed as "~";
+        // an encoded "/" stays encoded, it isn't a separator of the path.
+        int decoded = Integer.parseInt(value, index + 1, index + 3, 16);
+        if (isUnreserved(decoded)) {
+          result.append((char) decoded);
+        } else {
+          result.append('%')
+              .append(Character.toUpperCase(value.charAt(index + 1)))
+              .append(Character.toUpperCase(value.charAt(index + 2)));
+        }
         index += 3;
         continue;
       }
