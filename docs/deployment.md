@@ -698,8 +698,9 @@ requiring signatures.
 
 The endpoints that change the data — creating a bucket, the `PUT` and `DELETE` of an object, and the multipart
 endpoints — also want the `X-LocalS3-Console` header, which the page sends and which a browser lets no other origin
-send without this service allowing it first. So a page a user has open elsewhere can't create, upload or delete
-through the console, whether the service has credentials or not.
+send without this service allowing it first. The service never does: a CORS preflight of a path under `/_admin/ui` is
+answered `403`, even when the [default CORS rule](semantics.md#the-default-cors-rule) allows every header. So a page a
+user has open elsewhere can't create, upload or delete through the console, whether the service has credentials or not.
 
 ```shell
 curl -s -u "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" "http://localhost:29090/_admin/ui/objects?bucket=my-bucket"

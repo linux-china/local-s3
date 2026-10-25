@@ -45,6 +45,11 @@ class CorsPreflightController implements RouterHttpRequestHandler {
     answer(request, response, null);
   }
 
+  static void rejectConsole(RouterHttpRequest request, RouterHttpResponse response) {
+    throw new InvalidCORSRequestException(S3ErrorCode.AccessForbidden,
+        "CORSResponse: CORS is not enabled for the console.");
+  }
+
   private void answer(RouterHttpRequest request, RouterHttpResponse response, String bucketName) {
     Optional<String> origin = request.header(HttpHeaderNames.ORIGIN.toString());
     if (origin.isEmpty()) {

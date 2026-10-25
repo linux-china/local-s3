@@ -79,7 +79,8 @@ import tools.jackson.databind.ObjectMapper;
  *   of the service instead; a service without credentials answers them to anyone, like it answers unsigned S3
  *   requests, see {@linkplain com.robothy.s3.rest.LocalS3#warnIfOpenToTheNetwork()}.</li>
  *   <li>The endpoints that change the data also want the {@linkplain #CONSOLE_HEADER} header, which a browser lets no
- *   other origin send without a preflight, so a page open elsewhere can't write through the console.</li>
+ *   other origin send without a preflight, which {@linkplain LocalS3Router} always rejects, even where the default CORS
+ *   rule allows every header, so a page open elsewhere can't write through the console.</li>
  *   <li>They call the same services as the S3 operations, so the console shows and changes what a client sees.</li>
  * </ul>
  */

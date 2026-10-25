@@ -209,6 +209,11 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
     if (isMcpRequest(request)) {
       return new OperationHandler(McpController.OPERATION, mcpController);
     }
+    // Before the default CORS rule, which allows every header and so would let another origin send the one that
+    // marks a write of the console.
+    if (isConsolePreflight(request)) {
+      return new OperationHandler(SERVICE_PREFLIGHT_OPERATION, CorsPreflightController::rejectConsole);
+    }
     if (isServicePreflight(request)) {
       return new OperationHandler(SERVICE_PREFLIGHT_OPERATION, servicePreflightController::handleWithoutBucket);
     }
@@ -460,7 +465,15 @@ class LocalS3Router extends AbstractRouter implements RequestHeadVerifier {
    * so {@code /_admin/ui} there asks for an object, which is read with a signature like every other object.
    */
   private boolean isConsoleRequest(RouterHttpRequest request) {
-    if (consoleController == null || !ConsoleController.METHODS.contains(request.getMethod())) {
+    return ConsoleController.METHODS.contains(request.getMethod()) && addressesTheConsole(request);
+  }
+
+  private boolean isConsolePreflight(RouterHttpRequest request) {
+    return isPreflight(request) && addressesTheConsole(request);
+  }
+
+  private boolean addressesTheConsole(RouterHttpRequest request) {
+    if (consoleController == null) {
       return false;
     }
     Optional<BucketRegion> bucketRegion =

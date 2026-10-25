@@ -439,6 +439,7 @@ It applies only where no bucket configuration does, so a bucket keeps the semant
 | A bucket with a CORS configuration of its own | That configuration alone; a request that it doesn't allow isn't allowed by the default rule either. |
 | A bucket without one, or one that doesn't exist yet | The default rule. |
 | No bucket: `ListBuckets`, `OPTIONS /`, the Iceberg REST catalog, the S3 Tables API under `/s3tables` | The default rule. |
+| The [console](deployment.md#console) under `/_admin/ui` | Nothing: its preflight is always answered `403`, so no other origin can send the `X-LocalS3-Console` header of its writes. |
 
 Unless told otherwise, the rule allows `GET`, `PUT`, `POST`, `DELETE` and `HEAD`, every request header, and exposes the
 response headers that the clients of a browser read, e.g. `ETag` for a multipart upload and `x-amz-version-id`; the

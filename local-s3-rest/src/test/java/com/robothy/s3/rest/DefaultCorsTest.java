@@ -109,6 +109,30 @@ class DefaultCorsTest {
     });
   }
 
+  /**
+   * The header that marks a write of the console is one that no other origin may send, even where the default rule
+   * allows every header and, with a listed origin, the credentials that a browser cached for the console.
+   */
+  @Test
+  void neverAllowsAPreflightOfTheConsole() throws Exception {
+    withService(builder -> builder.defaultCors(cors -> cors.allowedOrigins(ORIGIN))
+        .credentials("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"), localS3 -> {
+      for (String path : List.of("/_admin/ui", "/_admin/ui/object?bucket=web&key=a.txt", "/_admin/ui/bucket")) {
+        HttpResponse<String> preflight = CLIENT.send(HttpRequest.newBuilder(uri(localS3, path))
+            .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+            .header("Origin", ORIGIN)
+            .header("Access-Control-Request-Method", "PUT")
+            .header("Access-Control-Request-Headers", "X-LocalS3-Console")
+            .build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(403, preflight.statusCode(), path);
+        assertTrue(preflight.headers().firstValue("Access-Control-Allow-Origin").isEmpty(), path);
+        assertTrue(preflight.headers().firstValue("Access-Control-Allow-Headers").isEmpty(), path);
+      }
+      assertEquals(200, preflight(localS3, "/" + BUCKET + "/a.txt", ORIGIN).statusCode(),
+          "The buckets are still answered by the default rule.");
+    });
+  }
+
   @Test
   void isConfiguredFromTheEnvironment() {
     LocalS3Config config = LocalS3.builder().fromEnvironment(Map.of(
