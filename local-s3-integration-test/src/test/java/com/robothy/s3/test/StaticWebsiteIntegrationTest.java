@@ -222,6 +222,32 @@ class StaticWebsiteIntegrationTest {
     }
 
     @Test
+    void theErrorDocumentIgnoresTheRangeAndTheConditionalHeadersOfTheRequest() throws Exception {
+      start(authenticated().build());
+      String page = "<html><body>gone</body></html>";
+      put(PUBLIC_BUCKET, "error.html", page);
+      s3.putBucketWebsite(b -> b.bucket(PUBLIC_BUCKET).websiteConfiguration(w -> w
+          .indexDocument(i -> i.suffix("index.html"))
+          .errorDocument(e -> e.key("error.html"))));
+      String etag = s3.headObject(h -> h.bucket(PUBLIC_BUCKET).key("error.html")).eTag();
+      URI missing = URI.create(endpoint + "/" + PUBLIC_BUCKET + "/missing.html");
+
+      for (String[] header : new String[][] {
+          {"If-None-Match", etag},
+          {"If-Modified-Since", "Fri, 01 Jan 2100 00:00:00 GMT"},
+          {"If-Match", "\"not-the-etag\""},
+          {"If-Unmodified-Since", "Thu, 01 Jan 1970 00:00:00 GMT"},
+          {"Range", "bytes=0-4"}}) {
+        HttpResponse<String> response = http.send(
+            HttpRequest.newBuilder(missing).header(header[0], header[1]).GET().build(),
+            HttpResponse.BodyHandlers.ofString());
+        assertEquals(404, response.statusCode(), header[0]);
+        assertEquals(page, response.body(), header[0]);
+        assertFalse(response.headers().firstValue("Content-Range").isPresent(), header[0]);
+      }
+    }
+
+    @Test
     void aBucketIsServedWithTheIndexDocumentOfItsOwnConfiguration() throws Exception {
       start(authenticated().build());
       put(PUBLIC_BUCKET, "home.html", "<html><body>configured</body></html>");

@@ -22,6 +22,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -65,6 +66,11 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
    * doesn't parse one per request, and one whose configurations keep changing doesn't grow a cache without end.
    */
   private static final int MAX_CACHED_CONFIGURATIONS = 64;
+
+  private static final List<String> IGNORED_BY_ERROR_DOCUMENT = Stream.of(HttpHeaderNames.RANGE,
+          HttpHeaderNames.IF_RANGE, HttpHeaderNames.IF_MATCH, HttpHeaderNames.IF_NONE_MATCH,
+          HttpHeaderNames.IF_MODIFIED_SINCE, HttpHeaderNames.IF_UNMODIFIED_SINCE)
+      .map(CharSequence::toString).toList();
 
   private final LocalS3Website settings;
 
@@ -237,12 +243,32 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
 
     String errorDocument = configuration.errorDocumentKey().orElse(settings.errorDocument());
     if (errorDocument != null && objectExists(bucket, errorDocument)) {
-      serve(request, response, errorDocument);
+      serve(withoutRangeAndPreconditions(request), response, errorDocument);
       // After the object is served: it is answered with the status of the failure, not with its own 200.
       response.status(status);
       return;
     }
     errorPage(request, response, status, S3ErrorCode.NoSuchKey.code(), S3ErrorCode.NoSuchKey.description(), key);
+  }
+
+  /**
+   * The request without the headers that would read a range of the error document, or answer it with a {@code 304} or
+   * a {@code 412}: they validate the page that wasn't found, not the error document, and a status of its own would be
+   * replaced by the {@code 404} afterwards.
+   */
+  private static RouterHttpRequest withoutRangeAndPreconditions(RouterHttpRequest request) {
+    Map<String, String> headers = new HashMap<>(request.getHeaders());
+    IGNORED_BY_ERROR_DOCUMENT.forEach(headers::remove);
+    return RouterHttpRequest.builder()
+        .headers(headers)
+        .params(request.getParams())
+        .pathVariables(request.getPathVariables())
+        .path(request.getPath())
+        .uri(request.getUri())
+        .method(request.getMethod())
+        .body(request.getBody())
+        .httpVersion(request.getHttpVersion())
+        .build();
   }
 
   /**
