@@ -59,6 +59,11 @@ public final class IcebergCatalogService {
   private final boolean uniqueTableLocation;
 
   /**
+   * Whether a purge leaves alone a table whose location is outside the warehouse.
+   */
+  private final boolean purgeOnlyUnderWarehouse;
+
+  /**
    * Create the catalog with locations derived from the names of the tables.
    *
    * @param store the namespaces and the table pointers.
@@ -81,10 +86,28 @@ public final class IcebergCatalogService {
    */
   public IcebergCatalogService(IcebergCatalogStore store, IcebergMetadataFiles files, String warehouse,
                                boolean uniqueTableLocation) {
+    this(store, files, warehouse, uniqueTableLocation, false);
+  }
+
+  /**
+   * Create the catalog.
+   *
+   * @param store the namespaces and the table pointers.
+   * @param files the metadata files, which are objects of the service.
+   * @param warehouse the warehouse location, e.g. {@code s3://warehouse/}.
+   * @param uniqueTableLocation whether the location of a table that is created without one of its own ends in a random
+   *     suffix.
+   * @param purgeOnlyUnderWarehouse whether a purge skips a table whose location is outside the warehouse, which a
+   *     catalog that owns its warehouse but accepts any {@code location} needs, so that dropping a table can't delete
+   *     what other buckets hold.
+   */
+  public IcebergCatalogService(IcebergCatalogStore store, IcebergMetadataFiles files, String warehouse,
+                               boolean uniqueTableLocation, boolean purgeOnlyUnderWarehouse) {
     this.store = Objects.requireNonNull(store, "store");
     this.files = Objects.requireNonNull(files, "files");
     this.warehouse = IcebergJson.stripTrailingSlash(Objects.requireNonNull(warehouse, "warehouse"));
     this.uniqueTableLocation = uniqueTableLocation;
+    this.purgeOnlyUnderWarehouse = purgeOnlyUnderWarehouse;
   }
 
   /**
@@ -572,13 +595,20 @@ public final class IcebergCatalogService {
     }
     store.removeTable(identifier);
     if (purge && location != null) {
-      if (store.anyTableUnder(location)) {
+      if (purgeOnlyUnderWarehouse && !isUnderWarehouse(location)) {
+        log.warn("Dropped {} without purging {}: it is outside the warehouse {}, so the files there aren't the"
+            + " catalog's to delete.", identifier, location, warehouse);
+      } else if (store.anyTableUnder(location)) {
         log.warn("Dropped {} without purging {}: another table of the catalog keeps its metadata there, and deleting"
             + " the location would take that table's files with it.", identifier, location);
       } else {
         files.purge(location);
       }
     }
+  }
+
+  private boolean isUnderWarehouse(String location) {
+    return IcebergJson.stripTrailingSlash(location).startsWith(warehouse + "/");
   }
 
   /**

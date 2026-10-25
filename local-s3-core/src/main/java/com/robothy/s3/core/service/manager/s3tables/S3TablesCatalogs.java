@@ -34,8 +34,11 @@ final class S3TablesCatalogs {
       // Unique table locations: a table bucket owns the files of its tables and deletes them with the table, so two
       // tables that were created under the same name at different times must not share a location — purging the
       // second would take the files the first left behind with it, or worse, leave them to be read as the new table.
+      // Purges confined to the warehouse: Amazon picks a table's location, LocalS3 accepts the client's, which may point
+      // into an ordinary bucket whose objects the table bucket doesn't own.
       return new IcebergCatalogService(
-          IcebergCatalogStore.create(localS3Store, maps.namespacesMap(), maps.tablesMap()), files, warehouse, true);
+          IcebergCatalogStore.create(localS3Store, maps.namespacesMap(), maps.tablesMap()), files, warehouse, true,
+          true);
     };
   }
 

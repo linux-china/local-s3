@@ -248,6 +248,28 @@ class S3TablesServiceTest {
   }
 
   @Test
+  void deleting_a_table_purges_only_inside_its_warehouse() {
+    String arn = createTableBucket("confined");
+    IcebergCatalogService catalog = s3Tables.catalogOfWarehouse(arn);
+    catalog.createNamespace(IcebergJson.read("{\"namespace\":[\"db\"]}"));
+    buckets.createBucket("app-data");
+    files.write("s3://app-data/orders/data/part-0.parquet", "business data");
+    catalog.createTable(List.of("db"), IcebergJson.read("""
+        {"name":"outside","location":"s3://app-data/orders","schema":{"type":"struct","fields":[
+          {"id":1,"name":"id","required":true,"type":"long"}]}}"""));
+    String outsideMetadata = catalog.metadataLocationOf(IcebergIdentifier.of(List.of("db"), "outside"));
+    createTable(arn, "db", "inside");
+    String insideMetadata = s3Tables.getTableMetadataLocation(arn, "db", "inside").path("metadataLocation").asString();
+
+    s3Tables.deleteTable(arn, "db", "outside", null);
+    s3Tables.deleteTable(arn, "db", "inside", null);
+
+    assertEquals("business data", files.read("s3://app-data/orders/data/part-0.parquet"));
+    assertNotNull(files.read(outsideMetadata));
+    assertThrows(IcebergCatalogException.class, () -> files.read(insideMetadata));
+  }
+
+  @Test
   void a_delete_and_a_commit_with_the_same_token_never_both_win() throws Exception {
     String arn = createTableBucket("races");
     s3Tables.createNamespace(arn, namespaceRequest("db"));

@@ -585,6 +585,11 @@ commit loses rather than silently overwriting a commit it never saw.
   reachable there and is not listed by `ListTables`.
 + Deleting a table **deletes its files**, as Amazon does. Every table gets a location of its own, so a table created
   under the name of a deleted one never shares files with it.
++ Amazon picks the location of a table itself; the Iceberg REST endpoint of a table bucket **accepts** a `location`
+  of the client's choosing, e.g. `s3://my-app-data/orders`, so that a client that sends one still runs. The files of
+  such a table are **never purged** — not by `DeleteTable`, nor by a drop with `purgeRequested=true` — only those under
+  the table bucket's own `<table-bucket>--table-s3` bucket are, so deleting a table can't take the data of an ordinary
+  bucket with it.
 
 ## Iceberg REST catalogs that vend credentials
 
