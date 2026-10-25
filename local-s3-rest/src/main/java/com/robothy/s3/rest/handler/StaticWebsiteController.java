@@ -217,7 +217,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     // A key that names a directory is redirected to it with a trailing slash, so that the relative links of its
     // index document resolve under the directory rather than beside it.
     if (!key.isEmpty() && !key.endsWith("/") && hasObjectsUnder(bucket, key + "/")) {
-      redirect(response, HttpResponseStatus.FOUND, request.getPath() + "/");
+      redirect(response, HttpResponseStatus.FOUND, encodePath(request.getPath()) + "/" + rawQuery(request));
       return;
     }
 
@@ -375,6 +375,21 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
    */
   private static String encodePath(String key) {
     return S3ObjectUtils.urlEncode(key, true);
+  }
+
+  /**
+   * The query of the request as it was sent, with its {@code ?}; empty if it has none. The raw one is kept rather than
+   * re-encoding the decoded parameters, which would change how the page reads them.
+   */
+  private static String rawQuery(RouterHttpRequest request) {
+    String uri = Objects.toString(request.getUri(), "");
+    int start = uri.indexOf('?');
+    if (start < 0) {
+      return "";
+    }
+    int end = uri.indexOf('#', start);
+    String query = end < 0 ? uri.substring(start) : uri.substring(start, end);
+    return query.length() > 1 ? query : "";
   }
 
   /*

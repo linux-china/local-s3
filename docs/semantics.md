@@ -493,6 +493,10 @@ http://localhost:29090/my-site/gone.html -> 404, the error document of the bucke
 Virtual-hosted-style requests work too, e.g. `http://my-site.localhost:29090/` or
 `http://my-site.127-0-0-1.nip.io:29090/`.
 
+The redirect of a directory keeps the query of the request, e.g. `/my-site/docs?v=3` to `/my-site/docs/?v=3`, and its
+`Location` is percent-encoded, so a directory whose name has a space, a `%`, a `?`, a `#` or non-ASCII characters is
+redirected to correctly.
+
 ### Which requests are served as a website
 
 A request is answered as a website request when **all** of these hold; anything else keeps the S3 semantics it had

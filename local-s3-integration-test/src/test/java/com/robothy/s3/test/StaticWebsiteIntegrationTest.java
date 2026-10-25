@@ -162,6 +162,20 @@ class StaticWebsiteIntegrationTest {
     }
 
     @Test
+    void theRedirectToADirectoryIsPercentEncodedAndKeepsTheQuery() throws Exception {
+      start(authenticated().build());
+      put(PUBLIC_BUCKET, "my docs/文档 #1/index.html", "<html><body>encoded</body></html>");
+
+      String directory = "/" + PUBLIC_BUCKET + "/my%20docs/%E6%96%87%E6%A1%A3%20%231";
+      HttpResponse<String> response = get(directory + "?v=3&q=a%20b");
+      assertEquals(302, response.statusCode());
+      String location = response.headers().firstValue("Location").orElseThrow();
+      assertEquals(directory + "/?v=3&q=a%20b", location);
+
+      assertEquals("<html><body>encoded</body></html>", get(location).body());
+    }
+
+    @Test
     void anObjectWithAWebsiteRedirectLocationRedirectsToIt() throws Exception {
       start(authenticated().build());
       s3.putObject(b -> b.bucket(PUBLIC_BUCKET).key("old.html").websiteRedirectLocation("/" + PUBLIC_BUCKET + "/"),
