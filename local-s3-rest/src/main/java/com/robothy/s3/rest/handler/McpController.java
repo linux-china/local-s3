@@ -3,6 +3,7 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.http.RouterHttpResponse;
+import com.robothy.s3.core.exception.InvalidRangeException;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
@@ -36,6 +37,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -657,32 +659,80 @@ class McpController implements RouterHttpRequestHandler {
    */
   private ObjectContent read(String bucket, String key, @Nullable String versionId, @Nullable Range range,
                              int maxBytes) {
-    GetObjectAns head = objectService.headObject(bucket, key, GetObjectOptions.builder().versionId(versionId).build());
-    if (head.isDeleteMarker()) {
+    // One read, so the size, ETag and version describe the very bytes returned even if the object is overwritten.
+    GetObjectAns object;
+    try {
+      object = objectService.getObject(bucket, key, GetObjectOptions.builder()
+          .versionId(versionId)
+          .range(range)
+          .build());
+    } catch (InvalidRangeException e) {
+      // No range fits an empty object; reading it still returns its (empty) content.
+      object = objectService.getObject(bucket, key, GetObjectOptions.builder().versionId(versionId).build());
+      if (object.getSize() != 0) {
+        closeQuietly(object.getContent());
+        throw e;
+      }
+    }
+    if (object.isDeleteMarker()) {
       throw new IllegalArgumentException("The object " + key + " was deleted.");
     }
-    long size = head.getSize();
-    String contentType = contentType(head.getContentType(), key);
-    if (size == 0) {
-      return new ObjectContent(new byte[0], contentType, 0, 0, -1, false, true, head.getEtag(),
-          head.getVersionId());
+    String contentType = contentType(object.getContentType(), key);
+    long length = object.getSize();
+    long start = 0;
+    long size = length;
+    String contentRange = object.getContentRange();
+    if (contentRange != null) {
+      // "bytes <start>-<end>/<size>"
+      start = Long.parseLong(contentRange.substring("bytes ".length(), contentRange.indexOf('-')));
+      size = Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1));
     }
 
-    long[] resolved = range == null ? new long[]{0, size - 1} : range.resolve(size);
-    long start = resolved[0];
-    long end = Math.min(resolved[1], start + maxBytes - 1);
-    GetObjectAns object = objectService.getObject(bucket, key, GetObjectOptions.builder()
-        .versionId(versionId)
-        .range(Range.of(start, end))
-        .build());
     byte[] bytes;
     try (InputStream in = object.getContent()) {
-      bytes = in.readNBytes((int) (end - start + 1));
+      bytes = length == 0 ? new byte[0] : in.readNBytes((int) Math.min(length, maxBytes));
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to read " + key + ".", e);
     }
-    return new ObjectContent(bytes, contentType, size, start, end, end < resolved[1],
-        isText(contentType, bytes), head.getEtag(), head.getVersionId());
+    if (length == 0) {
+      return new ObjectContent(bytes, contentType, size, 0, -1, false, true, object.getEtag(),
+          object.getVersionId());
+    }
+    boolean truncated = bytes.length < length;
+    boolean text = isText(contentType, bytes);
+    if (truncated && text) {
+      bytes = Arrays.copyOf(bytes, completeUtf8Length(bytes));
+    }
+    return new ObjectContent(bytes, contentType, size, start, start + bytes.length - 1, truncated, text,
+        object.getEtag(), object.getVersionId());
+  }
+
+  /**
+   * The length of {@code bytes} without a UTF-8 sequence cut off at the end, so that a read stopped at
+   * {@code max_bytes} doesn't end in {@code U+FFFD}; the rest of the character starts the next range.
+   */
+  private static int completeUtf8Length(byte[] bytes) {
+    for (int i = bytes.length - 1; i >= Math.max(0, bytes.length - 4); i--) {
+      int b = bytes[i] & 0xFF;
+      if ((b & 0xC0) == 0x80) {
+        continue;
+      }
+      int sequence = b < 0x80 ? 1 : b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
+      // Keep at least one byte: a range that starts in the middle of a character has nothing to back off to.
+      return i + sequence > bytes.length && i > 0 ? i : bytes.length;
+    }
+    return bytes.length;
+  }
+
+  private static void closeQuietly(@Nullable InputStream in) {
+    if (in == null) {
+      return;
+    }
+    try {
+      in.close();
+    } catch (IOException _) {
+      // Nothing was read from it.
+    }
   }
 
   /**

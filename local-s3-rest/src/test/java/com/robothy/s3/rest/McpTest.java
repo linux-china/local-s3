@@ -149,6 +149,33 @@ class McpTest {
   }
 
   @Test
+  void stopsAReadBeforeACharacterItWouldCut() throws Exception {
+    LocalS3 localS3 = start();
+    try {
+      // "a" then two 3-byte characters: 7 bytes.
+      call(localS3, "put_object", Map.of("bucket", "bucket", "key", "zh.txt", "content", "a中文"));
+
+      JsonNode head = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "zh.txt", "max_bytes", 3));
+      assertEquals("a", head.at("/content/0/text").asString());
+      assertEquals("bytes 0-0/7", head.at("/structuredContent/range").asString());
+      assertTrue(head.at("/content/1/text").asString().contains("bytes=1-"), head.toString());
+
+      JsonNode next = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "zh.txt", "range", "bytes=1-",
+          "max_bytes", 5));
+      assertEquals("中", next.at("/content/0/text").asString());
+      assertEquals("bytes 1-3/7", next.at("/structuredContent/range").asString());
+
+      call(localS3, "put_object", Map.of("bucket", "bucket", "key", "empty.txt", "content", ""));
+      JsonNode empty = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "empty.txt", "range",
+          "bytes=0-9"));
+      assertEquals("", empty.at("/content/0/text").asString());
+      assertEquals(0, empty.at("/structuredContent/size").asLong());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
   void readsBinaryContentAsBase64() throws Exception {
     LocalS3 localS3 = start();
     try {
