@@ -7,14 +7,13 @@ import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.request.RenameObjectOptions;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.service.RenameObjectService;
+import com.robothy.s3.core.util.UrlPaths;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
 import com.robothy.s3.rest.utils.ResponseUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 
 class RenameObjectController implements RouterHttpRequestHandler {
 
@@ -48,7 +47,7 @@ class RenameObjectController implements RouterHttpRequestHandler {
   static String sourceKey(String bucketName, String renameSource) {
     String path;
     try {
-      path = URLDecoder.decode(renameSource.trim(), StandardCharsets.UTF_8);
+      path = UrlPaths.decode(renameSource.trim());
     } catch (IllegalArgumentException _) {
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_RENAME_SOURCE, renameSource,
           "Invalid rename source encoding.");

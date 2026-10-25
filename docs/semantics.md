@@ -286,6 +286,9 @@ A header that isn't a non-negative number answers `400 InvalidArgument`.
 
 ## Copies
 
++ `x-amz-copy-source` of `CopyObject` and `UploadPartCopy`, and `x-amz-rename-source` of `RenameObject`, are
+  percent-decoded as a URL path: a `+` is a literal plus sign, not a space, so `/bucket/a+b.txt` and
+  `/bucket/a%2Bb.txt` name the same key. A space is written as `%20`.
 + `CopyObject` copies the metadata, the content type and the tags of the source, unless `x-amz-metadata-directive` or
   `x-amz-tagging-directive` is `REPLACE`, which takes those of the request. The storage class, the website redirect
   location, the Object Lock settings and the encryption of the source are never copied: the copy has the ones of the

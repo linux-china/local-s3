@@ -3,9 +3,7 @@ package com.robothy.s3.rest.handler;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Objects;
+import com.robothy.s3.core.util.UrlPaths;
 import java.util.stream.Stream;
 
 /**
@@ -53,7 +51,7 @@ record CopySource(String bucket, String key, String versionId) {
     String key = path.substring(delimiterIndex + 1);
 
     try {
-      return new CopySource(urlDecode(bucket), urlDecode(key), urlDecode(versionId(slices)));
+      return new CopySource(UrlPaths.decode(bucket), UrlPaths.decode(key), UrlPaths.decode(versionId(slices)));
     } catch (IllegalArgumentException _) {
       // A malformed percent escape.
       throw new LocalS3InvalidArgumentException(AmzHeaderNames.X_AMZ_COPY_SOURCE, copySource, "Invalid copy source encoding.");
@@ -74,13 +72,6 @@ record CopySource(String bucket, String key, String versionId) {
         .map(pair -> pair.split("=")[1])
         .findAny()
         .orElse(null);
-  }
-
-  private static String urlDecode(String value) {
-    if (Objects.isNull(value)) {
-      return null;
-    }
-    return URLDecoder.decode(value, StandardCharsets.UTF_8);
   }
 
 }

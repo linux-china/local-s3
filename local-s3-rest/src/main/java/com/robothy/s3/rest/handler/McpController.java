@@ -16,6 +16,7 @@ import com.robothy.s3.core.model.request.Range;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.core.util.S3ObjectUtils;
+import com.robothy.s3.core.util.UrlPaths;
 import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.constants.LocalS3Constants;
 import com.robothy.s3.rest.netty.RequestBodies;
@@ -32,7 +33,6 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -646,7 +646,7 @@ class McpController implements RouterHttpRequestHandler {
     String key = path.substring(slash + 1);
     // The URIs this server lists are percent-encoded, but an agent may write a key as it is.
     try {
-      key = URLDecoder.decode(key.replace("+", "%2B"), StandardCharsets.UTF_8);
+      key = UrlPaths.decode(key);
     } catch (IllegalArgumentException _) {
       // Not encoded, e.g. a key with a literal '%'.
     }

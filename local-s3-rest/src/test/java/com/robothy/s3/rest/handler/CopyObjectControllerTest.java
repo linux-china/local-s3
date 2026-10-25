@@ -99,6 +99,10 @@ class CopyObjectControllerTest {
           .sourceBucket("my-bucket").sourceKey("folder/").build()),
       arguments("/my-bucket/a/b/", CopyObjectOptions.builder()
           .sourceBucket("my-bucket").sourceKey("a/b/").build()),
+      arguments("/my-bucket/a+b.txt", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("a+b.txt").build()),
+      arguments("/my-bucket/a%2Bb%20c.txt", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("a+b c.txt").build()),
       arguments("a.txt", null),
       arguments("/a.txt/", null),
       arguments("/a.txt", null),

@@ -1,11 +1,10 @@
 package com.robothy.s3.spring.boot;
 
+import com.robothy.s3.core.util.UrlPaths;
 import com.robothy.s3.rest.LocalS3Seeder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -123,20 +122,11 @@ public class ClasspathLocalS3Seeder implements LocalS3Seeder {
     String url = resource.getURL().toString();
     for (String root : roots) {
       if (url.startsWith(root)) {
-        return decode(url.substring(root.length()));
+        return UrlPaths.decode(url.substring(root.length()));
       }
     }
     log.warn("Skipped the fixture {} of LocalS3: it isn't under any of the resolved locations {}.", url, roots);
     return null;
-  }
-
-  /**
-   * Decode the percent-escapes that a URL of a resource holds, e.g. {@code %20} of a file whose name has a space. A
-   * plus sign is escaped first, so that it isn't decoded to a space: it is a literal character of a path, unlike in
-   * the query of a URL, which is what {@linkplain URLDecoder} decodes.
-   */
-  private static String decode(String path) {
-    return URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8);
   }
 
   private static String url(Resource resource, String fallback) {
