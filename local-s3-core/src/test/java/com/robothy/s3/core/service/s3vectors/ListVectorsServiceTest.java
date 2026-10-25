@@ -3,6 +3,7 @@ package com.robothy.s3.core.service.s3vectors;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 import com.robothy.s3.core.model.internal.s3vectors.LocalS3VectorsMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
@@ -13,7 +14,10 @@ import com.robothy.s3.datatypes.s3vectors.ListOutputVector;
 import com.robothy.s3.datatypes.s3vectors.response.ListVectorsResponse;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -147,7 +151,7 @@ class ListVectorsServiceTest {
     
     service.bucketMap.put("bucket", bucketMetadata);
     
-    String nextToken = Base64.getEncoder().encodeToString("2".getBytes());
+    String nextToken = service.listVectors("bucket", "index", 2, null, false, false, null, null).nextToken();
     ListVectorsResponse response = service.listVectors("bucket", "index", 2, nextToken, false, false, null, null);
     
     assertEquals(2, response.vectors().size());
@@ -166,8 +170,69 @@ class ListVectorsServiceTest {
     
     service.bucketMap.put("bucket", bucketMetadata);
     
-    assertThrows(LocalS3VectorException.class,
-        () -> service.listVectors("bucket", "index", null, "invalid_token", false, false, null, null));
+    for (String token : new String[] {"invalid_token", Base64.getEncoder().encodeToString("-5".getBytes()),
+        Base64.getEncoder().encodeToString("2".getBytes())}) {
+      LocalS3VectorException e = assertThrows(LocalS3VectorException.class,
+          () -> service.listVectors("bucket", "index", null, token, false, false, null, null));
+      assertEquals(LocalS3VectorErrorType.VALIDATION, e.getErrorType());
+    }
+  }
+
+  @Test
+  void listVectors_continuesAfterTheLastKey_whenVectorsChangeBetweenPages() {
+    TestListVectorsService service = new TestListVectorsService();
+    VectorIndexMetadata indexMetadata = indexWithVectors(service, "b", "d", "f", "h");
+
+    ListVectorsResponse first = service.listVectors("bucket", "index", 2, null, false, false, null, null);
+    assertEquals(List.of("b", "d"), keys(first));
+
+    indexMetadata.getVectorObjects().put("a", createVectorMetadata("a", 10L));
+    indexMetadata.getVectorObjects().remove("b");
+    indexMetadata.getVectorObjects().put("e", createVectorMetadata("e", 11L));
+
+    ListVectorsResponse second = service.listVectors("bucket", "index", 2, first.nextToken(), false, false, null, null);
+    assertEquals(List.of("e", "f"), keys(second));
+    ListVectorsResponse third = service.listVectors("bucket", "index", 2, second.nextToken(), false, false, null, null);
+    assertEquals(List.of("h"), keys(third));
+    assertNull(third.nextToken());
+  }
+
+  @Test
+  void listVectors_continuesAfterTheLastKey_whenTheLastKeyIsDeleted() {
+    TestListVectorsService service = new TestListVectorsService();
+    VectorIndexMetadata indexMetadata = indexWithVectors(service, "a", "b", "c");
+
+    ListVectorsResponse first = service.listVectors("bucket", "index", 2, null, false, false, null, null);
+    indexMetadata.getVectorObjects().remove("b");
+
+    ListVectorsResponse second = service.listVectors("bucket", "index", 2, first.nextToken(), false, false, null, null);
+    assertEquals(List.of("c"), keys(second));
+  }
+
+  @Test
+  void listVectors_segmentsListEveryVectorOnce_andKeepTheirVectorsWhenOthersChange() {
+    TestListVectorsService service = new TestListVectorsService();
+    String[] ids = new String[50];
+    for (int i = 0; i < ids.length; i++) {
+      ids[i] = "vector" + i;
+    }
+    VectorIndexMetadata indexMetadata = indexWithVectors(service, ids);
+
+    List<List<String>> segments = listSegments(service, 4);
+    List<String> all = segments.stream().flatMap(List::stream).sorted().toList();
+    assertEquals(Arrays.stream(ids).sorted().toList(), all);
+
+    for (int i = 0; i < 20; i++) {
+      indexMetadata.getVectorObjects().put("other" + i, createVectorMetadata("other" + i, 100L + i));
+    }
+    indexMetadata.getVectorObjects().remove("vector0");
+    List<List<String>> changed = listSegments(service, 4);
+    for (int segment = 0; segment < 4; segment++) {
+      List<String> before = new ArrayList<>(segments.get(segment));
+      before.remove("vector0");
+      List<String> after = changed.get(segment).stream().filter(id -> id.startsWith("vector")).toList();
+      assertEquals(before, after);
+    }
   }
 
   @Test
@@ -298,12 +363,12 @@ class ListVectorsServiceTest {
     
     service.bucketMap.put("bucket", bucketMetadata);
     
-    // segmentCount=3, segmentIndex=1 should return vectors at positions 1, 4 (0-indexed)
     ListVectorsResponse response = service.listVectors("bucket", "index", null, null, false, false, 3, 1);
     
-    assertEquals(2, response.vectors().size());
-    assertEquals("vector2", response.vectors().get(0).getKey());
-    assertEquals("vector5", response.vectors().get(1).getKey());
+    List<String> expected = vectorObjects.keySet().stream().sorted()
+        .filter(id -> Math.floorMod(id.hashCode(), 3) == 1).toList();
+    assertFalse(expected.isEmpty());
+    assertEquals(expected, keys(response));
   }
 
   @Test
@@ -392,7 +457,7 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", 2, null, false, false, null, null);
     
     assertNotNull(response.nextToken());
-    String expectedToken = Base64.getEncoder().encodeToString("2".getBytes());
+    String expectedToken = Base64.getEncoder().encodeToString("v1:vector2".getBytes());
     assertEquals(expectedToken, response.nextToken());
   }
 
@@ -438,7 +503,7 @@ class ListVectorsServiceTest {
   }
 
   @Test
-  void listVectors_withStorageError_continuesWithoutData() {
+  void listVectors_withStorageError_throwsInternalServerError() {
     TestListVectorsService service = new TestListVectorsService();
     VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
     bucketMetadata.setVectorBucketName("bucket");
@@ -453,10 +518,9 @@ class ListVectorsServiceTest {
     service.bucketMap.put("bucket", bucketMetadata);
     when(service.mockVectorStorage.getVectorData(1L)).thenThrow(new RuntimeException("Storage error"));
     
-    ListVectorsResponse response = service.listVectors("bucket", "index", null, null, true, false, null, null);
-    
-    assertEquals(1, response.vectors().size());
-    assertNull(response.vectors().get(0).getData());
+    LocalS3VectorException e = assertThrows(LocalS3VectorException.class,
+        () -> service.listVectors("bucket", "index", null, null, true, false, null, null));
+    assertEquals(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR, e.getErrorType());
   }
 
   @Test
@@ -502,6 +566,38 @@ class ListVectorsServiceTest {
     ListVectorsResponse response = service.listVectors("bucket", "index", -5, null, false, false, null, null);
     
     assertEquals(1, response.vectors().size());
+  }
+
+  private VectorIndexMetadata indexWithVectors(TestListVectorsService service, String... ids) {
+    VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
+    bucketMetadata.setVectorBucketName("bucket");
+    VectorIndexMetadata indexMetadata = new VectorIndexMetadata();
+    indexMetadata.setIndexName("index");
+    bucketMetadata.putIndexMetadata("index", indexMetadata);
+    for (int i = 0; i < ids.length; i++) {
+      indexMetadata.getVectorObjects().put(ids[i], createVectorMetadata(ids[i], (long) i));
+    }
+    service.bucketMap.put("bucket", bucketMetadata);
+    return indexMetadata;
+  }
+
+  private List<List<String>> listSegments(TestListVectorsService service, int segmentCount) {
+    List<List<String>> segments = new ArrayList<>();
+    for (int segment = 0; segment < segmentCount; segment++) {
+      List<String> ids = new ArrayList<>();
+      String token = null;
+      do {
+        ListVectorsResponse page = service.listVectors("bucket", "index", 3, token, false, false, segmentCount, segment);
+        ids.addAll(keys(page));
+        token = page.nextToken();
+      } while (token != null);
+      segments.add(ids);
+    }
+    return segments;
+  }
+
+  private static List<String> keys(ListVectorsResponse response) {
+    return response.vectors().stream().map(ListOutputVector::getKey).toList();
   }
 
   private VectorObjectMetadata createVectorMetadata(String vectorId, Long storageId) {

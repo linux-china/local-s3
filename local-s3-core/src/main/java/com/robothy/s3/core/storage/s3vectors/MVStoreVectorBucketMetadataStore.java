@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
@@ -200,7 +199,7 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
   }
 
   private Map<String, VectorObjectMetadata> readVectors(String vectorBucketName, String indexName) {
-    Map<String, VectorObjectMetadata> vectors = new ConcurrentHashMap<>();
+    Map<String, VectorObjectMetadata> vectors = new ConcurrentSkipListMap<>();
     String vectorsMapName = vectorsMapName(vectorBucketName, indexName);
     if (store.hasMap(vectorsMapName)) {
       MVMap<String, String> stored = store.openMap(vectorsMapName);

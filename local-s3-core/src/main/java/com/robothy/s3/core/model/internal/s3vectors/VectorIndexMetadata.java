@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -73,9 +74,10 @@ public class VectorIndexMetadata {
 
   /**
    * Collection of vector objects stored in this index.
-   * Key is the vector ID, value is the vector object metadata.
+   * Key is the vector ID, value is the vector object metadata. Sorted, so that ListVectors continues a listing after a
+   * key rather than at an offset that shifts when vectors are put or deleted between its pages.
    */
-  private Map<String, VectorObjectMetadata> vectorObjects;
+  private ConcurrentNavigableMap<String, VectorObjectMetadata> vectorObjects;
 
   /**
    * Whether a metadata store writes this index a vector at a time, and so needs to be told which vectors changed; see
@@ -106,7 +108,7 @@ public class VectorIndexMetadata {
    */
   public VectorIndexMetadata() {
     this.status = "CREATING";
-    this.vectorObjects = new ConcurrentHashMap<>();
+    this.vectorObjects = new ConcurrentSkipListMap<>();
   }
 
   /**
@@ -223,7 +225,8 @@ public class VectorIndexMetadata {
    * @param vectorObjects the vectors, by vector ID.
    */
   public void setVectorObjects(Map<String, VectorObjectMetadata> vectorObjects) {
-    this.vectorObjects = vectorObjects;
+    this.vectorObjects = vectorObjects instanceof ConcurrentNavigableMap<String, VectorObjectMetadata> sorted
+        ? sorted : new ConcurrentSkipListMap<>(vectorObjects);
     recordAllChanged();
   }
 

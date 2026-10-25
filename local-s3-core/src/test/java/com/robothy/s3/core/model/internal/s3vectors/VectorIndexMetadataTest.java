@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.VectorDataType;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import org.junit.jupiter.api.Test;
 
 class VectorIndexMetadataTest {
@@ -23,7 +23,7 @@ class VectorIndexMetadataTest {
     assertEquals("CREATING", metadata.getStatus());
     assertNotNull(metadata.getVectorObjects());
     assertTrue(metadata.getVectorObjects().isEmpty());
-    assertInstanceOf(ConcurrentHashMap.class, metadata.getVectorObjects());
+    assertInstanceOf(ConcurrentSkipListMap.class, metadata.getVectorObjects());
   }
 
   @Test
