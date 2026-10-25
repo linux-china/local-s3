@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -536,17 +538,18 @@ public final class S3TablesService {
     // The token is claimed first, so that a second commit that read the same token loses here rather than reaching the
     // catalog; the catalog's own compare-and-set, against the pointer this token was read at, then guards against a
     // commit made over the REST endpoint, which doesn't move the token until the table is next read.
-    TableAttributes updated = table.committed(metadataLocation);
-    if (!store.replaceTable(bucket.name(), table, updated)) {
+    Claim claim = replaceAtVersion(bucket, table, current -> current.committed(metadataLocation));
+    if (claim == null) {
       throw S3TablesException.conflict("The table '" + name + "' changed while this commit was being prepared."
           + " Read it again and retry.");
     }
+    TableAttributes updated = claim.after();
     try {
       catalog(bucket).setMetadataLocation(IcebergIdentifier.of(List.of(namespace), name),
           table.metadataLocation(), metadataLocation);
     } catch (RuntimeException e) {
       // The commit didn't land, so the token it claimed is given back rather than left advanced.
-      store.replaceTable(bucket.name(), updated, table);
+      store.replaceTable(bucket.name(), updated, claim.before());
       throw e;
     }
 
@@ -584,7 +587,8 @@ public final class S3TablesService {
       throw S3TablesException.conflict("A table named '" + newName + "' already exists in the namespace '"
           + newNamespace + "'.");
     }
-    TableAttributes claimed = claimVersion(bucket, table, request.path("versionToken").asString(null));
+    Claim claim = claimVersion(bucket, table, request.path("versionToken").asString(null));
+    TableAttributes claimed = claim.after();
 
     ObjectNode rename = IcebergJson.newObject();
     rename.set("source", identifierNode(namespace, name));
@@ -595,7 +599,7 @@ public final class S3TablesService {
     try {
       catalog(bucket).renameTable(rename, false);
     } catch (RuntimeException e) {
-      releaseVersion(bucket, table, claimed);
+      releaseVersion(bucket, claim);
       throw e;
     }
     store.putTable(bucket.name(), claimed.renamedTo(newNamespace, newName));
@@ -616,13 +620,14 @@ public final class S3TablesService {
     TableBucketRecord bucket = located.bucket();
     TableAttributes table = located.table();
     requireCurrentVersion(table, versionToken);
-    TableAttributes claimed = claimVersion(bucket, table, versionToken);
+    Claim claim = claimVersion(bucket, table, versionToken);
+    TableAttributes claimed = claim.after();
     // Purged: a table bucket owns the files of its tables, so a deleted table takes its data with it, which is what
     // Amazon does and what keeps a test's storage from filling up with the tables it dropped.
     try {
       catalog(bucket).dropTable(IcebergIdentifier.of(List.of(namespace), name), false, true);
     } catch (RuntimeException e) {
-      releaseVersion(bucket, table, claimed);
+      releaseVersion(bucket, claim);
       throw e;
     }
     store.removeTable(bucket.name(), claimed);
@@ -759,8 +764,8 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void putTableBucketEncryption(String tableBucketArn, ObjectNode request) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.ENCRYPTION, requireObject(request, "encryptionConfiguration")));
+    String configuration = requireObject(request, "encryptionConfiguration");
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.ENCRYPTION, configuration));
   }
 
   /**
@@ -784,8 +789,7 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void deleteTableBucketEncryption(String tableBucketArn) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.ENCRYPTION, null));
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.ENCRYPTION, null));
   }
 
   /**
@@ -814,9 +818,8 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void putTableBucketStorageClass(String tableBucketArn, ObjectNode request) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.STORAGE_CLASS,
-        requireObject(request, "storageClassConfiguration")));
+    String configuration = requireObject(request, "storageClassConfiguration");
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.STORAGE_CLASS, configuration));
   }
 
   /**
@@ -860,8 +863,8 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void putTableBucketPolicy(String tableBucketArn, ObjectNode request) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.POLICY, requireName(request, "resourcePolicy")));
+    String policy = requireName(request, "resourcePolicy");
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.POLICY, policy));
   }
 
   /**
@@ -889,8 +892,7 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void deleteTableBucketPolicy(String tableBucketArn) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.POLICY, null));
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.POLICY, null));
   }
 
   /**
@@ -903,9 +905,9 @@ public final class S3TablesService {
    * @throws S3TablesException if the table doesn't exist.
    */
   public void putTablePolicy(String tableBucketArn, String namespace, String name, ObjectNode request) {
-    Located located = locate(tableBucketArn, namespace, name, null);
-    store.putTable(located.bucket().name(),
-        located.table().with(TableAttributes.POLICY, requireName(request, "resourcePolicy")));
+    String policy = requireName(request, "resourcePolicy");
+    updateTable(() -> locate(tableBucketArn, namespace, name, null),
+        table -> table.with(TableAttributes.POLICY, policy));
   }
 
   /**
@@ -937,8 +939,7 @@ public final class S3TablesService {
    * @throws S3TablesException if the table doesn't exist.
    */
   public void deleteTablePolicy(String tableBucketArn, String namespace, String name) {
-    Located located = locate(tableBucketArn, namespace, name, null);
-    store.putTable(located.bucket().name(), located.table().with(TableAttributes.POLICY, null));
+    updateTable(() -> locate(tableBucketArn, namespace, name, null), table -> table.with(TableAttributes.POLICY, null));
   }
 
   /**
@@ -950,11 +951,12 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist, or the type isn't one of the API.
    */
   public void putTableBucketMaintenanceConfiguration(String tableBucketArn, String type, ObjectNode request) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
+    requireBucket(tableBucketArn);
     if (!BUCKET_MAINTENANCE_TYPE.equals(type)) {
       throw S3TablesException.invalidValue("type", type, List.of(BUCKET_MAINTENANCE_TYPE));
     }
-    store.putBucket(bucket.with(TableBucketRecord.maintenance(type), requireObject(request, "value")));
+    String value = requireObject(request, "value");
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.maintenance(type), value));
   }
 
   /**
@@ -991,12 +993,13 @@ public final class S3TablesService {
    */
   public void putTableMaintenanceConfiguration(String tableBucketArn, String namespace, String name, String type,
                                                ObjectNode request) {
-    Located located = locate(tableBucketArn, namespace, name, null);
+    locate(tableBucketArn, namespace, name, null);
     if (!TABLE_MAINTENANCE_TYPES.contains(type)) {
       throw S3TablesException.invalidValue("type", type, TABLE_MAINTENANCE_TYPES);
     }
-    store.putTable(located.bucket().name(),
-        located.table().with(TableAttributes.maintenance(type), requireObject(request, "value")));
+    String value = requireObject(request, "value");
+    updateTable(() -> locate(tableBucketArn, namespace, name, null),
+        table -> table.with(TableAttributes.maintenance(type), value));
   }
 
   /**
@@ -1055,8 +1058,8 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void putTableBucketMetricsConfiguration(String tableBucketArn) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.METRICS_ID, UUID.randomUUID().toString()));
+    String metricsId = UUID.randomUUID().toString();
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.METRICS_ID, metricsId));
   }
 
   /**
@@ -1083,8 +1086,7 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void deleteTableBucketMetricsConfiguration(String tableBucketArn) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.METRICS_ID, null));
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.METRICS_ID, null));
   }
 
   /**
@@ -1095,9 +1097,9 @@ public final class S3TablesService {
    * @throws S3TablesException if the table doesn't exist.
    */
   public void putTableRecordExpirationConfiguration(String tableArn, ObjectNode request) {
-    Located located = locate(null, null, null, tableArn);
-    store.putTable(located.bucket().name(),
-        located.table().with(TableAttributes.RECORD_EXPIRATION, requireObject(request, "value")));
+    String value = requireObject(request, "value");
+    updateTable(() -> locate(null, null, null, tableArn),
+        table -> table.with(TableAttributes.RECORD_EXPIRATION, value));
   }
 
   /**
@@ -1141,15 +1143,18 @@ public final class S3TablesService {
    */
   public ObjectNode putTableBucketReplication(String tableBucketArn, @Nullable String versionToken,
                                               ObjectNode request) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    String current = bucket.get(TableBucketRecord.REPLICATION_VERSION);
-    if (versionToken != null && !versionToken.isBlank() && !versionToken.equals(current)) {
-      throw S3TablesException.conflict("The version token of the request is not the current one of the replication"
-          + " configuration of the table bucket '" + bucket.name() + "'.");
-    }
+    String configuration = requireObject(request, "configuration");
     String token = S3TablesVersionTokens.next();
-    store.putBucket(bucket.with(TableBucketRecord.REPLICATION, requireObject(request, "configuration"))
-        .with(TableBucketRecord.REPLICATION_VERSION, token));
+    // The token is checked against each read of the retry, so a change that lands meanwhile makes this one lose.
+    updateBucket(tableBucketArn, bucket -> {
+      String current = bucket.get(TableBucketRecord.REPLICATION_VERSION);
+      if (versionToken != null && !versionToken.isBlank() && !versionToken.equals(current)) {
+        throw S3TablesException.conflict("The version token of the request is not the current one of the replication"
+            + " configuration of the table bucket '" + bucket.name() + "'.");
+      }
+      return bucket.with(TableBucketRecord.REPLICATION, configuration)
+          .with(TableBucketRecord.REPLICATION_VERSION, token);
+    });
     ObjectNode response = IcebergJson.newObject();
     response.put("versionToken", token);
     response.put("status", "enabled");
@@ -1182,8 +1187,7 @@ public final class S3TablesService {
    * @throws S3TablesException if the table bucket doesn't exist.
    */
   public void deleteTableBucketReplication(String tableBucketArn) {
-    TableBucketRecord bucket = requireBucket(tableBucketArn);
-    store.putBucket(bucket.with(TableBucketRecord.REPLICATION, null)
+    updateBucket(tableBucketArn, bucket -> bucket.with(TableBucketRecord.REPLICATION, null)
         .with(TableBucketRecord.REPLICATION_VERSION, null));
   }
 
@@ -1197,10 +1201,11 @@ public final class S3TablesService {
    * @throws S3TablesException if the table doesn't exist, or the token is stale.
    */
   public ObjectNode putTableReplication(String tableArn, @Nullable String versionToken, ObjectNode request) {
-    Located located = locate(null, null, null, tableArn);
-    requireCurrentVersion(located.table(), versionToken);
-    TableAttributes updated = located.table().withReplication(requireObject(request, "configuration"));
-    store.putTable(located.bucket().name(), updated);
+    String configuration = requireObject(request, "configuration");
+    TableAttributes updated = updateTable(() -> locate(null, null, null, tableArn), table -> {
+      requireCurrentVersion(table, versionToken);
+      return table.withReplication(configuration);
+    });
     ObjectNode response = IcebergJson.newObject();
     response.put("versionToken", updated.versionToken());
     response.put("status", "enabled");
@@ -1235,9 +1240,10 @@ public final class S3TablesService {
    * @throws S3TablesException if the table doesn't exist, or the token is stale.
    */
   public void deleteTableReplication(String tableArn, @Nullable String versionToken) {
-    Located located = locate(null, null, null, tableArn);
-    requireCurrentVersion(located.table(), versionToken);
-    store.putTable(located.bucket().name(), located.table().withReplication(null));
+    updateTable(() -> locate(null, null, null, tableArn), table -> {
+      requireCurrentVersion(table, versionToken);
+      return table.withReplication(null);
+    });
   }
 
   /**
@@ -1556,28 +1562,52 @@ public final class S3TablesService {
    *
    * @param versionToken the token the client sent; {@code null} or blank for a request that carries none, which claims
    *     nothing.
-   * @return the attributes the table is now at, which are {@code table} itself if nothing was claimed.
+   * @return the attributes before and after the claim, which are both {@code table} if nothing was claimed.
    * @throws S3TablesException if the table changed since it was read.
    */
-  private TableAttributes claimVersion(TableBucketRecord bucket, TableAttributes table,
-                                       @Nullable String versionToken) {
+  private Claim claimVersion(TableBucketRecord bucket, TableAttributes table, @Nullable String versionToken) {
     if (versionToken == null || versionToken.isBlank()) {
-      return table;
+      return new Claim(table, table);
     }
-    TableAttributes claimed = table.committed(table.metadataLocation());
-    if (!store.replaceTable(bucket.name(), table, claimed)) {
+    Claim claim = replaceAtVersion(bucket, table, current -> current.committed(current.metadataLocation()));
+    if (claim == null) {
       throw S3TablesException.conflict("The table '" + table.name() + "' changed while this request was being"
           + " prepared. Read it again and retry.");
     }
-    return claimed;
+    return claim;
+  }
+
+  /**
+   * Replace the attributes of a table with a compare-and-set that only another change of its version token makes lose:
+   * a configuration stored on it meanwhile (a policy, say) leaves the token alone, so the change is applied again on
+   * top of it rather than refused as a conflict the client never caused.
+   *
+   * @return the attributes replaced and the ones stored; {@code null} if the token or the metadata file moved on.
+   */
+  @Nullable
+  private Claim replaceAtVersion(TableBucketRecord bucket, TableAttributes table,
+                                 UnaryOperator<TableAttributes> change) {
+    TableAttributes current = table;
+    while (true) {
+      TableAttributes updated = change.apply(current);
+      if (store.replaceTable(bucket.name(), current, updated)) {
+        return new Claim(current, updated);
+      }
+      current = store.getTable(bucket.name(), table.namespace(), table.name());
+      if (current == null || !current.tableId().equals(table.tableId())
+          || !current.versionToken().equals(table.versionToken())
+          || !Objects.equals(current.metadataLocation(), table.metadataLocation())) {
+        return null;
+      }
+    }
   }
 
   /**
    * Give back a token {@linkplain #claimVersion} claimed, for a change that didn't land.
    */
-  private void releaseVersion(TableBucketRecord bucket, TableAttributes table, TableAttributes claimed) {
-    if (claimed != table) {
-      store.replaceTable(bucket.name(), claimed, table);
+  private void releaseVersion(TableBucketRecord bucket, Claim claim) {
+    if (claim.after() != claim.before()) {
+      store.replaceTable(bucket.name(), claim.after(), claim.before());
     }
   }
 
@@ -1653,7 +1683,7 @@ public final class S3TablesService {
     // Taken by another table bucket, or by a bucket of the service: this table bucket gets one of its own.
     String unique = bucket + "-" + UUID.randomUUID().toString().substring(0, 8);
     bucketService.createBucket(unique);
-    store.putBucket(record.withWarehouse("s3://" + unique));
+    updateBucket(bucketArn(record.name()), stored -> stored.withWarehouse("s3://" + unique));
     log.info("Created the bucket '{}' of the table bucket '{}'; '{}' was taken.", unique, record.name(), bucket);
   }
 
@@ -1798,9 +1828,48 @@ public final class S3TablesService {
   }
 
   /**
+   * Change a table bucket by a compare-and-set that is retried on a fresh read, so that two configuration changes made
+   * at once don't drop one another.
+   *
+   * @throws S3TablesException if the table bucket doesn't exist, or is deleted meanwhile.
+   */
+  private TableBucketRecord updateBucket(String tableBucketArn, UnaryOperator<TableBucketRecord> change) {
+    while (true) {
+      TableBucketRecord bucket = requireBucket(tableBucketArn);
+      TableBucketRecord updated = change.apply(bucket);
+      if (store.replaceBucket(bucket, updated)) {
+        return updated;
+      }
+    }
+  }
+
+  /**
+   * Change a table the same way. A plain write would put back the version token and metadata location that a
+   * concurrent commit moved on, or bring back a table that was deleted or renamed meanwhile, which the fresh
+   * {@code locate} answers as not found instead.
+   *
+   * @throws S3TablesException if the table doesn't exist, or is deleted meanwhile.
+   */
+  private TableAttributes updateTable(Supplier<Located> locate, UnaryOperator<TableAttributes> change) {
+    while (true) {
+      Located located = locate.get();
+      TableAttributes updated = change.apply(located.table());
+      if (store.replaceTable(located.bucket().name(), located.table(), updated)) {
+        return updated;
+      }
+    }
+  }
+
+  /**
    * A table and the table bucket it is in, which every operation on a table starts by finding.
    */
   private record Located(TableBucketRecord bucket, TableAttributes table) {
+  }
+
+  /**
+   * The attributes of a table just before and just after a {@linkplain #replaceAtVersion} landed.
+   */
+  private record Claim(TableAttributes before, TableAttributes after) {
   }
 
 }

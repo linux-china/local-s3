@@ -300,6 +300,77 @@ class S3TablesServiceTest {
     }
   }
 
+  @Test
+  void two_configurations_stored_on_a_table_bucket_at_once_both_stay() throws Exception {
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      for (int i = 0; i < 50; i++) {
+        String arn = createTableBucket("configs-" + i);
+        ObjectNode policy = IcebergJson.newObject();
+        policy.put("resourcePolicy", "{\"Version\":\"2012-10-17\"}");
+        ObjectNode encryption = IcebergJson.newObject();
+        encryption.set("encryptionConfiguration", IcebergJson.read("{\"sseAlgorithm\":\"aws:kms\"}"));
+
+        CountDownLatch start = new CountDownLatch(1);
+        Future<Boolean> policyPut = executor.submit(() -> wins(start,
+            () -> s3Tables.putTableBucketPolicy(arn, policy)));
+        Future<Boolean> encryptionPut = executor.submit(() -> wins(start,
+            () -> s3Tables.putTableBucketEncryption(arn, encryption)));
+        start.countDown();
+
+        assertTrue(policyPut.get() && encryptionPut.get());
+        assertEquals(policy.path("resourcePolicy").asString(),
+            s3Tables.getTableBucketPolicy(arn).path("resourcePolicy").asString());
+        assertEquals("aws:kms", s3Tables.getTableBucketEncryption(arn)
+            .path("encryptionConfiguration").path("sseAlgorithm").asString());
+      }
+    }
+  }
+
+  @Test
+  void a_policy_stored_on_a_table_neither_undoes_a_commit_nor_brings_back_a_deleted_table() throws Exception {
+    String arn = createTableBucket("table-configs");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    ObjectNode policy = IcebergJson.newObject();
+    policy.put("resourcePolicy", "{\"Version\":\"2012-10-17\"}");
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      for (int i = 0; i < 50; i++) {
+        String name = "t" + i;
+        String token = createTable(arn, "db", name).path("versionToken").asString();
+        String first = s3Tables.getTableMetadataLocation(arn, "db", name).path("metadataLocation").asString();
+        ObjectNode commit = IcebergJson.newObject();
+        commit.put("versionToken", token);
+        commit.put("metadataLocation", copyOfMetadata(arn, first, "00001"));
+
+        CountDownLatch start = new CountDownLatch(1);
+        Future<Boolean> committed = executor.submit(() -> wins(start,
+            () -> s3Tables.updateTableMetadataLocation(arn, "db", name, commit)));
+        Future<Boolean> policyPut = executor.submit(() -> wins(start,
+            () -> s3Tables.putTablePolicy(arn, "db", name, policy)));
+        start.countDown();
+
+        assertTrue(committed.get() && policyPut.get());
+        ObjectNode location = s3Tables.getTableMetadataLocation(arn, "db", name);
+        assertEquals(commit.path("metadataLocation").asString(), location.path("metadataLocation").asString());
+        assertNotEquals(token, location.path("versionToken").asString());
+        assertEquals(policy.path("resourcePolicy").asString(),
+            s3Tables.getTablePolicy(arn, "db", name).path("resourcePolicy").asString());
+
+        CountDownLatch next = new CountDownLatch(1);
+        Future<Boolean> deleted = executor.submit(() -> wins(next,
+            () -> s3Tables.deleteTable(arn, "db", name, null)));
+        policyPut = executor.submit(() -> wins(next,
+            () -> s3Tables.putTablePolicy(arn, "db", name, policy)));
+        next.countDown();
+
+        assertTrue(deleted.get());
+        policyPut.get();
+        S3TablesException gone = assertThrows(S3TablesException.class,
+            () -> s3Tables.getTable(arn, "db", name, null));
+        assertEquals(404, gone.status());
+      }
+    }
+  }
+
   /**
    * Run a request once the latch opens; {@code false} if it was refused as a conflict, or found the table already
    * deleted.

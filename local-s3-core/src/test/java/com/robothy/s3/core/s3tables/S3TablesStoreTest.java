@@ -45,6 +45,27 @@ class S3TablesStoreTest {
     }
   }
 
+  @Test
+  void a_table_bucket_is_replaced_only_if_it_is_still_the_one_read() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      S3TablesStore store = S3TablesStore.create(localS3Store);
+      TableBucketRecord created = new TableBucketRecord(BUCKET, "id-1", "111122223333", 0L,
+          TableBucketRecord.TYPE_CUSTOMER, "s3://analytics", Map.of());
+      assertTrue(store.putBucketIfAbsent(created));
+
+      TableBucketRecord read = store.getBucket(BUCKET);
+      TableBucketRecord withPolicy = read.with(TableBucketRecord.POLICY, "{}");
+      assertTrue(store.replaceBucket(read, withPolicy));
+      assertFalse(store.replaceBucket(read, read.with(TableBucketRecord.ENCRYPTION, "{}")),
+          "A change built from the table bucket before the last change must lose.");
+      assertEquals(withPolicy, store.getBucket(BUCKET));
+
+      assertTrue(store.removeBucket(BUCKET));
+      assertFalse(store.replaceBucket(withPolicy, withPolicy.with(TableBucketRecord.ENCRYPTION, "{}")));
+      assertEquals(null, store.getBucket(BUCKET));
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private static String reversed(String json) {
     Map<String, Object> fields = JsonUtils.fromJson(json, LinkedHashMap.class);

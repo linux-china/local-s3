@@ -194,6 +194,29 @@ public final class S3TablesStore {
   }
 
   /**
+   * Replace a table bucket if it is still the one the caller read, so that two configuration changes made at once
+   * don't drop one another.
+   *
+   * @param expected the table bucket the caller read.
+   * @param updated the table bucket to store.
+   * @return {@code true} if it was replaced; {@code false} if it changed or is gone.
+   */
+  public boolean replaceBucket(TableBucketRecord expected, TableBucketRecord updated) {
+    String updatedJson = JsonUtils.toJson(updated);
+    while (true) {
+      // Compared as values, for the same reason as in replaceTable.
+      String json = buckets.get(expected.name());
+      if (json == null || !JsonUtils.fromJson(json, TableBucketRecord.class).equals(expected)) {
+        return false;
+      }
+      if (buckets.replace(expected.name(), json, updatedJson)) {
+        commit();
+        return true;
+      }
+    }
+  }
+
+  /**
    * Remove a table bucket.
    *
    * @param name the name.
