@@ -19,6 +19,7 @@ import com.robothy.s3.core.util.JsonUtils;
 import java.util.ArrayList;
 import com.robothy.s3.datatypes.response.ObjectVersion;
 import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
 import com.robothy.s3.core.model.request.GetObjectOptions;
@@ -133,6 +134,37 @@ class FileSystemLocalS3ManagerTest {
     assertThrows(UploadNotExistException.class, () -> objectService.uploadPart(BUCKET, KEY, uploadId, 1,
         UploadPartOptions.builder().contentLength(4).data(data).build()));
 
+    assertEquals(Set.of(), storedObjects());
+  }
+
+  /**
+   * Content files that are gone, e.g. removed by hand, mustn't keep their keys from being overwritten, deleted or
+   * aborted.
+   */
+  @Test
+  void keysWhoseContentIsGoneCanStillBeChanged() throws IOException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath);
+    ObjectService objectService = manager.objectService();
+    manager.bucketService().createBucket(BUCKET);
+    putObject(objectService, "v1");
+    String uploadId = objectService.createMultipartUpload(BUCKET, KEY,
+        CreateMultipartUploadOptions.builder().contentType("text/plain").build());
+    objectService.uploadPart(BUCKET, KEY, uploadId, 1,
+        UploadPartOptions.builder().contentLength(4).data(new ByteArrayInputStream("part".getBytes())).build());
+    for (Path file : storedObjects()) {
+      Files.delete(file);
+    }
+
+    assertThrows(IllegalArgumentException.class, () -> getObject(objectService), "Reading lost content fails.");
+    putObject(objectService, "v2");
+    assertEquals("v2", getObject(objectService));
+    objectService.abortMultipartUpload(BUCKET, KEY, uploadId);
+    for (Path file : storedObjects()) {
+      Files.delete(file);
+    }
+    objectService.deleteObject(BUCKET, KEY);
+
+    assertThrows(ObjectNotExistException.class, () -> getObject(objectService));
     assertEquals(Set.of(), storedObjects());
   }
 

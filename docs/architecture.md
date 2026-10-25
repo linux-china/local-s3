@@ -132,6 +132,11 @@ If the operation or the persistence fails:
 Deleting only after the metadata is persisted means that persisted metadata never references a deleted object, even if
 the process dies in between; at worst an unreferenced file is left behind.
 
+Deleting content that is already gone, e.g. a content file removed by hand or a data directory copied in part, logs a
+warning and counts as deleted, so the key that references it can still be deleted or overwritten, and its multipart
+uploads aborted or expired. Reading such content still fails: a request answers `500 InternalError`, and the error log
+names the request path, i.e. the bucket and key, and the ID of the missing content.
+
 Such a file, or one whose deletion failed, is removed later: when a `PERSISTENCE` service opens a data directory
 that no other service of the JVM has open, a background thread deletes the content files under `.storage/ab/cd/`
 that the metadata didn't reference when the directory was opened, and that were last modified more than a minute

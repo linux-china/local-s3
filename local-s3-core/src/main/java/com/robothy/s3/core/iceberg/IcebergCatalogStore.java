@@ -245,6 +245,21 @@ public final class IcebergCatalogStore {
   }
 
   /**
+   * Remove a table, if it is still the record the caller read: a commit that landed on it meanwhile, or a table that
+   * was dropped and created again under its name, is left in place.
+   *
+   * @param expected the record the caller read.
+   * @return {@code true} if it was removed; {@code false} if the table has changed or is gone.
+   */
+  public boolean removeTable(IcebergTableRecord expected) {
+    boolean removed = tables.remove(expected.key(), JsonUtils.toJson(expected));
+    if (removed) {
+      commit();
+    }
+    return removed;
+  }
+
+  /**
    * Whether any table or view keeps its metadata file under a location, which is what makes purging that location
    * unsafe: the files there belong to something the catalog still points at.
    *

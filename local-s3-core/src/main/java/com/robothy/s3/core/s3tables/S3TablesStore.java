@@ -361,6 +361,30 @@ public final class S3TablesStore {
   }
 
   /**
+   * Remove the attributes stored under the name of a table, if they are still those of that table; its version token
+   * may have moved meanwhile. The index by ID is only dropped if it still points at that name, since a rename has
+   * already pointed it at the new one.
+   *
+   * @param tableBucket the name of the table bucket.
+   * @param attributes the attributes of the table, at the name to remove them from.
+   * @return {@code true} if they were removed; {@code false} if the name holds another table, or none.
+   */
+  public boolean removeTableIfSame(String tableBucket, TableAttributes attributes) {
+    String key = tableKey(tableBucket, attributes.namespace(), attributes.name());
+    while (true) {
+      String json = tables.get(key);
+      if (json == null || !JsonUtils.fromJson(json, TableAttributes.class).tableId().equals(attributes.tableId())) {
+        return false;
+      }
+      if (tables.remove(key, json)) {
+        tableIds.remove(tableIdKey(tableBucket, attributes.tableId()), key);
+        commit();
+        return true;
+      }
+    }
+  }
+
+  /**
    * The tables of a table bucket, or of one of its namespaces, ordered by key.
    *
    * @param tableBucket the name of the table bucket.

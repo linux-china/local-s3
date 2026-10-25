@@ -1,6 +1,7 @@
 package com.robothy.s3.core.storage;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,7 +18,7 @@ class TransactionalStorageTest {
     Long id = storage.put("Hello".getBytes());
     storage.delete(id);
     assertFalse(delegate.isExist(id));
-    assertThrows(IllegalArgumentException.class, () -> storage.delete(id));
+    assertEquals(id, storage.delete(id), "Deleting missing content does nothing.");
   }
 
   @Test
@@ -28,7 +29,7 @@ class TransactionalStorageTest {
     Long written = storage.put("Hi".getBytes());
     storage.delete(existing);
     assertTrue(storage.isExist(existing), "Deletion is deferred until commit.");
-    assertThrows(IllegalArgumentException.class, () -> storage.delete(666L));
+    assertEquals(666L, storage.delete(666L), "Deleting missing content does nothing.");
     storage.commit();
 
     assertFalse(delegate.isExist(existing));

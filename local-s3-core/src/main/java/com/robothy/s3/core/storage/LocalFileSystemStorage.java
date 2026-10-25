@@ -193,8 +193,11 @@ class LocalFileSystemStorage implements Storage {
 
   @Override
   public Long delete(Long id) {
-    existingObjectPath(id);
     ensureWritable();
+    if (!isExist(id)) {
+      log.warn("Object id='{}' to delete doesn't exist in {}; it is treated as deleted.", id, directory);
+      return id;
+    }
     // The file of content that a reader still has to open is deleted once it released it.
     return deletions.defer(id) ? id : deleteNow(id);
   }

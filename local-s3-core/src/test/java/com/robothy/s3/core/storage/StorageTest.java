@@ -48,7 +48,8 @@ class StorageTest {
     assertThrows(IllegalArgumentException.class, () -> storage.getBytes(666L));
     assertThrows(IllegalArgumentException.class, () -> storage.getInputStream(666L));
     assertEquals(helloId, storage.delete(helloId));
-    assertThrows(IllegalArgumentException.class, () -> storage.delete(helloId));
+    assertEquals(helloId, storage.delete(helloId), "Deleting missing content does nothing.");
+    assertThrows(IllegalArgumentException.class, () -> storage.getBytes(helloId));
   }
 
   static Stream<Arguments> testCases() throws IOException {

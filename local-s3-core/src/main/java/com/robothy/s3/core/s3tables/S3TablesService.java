@@ -585,9 +585,12 @@ public final class S3TablesService {
     ObjectNode rename = IcebergJson.newObject();
     rename.set("source", identifierNode(namespace, name));
     rename.set("destination", identifierNode(newNamespace, newName));
+    // The catalog's rename is what decides: it refuses a source that moved after it was read. The attributes follow
+    // it, the new ones first so that the ID never resolves to nothing, and they replace any that a reader gave the
+    // destination meanwhile, so that the table keeps its ARN.
     catalog(bucket).renameTable(rename, false);
-    store.removeTable(bucket.name(), table);
     store.putTable(bucket.name(), table.renamedTo(newNamespace, newName));
+    store.removeTableIfSame(bucket.name(), table);
   }
 
   /**

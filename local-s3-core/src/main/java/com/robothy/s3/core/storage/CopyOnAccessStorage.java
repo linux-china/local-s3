@@ -131,17 +131,13 @@ public final class CopyOnAccessStorage implements Storage {
 
   @Override
   public Long delete(Long id) {
-    if (this.real.isExist(id)) {
-      Long deleted = this.real.delete(id);
-      forgetCopy(id);
-      return deleted;
+    // The base storage is never deleted from; content missing from both is the real storage's to report.
+    if (!this.real.isExist(id) && this.base.isExist(id)) {
+      return id;
     }
-
-    if (!this.base.isExist(id)) {
-      this.base.delete(id); // trigger exception.
-    }
-
-    return id;
+    Long deleted = this.real.delete(id);
+    forgetCopy(id);
+    return deleted;
   }
 
   @Override

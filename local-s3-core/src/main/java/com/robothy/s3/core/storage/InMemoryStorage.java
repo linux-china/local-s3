@@ -13,6 +13,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@linkplain Storage} implementation based on Java Heap.
@@ -26,6 +28,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * the limit together.
  */
 class InMemoryStorage implements Storage {
+
+  private static final Logger log = LoggerFactory.getLogger(InMemoryStorage.class);
 
   /**
    * The max size of a chunk of the content of an object.
@@ -231,7 +235,8 @@ class InMemoryStorage implements Storage {
   @Override
   public Long delete(Long id) {
     if (!store.containsKey(id)) {
-      throw notExist(id);
+      log.warn("Object id='{}' to delete doesn't exist; it is treated as deleted.", id);
+      return id;
     }
     // Content that a reader still has to open is deleted once it released it.
     return deletions.defer(id) ? id : deleteNow(id);
@@ -239,10 +244,9 @@ class InMemoryStorage implements Storage {
 
   private Long deleteNow(Long id) {
     Content removed = store.remove(id);
-    if (removed == null) {
-      throw notExist(id);
+    if (removed != null) {
+      release(removed.length());
     }
-    release(removed.length());
     return id;
   }
 

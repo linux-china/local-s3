@@ -48,7 +48,7 @@ class InMemoryStorageTest {
     assertDoesNotThrow(() -> storage.put(new byte[_1KB]));
 
     storage.delete(id);
-    assertThrows(IllegalArgumentException.class, () -> storage.delete(id));
+    assertEquals(id, storage.delete(id), "Deleting missing content does nothing.");
     assertThrows(IllegalArgumentException.class, () -> storage.getInputStream(id));
   }
 

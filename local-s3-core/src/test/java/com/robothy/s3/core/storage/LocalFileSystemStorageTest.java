@@ -315,7 +315,7 @@ class LocalFileSystemStorageTest {
     assertTrue(Files.exists(leftover), "The temporary files aren't deleted.");
     assertThrows(UnsupportedOperationException.class, () -> readOnly.put("new".getBytes()));
     assertThrows(UnsupportedOperationException.class, () -> readOnly.delete(42L));
-    assertThrows(IllegalArgumentException.class, () -> readOnly.delete(404L), "A missing object is reported as such.");
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.delete(404L));
 
     Path missing = directory.resolve("missing");
     Storage overMissing = Storage.createReadOnlyPersistent(missing);

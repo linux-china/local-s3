@@ -21,10 +21,13 @@ public interface AbortMultipartUploadService extends LocalS3MetadataApplicable, 
         throw new UploadNotExistException(objectKey, uploadId);
       }
 
-      UploadMetadata uploadMetadata = uploads.get(objectKey).remove(uploadId);
+      // The parts are deleted before the upload is removed, so that an IN_MEMORY service, which has no metadata to
+      // reload, still references the parts left if a deletion fails.
+      UploadMetadata uploadMetadata = uploads.get(objectKey).get(uploadId);
       uploadMetadata.getParts().forEach((uploadNumber, part) -> {
         storage().delete(part.getFileId());
       });
+      uploads.get(objectKey).remove(uploadId);
 
       if (uploads.get(objectKey).isEmpty()) {
         uploads.remove(objectKey);

@@ -89,22 +89,18 @@ class LayeredStorage implements Storage {
   }
 
   /**
-   * Delete the object ID from the front storage if exists.
+   * Delete the object ID from the front storage if exists. Deleting an ID that neither storage holds does nothing.
    *
    * @param id the object ID.
    * @return delete object ID.
    */
   @Override
   public Long delete(Long id) {
-    if (front.isExist(id)) {
-      return front.delete(id);
+    // The backend is never deleted from; content missing from both is the frontend's to report.
+    if (!front.isExist(id) && back.isExist(id)) {
+      return id;
     }
-
-    if (!back.isExist(id)) {
-      back.delete(id); // trigger throwing an exception.
-    }
-
-    return id;
+    return front.delete(id);
   }
 
   @Override

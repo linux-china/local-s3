@@ -573,11 +573,18 @@ public final class IcebergCatalogService {
     if (taken != null) {
       throw IcebergCatalogException.renameTargetExists(source, destination, taken.view());
     }
-    if (!store.putTableIfAbsent(record.renamedTo(destination))) {
+    IcebergTableRecord renamed = record.renamedTo(destination);
+    if (!store.putTableIfAbsent(renamed)) {
       IcebergTableRecord raced = store.getTable(destination);
       throw IcebergCatalogException.renameTargetExists(source, destination, raced != null ? raced.view() : views);
     }
-    store.removeTable(source);
+    if (!store.removeTable(record)) {
+      // The source moved after it was read: moving the record read before would lose the commit that landed on it,
+      // or take the name of the table created under it, so the destination is given back.
+      store.removeTable(renamed);
+      throw IcebergCatalogException.commitFailed("Cannot rename " + source + " to " + destination + ": "
+          + source + " changed while it was being renamed. Refresh it and try again.");
+    }
   }
 
   /*

@@ -49,6 +49,7 @@ class LayeredStorageTest {
     assertTrue(layered.isExist(id2));
     assertFalse(front.isExist(id2));
     assertTrue(back.isExist(id2));
+    assertEquals(404L, layered.delete(404L), "Deleting content that neither storage holds does nothing.");
   }
 
   @MethodSource("storage")

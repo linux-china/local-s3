@@ -275,6 +275,9 @@ public interface Storage {
    * <p>Content that is {@linkplain #retain(Collection) retained} is deleted once the last retention of it is
    * released; this method then only records the deletion, and answers as if the content was deleted.
    *
+   * <p>Deleting an ID that this storage doesn't hold logs a warning and does nothing, so that metadata which references
+   * lost content can still be deleted or overwritten. Reading such an ID still fails.
+   *
    * @param id the object ID.
    * @return deleted Object ID.
    */

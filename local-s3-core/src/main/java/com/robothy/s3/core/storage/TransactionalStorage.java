@@ -145,7 +145,9 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
       return delegate.delete(id);
     }
     if (!delegate.isExist(id)) {
-      throw new IllegalArgumentException("Object id='" + id + "' not exist.");
+      // Content that is already gone, e.g. removed by hand, mustn't keep its key from being deleted or overwritten.
+      log.warn("Object id='{}' to delete doesn't exist; it is treated as deleted.", id);
+      return id;
     }
     current.deleted.add(id);
     return id;
