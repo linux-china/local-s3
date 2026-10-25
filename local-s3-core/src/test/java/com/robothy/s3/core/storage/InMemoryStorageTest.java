@@ -116,6 +116,37 @@ class InMemoryStorageTest {
   }
 
   /**
+   * A buffer is reserved before it is allocated, so a stream that claims more than the limit never gets a buffer
+   * larger than the space left, and one that ends exactly at the limit still fits.
+   */
+  @Test
+  void buffersAStreamOnlyWithinTheSpaceLeft() {
+    InMemoryStorage storage = new InMemoryStorage(10, 1024 * 1024);
+    AtomicInteger largestBuffer = new AtomicInteger();
+    class ClaimingStream extends ByteArrayInputStream {
+      ClaimingStream(int size) {
+        super(new byte[size]);
+      }
+
+      @Override
+      public synchronized int available() {
+        return Integer.MAX_VALUE;
+      }
+
+      @Override
+      public synchronized int read(byte[] bytes, int offset, int length) {
+        largestBuffer.accumulateAndGet(bytes.length, Math::max);
+        return super.read(bytes, offset, length);
+      }
+    }
+    assertThrows(TotalSizeExceedException.class, () -> storage.put(new ClaimingStream(11)));
+    assertEquals(10, largestBuffer.get());
+    storage.put(new ClaimingStream(6));
+    assertDoesNotThrow(() -> storage.put(new ClaimingStream(4)));
+    assertThrows(TotalSizeExceedException.class, () -> storage.put(new byte[1]));
+  }
+
+  /**
    * The space of content is reserved atomically, so of the uploads that race for the last space, only as many are
    * stored as fit.
    */

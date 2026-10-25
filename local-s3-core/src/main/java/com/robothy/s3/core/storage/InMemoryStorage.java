@@ -106,13 +106,12 @@ class InMemoryStorage implements Storage {
 
   @Override
   public Long put(Long id, InputStream data) {
-    // The bytes read so far, which are reserved.
+    // The bytes of the chunks read so far, which are reserved.
     long length = 0;
     try {
       List<byte[]> chunks = new ArrayList<>();
       byte[] chunk;
       while ((chunk = readChunk(data)) != null) {
-        reserve(chunk.length);
         length += chunk.length;
         chunks.add(chunk);
       }
@@ -153,29 +152,57 @@ class InMemoryStorage implements Storage {
    * Read the next chunk of a stream. The buffer starts at the size that the stream reports to be available, and
    * grows up to the chunk size while the stream holds more, so that a small object doesn't take a whole chunk.
    *
-   * @return the chunk, exactly as long as the bytes read; {@code null} at the end of the stream.
+   * <p>Each buffer is reserved before it is allocated, as far as the budget allows, so that concurrent streams beyond
+   * the limit are rejected before they take a chunk of heap each; the space the chunk doesn't fill is released.
+   *
+   * @return the chunk, exactly as long as the bytes read, and reserved; {@code null} at the end of the stream.
    */
   private byte[] readChunk(InputStream in) throws IOException {
-    int capacity = (int) Math.min(chunkSize, Math.max(INITIAL_BUFFER_SIZE, in.available()));
-    byte[] buffer = new byte[capacity];
-    int filled = 0;
-    while (true) {
-      int read = in.read(buffer, filled, buffer.length - filled);
-      if (read < 0) {
-        break;
-      }
-      filled += read;
-      if (filled == buffer.length) {
-        if (buffer.length == chunkSize) {
+    int reserved = 0;
+    try {
+      reserved = reserveUpTo((int) Math.min(chunkSize, Math.max(INITIAL_BUFFER_SIZE, in.available())));
+      byte[] buffer = new byte[reserved];
+      int filled = 0;
+      while (true) {
+        if (filled == buffer.length) {
+          if (buffer.length == chunkSize) {
+            break;
+          }
+          int granted = reserveUpTo((int) Math.min(chunkSize - buffer.length,
+              Math.max(INITIAL_BUFFER_SIZE, buffer.length)));
+          int probed = -1;
+          if (granted == 0) {
+            // The budget is used up, which only matters if the stream holds another byte.
+            probed = in.read();
+            if (probed < 0) {
+              break;
+            }
+            reserve(1);
+            granted = 1;
+          }
+          reserved += granted;
+          buffer = Arrays.copyOf(buffer, buffer.length + granted);
+          if (probed >= 0) {
+            buffer[filled++] = (byte) probed;
+          }
+          continue;
+        }
+        int read = in.read(buffer, filled, buffer.length - filled);
+        if (read < 0) {
           break;
         }
-        buffer = Arrays.copyOf(buffer, (int) Math.min(chunkSize, (long) buffer.length * 2));
+        filled += read;
       }
+      release(reserved - filled);
+      reserved = filled;
+      if (filled == 0) {
+        return null;
+      }
+      return filled == buffer.length ? buffer : Arrays.copyOf(buffer, filled);
+    } catch (IOException | RuntimeException | Error e) {
+      release(reserved);
+      throw e;
     }
-    if (filled == 0) {
-      return null;
-    }
-    return filled == buffer.length ? buffer : Arrays.copyOf(buffer, filled);
   }
 
   /**
@@ -282,6 +309,21 @@ class InMemoryStorage implements Storage {
       }
       if (totalSize.compareAndSet(current, current + bytes)) {
         return;
+      }
+    }
+  }
+
+  /**
+   * Reserve as much of the given space as the limit leaves, in one atomic step like {@linkplain #reserve}.
+   *
+   * @return the number of bytes reserved, from 0 to {@code bytes}.
+   */
+  private int reserveUpTo(int bytes) {
+    while (true) {
+      long current = totalSize.get();
+      int granted = (int) Math.min(bytes, Math.max(0, maxTotalSize - current));
+      if (granted == 0 || totalSize.compareAndSet(current, current + granted)) {
+        return granted;
       }
     }
   }
