@@ -332,15 +332,33 @@ class MetadataFilterTest {
     }
 
     @Test
-    void testNumericComparisonWithNonNumericField() {
-        // Test numeric comparison on non-numeric field should throw exception
-        ObjectNode filter = objectMapper.createObjectNode();
-        ObjectNode genreFilter = objectMapper.createObjectNode();
-        genreFilter.put("$gt", 5);
-        filter.set("genre", genreFilter);
+    void testNumericComparisonWithNonNumericField() throws Exception {
+        // A field that isn't numeric only makes its vector miss
+        JsonNode filter = objectMapper.readTree("{\"genre\":{\"$gt\":5}}");
+        assertTrue(MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter)).isEmpty());
 
-        assertThrows(LocalS3VectorException.class, () -> 
-            MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter)));
+        // One vector whose year is the string "2019" doesn't fail the query of the others
+        ObjectNode metadata = objectMapper.createObjectNode();
+        metadata.put("year", "2019");
+        List<VectorObjectMetadata> vectors = new java.util.ArrayList<>(testVectors);
+        vectors.add(new VectorObjectMetadata("vector5", 3, 5L, metadata));
+        for (String operator : List.of("$gt", "$gte", "$lt", "$lte")) {
+            filter = objectMapper.readTree("{\"year\":{\"" + operator + "\":2020}}");
+            List<VectorObjectMetadata> result = MetadataFilter.applyFilter(vectors, MetadataFilterExpression.fromJson(filter));
+            assertFalse(result.isEmpty(), operator);
+            assertFalse(result.stream().anyMatch(v -> v.getVectorId().equals("vector5")), operator);
+        }
+    }
+
+    @Test
+    void testNumericComparisonWithNonNumericTarget() throws Exception {
+        // A target that isn't numeric is a malformed request, whatever the field holds
+        for (String filter : List.of("{\"year\":{\"$gt\":\"2000\"}}", "{\"genre\":{\"$lte\":\"x\"}}",
+            "{\"missing\":{\"$lt\":null}}")) {
+            JsonNode node = objectMapper.readTree(filter);
+            assertThrows(LocalS3VectorException.class, () ->
+                MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(node)), filter);
+        }
     }
 
     @Test

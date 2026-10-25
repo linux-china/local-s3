@@ -218,6 +218,9 @@ distance metric, since its distance to any vector is `NaN`.
 
 In the metadata filter of `QueryVectors`, every key of an object is a condition that must hold, `$and` and `$or`
 included: `{"genre": "drama", "$or": [{"year": 2020}, {"year": 2021}]}` matches a drama of 2020 or 2021.
+`$gt`, `$gte`, `$lt` and `$lte` take a number, and a filter that compares with anything else is rejected with
+`InvalidRequestException`. A vector whose value of the field isn't a number — a string `"2019"`, say — doesn't match the
+comparison, as AWS does, instead of failing the query.
 
 `ListVectors` lists the vectors of an index in the order of their keys. Its `nextToken` marks the last key of the page
 it answers, so a listing continues after that key however the vectors change between the pages: no vector that exists

@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -161,10 +162,10 @@ public class MetadataFilter {
             boolean operatorResult = switch (operator) {
                 case "$eq" -> evaluateEquals(fieldValue, operatorValue);
                 case "$ne" -> evaluateNotEquals(fieldValue, operatorValue);
-                case "$gt" -> evaluateGreaterThan(fieldValue, operatorValue);
-                case "$gte" -> evaluateGreaterThanOrEqual(fieldValue, operatorValue);
-                case "$lt" -> evaluateLessThan(fieldValue, operatorValue);
-                case "$lte" -> evaluateLessThanOrEqual(fieldValue, operatorValue);
+                case "$gt" -> evaluateComparison(fieldValue, operatorValue, c -> c > 0);
+                case "$gte" -> evaluateComparison(fieldValue, operatorValue, c -> c >= 0);
+                case "$lt" -> evaluateComparison(fieldValue, operatorValue, c -> c < 0);
+                case "$lte" -> evaluateComparison(fieldValue, operatorValue, c -> c <= 0);
                 case "$in" -> evaluateIn(fieldValue, operatorValue);
                 case "$nin" -> evaluateNotIn(fieldValue, operatorValue);
                 case "$exists" -> evaluateExists(fieldValue, operatorValue);
@@ -216,59 +217,18 @@ public class MetadataFilter {
     }
 
     /**
-     * Evaluate greater than comparison (numeric only).
+     * Evaluate $gt, $gte, $lt or $lte. The target is checked before the field so a malformed request fails whatever
+     * the vector holds, while a field that isn't numeric only makes this vector miss, as on AWS.
      */
-    private static boolean evaluateGreaterThan(JsonNode fieldValue, JsonNode targetValue) {
-        if (fieldValue == null || fieldValue.isNull()) {
-            return false;  // Non-existent fields don't match numeric comparisons
-        }
-        if (!fieldValue.isNumber()) {
+    private static boolean evaluateComparison(JsonNode fieldValue, JsonNode targetValue, IntPredicate accepts) {
+        if (targetValue == null || !targetValue.isNumber()) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric field value");
+                "Numeric comparison requires a numeric target value");
         }
-        return compareNumbers(fieldValue, targetValue) > 0;
-    }
-
-    /**
-     * Evaluate greater than or equal comparison (numeric only).
-     */
-    private static boolean evaluateGreaterThanOrEqual(JsonNode fieldValue, JsonNode targetValue) {
-        if (fieldValue == null || fieldValue.isNull()) {
-            return false;  // Non-existent fields don't match numeric comparisons
+        if (fieldValue == null || !fieldValue.isNumber()) {
+            return false;
         }
-        if (!fieldValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric field value");
-        }
-        return compareNumbers(fieldValue, targetValue) >= 0;
-    }
-
-    /**
-     * Evaluate less than comparison (numeric only).
-     */
-    private static boolean evaluateLessThan(JsonNode fieldValue, JsonNode targetValue) {
-        if (fieldValue == null || fieldValue.isNull()) {
-            return false;  // Non-existent fields don't match numeric comparisons
-        }
-        if (!fieldValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric field value");
-        }
-        return compareNumbers(fieldValue, targetValue) < 0;
-    }
-
-    /**
-     * Evaluate less than or equal comparison (numeric only).
-     */
-    private static boolean evaluateLessThanOrEqual(JsonNode fieldValue, JsonNode targetValue) {
-        if (fieldValue == null || fieldValue.isNull()) {
-            return false;  // Non-existent fields don't match numeric comparisons
-        }
-        if (!fieldValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric field value");
-        }
-        return compareNumbers(fieldValue, targetValue) <= 0;
+        return accepts.test(Double.compare(fieldValue.doubleValue(), targetValue.doubleValue()));
     }
 
     /**
@@ -334,24 +294,6 @@ public class MetadataFilter {
 
         boolean fieldExists = fieldValue != null && !fieldValue.isNull();
         return fieldExists == shouldExist.booleanValue();
-    }
-
-    /**
-     * Compare two numeric values.
-     * Returns positive if fieldValue > targetValue, negative if fieldValue < targetValue, 0 if equal.
-     */
-    private static int compareNumbers(JsonNode fieldValue, JsonNode targetValue) {
-        if (fieldValue == null || fieldValue.isNull() || !fieldValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric field value");
-        }
-
-        if (targetValue == null || targetValue.isNull() || !targetValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric target value");
-        }
-
-        return Double.compare(fieldValue.doubleValue(), targetValue.doubleValue());
     }
 
     /**
