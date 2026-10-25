@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,6 +26,10 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.signer.AwsS3V4Signer;
 import software.amazon.awssdk.auth.signer.S3SignerExecutionAttribute;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.SdkHttpMethod;
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4HttpSigner;
+import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -315,6 +320,26 @@ class StsIntegrationTest {
     assertEquals(2, noDelete.listObjectsV2(b -> b.bucket("bucket")).keyCount());
   }
 
+  /**
+   * No session policy can name the admin endpoints, so credentials scoped by one, e.g. to a table, can't reset the
+   * service, while credentials without a policy reach them like the key pair of LocalS3.
+   */
+  @Test
+  void theAdminEndpointsAreDeniedToCredentialsWithASessionPolicy() throws Exception {
+    URI endpoint = start(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
+    StsClient sts = sts(endpoint, AwsBasicCredentials.create(ACCESS_KEY_ID, SECRET_ACCESS_KEY));
+    AwsSessionCredentials scoped = session(sts.assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("table")
+        .policy(ALLOW_ALL)).credentials());
+    AwsSessionCredentials unlimited = session(sts.assumeRole(b -> b.roleArn(ROLE_ARN).roleSessionName("unlimited"))
+        .credentials());
+
+    assertEquals(403, send(endpoint, SdkHttpMethod.POST, "/_admin/reset", scoped).statusCode());
+    assertEquals(403, send(endpoint, SdkHttpMethod.POST, "/_admin/lifecycle", scoped).statusCode());
+    assertEquals(403, send(endpoint, SdkHttpMethod.GET, "/_admin/stats", scoped).statusCode());
+    assertEquals(403, send(endpoint, SdkHttpMethod.GET, "/_admin/requests", scoped).statusCode());
+    assertEquals(200, send(endpoint, SdkHttpMethod.GET, "/_admin/stats", unlimited).statusCode());
+  }
+
   @Test
   void aMalformedSessionPolicyIsRejected() {
     URI endpoint = start(ACCESS_KEY_ID, SECRET_ACCESS_KEY);
@@ -370,6 +395,27 @@ class StsIntegrationTest {
         .build();
     resources.add(client);
     return client;
+  }
+
+  private static HttpResponse<String> send(URI endpoint, SdkHttpMethod method, String path,
+      AwsSessionCredentials credentials) throws Exception {
+    URI uri = endpoint.resolve(path);
+    SignedRequest signed = AwsV4HttpSigner.create().sign(request -> request
+        .identity(credentials)
+        .request(SdkHttpFullRequest.builder()
+            .method(method)
+            .uri(uri)
+            .appendHeader("Host", uri.getHost() + ":" + uri.getPort())
+            .build())
+        .putProperty(AwsV4HttpSigner.SERVICE_SIGNING_NAME, "s3")
+        .putProperty(AwsV4HttpSigner.REGION_NAME, Region.US_EAST_1.id()));
+    HttpRequest.Builder builder = HttpRequest.newBuilder(uri).method(method.name(), HttpRequest.BodyPublishers.noBody());
+    for (Map.Entry<String, List<String>> header : signed.request().headers().entrySet()) {
+      if (!"Host".equalsIgnoreCase(header.getKey()) && !"Content-Length".equalsIgnoreCase(header.getKey())) {
+        header.getValue().forEach(value -> builder.header(header.getKey(), value));
+      }
+    }
+    return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
   }
 
   private static AwsSessionCredentials session(Credentials credentials) {

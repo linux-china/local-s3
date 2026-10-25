@@ -20,8 +20,9 @@ import java.util.Set;
  * {@code s3:ListBucket} on {@code arn:aws:s3:::bucket} and {@code UploadPart} as {@code s3:PutObject} on
  * {@code arn:aws:s3:::bucket/key}; a copy needs {@code s3:GetObject} on its source too, and {@code DeleteObjects}
  * {@code s3:DeleteObject} on each of its objects, which {@linkplain DeleteObjectsController} reports one by one. The
- * requests of S3 Vectors, S3 Tables, the Iceberg REST catalog, STS, KMS and the admin API aren't authorized, and
- * neither is a browser upload, whose credentials are fields of its form.
+ * requests of S3 Vectors, S3 Tables, the Iceberg REST catalog, STS and KMS aren't authorized, and neither is a browser
+ * upload, whose credentials are fields of its form; the admin API is denied to credentials with a policy, see
+ * {@code docs/deployment.md#admin-endpoints}.
  */
 final class SessionPolicyAuthorizer {
 
@@ -188,7 +189,8 @@ final class SessionPolicyAuthorizer {
   boolean allows(RouterHttpRequest request, String operation) {
     String action = ACTIONS.get(operation);
     if (action == null) {
-      return true;
+      // No policy can name the admin actions, and one of them resets the whole service.
+      return !AdminController.OPERATIONS.contains(operation) || policy(request).isEmpty();
     }
     Optional<SessionPolicy> policy = policy(request);
     if (policy.isEmpty()) {

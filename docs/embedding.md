@@ -323,7 +323,9 @@ Credentials credentials = sts.assumeRole(b -> b
   `Condition` is evaluated for `StringEquals`, `StringNotEquals`, `StringLike` and `StringNotLike` (with or without
   `IfExists`) on `s3:prefix`, `s3:delimiter`, `s3:max-keys` and `s3:VersionId`; any other condition is ignored, i.e.
   met. A policy that isn't one is answered with `MalformedPolicyDocument`. The requests of S3 Vectors, S3 Tables, the
-  Iceberg REST catalog, KMS and STS, and browser uploads, aren't limited by it. Credentials without a policy, of
+  Iceberg REST catalog, KMS and STS, and browser uploads, aren't limited by it, while the
+  [admin endpoints](deployment.md#admin-endpoints) are denied to it with `403 AccessDenied`, since no policy can scope
+  them. Credentials without a policy, of
   `AssumeRole` without one or of `GetSessionToken`, can do everything the static key pair can.
 + **Without `credentials(...)`** the endpoint issues credentials as well, and every request is accepted as before, so a
   catalog configured with an STS endpoint works with an unauthenticated LocalS3 too. A request that carries a session

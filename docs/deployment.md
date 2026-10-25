@@ -783,6 +783,11 @@ A running service answers a few endpoints for local development and tests, with 
 | `GET /_admin/snippets/<id>` | One snippet as text, for `duckdb`, `env` (the `export`s of s5cmd, the AWS CLI, the AWS SDKs and object_store), `aws-cli`, `boto3`, `polars`, `pyiceberg` or `spark`, to paste, or to hand to the client: `duckdb -init <(curl -s localhost:29090/_admin/snippets/duckdb)` opens a DuckDB that reaches the service. Takes `bucket` and `key` too, after which the DuckDB script ends with a query of that object, which `curl ... \| duckdb` runs and exits. |
 | `POST /_admin/reset` | Replace the data of an `IN_MEMORY` service with the data it started with, i.e. none, or the initial data of its data path, and create the `AWS_BUCKETS` again. The requests recorded for the statistics are forgotten too. A `PERSISTENCE` service answers `409 Conflict`, since a reset would delete its data path. |
 
+A request signed with temporary credentials that carry a
+[session policy](embedding.md#temporary-credentials-sts) is answered `403 AccessDenied` by every admin endpoint, so
+that credentials scoped to a table can't reset the service; temporary credentials without a policy are answered like
+the key pair of the service.
+
 Resetting a service between the tests that share it is much quicker than restarting it. The requests in progress
 are finished first, and the requests that arrive meanwhile wait for the reset. An embedded service is reset with
 `LocalS3#reset()`, and its statistics are read with `LocalS3#statistics()`.
