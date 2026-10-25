@@ -295,6 +295,28 @@ class QueryVectorsServiceTest {
   }
 
   @Test
+  void queryVectors_withFilterOnNonFilterableKey_matchesNothing() {
+    TestQueryVectorsService service = createTestService();
+    VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");
+    VectorIndexMetadata indexMetadata = createVectorIndexMetadata("test-index", 2, DistanceMetric.EUCLIDEAN);
+    indexMetadata.setNonFilterableMetadataKeys(List.of("category"));
+
+    ObjectMapper mapper = new ObjectMapper();
+    addVectorToIndex(indexMetadata, "vector1", 1L, new float[]{1.0f, 2.0f},
+        mapper.createObjectNode().put("category", "A"));
+    bucketMetadata.getIndexes().put("test-index", indexMetadata);
+    service.metadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
+
+    PutInputVector.VectorData queryVector = createVectorData(new float[]{1.0f, 2.0f});
+    JsonNode filter = mapper.createObjectNode().put("category", "A");
+
+    QueryVectorsResponse response = service.queryVectors("test-bucket", "test-index",
+        queryVector, 2, false, true, MetadataFilterExpression.fromJson(filter));
+
+    assertTrue(response.vectors().isEmpty());
+  }
+
+  @Test
   void queryVectors_withMissingVectorData_failsWithAnInternalServerError() {
     TestQueryVectorsService service = createTestService();
     VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");

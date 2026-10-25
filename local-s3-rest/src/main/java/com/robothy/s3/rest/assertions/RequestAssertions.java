@@ -8,6 +8,7 @@ import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -173,7 +174,7 @@ public class RequestAssertions {
       throw new LocalS3InvalidArgumentException(userMetaHeaderName, null,
           "Invalid user-defined object metadata key: " + userMetaHeaderName + ".");
     }
-    return userMetaHeaderName.substring(AmzHeaderNames.X_AMZ_META_PREFIX.length()).toLowerCase();
+    return userMetaHeaderName.substring(AmzHeaderNames.X_AMZ_META_PREFIX.length()).toLowerCase(Locale.ROOT);
   }
 
   /**

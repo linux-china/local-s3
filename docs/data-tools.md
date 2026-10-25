@@ -455,6 +455,8 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   (`s3://bucket`), which holds more than the table. `icebergCatalog(iceberg ->
   iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the
   `unique-table-location` of the Iceberg catalogs.
+  A table that keeps its metadata elsewhere with `write.metadata.path` has that directory purged as well, under the
+  same rules: it is skipped when another table keeps its metadata there too, or when it is the root of a bucket.
 
 ## Amazon S3 Tables
 
@@ -573,6 +575,9 @@ commit loses rather than silently overwriting a commit it never saw.
 + Every table bucket is answered with the region and the account of LocalS3 — `us-east-1` and `000000000000` — and the
   account of an ARN a client sends is **ignored** rather than refused: a test double is not an authorization boundary.
 + A namespace is **one level**, as it is in Amazon S3 Tables, whatever the shape of the `namespace` field suggests.
++ The name of a table bucket, a namespace or a table takes **lower-case letters, digits, `-` and `_`**, and so does the
+  `newName` of `RenameTable`; anything else is answered `400 BadRequestException`, so a table can't be renamed to a name
+  that `CreateTable` would refuse.
 + `ICEBERG` is the only `format`, as it is in Amazon S3 Tables.
 + Encryption, storage class, resource policies, maintenance, metrics, replication and record expiration are **stored and
   read back, and nothing happens**: nothing is encrypted or tiered, no policy is enforced, no compaction or expiration

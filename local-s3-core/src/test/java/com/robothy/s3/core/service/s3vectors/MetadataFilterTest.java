@@ -385,4 +385,28 @@ class MetadataFilterTest {
         // Should not include vector4 which has null metadata
         assertFalse(result.stream().anyMatch(v -> v.getVectorId().equals("vector4")));
     }
+
+    @Test
+    void testNonFilterableKeysAreTreatedAsAbsent() throws Exception {
+        List<String> nonFilterable = List.of("genre");
+
+        JsonNode filter = objectMapper.readTree("{\"genre\":\"documentary\"}");
+        assertTrue(MetadataFilter.applyFilter(testVectors,
+            MetadataFilterExpression.fromJson(filter).withNonFilterableKeys(nonFilterable)).isEmpty());
+
+        filter = objectMapper.readTree("{\"genre\":{\"$exists\":false}}");
+        assertEquals(4, MetadataFilter.applyFilter(testVectors,
+            MetadataFilterExpression.fromJson(filter).withNonFilterableKeys(nonFilterable)).size());
+
+        // Inside $or, and next to a filterable key
+        filter = objectMapper.readTree("{\"$or\":[{\"genre\":\"drama\"},{\"year\":2021}]}");
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors,
+            MetadataFilterExpression.fromJson(filter).withNonFilterableKeys(nonFilterable));
+        assertEquals(List.of("vector3"), result.stream().map(VectorObjectMetadata::getVectorId).toList());
+
+        // Without the setting the same filter matches as before
+        filter = objectMapper.readTree("{\"genre\":\"documentary\"}");
+        assertEquals(1, MetadataFilter.applyFilter(testVectors,
+            MetadataFilterExpression.fromJson(filter).withNonFilterableKeys(null)).size());
+    }
 }

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -336,7 +337,7 @@ final class InitialDataCache implements CopyBudget {
    * Parse a number of bytes with an optional {@code k}, {@code m} or {@code g} suffix, e.g. {@code 512m}.
    */
   static long parseBytes(String value) {
-    String trimmed = value.trim().toLowerCase();
+    String trimmed = value.trim().toLowerCase(Locale.ROOT);
     long multiplier = 1;
     if (!trimmed.isEmpty()) {
       switch (trimmed.charAt(trimmed.length() - 1)) {

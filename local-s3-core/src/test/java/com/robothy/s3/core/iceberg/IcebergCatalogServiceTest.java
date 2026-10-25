@@ -31,6 +31,8 @@ class IcebergCatalogServiceTest {
 
   private IcebergCatalogService catalog;
 
+  private IcebergMetadataFiles files;
+
   @BeforeEach
   void createCatalog() {
     LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
@@ -38,6 +40,7 @@ class IcebergCatalogServiceTest {
     LocalS3IcebergManager manager = LocalS3IcebergManager.createInMemory(null, s3Manager.bucketService(),
         s3Manager.objectService(), "s3://warehouse/", false);
     catalog = manager.icebergCatalogService();
+    files = new IcebergMetadataFiles(s3Manager.bucketService(), s3Manager.objectService());
   }
 
   @Test
@@ -190,6 +193,39 @@ class IcebergCatalogServiceTest {
     catalog.dropTable(IcebergIdentifier.of(List.of("db", "schema"), "items"), false, false);
     catalog.dropNamespace(List.of("db", "schema"));
     assertFalse(catalog.namespaceExists(List.of("db", "schema")));
+  }
+
+  @Test
+  void a_purge_deletes_the_metadata_kept_elsewhere_with_write_metadata_path() {
+    catalog.createNamespace(namespaceRequest("db"));
+    ObjectNode created = catalog.createTable(List.of("db"),
+        IcebergJson.read("""
+            {"name":"orders","schema":%s,"properties":{"write.metadata.path":"s3://warehouse/meta/orders"}}"""
+            .formatted(SCHEMA)));
+    String metadataLocation = created.path("metadata-location").asString();
+    assertTrue(metadataLocation.startsWith("s3://warehouse/meta/orders/"), metadataLocation);
+    files.write("s3://warehouse/db/orders/data/part-0.parquet", "data");
+    files.write("s3://warehouse/meta/orders/snap-1.avro", "manifest list");
+
+    catalog.dropTable(IcebergIdentifier.of(List.of("db"), "orders"), false, true);
+
+    assertThrows(IcebergCatalogException.class, () -> files.read(metadataLocation));
+    assertThrows(IcebergCatalogException.class, () -> files.read("s3://warehouse/meta/orders/snap-1.avro"));
+    assertThrows(IcebergCatalogException.class, () -> files.read("s3://warehouse/db/orders/data/part-0.parquet"));
+  }
+
+  @Test
+  void a_purge_keeps_a_metadata_directory_another_table_still_uses() {
+    catalog.createNamespace(namespaceRequest("db"));
+    String request = """
+        {"name":"%s","schema":%s,"properties":{"write.metadata.path":"s3://warehouse/shared-meta"}}""";
+    catalog.createTable(List.of("db"), IcebergJson.read(request.formatted("first", SCHEMA)));
+    String second = catalog.createTable(List.of("db"), IcebergJson.read(request.formatted("second", SCHEMA)))
+        .path("metadata-location").asString();
+
+    catalog.dropTable(IcebergIdentifier.of(List.of("db"), "first"), false, true);
+
+    assertNotNull(files.read(second));
   }
 
   @Test

@@ -335,6 +335,21 @@ class S3TablesServiceTest {
   }
 
   @Test
+  void a_rename_refuses_a_name_that_create_table_would_refuse() {
+    String arn = createTableBucket("bad-renames");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    createTable(arn, "db", "before");
+
+    for (String newName : List.of("After", "with space", "")) {
+      ObjectNode rename = IcebergJson.newObject();
+      rename.put("newName", newName);
+      assertEquals(400, assertThrows(S3TablesException.class,
+          () -> s3Tables.renameTable(arn, "db", "before", rename)).status(), newName);
+    }
+    assertEquals("before", s3Tables.getTable(arn, "db", "before", null).path("name").asString());
+  }
+
+  @Test
   void the_names_and_the_shapes_the_api_refuses() {
     assertEquals(400, assertThrows(S3TablesException.class,
         () -> s3Tables.createTableBucket(IcebergJson.read("{\"name\":\"Not Valid\"}"))).status());

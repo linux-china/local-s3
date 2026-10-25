@@ -5,6 +5,7 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.IntPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ public class MetadataFilter {
 
         List<VectorObjectMetadata> result = new ArrayList<>();
         for (VectorObjectMetadata vector : candidateVectors) {
-            if (matchesFilter(vector, filter.json())) {
+            if (matchesFilter(vector, filter.json(), filter.nonFilterableKeys())) {
                 result.add(vector);
             }
         }
@@ -54,10 +55,11 @@ public class MetadataFilter {
      *
      * @param vector the vector to evaluate the condition against
      * @param filter the condition, as the document it arrived as
+     * @param nonFilterableKeys the keys to treat as absent from the metadata of the vector
      * @return true if the metadata of the vector satisfies the condition
      */
-    static boolean matches(VectorObjectMetadata vector, JsonNode filter) {
-        return matchesFilter(vector, filter);
+    static boolean matches(VectorObjectMetadata vector, JsonNode filter, Set<String> nonFilterableKeys) {
+        return matchesFilter(vector, filter, nonFilterableKeys);
     }
 
     /**
@@ -147,16 +149,16 @@ public class MetadataFilter {
      * @param filter Filter criteria
      * @return true if vector matches the filter
      */
-    private static boolean matchesFilter(VectorObjectMetadata vector, JsonNode filter) {
+    private static boolean matchesFilter(VectorObjectMetadata vector, JsonNode filter, Set<String> nonFilterableKeys) {
         ObjectNode filterObj = (ObjectNode) filter;
 
         // Every key, a logical operator included, is one more condition of an implicit $and, so none is dropped
         for (String key : filterObj.propertyNames()) {
             JsonNode condition = filterObj.get(key);
             boolean matched = switch (key) {
-                case "$and" -> evaluateAndOperator(vector, condition);
-                case "$or" -> evaluateOrOperator(vector, condition);
-                default -> evaluateFieldFilter(vector, key, condition);
+                case "$and" -> evaluateAndOperator(vector, condition, nonFilterableKeys);
+                case "$or" -> evaluateOrOperator(vector, condition, nonFilterableKeys);
+                default -> evaluateFieldFilter(vector, key, condition, nonFilterableKeys);
             };
             if (!matched) {
                 return false;
@@ -169,9 +171,10 @@ public class MetadataFilter {
     /**
      * Evaluate $and logical operator.
      */
-    private static boolean evaluateAndOperator(VectorObjectMetadata vector, JsonNode andNode) {
+    private static boolean evaluateAndOperator(VectorObjectMetadata vector, JsonNode andNode,
+                                               Set<String> nonFilterableKeys) {
         for (JsonNode subFilter : andNode) {
-            if (!matchesFilter(vector, subFilter)) {
+            if (!matchesFilter(vector, subFilter, nonFilterableKeys)) {
                 return false;
             }
         }
@@ -181,9 +184,10 @@ public class MetadataFilter {
     /**
      * Evaluate $or logical operator.
      */
-    private static boolean evaluateOrOperator(VectorObjectMetadata vector, JsonNode orNode) {
+    private static boolean evaluateOrOperator(VectorObjectMetadata vector, JsonNode orNode,
+                                              Set<String> nonFilterableKeys) {
         for (JsonNode subFilter : orNode) {
-            if (matchesFilter(vector, subFilter)) {
+            if (matchesFilter(vector, subFilter, nonFilterableKeys)) {
                 return true;
             }
         }
@@ -193,9 +197,12 @@ public class MetadataFilter {
     /**
      * Evaluate filter for a specific field.
      */
-    private static boolean evaluateFieldFilter(VectorObjectMetadata vector, String fieldName, JsonNode fieldFilter) {
+    private static boolean evaluateFieldFilter(VectorObjectMetadata vector, String fieldName, JsonNode fieldFilter,
+                                               Set<String> nonFilterableKeys) {
         JsonNode vectorMetadata = vector.getMetadata();
-        JsonNode fieldValue = vectorMetadata != null ? vectorMetadata.get(fieldName) : null;
+        // AWS doesn't index a non-filterable key, so a filter sees it as missing rather than matching its value
+        JsonNode fieldValue = vectorMetadata != null && !nonFilterableKeys.contains(fieldName)
+            ? vectorMetadata.get(fieldName) : null;
 
         // Handle simple equality (implicit $eq)
         if (!fieldFilter.isObject()) {

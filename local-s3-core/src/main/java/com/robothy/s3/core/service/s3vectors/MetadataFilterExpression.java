@@ -1,7 +1,9 @@
 package com.robothy.s3.core.service.s3vectors;
 
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
+import java.util.Collection;
 import java.util.Objects;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -21,7 +23,7 @@ import tools.jackson.databind.JsonNode;
  */
 public final class MetadataFilterExpression {
 
-  private static final MetadataFilterExpression NONE = new MetadataFilterExpression(null);
+  private static final MetadataFilterExpression NONE = new MetadataFilterExpression(null, Set.of());
 
   /**
    * The condition as it arrived. Package private: {@linkplain MetadataFilter} evaluates it, and nothing
@@ -29,8 +31,15 @@ public final class MetadataFilterExpression {
    */
   private final JsonNode filter;
 
-  private MetadataFilterExpression(JsonNode filter) {
+  /**
+   * The metadata keys that the condition treats as absent from every vector, because the index doesn't index
+   * them for filtering, see {@code docs/apis.md#supported-amazon-s3-vectors-apis}.
+   */
+  private final Set<String> nonFilterableKeys;
+
+  private MetadataFilterExpression(JsonNode filter, Set<String> nonFilterableKeys) {
     this.filter = filter;
+    this.nonFilterableKeys = nonFilterableKeys;
   }
 
   /**
@@ -59,7 +68,21 @@ public final class MetadataFilterExpression {
       return NONE;
     }
     MetadataFilter.validate(filter);
-    return filter.isEmpty() ? NONE : new MetadataFilterExpression(filter);
+    return filter.isEmpty() ? NONE : new MetadataFilterExpression(filter, Set.of());
+  }
+
+  /**
+   * This condition evaluated against an index whose {@code nonFilterableMetadataKeys} are the given keys, which
+   * it then treats as absent from every vector.
+   *
+   * @param keys the non-filterable metadata keys of the index; {@code null} if it has none.
+   * @return a condition that ignores the values of those keys.
+   */
+  public MetadataFilterExpression withNonFilterableKeys(Collection<String> keys) {
+    if (isEmpty() || keys == null || keys.isEmpty()) {
+      return this;
+    }
+    return new MetadataFilterExpression(filter, Set.copyOf(keys));
   }
 
   /**
@@ -78,7 +101,7 @@ public final class MetadataFilterExpression {
    * @return {@code true} if the metadata of the vector satisfies it.
    */
   public boolean matches(VectorObjectMetadata vector) {
-    return isEmpty() || MetadataFilter.matches(vector, filter);
+    return isEmpty() || MetadataFilter.matches(vector, filter, nonFilterableKeys);
   }
 
   /**
@@ -86,6 +109,13 @@ public final class MetadataFilterExpression {
    */
   JsonNode json() {
     return filter;
+  }
+
+  /**
+   * The keys that {@linkplain MetadataFilter} treats as absent.
+   */
+  Set<String> nonFilterableKeys() {
+    return nonFilterableKeys;
   }
 
   @Override

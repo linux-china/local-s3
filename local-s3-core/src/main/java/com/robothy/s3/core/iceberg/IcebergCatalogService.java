@@ -572,7 +572,8 @@ public final class IcebergCatalogService {
   }
 
   /**
-   * Drop a table, or a view. A purge deletes everything under the location of the table, unless another table or view
+   * Drop a table, or a view. A purge deletes everything under the location of the table, and under its
+   * {@code write.metadata.path} if that is elsewhere, unless another table or view
    * of the catalog lives there too, e.g. one created under the name of a dropped one: losing a live table is worse than
    * leaving a dropped one's files behind. See {@code docs/data-tools.md#limits}.
    *
@@ -584,17 +585,28 @@ public final class IcebergCatalogService {
    */
   public void dropTable(IcebergIdentifier identifier, boolean views, boolean purge) {
     IcebergTableRecord record = requireTable(identifier, views);
-    String location = null;
+    List<String> locations = new ArrayList<>();
     if (purge) {
       // Read where the table keeps its files before the pointer to them is gone.
       try {
-        location = IcebergJson.read(files.read(record.metadataLocation())).path("location").asString(null);
+        ObjectNode metadata = IcebergJson.read(files.read(record.metadataLocation()));
+        String location = metadata.path("location").asString(null);
+        if (location != null) {
+          locations.add(IcebergJson.stripTrailingSlash(location));
+        }
+        String metadataPath = metadata.path("properties").path(METADATA_LOCATION_PROPERTY).asString(null);
+        if (metadataPath != null && !metadataPath.isBlank()) {
+          String directory = IcebergJson.stripTrailingSlash(metadataPath);
+          if (location == null || !(directory + "/").startsWith(IcebergJson.stripTrailingSlash(location) + "/")) {
+            locations.add(directory);
+          }
+        }
       } catch (IcebergCatalogException _) {
-        location = null;
+        locations.clear();
       }
     }
     store.removeTable(identifier);
-    if (purge && location != null) {
+    for (String location : locations) {
       if (purgeOnlyUnderWarehouse && !isUnderWarehouse(location)) {
         log.warn("Dropped {} without purging {}: it is outside the warehouse {}, so the files there aren't the"
             + " catalog's to delete.", identifier, location, warehouse);

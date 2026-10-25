@@ -93,6 +93,11 @@ class CopyObjectControllerTest {
       arguments("/my-bucket/a.txt?versionId=666", parsedOptionsWithVersion),
       arguments("my-bucket/a.txt?versionId=666", parsedOptionsWithVersion),
       arguments("my-bucket/a.txt?versionId", parsedOptionsWithoutVersion),
+      arguments("my-bucket/a.txt?versionId=", parsedOptionsWithoutVersion),
+      arguments("my-bucket/a.txt?versionIdFoo=1", parsedOptionsWithoutVersion),
+      arguments("my-bucket/a.txt?foo=1&versionId=666", parsedOptionsWithVersion),
+      arguments("my-bucket/a.txt?versionId=6=6", CopyObjectOptions.builder()
+          .sourceBucket("my-bucket").sourceKey("a.txt").sourceVersion("6=6").build()),
       arguments("my-bucket/folder/?versionId=666", CopyObjectOptions.builder()
           .sourceBucket("my-bucket").sourceKey("folder/").sourceVersion("666").build()),
       arguments("my-bucket/folder/", CopyObjectOptions.builder()

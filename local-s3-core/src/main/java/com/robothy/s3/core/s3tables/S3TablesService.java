@@ -574,7 +574,7 @@ public final class S3TablesService {
     TableBucketRecord bucket = located.bucket();
     TableAttributes table = located.table();
     String newNamespace = request.path("newNamespaceName").asString(namespace);
-    String newName = request.path("newName").asString(name);
+    String newName = request.hasNonNull("newName") ? requireName(request, "newName") : name;
     if (newNamespace.equals(namespace) && newName.equals(name)) {
       throw S3TablesException.badRequest("The rename names neither a new namespace nor a new name.");
     }

@@ -48,7 +48,8 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
             }
 
             List<VectorSearchEngine.VectorSearchResult> searchResults = performVectorSearch(
-                queryVectorData, candidateVectors, indexMetadata, validatedTopK, filter);
+                queryVectorData, candidateVectors, indexMetadata, validatedTopK,
+                filter == null ? null : filter.withNonFilterableKeys(indexMetadata.getNonFilterableMetadataKeys()));
 
             List<QueryOutputVector> outputVectors = buildOutputVectors(searchResults, returnDistance, returnMetadata);
 

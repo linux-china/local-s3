@@ -37,7 +37,7 @@ record CopySource(String bucket, String key, String versionId) {
    * @throws LocalS3InvalidArgumentException if the value doesn't name a bucket and a key.
    */
   static CopySource parse(String copySource) {
-    String[] slices = copySource.split("\\?");
+    String[] slices = copySource.split("\\?", 2);
     String path = slices[0];
 
     int delimiterIndex;
@@ -66,11 +66,13 @@ record CopySource(String bucket, String key, String versionId) {
       return null;
     }
 
-    String[] pairs = pathSlices[1].split("\\&");
+    String[] pairs = pathSlices[1].split("&");
     return Stream.of(pairs)
-        .filter(pair -> pair.startsWith("versionId") && pair.contains("="))
-        .map(pair -> pair.split("=")[1])
-        .findAny()
+        .map(pair -> pair.split("=", 2))
+        .filter(nameAndValue -> nameAndValue.length == 2 && "versionId".equals(nameAndValue[0])
+            && !nameAndValue[1].isEmpty())
+        .map(nameAndValue -> nameAndValue[1])
+        .findFirst()
         .orElse(null);
   }
 
