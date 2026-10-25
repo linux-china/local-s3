@@ -338,9 +338,14 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     String code = redirect.getHttpRedirectCode();
     if (isNotBlank(code)) {
       try {
-        return HttpResponseStatus.valueOf(Integer.parseInt(code.trim()));
+        int status = Integer.parseInt(code.trim());
+        // Checked here rather than at PutBucketWebsite, which stores the configuration as is; anything else than a
+        // 3xx, e.g. a negative number that HttpResponseStatus.valueOf rejects, would otherwise fail the request.
+        if (status >= 300 && status < 400) {
+          return HttpResponseStatus.valueOf(status);
+        }
       } catch (NumberFormatException _) {
-        // A configuration that LocalS3 stored without checking it; the default status is answered instead.
+        // Same as an out-of-range status: the default one is answered instead.
       }
     }
     return HttpResponseStatus.MOVED_PERMANENTLY;

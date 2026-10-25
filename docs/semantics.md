@@ -550,7 +550,7 @@ own, and LocalS3 applies it:
 | `IndexDocument/Suffix` | The object that a request for a directory is answered with, e.g. `home.html`. |
 | `ErrorDocument/Key` | The object that a `404` is answered with, under the status of the failure rather than `200`. |
 | `RedirectAllRequestsTo` | Answers every request of the bucket with a `301` to that host, keeping the key. |
-| `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. |
+| `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. An `HttpRedirectCode` that isn't a `3xx` status is answered as `301`. |
 
 `website(website -> website.indexDocument(...).errorDocument(...))`, or the matching variables and properties,
 change the documents of the buckets that have no configuration of their own.

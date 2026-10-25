@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -269,6 +271,20 @@ class StaticWebsiteIntegrationTest {
       assertEquals(301, response.statusCode());
       assertTrue(response.headers().firstValue("Location").orElseThrow().endsWith("/docs/index.html"),
           response.headers().firstValue("Location").orElseThrow());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-1", "200", "404", "abc"})
+    void aRoutingRuleWithARedirectCodeThatIsNotA3xxRedirectsWith301(String code) throws Exception {
+      start(authenticated().build());
+      s3.putBucketWebsite(b -> b.bucket(PUBLIC_BUCKET).websiteConfiguration(w -> w
+          .indexDocument(i -> i.suffix("index.html"))
+          .routingRules(r -> r
+              .condition(c -> c.keyPrefixEquals("old/"))
+              .redirect(to -> to.replaceKeyPrefixWith("docs/").httpRedirectCode(code)))));
+
+      HttpResponse<String> response = get("/" + PUBLIC_BUCKET + "/old/index.html");
+      assertEquals(301, response.statusCode());
     }
   }
 
