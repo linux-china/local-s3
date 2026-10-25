@@ -128,8 +128,10 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * A version ID orders the versions by creation, so the marker of a version that is gone still has its place. The
-   * null version's marker is {@code null}, which has no place once the version is gone: all versions are listed then.
+   * A version ID orders the versions by creation, so the marker of a version that is gone still has its place. That is
+   * why a page that ends with the null version is marked with its internal ID rather than {@code null}: the ID keeps its
+   * place after the null version is deleted or replaced. A {@code null} that a client builds itself has no place once
+   * the version is gone, so all versions are listed then, rather than skipping any.
    */
   private static NavigableMap<String, VersionedObjectMetadata> versionsAfter(ObjectMetadata objectMetadata,
                                                                              String versionIdMarker) {
@@ -143,7 +145,8 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
   }
 
   /**
-   * @param lastVersionId as it is answered, i.e. {@code null} for the null version; {@code null} if none was listed.
+   * @param lastVersionId the internal ID of the last version listed, the null version's included; {@code null} if none
+   *                      was listed.
    */
   record Fetched(String lastVersionId, boolean truncated) {
   }
@@ -187,7 +190,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
             .build());
       }
 
-      lastVisitedVersion = versionId;
+      lastVisitedVersion = entry.getKey();
       isLatest = false;
       keyCount++;
     }

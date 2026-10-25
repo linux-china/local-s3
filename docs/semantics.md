@@ -249,9 +249,12 @@ that version reports `null`.
   version. A `key-marker` alone lists the keys after it; with a `version-id-marker`, the listing goes on with the
   versions of that key after the version, and a `version-id-marker` of `null` goes on after the null version. The
   markers needn't name a version that exists, so a client that deletes each page before it asks for the next one, e.g.
-  to empty a bucket, pages through all of them; if the null version that a `null` marker names is gone, every version
-  left of its key is listed, so that none is skipped. An empty marker is no marker. A page is truncated only if
-  something is left after it.
+  to empty a bucket, pages through all of them. Unlike Amazon S3, a page that ends with the null version answers a
+  `NextVersionIdMarker` that is the null version's internal ID rather than `null`, so that the next page goes on from
+  its place even if the null version is deleted or replaced in between, without listing a version twice. The ID is
+  only a marker; it addresses no version. If the null version that a
+  `null` marker names is gone, every version left of its key is listed, so that none is skipped. An empty marker is no
+  marker. A page is truncated only if something is left after it.
 + Noncurrent versions and delete markers are never removed by themselves: a `NoncurrentVersionExpiration` or
   `ExpiredObjectDeleteMarker` rule removes them when a test [applies the lifecycle rules](#lifecycle-configuration).
 

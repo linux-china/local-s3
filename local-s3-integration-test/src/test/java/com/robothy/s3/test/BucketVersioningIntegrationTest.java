@@ -1,6 +1,7 @@
 package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -95,7 +96,14 @@ public class BucketVersioningIntegrationTest {
     ListObjectVersionsResponse first = s3.listObjectVersions(b -> b.bucket(bucket).maxKeys(1));
     assertTrue(first.isTruncated());
     assertEquals("null", first.versions().get(0).versionId());
-    assertEquals("null", first.nextVersionIdMarker());
+    // The marker keeps the place of the null version even if it is deleted or replaced before the next page.
+    assertNotEquals("null", first.nextVersionIdMarker());
+    s3.deleteObject(b -> b.bucket(bucket).key("a").versionId("null"));
+    ListObjectVersionsResponse second = s3.listObjectVersions(b -> b.bucket(bucket).maxKeys(1)
+        .keyMarker(first.nextKeyMarker()).versionIdMarker(first.nextVersionIdMarker()));
+    assertEquals("a", second.versions().get(0).key());
+    assertNotEquals("null", second.versions().get(0).versionId());
+    s3.putObject(b -> b.bucket(bucket).key("a"), RequestBody.fromString("2"));
 
     List<ObjectVersion> all = new ArrayList<>();
     s3.listObjectVersionsPaginator(b -> b.bucket(bucket).maxKeys(1)).versions().forEach(all::add);

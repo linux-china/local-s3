@@ -217,7 +217,7 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
 
   @ParameterizedTest
   @MethodSource("localS3Services")
-  void nullVersionAtTheEndOfAPageIsAnsweredAsNull(BucketService bucketService, ObjectService objectService) {
+  void nullVersionAtTheEndOfAPageIsListedAsNull(BucketService bucketService, ObjectService objectService) {
     String bucket = "suspended-bucket";
     bucketService.createBucket(bucket);
     bucketService.setVersioningEnabled(bucket, true);
@@ -229,15 +229,75 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 1, null, null);
     assertEquals("null", ((ObjectVersion) first.getVersions().get(0)).versionId());
     assertEquals("a", first.getNextKeyMarker().orElseThrow());
-    assertEquals("null", first.getNextVersionIdMarker().orElseThrow());
+    String marker = first.getNextVersionIdMarker().orElseThrow();
+    assertNotEquals("null", marker, "the marker keeps the place of the null version");
 
-    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null, "a", 1, null, "null");
+    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null, "a", 1, null, marker);
     assertEquals(older, ((ObjectVersion) second.getVersions().get(0)).versionId());
     assertEquals(older, second.getNextVersionIdMarker().orElseThrow());
+
+    // A client that builds the marker from the version it listed sends null.
+    ListObjectVersionsAns byNull = objectService.listObjectVersions(bucket, null, "a", 1, null, "null");
+    assertEquals(older, ((ObjectVersion) byNull.getVersions().get(0)).versionId());
 
     ListObjectVersionsAns third = objectService.listObjectVersions(bucket, null, "a", 1, null, older);
     assertEquals(List.of("b"), keys(third));
     assertTrue(third.getNextKeyMarker().isEmpty(), "the last page isn't truncated");
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void nullVersionDeletedBetweenPagesListsNoVersionTwice(BucketService bucketService, ObjectService objectService) {
+    String bucket = "suspended-bucket";
+    String oldest = putNullVersionBetweenVersions(bucketService, objectService, bucket);
+
+    ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 2, null, null);
+    assertEquals("null", ((ObjectVersion) first.getVersions().get(1)).versionId());
+    objectService.deleteObject(bucket, "a", "null");
+
+    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null,
+        first.getNextKeyMarker().orElseThrow(), 2, null, first.getNextVersionIdMarker().orElseThrow());
+    assertEquals(List.of(oldest), versionIds(second));
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void nullVersionReplacedBetweenPagesListsNoVersionTwice(BucketService bucketService, ObjectService objectService) {
+    String bucket = "suspended-bucket";
+    String oldest = putNullVersionBetweenVersions(bucketService, objectService, bucket);
+
+    ListObjectVersionsAns first = objectService.listObjectVersions(bucket, null, null, 2, null, null);
+    assertEquals("null", ((ObjectVersion) first.getVersions().get(1)).versionId());
+    bucketService.setVersioningEnabled(bucket, false);
+    put(objectService, bucket, "a"); // replaces the null version, and becomes the latest
+
+    ListObjectVersionsAns second = objectService.listObjectVersions(bucket, null,
+        first.getNextKeyMarker().orElseThrow(), 2, null, first.getNextVersionIdMarker().orElseThrow());
+    assertEquals(List.of(oldest), versionIds(second));
+  }
+
+  /**
+   * Stores, from the newest, a version, the null version and the returned version of key {@code a}.
+   */
+  private static String putNullVersionBetweenVersions(BucketService bucketService, ObjectService objectService,
+                                                      String bucket) {
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    String oldest = put(objectService, bucket, "a").getVersionId();
+    bucketService.setVersioningEnabled(bucket, false);
+    put(objectService, bucket, "a");
+    bucketService.setVersioningEnabled(bucket, true);
+    put(objectService, bucket, "a");
+    return oldest;
+  }
+
+  private static List<String> versionIds(ListObjectVersionsAns ans) {
+    return ans.getVersions().stream()
+        .map(item -> switch (item) {
+          case ObjectVersion version -> version.versionId();
+          case DeleteMarkerEntry deleteMarker -> deleteMarker.versionId();
+        })
+        .toList();
   }
 
   @ParameterizedTest
