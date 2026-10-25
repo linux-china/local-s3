@@ -76,6 +76,9 @@ public final class RequestBodies {
     if (body instanceof HeapBodyByteBuf heap) {
       return Optional.ofNullable(heap.awsChunkedTrailer());
     }
+    if (body instanceof AwsChunkedHeapByteBuf heap) {
+      return Optional.of(heap.awsChunkedTrailer());
+    }
     return body instanceof MappedFileByteBuf mapped ? Optional.ofNullable(mapped.awsChunkedTrailer())
         : Optional.empty();
   }

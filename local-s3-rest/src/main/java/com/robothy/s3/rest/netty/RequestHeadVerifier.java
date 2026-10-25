@@ -44,7 +44,7 @@ public interface RequestHeadVerifier {
 
   /**
    * How the chunk signatures of the {@code aws-chunked} body of a request whose head was accepted are verified while
-   * the body is received, if the body is large enough to be buffered in a file. The file then holds the decoded body,
+   * the body is received. The buffered body, in a file or on the heap, then holds the decoded body,
    * see {@linkplain RequestBodies#awsChunkedTrailer}, whose chunk signatures the verifier needn't verify again. The
    * default verifies none of them.
    *

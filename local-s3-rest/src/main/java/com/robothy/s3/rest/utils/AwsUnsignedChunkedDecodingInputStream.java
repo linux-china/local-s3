@@ -14,7 +14,7 @@ import java.util.Map;
 public class AwsUnsignedChunkedDecodingInputStream extends InputStream implements TrailingHeaders {
   private static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.UTF_8);
   private final InputStream source;
-  private int remainingInChunk;
+  private long remainingInChunk;
   private final Map<String, String> trailingHeaders = new LinkedHashMap<>();
   private boolean finished;
 
@@ -59,6 +59,9 @@ public class AwsUnsignedChunkedDecodingInputStream extends InputStream implement
       if (prev == '\r' && cur == '\n') {
         sb.setLength(sb.length() - 1);
         break;
+      }
+      if (sb.length() > AwsChunkedDecodingInputStream.MAX_LINE_LENGTH) {
+        throw AwsChunkedDecodingInputStream.malformed();
       }
       sb.append((char) cur);
       prev = cur;

@@ -441,6 +441,47 @@ class LocalS3RouterRouterHttpRequestDecoderTest {
     }
   }
 
+  /**
+   * An aws-chunked body that stays on the heap is decoded by the same decoder as one written to a file.
+   */
+  @Test
+  void decodesASmallAwsChunkedBodyOnTheHeap() throws IOException {
+    EmbeddedChannel heap = new EmbeddedChannel(new LocalS3HttpRequestDecoder(64 * 1024, 64 * 1024, new XmlMapper()));
+    byte[] content = randomBytes(100);
+    byte[] encoded = awsChunked(content);
+    heap.writeInbound(awsChunkedRequest(encoded.length, content.length), content(encoded, 0, 30),
+        last(encoded, 30, encoded.length));
+
+    RouterHttpRequest request = heap.<ReceivedRequest>readInbound().request();
+    ByteBuf body = request.getBody();
+    try {
+      assertTrue(RequestBodies.file(body).isEmpty());
+      assertArrayEquals(content, bytes(body));
+      assertEquals(Map.of("x-amz-checksum-crc32", "AAAAAA=="), RequestBodies.awsChunkedTrailer(body).orElseThrow());
+
+      DecodedAmzRequestBody decoded = RequestUtils.getBody(request);
+      assertEquals(content.length, decoded.getDecodedContentLength());
+      assertEquals("AAAAAA==", decoded.trailingHeader("x-amz-checksum-crc32").orElseThrow());
+      assertArrayEquals(content, decoded.getDecodedBody().readAllBytes());
+    } finally {
+      body.release();
+      heap.finishAndReleaseAll();
+    }
+  }
+
+  /**
+   * A line of chunk metadata that never ends, or is too long, is a malformed body, not an internal error.
+   */
+  @Test
+  void rejectsASmallAwsChunkedBodyWithATooLongLine() {
+    EmbeddedChannel heap = new EmbeddedChannel(new LocalS3HttpRequestDecoder(64 * 1024, 64 * 1024, new XmlMapper()));
+    byte[] encoded = ("3\r\nabc\r\n0\r\n" + "x".repeat(AwsChunkedBodyDecoder.MAX_LINE_LENGTH + 10))
+        .getBytes(StandardCharsets.US_ASCII);
+    heap.writeInbound(awsChunkedRequest(encoded.length, 3), last(encoded, 0, encoded.length));
+
+    assertRejected(heap, S3ErrorCode.IncompleteBody);
+  }
+
   private static DefaultHttpRequest awsChunkedRequest(int contentLength, int decodedLength) {
     DefaultHttpRequest request = request(contentLength);
     request.headers()

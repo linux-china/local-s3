@@ -34,9 +34,10 @@ import java.util.Map;
 public class AwsChunkedDecodingInputStream extends InputStream implements TrailingHeaders {
 
   /**
-   * That's the max chunk buffer size used in the AWS implementation.
+   * The longest line of chunk metadata, like {@code AwsChunkedBodyDecoder.MAX_LINE_LENGTH}, so that both decoders reject
+   * the same bodies.
    */
-  private static final int MAX_CHUNK_SIZE = 256 * 1024;
+  static final int MAX_LINE_LENGTH = 8 * 1024;
 
   private static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.UTF_8);
 
@@ -44,9 +45,9 @@ public class AwsChunkedDecodingInputStream extends InputStream implements Traili
 
   private final InputStream source;
 
-  private int remainingInChunk = 0;
+  private long remainingInChunk = 0;
 
-  private final ByteBuffer byteBuffer = ByteBuffer.allocate(MAX_CHUNK_SIZE);
+  private final ByteBuffer byteBuffer = ByteBuffer.allocate(MAX_LINE_LENGTH + 2);
 
   private final Map<String, String> trailingHeaders = new LinkedHashMap<>();
 
@@ -118,16 +119,20 @@ public class AwsChunkedDecodingInputStream extends InputStream implements Traili
    * @return the size of the chunk.
    * @throws LocalS3RequestException {@code IncompleteBody} if the size isn't a hexadecimal size.
    */
-  static int parseChunkSize(String chunkSize) {
+  static long parseChunkSize(String chunkSize) {
     try {
-      int size = Integer.parseInt(chunkSize.trim(), 16);
+      long size = Long.parseLong(chunkSize.trim(), 16);
       if (size >= 0) {
         return size;
       }
     } catch (NumberFormatException _) {
       // Rejected below.
     }
-    throw new LocalS3RequestException(S3ErrorCode.IncompleteBody, "The aws-chunked request body is malformed.");
+    throw malformed();
+  }
+
+  static LocalS3RequestException malformed() {
+    return new LocalS3RequestException(S3ErrorCode.IncompleteBody, "The aws-chunked request body is malformed.");
   }
 
   @Override
@@ -142,6 +147,7 @@ public class AwsChunkedDecodingInputStream extends InputStream implements Traili
    *     until the last bytes read are equal to this sequence.
    *
    * @return The bytes read <em>before</em> the end sequence started.
+   * @throws LocalS3RequestException {@code IncompleteBody} if the line is longer than {@link #MAX_LINE_LENGTH}.
    */
   private byte[] readUntil(final byte[] endSequence) throws IOException {
     byteBuffer.clear();
@@ -151,6 +157,9 @@ public class AwsChunkedDecodingInputStream extends InputStream implements Traili
         return null;
       }
 
+      if (!byteBuffer.hasRemaining()) {
+        throw malformed();
+      }
       final byte unsigned = (byte) (c & 0xFF);
       byteBuffer.put(unsigned);
     }

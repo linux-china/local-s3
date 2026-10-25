@@ -1,5 +1,7 @@
 package com.robothy.s3.rest.utils;
 
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -64,6 +66,28 @@ class AwsChunkedDecodingInputStreamTest {
       }
       assertEquals("abc", sb.toString());
     }
+  }
+
+  /**
+   * A line of chunk metadata longer than the decoder buffers is a malformed body, like AwsChunkedBodyDecoder rejects it.
+   */
+  @Test
+  void rejectsATooLongLine() throws IOException {
+    String chunkedData = "3;chunk-signature=abcd\r\nabc\r\n0;chunk-signature=zzzz\r\n"
+        + "x".repeat(AwsChunkedDecodingInputStream.MAX_LINE_LENGTH + 10);
+    try (AwsChunkedDecodingInputStream in =
+             new AwsChunkedDecodingInputStream(new ByteArrayInputStream(chunkedData.getBytes()))) {
+      LocalS3RequestException e = assertThrows(LocalS3RequestException.class, in::readAllBytes);
+      assertEquals(S3ErrorCode.IncompleteBody, e.getS3ErrorCode());
+    }
+  }
+
+  /**
+   * A chunk size beyond an int is parsed, like AwsChunkedBodyDecoder parses it.
+   */
+  @Test
+  void parsesChunkSizesBeyondAnInt() {
+    assertEquals(0x100000000L, AwsChunkedDecodingInputStream.parseChunkSize("100000000"));
   }
 
   /**

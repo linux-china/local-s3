@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -109,8 +110,8 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
   private Object headState;
 
   /**
-   * Verifies the chunk signatures of the {@code aws-chunked} body of the current request while it is written to a file;
-   * {@code null} if the body is written as it is received.
+   * Verifies the chunk signatures of the {@code aws-chunked} body of the current request while it is received;
+   * {@code null} if the body is buffered as it is received.
    */
   private ChunkSignatures chunkSignatures;
 
@@ -329,6 +330,16 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
           } else {
             ByteBuf heapBody = body;
             body = null;
+            if (chunkSignatures != null) {
+              try {
+                heapBody = decodeAwsChunked(heapBody);
+              } catch (RequestBodyRejection rejection) {
+                log.debug("Rejecting the body of a request on connection {}: {}", ctx.channel().id(),
+                    rejection.getMessage());
+                reject(ctx, rejection.errorCode(), rejection.getMessage());
+                return;
+              }
+            }
             requestReceived(ctx, heapBody);
           }
         }
@@ -362,6 +373,30 @@ public class LocalS3HttpRequestDecoder extends MessageToMessageDecoder<HttpObjec
     // The scheme of the connection, which a port that answers both HTTP and HTTPS only knows per connection, travels
     // with the request, like what the verifier verified of its head.
     ctx.fireChannelRead(new ReceivedRequest(request, ConnectionSchemes.of(ctx.channel()), verification));
+  }
+
+  /**
+   * Decode an {@code aws-chunked} body that was buffered on the heap with the decoder of a body file, rather than with a
+   * second decoder, so that a body is decoded alike whatever its size.
+   *
+   * @param encoded the body as it was received, which is released.
+   * @return the decoded body, with its trailer.
+   * @throws RequestBodyRejection if the body is malformed, or its signatures don't match.
+   */
+  private ByteBuf decodeAwsChunked(ByteBuf encoded) {
+    AwsChunkedBodyDecoder decoder = new AwsChunkedBodyDecoder(chunkSignatures, decodedContentLength);
+    List<ByteBuf> decoded = new ArrayList<>();
+    try {
+      decoder.decode(encoded, decoded);
+      Map<String, String> trailer = decoder.finish();
+      ByteBuf result = new AwsChunkedHeapByteBuf(decoded, trailer);
+      // The composite owns the slices now.
+      decoded.clear();
+      return result;
+    } finally {
+      decoded.forEach(ByteBuf::release);
+      encoded.release();
+    }
   }
 
   private void bodyFileCompleted(ChannelHandlerContext ctx, ByteBuf mappedBody) {

@@ -46,7 +46,9 @@ socket ─▶ event loop (Netty)                                  ─▶ executo
   mode that file is created under `.storage/.request-bodies/`, on the file system of the storage, so that storing an
   upload renames the file into place instead of writing the body a second time. An `aws-chunked` body, the default of
   the AWS SDKs over plain HTTP, is decoded while it is written, with its chunk signatures verified chunk by chunk, so
-  its file holds the decoded content and is renamed like any other. In `IN_MEMORY` mode the large body of a `PUT`, i.e.
+  its file holds the decoded content and is renamed like any other. A smaller `aws-chunked` body, buffered on the heap,
+  is decoded by the same decoder once it is complete, so both sizes reject a malformed body alike (`IncompleteBody`).
+  In `IN_MEMORY` mode the large body of a `PUT`, i.e.
   of `PutObject` and `UploadPart`, is received into the heap instead, decoded the same way, in chunks that the
   `InMemoryStorage` takes over when it stores the body (`HeapContent`): the upload neither touches the disk, e.g. a
   small `/tmp` of a CI container, nor is held twice. Its declared length is reserved in the budget of the storage
