@@ -221,6 +221,11 @@ included: `{"genre": "drama", "$or": [{"year": 2020}, {"year": 2021}]}` matches 
 `$gt`, `$gte`, `$lt` and `$lte` take a number, and a filter that compares with anything else is rejected with
 `InvalidRequestException`. A vector whose value of the field isn't a number — a string `"2019"`, say — doesn't match the
 comparison, as AWS does, instead of failing the query.
+The whole filter is validated before any vector is compared, so a malformed one is rejected with
+`InvalidRequestException` whatever the index holds, an empty index included, and however `$and` or `$or` would
+short-circuit: the filter must be an object (`{}` filters nothing), an operator must be one of `$eq`, `$ne`, `$gt`,
+`$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$and` and `$or`, `$and`, `$or`, `$in` and `$nin` take a non-empty
+array, `$eq`, `$ne` and the elements of `$in` and `$nin` take a single value, and `$exists` takes a boolean.
 
 `ListVectors` lists the vectors of an index in the order of their keys. Its `nextToken` marks the last key of the page
 it answers, so a listing continues after that key however the vectors change between the pages: no vector that exists

@@ -2,6 +2,7 @@ package io.github.robothy.s3.vectors.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
 import io.github.robothy.s3.RealS3;
@@ -14,6 +15,7 @@ import software.amazon.awssdk.services.s3vectors.model.DataType;
 import software.amazon.awssdk.services.s3vectors.model.DistanceMetric;
 import software.amazon.awssdk.services.s3vectors.model.QueryOutputVector;
 import software.amazon.awssdk.services.s3vectors.model.QueryVectorsResponse;
+import software.amazon.awssdk.services.s3vectors.model.S3VectorsException;
 
 public class QueryVectorsIntegrationTest {
 
@@ -372,6 +374,38 @@ public class QueryVectorsIntegrationTest {
       vectorsClient.deleteVectorBucket(b -> b.vectorBucketName(bucketName));
     }
 
+  }
+
+  @LocalS3
+  @Test
+  void testQueryVectorsWithInvalidFilterOnEmptyIndex(S3VectorsClient vectorsClient) {
+    String bucketName = "test-invalid-filter-bucket" + UUID.randomUUID();
+    String indexName = "test-invalid-filter-index" + UUID.randomUUID();
+
+    vectorsClient.createVectorBucket(b -> b.vectorBucketName(bucketName));
+    vectorsClient.createIndex(index -> index.vectorBucketName(bucketName).indexName(indexName)
+        .dimension(3)
+        .dataType(DataType.FLOAT32)
+        .distanceMetric(DistanceMetric.EUCLIDEAN)
+    );
+
+    try {
+      // No vector is compared, yet an unknown operator is still rejected
+      Document invalidFilter = Document.mapBuilder()
+          .putDocument("genre", Document.mapBuilder().putNumber("$foo", 1).build())
+          .build();
+      S3VectorsException exception = assertThrows(S3VectorsException.class, () -> vectorsClient.queryVectors(b -> b
+          .vectorBucketName(bucketName)
+          .indexName(indexName)
+          .queryVector(q -> q.float32(List.of(1.0f, 1.0f, 1.0f)))
+          .topK(10)
+          .filter(invalidFilter)
+      ));
+      assertEquals(400, exception.statusCode());
+    } finally {
+      vectorsClient.deleteIndex(b -> b.vectorBucketName(bucketName).indexName(indexName));
+      vectorsClient.deleteVectorBucket(b -> b.vectorBucketName(bucketName));
+    }
   }
 
 }

@@ -46,18 +46,20 @@ public final class MetadataFilterExpression {
    * Read a condition off the JSON document of a request. This is the boundary that the JSON representation
    * is left behind at: the callers of the search API pass the returned instance, not the document.
    *
-   * <p>The document is not validated here. An operator that no vector could be matched by, e.g. a
-   * {@code $nonsense}, is reported when the condition is evaluated, which is where Amazon S3 reports it too,
-   * as an {@code InvalidRequest} error.
+   * <p>The whole document is validated here, so that a malformed one is rejected whatever the index holds,
+   * even an index with no vectors, and evaluating it afterwards only matches.
    *
    * @param filter the {@code filter} of the request; {@code null} if it carries none.
    * @return the condition the document describes; {@linkplain #none()} if it describes none.
+   * @throws com.robothy.s3.core.exception.vectors.LocalS3VectorException if the condition is not a valid
+   *     one, e.g. because it isn't an object or names an operator that doesn't exist.
    */
   public static MetadataFilterExpression fromJson(JsonNode filter) {
-    if (Objects.isNull(filter) || filter.isNull() || filter.isEmpty()) {
+    if (Objects.isNull(filter) || filter.isNull()) {
       return NONE;
     }
-    return new MetadataFilterExpression(filter);
+    MetadataFilter.validate(filter);
+    return filter.isEmpty() ? NONE : new MetadataFilterExpression(filter);
   }
 
   /**
@@ -74,8 +76,6 @@ public final class MetadataFilterExpression {
    *
    * @param vector the vector to evaluate the condition against.
    * @return {@code true} if the metadata of the vector satisfies it.
-   * @throws com.robothy.s3.core.exception.vectors.LocalS3VectorException if the condition is not a valid
-   *     one, e.g. because it names an operator that doesn't exist.
    */
   public boolean matches(VectorObjectMetadata vector) {
     return isEmpty() || MetadataFilter.matches(vector, filter);

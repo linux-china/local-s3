@@ -332,6 +332,20 @@ class MetadataFilterTest {
     }
 
     @Test
+    void testInvalidFilterIsRejectedWhenRead() throws Exception {
+        // Rejected by fromJson itself, before any vector is compared: the outcome doesn't depend on the data
+        for (String filter : List.of("\"abc\"", "[]", "1", "{\"a\":{\"$foo\":1}}", "{\"$foo\":1}",
+            "{\"a\":{}}", "{\"a\":[1]}", "{\"a\":{\"$eq\":[1]}}", "{\"a\":{\"$in\":[[1]]}}",
+            "{\"a\":{\"$nin\":[]}}", "{\"$and\":[]}", "{\"$or\":[\"abc\"]}",
+            // The invalid condition comes after one that no vector matches, where $and short-circuits
+            "{\"$and\":[{\"genre\":\"none\"},{\"a\":{\"$foo\":1}}]}",
+            "{\"$or\":[{\"genre\":\"drama\"},{\"a\":{\"$exists\":\"yes\"}}]}")) {
+            JsonNode node = objectMapper.readTree(filter);
+            assertThrows(LocalS3VectorException.class, () -> MetadataFilterExpression.fromJson(node), filter);
+        }
+    }
+
+    @Test
     void testNumericComparisonWithNonNumericField() throws Exception {
         // A field that isn't numeric only makes its vector miss
         JsonNode filter = objectMapper.readTree("{\"genre\":{\"$gt\":5}}");

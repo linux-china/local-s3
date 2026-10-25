@@ -9,7 +9,6 @@ import java.util.function.IntPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -62,22 +61,93 @@ public class MetadataFilter {
     }
 
     /**
-     * Check if a vector matches the given filter criteria.
+     * Check the whole structure of a condition, so that whether a request is rejected depends on the request alone,
+     * not on which vectors the index holds or on where an {@code $and} or {@code $or} short-circuits. Evaluation then
+     * only matches.
+     *
+     * @param filter the condition, as the document it arrived as
+     * @throws LocalS3VectorException of {@linkplain LocalS3VectorErrorType#INVALID_REQUEST} if it isn't a valid one
+     */
+    static void validate(JsonNode filter) {
+        if (!filter.isObject()) {
+            throw invalid("Filter must be a JSON object");
+        }
+        for (String key : filter.propertyNames()) {
+            JsonNode condition = filter.get(key);
+            switch (key) {
+                case "$and", "$or" -> {
+                    if (!condition.isArray() || condition.isEmpty()) {
+                        throw invalid(key + " operator requires a non-empty array of filters");
+                    }
+                    for (JsonNode subFilter : condition) {
+                        validate(subFilter);
+                    }
+                }
+                default -> {
+                    if (key.startsWith("$")) {
+                        throw invalid("Unsupported filter operator: " + key);
+                    }
+                    validateFieldFilter(key, condition);
+                }
+            }
+        }
+    }
+
+    private static void validateFieldFilter(String fieldName, JsonNode fieldFilter) {
+        if (fieldFilter.isArray()) {
+            throw invalid("The filter of the field '" + fieldName + "' must be a value or an object of operators");
+        }
+        if (!fieldFilter.isObject()) {
+            return;
+        }
+        if (fieldFilter.isEmpty()) {
+            throw invalid("The filter of the field '" + fieldName + "' has no operator");
+        }
+        for (String operator : fieldFilter.propertyNames()) {
+            JsonNode operand = fieldFilter.get(operator);
+            switch (operator) {
+                case "$eq", "$ne" -> {
+                    if (operand.isContainer()) {
+                        throw invalid(operator + " operator requires a single value");
+                    }
+                }
+                case "$gt", "$gte", "$lt", "$lte" -> {
+                    if (!operand.isNumber()) {
+                        throw invalid("Numeric comparison requires a numeric target value");
+                    }
+                }
+                case "$in", "$nin" -> {
+                    if (!operand.isArray() || operand.isEmpty()) {
+                        throw invalid(operator + " operator requires a non-empty array value");
+                    }
+                    for (JsonNode element : operand) {
+                        if (element.isContainer()) {
+                            throw invalid(operator + " operator requires an array of single values");
+                        }
+                    }
+                }
+                case "$exists" -> {
+                    if (!operand.isBoolean()) {
+                        throw invalid("$exists operator requires a boolean value");
+                    }
+                }
+                default -> throw invalid("Unsupported filter operator: " + operator);
+            }
+        }
+    }
+
+    private static LocalS3VectorException invalid(String message) {
+        return new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, message);
+    }
+
+    /**
+     * Check if a vector matches the given filter criteria, which {@linkplain #validate} has checked.
      * 
      * @param vector Vector to check
      * @param filter Filter criteria
      * @return true if vector matches the filter
      */
     private static boolean matchesFilter(VectorObjectMetadata vector, JsonNode filter) {
-        if (filter == null || filter.isNull()) {
-            return true;
-        }
-
-        if (!filter.isObject()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Filter must be a JSON object");
-        }
-
         ObjectNode filterObj = (ObjectNode) filter;
 
         // Every key, a logical operator included, is one more condition of an implicit $and, so none is dropped
@@ -100,18 +170,7 @@ public class MetadataFilter {
      * Evaluate $and logical operator.
      */
     private static boolean evaluateAndOperator(VectorObjectMetadata vector, JsonNode andNode) {
-        if (!andNode.isArray()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$and operator requires an array of filters");
-        }
-
-        ArrayNode andArray = (ArrayNode) andNode;
-        if (andArray.isEmpty()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$and operator requires a non-empty array");
-        }
-
-        for (JsonNode subFilter : andArray) {
+        for (JsonNode subFilter : andNode) {
             if (!matchesFilter(vector, subFilter)) {
                 return false;
             }
@@ -123,18 +182,7 @@ public class MetadataFilter {
      * Evaluate $or logical operator.
      */
     private static boolean evaluateOrOperator(VectorObjectMetadata vector, JsonNode orNode) {
-        if (!orNode.isArray()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$or operator requires an array of filters");
-        }
-
-        ArrayNode orArray = (ArrayNode) orNode;
-        if (orArray.isEmpty()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$or operator requires a non-empty array");
-        }
-
-        for (JsonNode subFilter : orArray) {
+        for (JsonNode subFilter : orNode) {
             if (matchesFilter(vector, subFilter)) {
                 return true;
             }
@@ -168,9 +216,7 @@ public class MetadataFilter {
                 case "$lte" -> evaluateComparison(fieldValue, operatorValue, c -> c <= 0);
                 case "$in" -> evaluateIn(fieldValue, operatorValue);
                 case "$nin" -> evaluateNotIn(fieldValue, operatorValue);
-                case "$exists" -> evaluateExists(fieldValue, operatorValue);
-                default -> throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                    "Unsupported filter operator: " + operator);
+                default -> evaluateExists(fieldValue, operatorValue);
             };
 
             if (!operatorResult) {
@@ -217,14 +263,9 @@ public class MetadataFilter {
     }
 
     /**
-     * Evaluate $gt, $gte, $lt or $lte. The target is checked before the field so a malformed request fails whatever
-     * the vector holds, while a field that isn't numeric only makes this vector miss, as on AWS.
+     * Evaluate $gt, $gte, $lt or $lte. A field that isn't numeric only makes this vector miss, as on AWS.
      */
     private static boolean evaluateComparison(JsonNode fieldValue, JsonNode targetValue, IntPredicate accepts) {
-        if (targetValue == null || !targetValue.isNumber()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "Numeric comparison requires a numeric target value");
-        }
         if (fieldValue == null || !fieldValue.isNumber()) {
             return false;
         }
@@ -235,22 +276,11 @@ public class MetadataFilter {
      * Evaluate $in operator - check if field value is in the provided array.
      */
     private static boolean evaluateIn(JsonNode fieldValue, JsonNode arrayValue) {
-        if (!arrayValue.isArray()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$in operator requires an array value");
-        }
-
-        ArrayNode targetArray = (ArrayNode) arrayValue;
-        if (targetArray.isEmpty()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$in operator requires a non-empty array");
-        }
-
         if (fieldValue == null || fieldValue.isNull()) {
             return false;
         }
 
-        for (JsonNode targetElement : targetArray) {
+        for (JsonNode targetElement : arrayValue) {
             if (evaluateEquals(fieldValue, targetElement)) {
                 return true;
             }
@@ -264,17 +294,6 @@ public class MetadataFilter {
      * Returns true only if the field exists and is not in the array.
      */
     private static boolean evaluateNotIn(JsonNode fieldValue, JsonNode arrayValue) {
-        if (!arrayValue.isArray()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$nin operator requires an array value");
-        }
-
-        ArrayNode targetArray = (ArrayNode) arrayValue;
-        if (targetArray.isEmpty()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$nin operator requires a non-empty array");
-        }
-
         // If field doesn't exist, it doesn't match $nin condition
         if (fieldValue == null || fieldValue.isNull()) {
             return false;
@@ -287,11 +306,6 @@ public class MetadataFilter {
      * Evaluate $exists operator - check if field exists.
      */
     private static boolean evaluateExists(JsonNode fieldValue, JsonNode shouldExist) {
-        if (!shouldExist.isBoolean()) {
-            throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, 
-                "$exists operator requires a boolean value");
-        }
-
         boolean fieldExists = fieldValue != null && !fieldValue.isNull();
         return fieldExists == shouldExist.booleanValue();
     }
