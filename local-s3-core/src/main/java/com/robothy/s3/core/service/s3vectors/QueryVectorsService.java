@@ -73,6 +73,12 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
                     + " does not match index dimension " + indexDimension);
         }
 
+        int nonFinite = VectorSearchEngine.indexOfNonFinite(queryVectorData);
+        if (nonFinite >= 0) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
+                "Query vector contains invalid value at index " + nonFinite + ": " + queryVectorData[nonFinite]);
+        }
+
         if (distanceMetric == DistanceMetric.COSINE && VectorSearchEngine.isZeroVector(queryVectorData)) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
                 "Query vector is a zero vector, which a cosine index does not accept");

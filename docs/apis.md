@@ -213,6 +213,9 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 An index of the `cosine` distance metric rejects a zero vector — one whose values are all `0` — as AWS does, since it
 has no direction: `PutVectors` and `QueryVectors` answer it with `ValidationException`.
 
+A vector that contains `NaN` or an infinite value is rejected the same way by `PutVectors` and `QueryVectors`, for every
+distance metric, since its distance to any vector is `NaN`.
+
 **Vector Bucket Policy Operations:**
 + PutVectorBucketPolicy
 + GetVectorBucketPolicy

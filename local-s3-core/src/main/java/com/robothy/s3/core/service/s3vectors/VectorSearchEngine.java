@@ -39,6 +39,19 @@ public interface VectorSearchEngine {
   }
 
   /**
+   * The index of the first {@code NaN} or infinite value of the vector, or {@code -1} if every value is finite; such a
+   * value makes every distance {@code NaN}, see {@code docs/apis.md#supported-amazon-s3-vectors-apis}.
+   */
+  static int indexOfNonFinite(float[] vector) {
+    for (int i = 0; i < vector.length; i++) {
+      if (!Float.isFinite(vector[i])) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
    * Calculate the distance between two vectors using the specified metric.
    *
    * @param vector1 the first vector

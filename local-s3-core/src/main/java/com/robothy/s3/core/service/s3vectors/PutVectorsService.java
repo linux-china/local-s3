@@ -70,10 +70,10 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
       throw invalid("Vector dimension " + values.length + " of key '" + key
           + "' does not match index dimension " + dimension);
     }
-    for (int i = 0; i < values.length; i++) {
-      if (!Float.isFinite(values[i])) {
-        throw invalid("Vector data of key '" + key + "' contains invalid value at index " + i + ": " + values[i]);
-      }
+    int nonFinite = VectorSearchEngine.indexOfNonFinite(values);
+    if (nonFinite >= 0) {
+      throw invalid("Vector data of key '" + key + "' contains invalid value at index " + nonFinite + ": "
+          + values[nonFinite]);
     }
     if (distanceMetric == DistanceMetric.COSINE && VectorSearchEngine.isZeroVector(values)) {
       throw invalid("Vector data of key '" + key + "' is a zero vector, which a cosine index does not accept");

@@ -176,6 +176,25 @@ class QueryVectorsServiceTest {
   }
 
   @Test
+  void queryVectors_withNonFiniteValue_throwsValidationException() {
+    TestQueryVectorsService service = createTestService();
+    VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");
+    VectorIndexMetadata indexMetadata = createVectorIndexMetadata("test-index", 2, DistanceMetric.EUCLIDEAN);
+    bucketMetadata.getIndexes().put("test-index", indexMetadata);
+    service.metadata.getVectorBucketMetadataMap().put("test-bucket", bucketMetadata);
+
+    for (float invalid : new float[] {Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+      PutInputVector.VectorData queryVector = createVectorData(new float[] {1.0f, invalid});
+
+      LocalS3VectorException exception = assertThrows(LocalS3VectorException.class,
+          () -> service.queryVectors("test-bucket", "test-index", queryVector, 1, true, true, null));
+
+      assertEquals(LocalS3VectorErrorType.VALIDATION, exception.getErrorType());
+      assertTrue(exception.getMessage().contains("invalid value at index 1"), exception.getMessage());
+    }
+  }
+
+  @Test
   void queryVectors_withInvalidTopK_throwsException() {
     TestQueryVectorsService service = createTestService();
     VectorBucketMetadata bucketMetadata = createVectorBucketMetadata("test-bucket");
