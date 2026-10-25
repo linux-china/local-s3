@@ -304,11 +304,13 @@ public class LocalS3AutoConfiguration {
             .multipartEnabled(multipart)
             .build();
       }
+      // The CRT client uploads in parts above 8 MB by default; a PutObject stays one, with its event and MD5 ETag.
       return S3AsyncClient.crtBuilder()
           .endpointOverride(endpoint)
           .region(region)
           .credentialsProvider(credentials)
           .forcePathStyle(true)
+          .thresholdInBytes(multipart ? null : Long.MAX_VALUE)
           .build();
     }
 

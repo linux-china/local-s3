@@ -290,6 +290,9 @@ class LocalS3AutoConfigurationTest {
           async.putObject(request -> request.bucket("crt").key("a.txt"), AsyncRequestBody.fromString("CRT")).join();
           assertEquals("CRT", async.getObject(request -> request.bucket("crt").key("a.txt"),
               AsyncResponseTransformer.toBytes()).join().asUtf8String());
+          String etag = async.putObject(request -> request.bucket("crt").key("large.bin"),
+              AsyncRequestBody.fromBytes(new byte[9 * 1024 * 1024])).join().eTag();
+          assertFalse(etag.contains("-"), etag);
 
           S3TransferManager transferManager = context.getBean(S3TransferManager.class);
           Path download = directory.resolve("download.txt");
