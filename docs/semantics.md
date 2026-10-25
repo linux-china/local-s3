@@ -337,6 +337,8 @@ of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the 
   version is overwritten without versioning, or deleted, it answers `NoSuchUpload`, as Amazon S3 does.
 + `AbortMultipartUpload` of an upload that doesn't exist, or was already aborted or completed, answers
   `404 NoSuchUpload`, like Amazon S3.
++ `ListParts` answers `400 InvalidArgument` for a `max-parts` or `part-number-marker` that isn't a non-negative
+  integer. `max-parts=0` answers an empty page, and a marker beyond the last part an empty list, like Amazon S3.
 
 ## Browser form uploads (POST Object)
 

@@ -4,6 +4,7 @@ import com.robothy.s3.rest.model.response.ChecksumElements;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpRequestHandler;
 import com.robothy.netty.http.RouterHttpResponse;
+import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.model.answers.ListPartsAns;
 import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.datatypes.Owner;
@@ -34,15 +35,15 @@ public class ListPartsController implements RouterHttpRequestHandler {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     String objectKey = RequestAssertions.assertObjectKeyProvided(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
-    Integer maxParts = RequestAssertions.assertIntegerParameterOrNull(request, MAX_PARTS);
-    Integer partNumberMarker = RequestAssertions.assertIntegerParameterOrNull(request, PART_NUMBER_MARKER);
+    Integer maxParts = nonNegativeOrNull(request, MAX_PARTS);
+    Integer partNumberMarker = nonNegativeOrNull(request, PART_NUMBER_MARKER);
     ListPartsAns ans = this.objectService.listParts(bucketName, objectKey, uploadId, maxParts, partNumberMarker);
 
     List<ListPartsResult.Part> parts = new ArrayList<>(ans.getParts().size());
     for (ListPartsAns.Part part : ans.getParts()) {
       ListPartsResult.Part p = ListPartsResult.Part.builder()
           .partNumber(part.getPartNumber())
-          .lastModified(Instant.ofEpochSecond(part.getLastModified()))
+          .lastModified(Instant.ofEpochMilli(part.getLastModified()))
           .size(part.getSize())
           .etag(ResponseUtils.quoteEtag(part.getETag()))
           .checksum(ChecksumElements.valueOf(part.getChecksum()))
@@ -68,6 +69,15 @@ public class ListPartsController implements RouterHttpRequestHandler {
     response.status(HttpResponseStatus.OK)
         .write(XmlUtils.toXml(listPartsResult));
     ResponseUtils.addCommonHeaders(response);
+  }
+
+  private static Integer nonNegativeOrNull(RouterHttpRequest request, String queryParam) {
+    Integer value = RequestAssertions.assertIntegerParameterOrNull(request, queryParam);
+    if (value != null && value < 0) {
+      throw new LocalS3InvalidArgumentException(queryParam, String.valueOf(value),
+          "Argument " + queryParam + " must be an integer between 0 and " + Integer.MAX_VALUE + ".");
+    }
+    return value;
   }
 
 }

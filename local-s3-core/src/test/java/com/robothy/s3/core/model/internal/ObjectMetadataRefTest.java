@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
@@ -78,6 +79,33 @@ class ObjectMetadataRefTest {
     assertTrue(ref.evict());
     assertFalse(ref.isLoaded());
     assertEquals("v1", ref.get().getLatestVersion());
+  }
+
+  /**
+   * The cache evicts from any thread while a writer pins the key it changes: once pin() returns, the instance get()
+   * answers is the one the reference keeps until it is unpinned.
+   */
+  @Test
+  void anEvictionRacingAPinNeverDropsThePinnedInstance() throws Exception {
+    ObjectMetadataRef ref = ObjectMetadataRef.lazy("a", key -> JSON, ObjectMetadataCache.unbounded());
+    AtomicBoolean done = new AtomicBoolean();
+    Thread evicter = Thread.ofPlatform().start(() -> {
+      while (!done.get()) {
+        ref.evict();
+      }
+    });
+    try {
+      for (int i = 0; i < 20_000; i++) {
+        ref.pin();
+        ObjectMetadata changing = ref.get();
+        Thread.onSpinWait();
+        assertSame(changing, ref.persisted(), "The pinned instance was dropped at iteration " + i + ".");
+        ref.unpin();
+      }
+    } finally {
+      done.set(true);
+      evicter.join();
+    }
   }
 
   /**

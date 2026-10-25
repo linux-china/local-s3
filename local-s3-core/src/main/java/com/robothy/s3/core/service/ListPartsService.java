@@ -11,9 +11,10 @@ import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.UploadMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.SortedMap;
 
 /**
  * <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html">ListParts</a>
@@ -34,18 +35,21 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
       int marker = Objects.isNull(partNumberMarker) ? 0 : partNumberMarker;
       int max = Objects.isNull(maxParts) || maxParts > 1000 ? 1000 : maxParts;
 
-      int fromKeyInclusive = marker + 1;
-      int toKeyExclusive = fromKeyInclusive + max;
-
-      SortedMap<Integer, UploadPartMetadata> fetchedUploadPartMap = uploadMetadata.getParts().subMap(fromKeyInclusive, toKeyExclusive);
-      List<ListPartsAns.Part> parts = new ArrayList<>(fetchedUploadPartMap.size());
-      fetchedUploadPartMap.forEach((partNumber, partMeta) -> parts.add(ListPartsAns.Part.builder()
-          .partNumber(partNumber)
-          .eTag(partMeta.getEtag())
-          .lastModified(partMeta.getLastModified())
-          .size(partMeta.getSize())
-          .checksum(partMeta.getChecksum())
-          .build()));
+      // Part numbers may have gaps, so the page is counted in parts rather than cut as a part-number range.
+      Iterator<Map.Entry<Integer, UploadPartMetadata>> remaining =
+          uploadMetadata.getParts().tailMap(marker, false).entrySet().iterator();
+      List<ListPartsAns.Part> parts = new ArrayList<>();
+      while (parts.size() < max && remaining.hasNext()) {
+        Map.Entry<Integer, UploadPartMetadata> entry = remaining.next();
+        UploadPartMetadata partMeta = entry.getValue();
+        parts.add(ListPartsAns.Part.builder()
+            .partNumber(entry.getKey())
+            .eTag(partMeta.getEtag())
+            .lastModified(partMeta.getLastModified())
+            .size(partMeta.getSize())
+            .checksum(partMeta.getChecksum())
+            .build());
+      }
 
       return ListPartsAns.builder()
           .bucket(bucket)
@@ -55,10 +59,9 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
           .checksumType(uploadMetadata.getChecksumType())
           .storageClass(SystemMetadata.storageClassOf(uploadMetadata.getSystemMetadata()))
           .partNumberMarker(marker)
-          .nextPartNumberMarker(fetchedUploadPartMap.isEmpty() ? 0 : fetchedUploadPartMap.lastKey())
+          .nextPartNumberMarker(parts.isEmpty() ? marker : parts.getLast().getPartNumber())
           .maxParts(max)
-          .isTruncated(!fetchedUploadPartMap.isEmpty() &&
-              fetchedUploadPartMap.lastKey() < uploadMetadata.getParts().lastKey())
+          .isTruncated(remaining.hasNext())
           .parts(parts)
           .build();
     });

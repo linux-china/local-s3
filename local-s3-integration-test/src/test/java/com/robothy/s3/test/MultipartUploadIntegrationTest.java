@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.jupiter.LocalS3;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -135,6 +137,10 @@ public class MultipartUploadIntegrationTest {
     Part part1 = partListing.get(0);
     assertEquals(1, part1.partNumber());
     assertEquals(uploadPartRequest1.eTag(), part1.eTag());
+    for (Part part : partListing) {
+      long skewSeconds = Math.abs(Duration.between(part.lastModified(), Instant.now()).toSeconds());
+      assertTrue(skewSeconds < 60, "LastModified should be close to now, but was " + part.lastModified());
+    }
 
     Part part2 = partListing.get(1);
     assertEquals(2, part2.partNumber());
@@ -151,6 +157,18 @@ public class MultipartUploadIntegrationTest {
         .maxParts(2)
         .partNumberMarker(0)).parts();
     assertEquals(2, partListing.size());
+
+    // invalid max-parts / part-number-marker answer 400 InvalidArgument; a marker beyond the parts an empty list.
+    S3Exception negativeMaxParts = assertThrows(S3Exception.class, () -> s3.listParts(b -> b.bucket(bucketName)
+        .key("a.txt").uploadId(initiateMultipartUploadResult.uploadId()).maxParts(-1)));
+    assertEquals(400, negativeMaxParts.statusCode());
+    assertEquals("InvalidArgument", negativeMaxParts.awsErrorDetails().errorCode());
+    S3Exception negativeMarker = assertThrows(S3Exception.class, () -> s3.listParts(b -> b.bucket(bucketName)
+        .key("a.txt").uploadId(initiateMultipartUploadResult.uploadId()).partNumberMarker(-1)));
+    assertEquals(400, negativeMarker.statusCode());
+    assertEquals("InvalidArgument", negativeMarker.awsErrorDetails().errorCode());
+    assertTrue(s3.listParts(b -> b.bucket(bucketName).key("a.txt").uploadId(initiateMultipartUploadResult.uploadId())
+        .partNumberMarker(2147483640)).parts().isEmpty());
 
     // given: completed multipart upload
     List<CompletedPart> partETags = List.of(CompletedPart.builder().partNumber(1).eTag(uploadPartRequest1.eTag()).build(),

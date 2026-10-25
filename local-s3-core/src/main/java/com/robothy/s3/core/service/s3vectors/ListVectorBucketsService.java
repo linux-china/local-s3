@@ -15,14 +15,19 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
 
   default ListVectorBucketsResponse listVectorBuckets(Integer maxResults, String nextToken, String prefix) {
     int normalizedMaxResults = validateRequestParameters(maxResults, prefix);
-    int startIndex = PaginationUtils.parseNextToken(nextToken);
+    String lastName = PaginationUtils.parseNextToken(nextToken);
     
     List<VectorBucketMetadata> allBuckets = getAllVectorBuckets();
     List<VectorBucketMetadata> filteredBuckets = applyFiltersAndSorting(allBuckets, prefix);
-    List<VectorBucketMetadata> paginatedResults = paginateResults(filteredBuckets, startIndex, normalizedMaxResults);
+    List<VectorBucketMetadata> paginatedResults = paginateResults(filteredBuckets, lastName, normalizedMaxResults);
+    boolean truncated = paginatedResults.size() > normalizedMaxResults;
+    if (truncated) {
+      paginatedResults = paginatedResults.subList(0, normalizedMaxResults);
+    }
     
     List<VectorBucketSummary> summaries = convertToSummaries(paginatedResults);
-    String responseNextToken = generateNextTokenIfNeeded(startIndex, paginatedResults.size(), filteredBuckets.size());
+    String responseNextToken = truncated
+        ? PaginationUtils.generateNextToken(paginatedResults.getLast().getVectorBucketName()) : null;
     
     return buildResponse(summaries, responseNextToken);
   }
@@ -42,8 +47,8 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
     return CollectionProcessingUtils.sortByName(filtered, VectorBucketMetadata::getVectorBucketName);
   }
 
-  private List<VectorBucketMetadata> paginateResults(List<VectorBucketMetadata> buckets, int startIndex, int maxResults) {
-    return CollectionProcessingUtils.applyPagination(buckets, startIndex, maxResults);
+  private List<VectorBucketMetadata> paginateResults(List<VectorBucketMetadata> buckets, String lastName, int maxResults) {
+    return CollectionProcessingUtils.applyPagination(buckets, lastName, maxResults, VectorBucketMetadata::getVectorBucketName);
   }
 
   private List<VectorBucketSummary> convertToSummaries(List<VectorBucketMetadata> buckets) {
@@ -57,10 +62,6 @@ public interface ListVectorBucketsService extends S3VectorsMetadataAware {
         bucketMetadata.getCreationDate() / 1000,
         VectorBucket.generateArn(bucketMetadata.getVectorBucketName()),
         bucketMetadata.getVectorBucketName());
-  }
-
-  private String generateNextTokenIfNeeded(int startIndex, int pageSize, int totalSize) {
-    return PaginationUtils.generateNextToken(startIndex, pageSize, totalSize);
   }
 
   private ListVectorBucketsResponse buildResponse(List<VectorBucketSummary> summaries, String nextToken) {

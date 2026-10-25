@@ -215,7 +215,10 @@ public final class ObjectMetadataRef {
    * instance that {@linkplain #get()} answers, so dropping it would drop them.
    */
   public void pin() {
-    this.pinned = true;
+    // Under the lock that evict() checks it in, so that once this returns no eviction that saw it unpinned is pending.
+    synchronized (this) {
+      this.pinned = true;
+    }
   }
 
   /**
@@ -262,13 +265,20 @@ public final class ObjectMetadataRef {
     if (pinned || source == null) {
       return false;
     }
-    ObjectMetadata inHeap = metadata;
-    if (inHeap == null) {
-      return false;
+    // The cache evicts from any thread, without the lock of the bucket that is changing the key, so the check of the
+    // pin and the drop must not be split by a pin(): the change would then be made on an instance that is gone.
+    synchronized (this) {
+      if (pinned) {
+        return false;
+      }
+      ObjectMetadata inHeap = metadata;
+      if (inHeap == null) {
+        return false;
+      }
+      // Recorded before it is dropped, as it is what the store holds: only a written reference is unpinned.
+      latestDeleted = inHeap.isLatestDeleted();
+      return METADATA.compareAndSet(this, inHeap, null);
     }
-    // Recorded before it is dropped, as it is what the store holds: only a written reference is unpinned.
-    latestDeleted = inHeap.isLatestDeleted();
-    return METADATA.compareAndSet(this, inHeap, null);
   }
 
   /**

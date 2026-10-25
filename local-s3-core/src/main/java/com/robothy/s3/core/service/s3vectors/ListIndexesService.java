@@ -20,15 +20,20 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
       Integer maxResults, String nextToken, String prefix) {
 
     int normalizedMaxResults = validateRequestParameters(maxResults, prefix);
-    int startIndex = PaginationUtils.parseNextToken(nextToken);
+    String lastName = PaginationUtils.parseNextToken(nextToken);
 
     VectorBucketMetadata bucketMetadata = assertBucketExists(vectorBucketName);
     List<VectorIndexMetadata> allIndexes = getAllIndexesFromBucket(bucketMetadata);
     List<VectorIndexMetadata> filteredIndexes = applyFiltersAndSorting(allIndexes, prefix);
-    List<VectorIndexMetadata> paginatedResults = paginateResults(filteredIndexes, startIndex, normalizedMaxResults);
+    List<VectorIndexMetadata> paginatedResults = paginateResults(filteredIndexes, lastName, normalizedMaxResults);
+    boolean truncated = paginatedResults.size() > normalizedMaxResults;
+    if (truncated) {
+      paginatedResults = paginatedResults.subList(0, normalizedMaxResults);
+    }
 
     List<IndexSummary> summaries = convertToSummaries(paginatedResults, vectorBucketName);
-    String responseNextToken = generateNextTokenIfNeeded(startIndex, paginatedResults.size(), filteredIndexes.size());
+    String responseNextToken = truncated
+        ? PaginationUtils.generateNextToken(paginatedResults.getLast().getIndexName()) : null;
 
     return buildResponse(summaries, responseNextToken);
   }
@@ -52,8 +57,8 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
     return CollectionProcessingUtils.sortByName(filtered, VectorIndexMetadata::getIndexName);
   }
 
-  private List<VectorIndexMetadata> paginateResults(List<VectorIndexMetadata> indexes, int startIndex, int maxResults) {
-    return CollectionProcessingUtils.applyPagination(indexes, startIndex, maxResults);
+  private List<VectorIndexMetadata> paginateResults(List<VectorIndexMetadata> indexes, String lastName, int maxResults) {
+    return CollectionProcessingUtils.applyPagination(indexes, lastName, maxResults, VectorIndexMetadata::getIndexName);
   }
 
   private List<IndexSummary> convertToSummaries(List<VectorIndexMetadata> indexes, String bucketName) {
@@ -68,10 +73,6 @@ public interface ListIndexesService extends S3VectorsMetadataAware {
         VectorIndex.generateArn(bucketName, indexMetadata.getIndexName()),
         indexMetadata.getIndexName(),
         bucketName);
-  }
-
-  private String generateNextTokenIfNeeded(int startIndex, int pageSize, int totalSize) {
-    return PaginationUtils.generateNextToken(startIndex, pageSize, totalSize);
   }
 
   private ListIndexesResponse buildResponse(List<IndexSummary> summaries, String nextToken) {

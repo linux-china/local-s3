@@ -64,131 +64,56 @@ class PaginationUtilsTest {
   }
 
   @Test
-  void parseNextToken_withNull_returnsZero() {
-    int result = PaginationUtils.parseNextToken(null);
-    
-    assertEquals(0, result);
+  void parseNextToken_withNull_returnsNull() {
+    assertNull(PaginationUtils.parseNextToken(null));
   }
 
   @Test
-  void parseNextToken_withEmptyString_returnsZero() {
-    int result = PaginationUtils.parseNextToken("");
-    
-    assertEquals(0, result);
+  void parseNextToken_withEmptyString_returnsNull() {
+    assertNull(PaginationUtils.parseNextToken(""));
   }
 
   @Test
-  void parseNextToken_withWhitespaceOnly_returnsZero() {
-    int result = PaginationUtils.parseNextToken("   ");
-    
-    assertEquals(0, result);
+  void parseNextToken_withWhitespaceOnly_returnsNull() {
+    assertNull(PaginationUtils.parseNextToken("   "));
   }
 
   @Test
-  void parseNextToken_withValidToken_returnsIndex() {
-    String token = Base64.getEncoder().encodeToString("100".getBytes());
-    
-    int result = PaginationUtils.parseNextToken(token);
-    
-    assertEquals(100, result);
-  }
+  void parseNextToken_roundTripWithGeneratedToken_returnsLastName() {
+    String token = PaginationUtils.generateNextToken("index-b");
 
-  @Test
-  void parseNextToken_withZeroIndex_returnsZero() {
-    String token = Base64.getEncoder().encodeToString("0".getBytes());
-    
-    int result = PaginationUtils.parseNextToken(token);
-    
-    assertEquals(0, result);
+    assertEquals("index-b", PaginationUtils.parseNextToken(token));
   }
 
   @Test
   void parseNextToken_withInvalidBase64_throwsException() {
     LocalS3VectorException exception = assertThrows(LocalS3VectorException.class,
         () -> PaginationUtils.parseNextToken("invalid-base64!!!"));
-    
-    assertEquals(LocalS3VectorErrorType.INVALID_REQUEST, exception.getErrorType());
+
+    assertEquals(LocalS3VectorErrorType.VALIDATION, exception.getErrorType());
     assertEquals("Invalid nextToken", exception.getMessage());
   }
 
   @Test
-  void parseNextToken_withNonNumericContent_throwsException() {
-    String token = Base64.getEncoder().encodeToString("not-a-number".getBytes());
-    
+  void parseNextToken_withOffsetToken_throwsException() {
+    String negativeOffset = Base64.getEncoder().encodeToString("-1".getBytes());
+
     LocalS3VectorException exception = assertThrows(LocalS3VectorException.class,
-        () -> PaginationUtils.parseNextToken(token));
-    
-    assertEquals(LocalS3VectorErrorType.INVALID_REQUEST, exception.getErrorType());
+        () -> PaginationUtils.parseNextToken(negativeOffset));
+
+    assertEquals(LocalS3VectorErrorType.VALIDATION, exception.getErrorType());
     assertEquals("Invalid nextToken", exception.getMessage());
   }
 
   @Test
   void parseNextToken_withTooLongToken_throwsException() {
     String longToken = "a".repeat(513);
-    
+
     LocalS3VectorException exception = assertThrows(LocalS3VectorException.class,
         () -> PaginationUtils.parseNextToken(longToken));
-    
-    assertEquals(LocalS3VectorErrorType.INVALID_REQUEST, exception.getErrorType());
+
+    assertEquals(LocalS3VectorErrorType.VALIDATION, exception.getErrorType());
     assertEquals("nextToken length must not exceed 512 characters", exception.getMessage());
-  }
-
-  @Test
-  void parseNextToken_withMaxLengthToken_doesNotThrow() {
-    String maxLengthContent = "a".repeat(384); // Base64 encoded will be 512 chars
-    String token = Base64.getEncoder().encodeToString("100".getBytes());
-    
-    assertDoesNotThrow(() -> PaginationUtils.parseNextToken(token));
-  }
-
-  @Test
-  void generateNextToken_withMoreResults_returnsToken() {
-    String token = PaginationUtils.generateNextToken(0, 10, 20);
-    
-    assertNotNull(token);
-    int decodedIndex = Integer.parseInt(new String(Base64.getDecoder().decode(token)));
-    assertEquals(10, decodedIndex);
-  }
-
-  @Test
-  void generateNextToken_withNoMoreResults_returnsNull() {
-    String token = PaginationUtils.generateNextToken(10, 10, 20);
-    
-    assertNull(token);
-  }
-
-  @Test
-  void generateNextToken_withExactlyAtEnd_returnsNull() {
-    String token = PaginationUtils.generateNextToken(15, 5, 20);
-    
-    assertNull(token);
-  }
-
-  @Test
-  void generateNextToken_withZeroCurrentIndex_returnsValidToken() {
-    String token = PaginationUtils.generateNextToken(0, 5, 10);
-    
-    assertNotNull(token);
-    int decodedIndex = Integer.parseInt(new String(Base64.getDecoder().decode(token)));
-    assertEquals(5, decodedIndex);
-  }
-
-  @Test
-  void generateNextToken_withLargeIndex_returnsValidToken() {
-    String token = PaginationUtils.generateNextToken(1000, 100, 1500);
-    
-    assertNotNull(token);
-    int decodedIndex = Integer.parseInt(new String(Base64.getDecoder().decode(token)));
-    assertEquals(1100, decodedIndex);
-  }
-
-  @Test
-  void parseNextToken_roundTripWithGeneratedToken_maintainsValue() {
-    String originalToken = PaginationUtils.generateNextToken(50, 25, 100);
-    
-    int parsedIndex = PaginationUtils.parseNextToken(originalToken);
-    
-    assertEquals(75, parsedIndex);
   }
 
   @Test
@@ -196,14 +121,5 @@ class PaginationUtilsTest {
     int result = PaginationUtils.validateAndNormalizeMaxResults(1000);
     
     assertEquals(500, result);
-  }
-
-  @Test
-  void generateNextToken_withSingleItemPage_returnsCorrectToken() {
-    String token = PaginationUtils.generateNextToken(0, 1, 5);
-    
-    assertNotNull(token);
-    int decodedIndex = Integer.parseInt(new String(Base64.getDecoder().decode(token)));
-    assertEquals(1, decodedIndex);
   }
 }

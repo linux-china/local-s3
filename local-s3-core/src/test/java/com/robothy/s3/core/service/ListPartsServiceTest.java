@@ -128,4 +128,45 @@ class ListPartsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(3, listPartsAns9.getParts().get(2).getPartNumber());
   }
 
+  @MethodSource("localS3Services")
+  @ParameterizedTest
+  void listPartsWithPartNumberGaps(BucketService bucketService, ObjectService objectService) {
+    final String bucketName = "test-list-parts-gaps";
+    bucketService.createBucket(bucketName);
+    String uploadId = objectService.createMultipartUpload(bucketName, "a.txt", CreateMultipartUploadOptions.builder()
+        .build());
+    for (int partNumber : new int[] {1, 5, 10}) {
+      objectService.uploadPart(bucketName, "a.txt", uploadId, partNumber, UploadPartOptions.builder()
+          .data(new ByteArrayInputStream("Hello".getBytes()))
+          .contentLength(5)
+          .build());
+    }
+
+    ListPartsAns page1 = objectService.listParts(bucketName, "a.txt", uploadId, 2, 0);
+    assertEquals(2, page1.getParts().size());
+    assertEquals(1, page1.getParts().get(0).getPartNumber());
+    assertEquals(5, page1.getParts().get(1).getPartNumber());
+    assertEquals(5, page1.getNextPartNumberMarker());
+    assertTrue(page1.isTruncated());
+
+    ListPartsAns page2 = objectService.listParts(bucketName, "a.txt", uploadId, 2, page1.getNextPartNumberMarker());
+    assertEquals(1, page2.getParts().size());
+    assertEquals(10, page2.getParts().get(0).getPartNumber());
+    assertEquals(10, page2.getNextPartNumberMarker());
+    assertFalse(page2.isTruncated());
+
+    // A marker between part numbers starts after it; an empty page echoes the requested marker.
+    ListPartsAns fromGap = objectService.listParts(bucketName, "a.txt", uploadId, 1, 6);
+    assertEquals(10, fromGap.getParts().get(0).getPartNumber());
+    assertFalse(fromGap.isTruncated());
+    ListPartsAns empty = objectService.listParts(bucketName, "a.txt", uploadId, 2, 10);
+    assertEquals(0, empty.getParts().size());
+    assertEquals(10, empty.getNextPartNumberMarker());
+    assertFalse(empty.isTruncated());
+
+    ListPartsAns nearMax = objectService.listParts(bucketName, "a.txt", uploadId, 1000, Integer.MAX_VALUE - 1);
+    assertEquals(0, nearMax.getParts().size());
+    assertFalse(nearMax.isTruncated());
+  }
+
 }

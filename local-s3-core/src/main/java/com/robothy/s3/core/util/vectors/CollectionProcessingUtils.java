@@ -45,18 +45,21 @@ public class CollectionProcessingUtils {
   }
 
   /**
-   * Applies pagination to a list of items.
-   * 
-   * @param items the items to paginate
-   * @param startIndex the starting index
+   * Returns the page of sorted items that follows {@code lastName}, with one extra item when more remain,
+   * so that the caller can tell whether the listing is truncated.
+   *
+   * @param sortedItems the items sorted by name
+   * @param lastName the last name of the previous page, or {@code null} for the first page
    * @param maxResults the maximum number of results
+   * @param nameExtractor function to extract name from each item
    * @param <T> the type of items
-   * @return paginated list
+   * @return at most {@code maxResults + 1} items whose names follow {@code lastName}
    */
-  public static <T> List<T> applyPagination(List<T> items, int startIndex, int maxResults) {
-    return items.stream()
-        .skip(startIndex)
-        .limit(maxResults)
+  public static <T> List<T> applyPagination(List<T> sortedItems, String lastName, int maxResults,
+      java.util.function.Function<T, String> nameExtractor) {
+    return sortedItems.stream()
+        .filter(item -> lastName == null || nameExtractor.apply(item).compareTo(lastName) > 0)
+        .limit(maxResults + 1L)
         .collect(Collectors.toList());
   }
 }

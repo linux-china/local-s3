@@ -237,6 +237,11 @@ by a hash of its key, so it is listed by one segment only, whatever other vector
 that `ListVectors` didn't answer with is rejected with `ValidationException`, and so is a vector whose data can't be
 read when `returnData` is set, with `InternalServerException`.
 
+`ListVectorBuckets` and `ListIndexes` list in the order of the names, and their `nextToken` marks the last name of the
+page in the same way: a listing continues after that name however buckets or indexes are created or deleted between
+the pages. The token isn't bound to `prefix`, so a `prefix` changed between pages continues after that name too.
+A `nextToken` that they didn't answer with is rejected with `ValidationException`.
+
 **Vector Bucket Policy Operations:**
 + PutVectorBucketPolicy
 + GetVectorBucketPolicy

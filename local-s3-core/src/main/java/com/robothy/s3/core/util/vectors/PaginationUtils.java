@@ -3,6 +3,7 @@ package com.robothy.s3.core.util.vectors;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.exception.vectors.LocalS3VectorException;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 /**
@@ -44,50 +45,54 @@ public class PaginationUtils {
   }
 
   /**
-   * Validates and parses nextToken to extract start index.
-   * 
+   * Marks the tokens of this format, so that an offset token that these listings used to answer with is rejected
+   * rather than decoded into a name that would silently list from the wrong place.
+   */
+  public static final String NEXT_TOKEN_PREFIX = "v1:";
+
+  /**
+   * Parses a nextToken into the name after which the listing continues.
+   *
    * @param nextToken the pagination token
-   * @return parsed start index (0 if token is null/empty)
+   * @return the last name of the previous page, or {@code null} if the token is null/empty
    * @throws LocalS3VectorException if token is invalid
    */
-  public static int parseNextToken(String nextToken) {
+  public static String parseNextToken(String nextToken) {
     if (nextToken == null || nextToken.trim().isEmpty()) {
-      return 0;
+      return null;
     }
-    
+
     validateTokenLength(nextToken);
-    return decodeTokenToIndex(nextToken);
+    String decoded;
+    try {
+      decoded = new String(Base64.getDecoder().decode(nextToken), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException _) {
+      throw invalidNextToken();
+    }
+    if (!decoded.startsWith(NEXT_TOKEN_PREFIX)) {
+      throw invalidNextToken();
+    }
+    return decoded.substring(NEXT_TOKEN_PREFIX.length());
   }
 
   /**
-   * Generates a nextToken for pagination if there are more results.
-   * 
-   * @param currentStartIndex current pagination start index
-   * @param pageSize size of current page
-   * @param totalFilteredSize total number of filtered items
-   * @return nextToken string or null if no more results
+   * Generates a nextToken that continues the listing after the given name.
+   *
+   * @param lastName the last name of the current page
+   * @return nextToken string
    */
-  public static String generateNextToken(int currentStartIndex, int pageSize, int totalFilteredSize) {
-    int nextStartIndex = currentStartIndex + pageSize;
-    if (nextStartIndex >= totalFilteredSize) {
-      return null;
-    }
-    
-    return Base64.getEncoder().encodeToString(String.valueOf(nextStartIndex).getBytes());
+  public static String generateNextToken(String lastName) {
+    return Base64.getEncoder().encodeToString((NEXT_TOKEN_PREFIX + lastName).getBytes(StandardCharsets.UTF_8));
   }
 
   private static void validateTokenLength(String nextToken) {
     if (nextToken.length() > MAX_TOKEN_LENGTH) {
-      throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
+      throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
           "nextToken length must not exceed " + MAX_TOKEN_LENGTH + " characters");
     }
   }
 
-  private static int decodeTokenToIndex(String nextToken) {
-    try {
-      return Integer.parseInt(new String(Base64.getDecoder().decode(nextToken)));
-    } catch (Exception _) {
-      throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, "Invalid nextToken");
-    }
+  private static LocalS3VectorException invalidNextToken() {
+    return new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION, "Invalid nextToken");
   }
 }
