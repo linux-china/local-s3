@@ -367,17 +367,25 @@ public final class IcebergCatalogService {
    * the two protocols commit against one another safely: a client of either that lost the race is told so and refreshes.
    *
    * @param identifier the identifier.
+   * @param expectedMetadataLocation the location the caller read the table at, which its new metadata file builds on.
    * @param metadataLocation the {@code s3://} location of the new metadata file, which must exist.
    * @throws IcebergCatalogException if the table doesn't exist, the file can't be read, or the table changed while the
    *     caller was preparing the commit.
    */
-  public void setMetadataLocation(IcebergIdentifier identifier, String metadataLocation) {
+  public void setMetadataLocation(IcebergIdentifier identifier, String expectedMetadataLocation,
+                                  String metadataLocation) {
     if (metadataLocation == null || metadataLocation.isBlank()) {
       throw IcebergCatalogException.badRequest("A metadata location is required.");
     }
     IcebergTableRecord record = requireTable(identifier, false);
     if (metadataLocation.equals(record.metadataLocation())) {
       return;
+    }
+    // The base is the pointer the caller read, not the one read here: a commit that landed in between would otherwise
+    // pass the compare-and-set below and be overwritten by metadata built without it.
+    if (!record.metadataLocation().equals(expectedMetadataLocation)) {
+      throw IcebergCatalogException.commitFailed("Cannot commit to " + identifier
+          + ": it changed while this commit was being prepared. Refresh the table and try again.");
     }
     // Reading it is what tells a client that wrote its metadata file somewhere LocalS3 doesn't serve, or didn't write
     // it at all, before the pointer of the table is moved to a file that no reader could then open.

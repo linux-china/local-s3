@@ -531,14 +531,16 @@ public final class S3TablesService {
     requireCurrentVersion(table, versionToken);
 
     // The token is claimed first, so that a second commit that read the same token loses here rather than reaching the
-    // catalog; the catalog's own compare-and-set then guards against a commit made over the REST endpoint.
+    // catalog; the catalog's own compare-and-set, against the pointer this token was read at, then guards against a
+    // commit made over the REST endpoint, which doesn't move the token until the table is next read.
     TableAttributes updated = table.committed(metadataLocation);
     if (!store.replaceTable(bucket.name(), table, updated)) {
       throw S3TablesException.conflict("The table '" + name + "' changed while this commit was being prepared."
           + " Read it again and retry.");
     }
     try {
-      catalog(bucket).setMetadataLocation(IcebergIdentifier.of(List.of(namespace), name), metadataLocation);
+      catalog(bucket).setMetadataLocation(IcebergIdentifier.of(List.of(namespace), name),
+          table.metadataLocation(), metadataLocation);
     } catch (RuntimeException e) {
       // The commit didn't land, so the token it claimed is given back rather than left advanced.
       store.replaceTable(bucket.name(), updated, table);

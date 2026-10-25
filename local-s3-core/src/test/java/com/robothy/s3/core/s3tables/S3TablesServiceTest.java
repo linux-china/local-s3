@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.robothy.s3.core.iceberg.IcebergCatalogException;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
 import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
@@ -175,7 +176,15 @@ class S3TablesServiceTest {
     // endpoint of the same table bucket does.
     IcebergCatalogService catalog = s3Tables.catalogOfWarehouse(arn);
     String first = catalog.metadataLocationOf(IcebergIdentifier.of(List.of("db"), "t"));
-    catalog.setMetadataLocation(IcebergIdentifier.of(List.of("db"), "t"), copyOfMetadata(arn, first, "00001"));
+    String second = copyOfMetadata(arn, first, "00001");
+    catalog.setMetadataLocation(IcebergIdentifier.of(List.of("db"), "t"), first, second);
+
+    // A commit built on the pointer from before that one is refused even though it reads the latest pointer itself,
+    // rather than overwriting a commit that was already acknowledged.
+    String stale = copyOfMetadata(arn, first, "00002");
+    assertEquals(409, assertThrows(IcebergCatalogException.class,
+        () -> catalog.setMetadataLocation(IcebergIdentifier.of(List.of("db"), "t"), first, stale)).status());
+    assertEquals(second, catalog.metadataLocationOf(IcebergIdentifier.of(List.of("db"), "t")));
 
     // The token this API vends follows it, so the one the client is still holding is refused: the two protocols commit
     // against one another safely.
