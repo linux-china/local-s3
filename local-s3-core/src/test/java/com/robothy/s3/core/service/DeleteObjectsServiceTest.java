@@ -10,10 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.exception.ObjectNotExistException;
@@ -22,11 +24,14 @@ import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
+import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.datatypes.ObjectIdentifier;
 import com.robothy.s3.datatypes.request.DeleteObjectsRequest;
 import com.robothy.s3.datatypes.response.DeleteResult;
 import com.robothy.s3.datatypes.response.S3Error;
 import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -142,30 +147,70 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
   }
 
   /**
-   * An object that fails with an unexpected exception is reported as {@code InternalError}, without the message of
-   * the exception, which may reveal internals; the other objects are still deleted.
+   * An object that is rejected with an S3 error is reported as an error of its own, and the other objects are still
+   * deleted.
    */
   @Test
-  void reportsAnUnexpectedFailureAsAnInternalErrorWithoutItsMessage() {
+  void reportsARejectedObjectAsAnErrorOfItsOwn() {
     DeleteObjectsService service = service();
-    doThrow(new IllegalStateException("/data/.storage/12/34 is not writable"))
-        .when(service).deleteObject("my-bucket", "broken.txt", null);
     doThrow(new ObjectNotExistException("missing.txt"))
         .when(service).deleteObject("my-bucket", "missing.txt", "v1");
 
     List<Object> results = service.deleteObjects("my-bucket", new DeleteObjectsRequest(List.of(
-        new ObjectIdentifier("broken.txt", null),
         new ObjectIdentifier("missing.txt", "v1"),
         new ObjectIdentifier("ok.txt", null)), false));
 
-    S3Error internal = assertInstanceOf(S3Error.class, results.get(0));
-    assertEquals(S3ErrorCode.InternalError.code(), internal.code());
-    assertEquals(S3ErrorCode.InternalError.description(), internal.message());
-    assertEquals("broken.txt", internal.key());
-    S3Error notFound = assertInstanceOf(S3Error.class, results.get(1));
+    S3Error notFound = assertInstanceOf(S3Error.class, results.get(0));
     assertEquals(S3ErrorCode.NoSuchKey.code(), notFound.code());
     assertEquals("v1", notFound.versionId());
-    assertEquals("ok.txt", assertInstanceOf(DeleteResult.Deleted.class, results.get(2)).key());
+    assertEquals("ok.txt", assertInstanceOf(DeleteResult.Deleted.class, results.get(1)).key());
+  }
+
+  /**
+   * An unexpected exception may leave the metadata half changed, so it isn't reported as the error of an object, but
+   * fails the request, so that the guard of the bucket rolls the change back.
+   */
+  @Test
+  void failsTheRequestOnAnUnexpectedFailure() {
+    DeleteObjectsService service = service();
+    doThrow(new IllegalStateException("/data/.storage/12/34 is not writable"))
+        .when(service).deleteObject("my-bucket", "broken.txt", null);
+
+    assertThrows(IllegalStateException.class, () -> service.deleteObjects("my-bucket", new DeleteObjectsRequest(
+        List.of(new ObjectIdentifier("broken.txt", null), new ObjectIdentifier("ok.txt", null)), false)));
+    verify(service, never()).deleteObject(eq("my-bucket"), eq("ok.txt"), any());
+  }
+
+  /**
+   * A {@code PERSISTENCE} service that fails a batch after it changed the metadata, of an earlier object and of the
+   * failing one, persists neither change.
+   */
+  @Test
+  void anUnexpectedFailureDeletesNoObjectOfAPersistenceService() throws Exception {
+    Path localS3Path = Files.createTempDirectory("local-s3");
+    localS3Path.toFile().deleteOnExit();
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(localS3Path);
+    String bucketName = "my-bucket";
+    manager.bucketService().createBucket(bucketName);
+    for (String key : List.of("ok.txt", "broken.txt")) {
+      manager.objectService().putObject(bucketName, key, PutObjectOptions.builder()
+          .content(new ByteArrayInputStream("Hello".getBytes()))
+          .size(5)
+          .build());
+    }
+    ObjectService objectService = spy(manager.objectService());
+    doAnswer(invocation -> {
+      invocation.callRealMethod();
+      throw new IllegalStateException("The storage failed after the metadata changed.");
+    }).when(objectService).deleteObject(bucketName, "broken.txt", null);
+
+    assertThrows(IllegalStateException.class, () -> objectService.deleteObjects(bucketName, new DeleteObjectsRequest(
+        List.of(new ObjectIdentifier("ok.txt", null), new ObjectIdentifier("broken.txt", null)), false)));
+
+    for (String key : List.of("ok.txt", "broken.txt")) {
+      assertDoesNotThrow(() -> manager.objectService().headObject(bucketName, key, GetObjectOptions.builder().build()),
+          key + " is still there.");
+    }
   }
 
   /**

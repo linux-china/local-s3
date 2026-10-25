@@ -116,8 +116,9 @@ like Amazon S3. They're dropped when a re-creation of a bucket in us-east-1 answ
   `400 InvalidDigest` before the content is read; one that doesn't match the content answers `400 BadDigest`, and a
   rejected part isn't stored.
 + `DeleteObjects` takes 1 to 1000 objects, otherwise `400 MalformedXML`. An object that can't be deleted is reported as
-  an `<Error>` of its own, with its S3 error, or `InternalError` for an unexpected failure, whose message is logged
-  rather than answered, and the other objects are still deleted.
+  an `<Error>` of its own, with its S3 error, and the other objects are still deleted. An unexpected failure, e.g. an
+  I/O error of the storage, fails the whole request with `500 InternalError` and deletes none of the objects of a
+  `PERSISTENCE` service.
 + `x-amz-expected-bucket-owner` and `x-amz-source-expected-bucket-owner` are **accepted and ignored**: LocalS3 has one
   account, which owns every bucket, so a request never fails with `403 AccessDenied` for naming another owner. A test
   that relies on that check must run against Amazon S3.

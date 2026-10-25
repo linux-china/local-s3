@@ -11,14 +11,13 @@ import com.robothy.s3.datatypes.response.DeleteResult;
 import com.robothy.s3.datatypes.response.S3Error;
 import java.util.ArrayList;
 import java.util.List;
-import org.slf4j.LoggerFactory;
 
 public interface DeleteObjectsService extends DeleteObjectService {
 
   int MAX_OBJECTS = 1000;
 
   /**
-   * See {@code docs/semantics.md#request-validation}. An {@linkplain Error} isn't caught, and fails the whole request.
+   * See {@code docs/semantics.md#request-validation}.
    */
   default List<Object> deleteObjects(String bucketName, DeleteObjectsRequest request) {
     return deleteObjects(bucketName, request, false);
@@ -49,13 +48,11 @@ public interface DeleteObjectsService extends DeleteObjectService {
           results.add(new DeleteResult.Deleted(deleteMarker, deleteMarker ? deleteObjectAns.getVersionId() : null,
               key, versionId));
         } catch (LocalS3Exception e) {
+          // A rejection is raised before the metadata is changed, so the batch can go on and persist the others.
           results.add(deleteError(bucketName, key, versionId, e.getS3ErrorCode(), e.getMessage()));
-        } catch (RuntimeException e) {
-          LoggerFactory.getLogger(DeleteObjectsService.class)
-              .error("Failed to delete the object {} (version {}) of bucket {}.", key, versionId, bucketName, e);
-          results.add(deleteError(bucketName, key, versionId, S3ErrorCode.InternalError,
-              S3ErrorCode.InternalError.description()));
         }
+        // Any other failure may leave the metadata half changed: it fails the batch, so that the guard reloads the
+        // metadata rather than persist it.
       }
       return results;
     }));
