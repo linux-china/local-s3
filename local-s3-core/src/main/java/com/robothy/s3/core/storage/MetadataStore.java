@@ -58,6 +58,17 @@ public interface MetadataStore<T> {
   }
 
   /**
+   * Run an action once the changes that {@linkplain #sync()} made durable, or left to the store to, are durable, e.g.
+   * delete the data that they no longer reference. A store whose {@linkplain #sync()} made them durable runs it at
+   * once.
+   *
+   * @param action the action, which may run on another thread.
+   */
+  default void whenDurable(Runnable action) {
+    action.run();
+  }
+
+  /**
    * Fetch all metadata instances from the store.
    *
    * @return all metadata instances in the store.

@@ -377,6 +377,61 @@ class FileSystemLocalS3ManagerTest {
   }
 
   /**
+   * A killed FAST process leaves the metadata that MVStore wrote last, so the content that it references must still
+   * be there: an overwrite or a delete deletes the content it replaces only once its change is written. A copy of the
+   * data directory taken right after the change is what a kill would leave.
+   */
+  @Test
+  void aKilledFastServiceStillHasTheContentOfItsLastWrittenChanges() throws IOException, InterruptedException {
+    LocalS3Manager manager = LocalS3Manager.createFileSystemS3Manager(dataPath, PersistencePolicy.FAST);
+    Path killed = Files.createTempDirectory("local-s3-killed");
+    try (LocalS3Store store = LocalS3Store.persistent(dataPath, PersistencePolicy.FAST)) {
+      // Only the test writes the changes, so that none is written between a change and the copy.
+      store.store().setAutoCommitDelay(0);
+      manager.bucketService().createBucket(BUCKET);
+      putObject(manager.objectService(), KEY, "v1");
+      putObject(manager.objectService(), "deleted", "content");
+      store.flush();
+
+      putObject(manager.objectService(), KEY, "v2");
+      manager.objectService().deleteObject(BUCKET, "deleted");
+      assertEquals(3, storedObjects().size(), "The replaced content is kept until the change is written.");
+      copyDirectory(dataPath, killed);
+
+      store.flush();
+      long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+      while (storedObjects().size() > 1 && System.nanoTime() < deadline) {
+        Thread.sleep(50);
+      }
+      assertEquals(1, storedObjects().size(), "The replaced content is deleted once the change is written.");
+    } finally {
+      manager.close();
+    }
+
+    try {
+      LocalS3Manager restarted = LocalS3Manager.createFileSystemS3Manager(killed, PersistencePolicy.FAST);
+      assertEquals("v1", getObject(restarted.objectService(), KEY));
+      assertEquals("content", getObject(restarted.objectService(), "deleted"));
+      restarted.close();
+    } finally {
+      TestFiles.deleteDirectory(killed);
+    }
+  }
+
+  private static void copyDirectory(Path source, Path target) throws IOException {
+    try (Stream<Path> paths = Files.walk(source)) {
+      for (Path path : paths.toList()) {
+        Path copy = target.resolve(source.relativize(path).toString());
+        if (Files.isDirectory(path)) {
+          Files.createDirectories(copy);
+        } else {
+          Files.copy(path, copy);
+        }
+      }
+    }
+  }
+
+  /**
    * A commit appends a chunk to the file of the data directory, so committing every change leaves one per change. A
    * FAST service commits them together instead, which is what keeps the file of a bulk load close to the metadata it
    * holds rather than to the number of writes that built it.

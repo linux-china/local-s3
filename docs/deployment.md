@@ -516,8 +516,11 @@ Storing twenty thousand small objects through a service, measured end to end:
 | `FAST` | 1 | 2.9 s | 7 MB | 10 MB | 2.3 MB |
 | `FAST` | 16 | 1.8 s | 5 MB | 10 MB | 2.4 MB |
 
-A killed `FAST` process loses the changes of the last second; one that is shut down, including by the JVM shutdown
-hook, persists everything. That is the trade a data directory built to test against can usually make, e.g. the table
+A killed `FAST` process loses the changes of the last second, and nothing before them: the content that a change
+replaces or deletes, e.g. the previous content of an overwritten object, is kept until the change is written, so the
+metadata that a killed process leaves still finds the content it references. Content that is left unreferenced this
+way is deleted the next time the data directory is opened. A process that is shut down, including by the JVM
+shutdown hook, persists everything. That is the trade a data directory built to test against can usually make, e.g. the table
 of a big data engine, which is built again if it is lost, or the data of a service embedded in an application or an
 IDE. Use `DURABLE` when the data directory itself is what matters.
 

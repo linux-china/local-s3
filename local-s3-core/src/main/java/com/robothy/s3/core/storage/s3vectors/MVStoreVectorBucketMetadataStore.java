@@ -114,6 +114,8 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
    */
   private final boolean commitEveryChange;
 
+  private final LocalS3Store localS3Store;
+
   /**
    * Create a store over the MVStore of a LocalS3 service. A store opened for writing that holds vector buckets written
    * whole by an earlier 2.5 snapshot has them spread over the maps of this version first.
@@ -124,16 +126,17 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
   public static MetadataStore<VectorBucketMetadata> create(LocalS3Store localS3Store) {
     Objects.requireNonNull(localS3Store, "localS3Store");
     MVStoreVectorBucketMetadataStore metadataStore =
-        new MVStoreVectorBucketMetadataStore(localS3Store.store(), localS3Store.commitsEveryChange());
+        new MVStoreVectorBucketMetadataStore(localS3Store);
     if (!localS3Store.isReadOnly()) {
       metadataStore.spreadWholeBuckets();
     }
     return metadataStore;
   }
 
-  private MVStoreVectorBucketMetadataStore(MVStore store, boolean commitEveryChange) {
-    this.store = store;
-    this.commitEveryChange = commitEveryChange;
+  private MVStoreVectorBucketMetadataStore(LocalS3Store localS3Store) {
+    this.localS3Store = localS3Store;
+    this.store = localS3Store.store();
+    this.commitEveryChange = localS3Store.commitsEveryChange();
   }
 
   /**
@@ -145,6 +148,11 @@ public class MVStoreVectorBucketMetadataStore implements MetadataStore<VectorBuc
     if (commitEveryChange) {
       store.commit();
     }
+  }
+
+  @Override
+  public void whenDurable(Runnable action) {
+    localS3Store.whenDurable(action);
   }
 
   private MVMap<String, String> vectorBuckets() {

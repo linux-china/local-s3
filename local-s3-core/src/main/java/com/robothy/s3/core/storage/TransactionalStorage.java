@@ -59,11 +59,12 @@ public final class TransactionalStorage implements Storage, StorageTransactions 
   }
 
   /**
-   * End the transaction of the current thread and delete the objects deleted within it.
+   * End the transaction of the current thread, and hand over the deletion of the objects deleted within it.
    */
   @Override
-  public void commit() {
-    end().deleted.forEach(this::deleteQuietly);
+  public Runnable commitLater() {
+    Set<Long> deleted = end().deleted;
+    return () -> deleted.forEach(this::deleteQuietly);
   }
 
   /**

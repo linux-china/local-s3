@@ -104,7 +104,8 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   /**
    * Make the persisted change durable, then delete the data that the change deleted, so that the durable metadata
-   * never references deleted data.
+   * never references deleted data. A store that commits in the background deletes it once it has committed the
+   * change, which may be after the request is answered.
    *
    * <p>It runs once the write lock of the bucket is released, so that the concurrent writers of a bucket share a
    * commit of the metadata store rather than commit one after the other: the lock serializes the changes of a
@@ -129,7 +130,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
       throw e;
     }
     if (ownsTransaction) {
-      storage.commit();
+      bucketMetaStore.whenDurable(storage.commitLater());
     }
   }
 

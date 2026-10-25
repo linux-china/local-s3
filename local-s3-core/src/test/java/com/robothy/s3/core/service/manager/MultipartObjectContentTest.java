@@ -4,9 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import com.robothy.s3.core.assertions.UploadAssertions;
+import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.model.internal.ObjectPartMetadata;
 import com.robothy.s3.core.model.internal.UploadPartMetadata;
@@ -185,6 +188,28 @@ class MultipartObjectContentTest {
       try (InputStream in = objectService.getObject(BUCKET, "copied", GetObjectOptions.builder().build()).getContent()) {
         assertEquals("HelloWorld", new String(in.readAllBytes(), StandardCharsets.UTF_8));
       }
+    }
+  }
+
+  /**
+   * A copy that fails once the source is opened closes the source, which otherwise retains its parts.
+   */
+  @Test
+  void releasesThePartsOfTheSourceOfACopyThatFails() {
+    for (LocalS3Manager manager : managers()) {
+      ObjectService objectService = manager.objectService();
+      manager.bucketService().createBucket(BUCKET);
+      String uploadId = upload(objectService, "Hello", "World");
+      List<Long> partFileIds = partFileIds(objectService, uploadId);
+      objectService.completeMultipartUpload(BUCKET, KEY, uploadId, completeParts(1, 2));
+
+      assertThrows(LocalS3RequestException.class, () -> objectService.copyObject(BUCKET, KEY,
+          CopyObjectOptions.builder().sourceBucket(BUCKET).sourceKey(KEY).build()), "A copy to itself.");
+      assertThrows(BucketNotExistException.class, () -> objectService.copyObject("missing-bucket", "copied",
+          CopyObjectOptions.builder().sourceBucket(BUCKET).sourceKey(KEY).build()), "A copy to a missing bucket.");
+
+      objectService.deleteObject(BUCKET, KEY);
+      partFileIds.forEach(id -> assertFalse(objectService.storage().isExist(id)));
     }
   }
 

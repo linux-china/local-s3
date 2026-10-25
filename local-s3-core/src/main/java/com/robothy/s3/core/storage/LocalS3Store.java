@@ -5,7 +5,11 @@ import com.robothy.s3.core.util.PathUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -31,6 +35,10 @@ import org.h2.mvstore.MVStoreException;
  * compacted when the last holder closes it, and while it runs once it is mostly superseded chunks
  * ({@linkplain #compactIfWasteful()}), so that a long-running service, e.g. in an IDE, doesn't keep the room of every
  * write it took.
+ *
+ * <p>A {@linkplain PersistencePolicy#FAST} store holds the actions of {@linkplain #whenDurable(Runnable)} until
+ * MVStore has written the chunk that holds the change they follow, so that a killed process never leaves metadata
+ * that references content deleted after a change that wasn't written.
  */
 public final class LocalS3Store implements AutoCloseable {
 
@@ -71,6 +79,13 @@ public final class LocalS3Store implements AutoCloseable {
    * file.
    */
   private static final int RUNTIME_COMPACTION_TIME = 1000;
+
+  /**
+   * How often a {@linkplain PersistencePolicy#FAST} store checks whether MVStore has written the changes that
+   * {@linkplain #whenDurable(Runnable)} actions wait for, in milliseconds; MVStore writes them at most a second after
+   * they are made.
+   */
+  private static final long DURABILITY_CHECK_INTERVAL = 200;
 
   /**
    * The stores of the files that are open, by the absolute path of the file. Guarded by itself.
@@ -116,6 +131,18 @@ public final class LocalS3Store implements AutoCloseable {
    * closed under a compaction.
    */
   private final Object compactionLock = new Object();
+
+  /**
+   * The actions of {@linkplain #whenDurable(Runnable)} that wait for MVStore to write the change they follow, in the
+   * order of the versions they wait for. Guarded by itself.
+   */
+  private final Deque<DurabilityWaiter> durabilityWaiters = new ArrayDeque<>();
+
+  /**
+   * The periodic run of the {@linkplain #durabilityWaiters} whose change is written; {@code null} for a store that
+   * commits every change, or that is not open for writing.
+   */
+  private ScheduledFuture<?> durabilityCheck;
 
   private LocalS3Store(MVStore store, Path file, PersistencePolicy policy) {
     this.store = store;
@@ -237,6 +264,10 @@ public final class LocalS3Store implements AutoCloseable {
         synchronized (store.compactionLock) {
           store.compaction = Compactor.EXECUTOR.scheduleWithFixedDelay(store::compactQuietly,
               COMPACTION_CHECK_INTERVAL, COMPACTION_CHECK_INTERVAL, TimeUnit.SECONDS);
+        }
+        if (!store.commitsEveryChange()) {
+          store.durabilityCheck = Compactor.EXECUTOR.scheduleWithFixedDelay(store::runDurableQuietly,
+              DURABILITY_CHECK_INTERVAL, DURABILITY_CHECK_INTERVAL, TimeUnit.MILLISECONDS);
         }
       }
       OPEN_FILES.put(file, store);
@@ -374,6 +405,75 @@ public final class LocalS3Store implements AutoCloseable {
   }
 
   /**
+   * Run an action once the changes written to the store so far are durable: at once if the store commits every change,
+   * which its writer did before; otherwise once MVStore has written them, or the store is closed.
+   *
+   * <p>A {@linkplain PersistencePolicy#FAST} store doesn't commit the changes itself, so that what it writes stays a
+   * chunk a second rather than one a change. An action that may not run before the change is written, e.g. deleting
+   * the content that the change no longer references, waits for it here instead.
+   *
+   * @param action the action, which runs on the thread that writes the change, or on the one that checks the store.
+   */
+  public void whenDurable(Runnable action) {
+    Objects.requireNonNull(action, "action");
+    if (commitsEveryChange() || store.isReadOnly()) {
+      action.run();
+      return;
+    }
+    synchronized (durabilityWaiters) {
+      // The changes of the caller are in the current version, or in an earlier one if a commit started meanwhile.
+      durabilityWaiters.add(new DurabilityWaiter(store.getCurrentVersion(), action));
+    }
+  }
+
+  /**
+   * Run the {@linkplain #whenDurable(Runnable)} actions whose change MVStore has written, which a
+   * {@linkplain PersistencePolicy#FAST} store checks every {@value #DURABILITY_CHECK_INTERVAL} ms; for tests.
+   *
+   * @return how many actions ran.
+   */
+  int runDurable() {
+    List<DurabilityWaiter> durable = new ArrayList<>();
+    synchronized (durabilityWaiters) {
+      while (!durabilityWaiters.isEmpty() && isWritten(durabilityWaiters.peekFirst().version())) {
+        durable.add(durabilityWaiters.pollFirst());
+      }
+    }
+    durable.forEach(DurabilityWaiter::runQuietly);
+    return durable.size();
+  }
+
+  /**
+   * Whether MVStore has written the changes made while its current version was {@code version}.
+   *
+   * <p>A commit raises the current version to {@code version + 1} and writes what the maps held as chunk
+   * {@code version + 1}; a background commit writes the chunk on a thread of MVStore after it returns, and the chunk
+   * counts as written once it is in the file. A version that holds no changes, e.g. an action whose change wrote
+   * nothing, is never committed, so it counts as written once the chunk before it is and no change has been made
+   * since.
+   */
+  private boolean isWritten(long version) {
+    if (store.isClosed()) {
+      return false;
+    }
+    long lastWritten = store.getFileStore().lastChunkVersion();
+    if (lastWritten > version) {
+      return true;
+    }
+    // The current version is read last: if it is still the version, no commit had started when the maps were checked.
+    return lastWritten == version && !store.hasUnsavedChanges() && store.getCurrentVersion() == version;
+  }
+
+  private void runDurableQuietly() {
+    try {
+      runDurable();
+    } catch (RuntimeException e) {
+      // The actions are kept, and run on the next check, or when the store is closed.
+      log.warn("Failed to check which changes of {} are written.", file, e);
+    }
+  }
+
+  /**
    * Write the pending changes to the file, if the store has one.
    */
   public void flush() {
@@ -410,12 +510,39 @@ public final class LocalS3Store implements AutoCloseable {
         compaction.cancel(false);
         compaction = null;
       }
+      if (durabilityCheck != null) {
+        durabilityCheck.cancel(false);
+        durabilityCheck = null;
+      }
     }
     if (!store.isClosed()) {
       // Writes what is left, and compacts the file: a commit appends a chunk rather than replacing what it
       // supersedes, so without this a data directory keeps the room that every write it ever took needed.
       store.close(CLOSE_COMPACTION_TIME);
     }
+    // Every change is written now. If closing failed, the actions are dropped: what they would have deleted is
+    // unreferenced content, which the sweep deletes when the data directory is opened next.
+    List<DurabilityWaiter> waiters;
+    synchronized (durabilityWaiters) {
+      waiters = new ArrayList<>(durabilityWaiters);
+      durabilityWaiters.clear();
+    }
+    waiters.forEach(DurabilityWaiter::runQuietly);
+  }
+
+  /**
+   * An action of {@linkplain #whenDurable(Runnable)}, and the version of the store whose changes it waits for.
+   */
+  private record DurabilityWaiter(long version, Runnable action) {
+
+    void runQuietly() {
+      try {
+        action.run();
+      } catch (RuntimeException e) {
+        log.warn("Failed to run an action after its change was written.", e);
+      }
+    }
+
   }
 
   /**

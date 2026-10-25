@@ -14,6 +14,7 @@ import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.h2.mvstore.MVMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -195,6 +196,42 @@ class LocalS3StoreTest {
 
     try (LocalS3Store writable = LocalS3Store.persistent(dataPath)) {
       assertFalse(writable.isReadOnly());
+    }
+  }
+
+  /**
+   * A FAST store leaves its changes to MVStore, so what follows a change, e.g. deleting the content it replaced, waits
+   * until MVStore has written it; a DURABLE store committed it before, and runs it at once.
+   */
+  @Test
+  void aFastStoreRunsWhatFollowsAChangeOnceTheChangeIsWritten(@TempDir Path dataPath) {
+    AtomicInteger ran = new AtomicInteger();
+    LocalS3Store fast = LocalS3Store.persistent(dataPath.resolve("fast"), PersistencePolicy.FAST);
+    try {
+      // Only the test commits, so that nothing is written behind its back.
+      fast.store().setAutoCommitDelay(0);
+      MVMap<String, String> map = fast.store().openMap("test");
+      map.put("key", "v1");
+      fast.whenDurable(ran::incrementAndGet);
+      assertEquals(0, fast.runDurable());
+
+      fast.flush();
+      assertEquals(1, fast.runDurable());
+      fast.whenDurable(ran::incrementAndGet);
+      assertEquals(1, fast.runDurable(), "A change that wrote nothing has nothing to wait for.");
+
+      map.put("key", "v2");
+      fast.whenDurable(ran::incrementAndGet);
+      assertEquals(0, fast.runDurable());
+    } finally {
+      fast.close();
+    }
+    assertEquals(3, ran.get(), "Closing the store writes every change, and runs what waits for one.");
+
+    try (LocalS3Store durable = LocalS3Store.persistent(dataPath.resolve("durable"), PersistencePolicy.DURABLE)) {
+      durable.store().openMap("test").put("key", "v1");
+      durable.whenDurable(ran::incrementAndGet);
+      assertEquals(4, ran.get());
     }
   }
 

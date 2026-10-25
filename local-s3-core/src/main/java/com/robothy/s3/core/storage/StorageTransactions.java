@@ -21,7 +21,17 @@ public interface StorageTransactions {
   /**
    * End the transaction of the current thread and delete the data deleted within it.
    */
-  void commit();
+  default void commit() {
+    commitLater().run();
+  }
+
+  /**
+   * End the transaction of the current thread, and hand over the deletion of the data deleted within it, for the
+   * caller to run once the metadata that no longer references the data is durable.
+   *
+   * @return the deletion, which may run on another thread.
+   */
+  Runnable commitLater();
 
   /**
    * End the transaction of the current thread, keep the data deleted within it, and delete the data written within it.

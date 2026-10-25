@@ -216,7 +216,9 @@ the store is open once most of it is room that superseded chunks take.
 commit in the background, at most a second later, and commits the rest on close. `DURABLE` survives a killed process,
 not a power loss: MVStore doesn't `fsync` a commit. The `BucketGuard` writes a change into the maps under the lock of the
 bucket, and commits it (`MetadataStore.sync()`) once the lock is released, so the concurrent writers of a bucket share a
-commit; the content that the change deleted is deleted after that commit. See
+commit; the content that the change deleted is deleted after that commit. A `FAST` store has no commit to wait for:
+`LocalS3Store.whenDurable` holds the deletion until MVStore has written the chunk that holds the change, checked every
+200 ms, or until the store is closed. See
 [deployment.md](deployment.md#persistence-policy).
 
 ### Content: the `Storage` layers

@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +51,24 @@ class InMemoryStorageTest {
     storage.delete(id);
     assertEquals(id, storage.delete(id), "Deleting missing content does nothing.");
     assertThrows(IllegalArgumentException.class, () -> storage.getInputStream(id));
+  }
+
+  @Test
+  void storingAStreamOfPartsReleasesTheParts() {
+    InMemoryStorage storage = new InMemoryStorage();
+    Long part1 = storage.put("Hello, ".getBytes());
+    Long part2 = storage.put("World".getBytes());
+    InputStream parts = new CompositeInputStream(List.of(
+        () -> storage.getInputStream(part1), () -> storage.getInputStream(part2)),
+        storage.retain(List.of(part1, part2)).orElseThrow());
+
+    Long copy = storage.put(parts);
+    storage.delete(part1);
+    storage.delete(part2);
+
+    assertArrayEquals("Hello, World".getBytes(), storage.getBytes(copy));
+    assertFalse(storage.isExist(part1));
+    assertFalse(storage.isExist(part2));
   }
 
   /**

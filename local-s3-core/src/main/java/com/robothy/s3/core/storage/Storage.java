@@ -124,7 +124,7 @@ public interface Storage {
   }
 
   /**
-   * Put octet-stream to the storage.
+   * Put octet-stream to the storage. Implementations must close {@code data}, whether or not the put succeeds.
    */
   Long put(Long id, InputStream data);
 

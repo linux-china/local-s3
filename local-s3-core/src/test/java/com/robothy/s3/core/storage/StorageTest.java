@@ -4,13 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -52,13 +55,41 @@ class StorageTest {
     assertThrows(IllegalArgumentException.class, () -> storage.getBytes(helloId));
   }
 
+  @ParameterizedTest
+  @MethodSource("testCases")
+  void putClosesTheStream(Storage storage) {
+    AtomicBoolean closed = new AtomicBoolean();
+    storage.put(new ByteArrayInputStream("Hello".getBytes()) {
+      @Override
+      public void close() {
+        closed.set(true);
+      }
+    });
+    assertTrue(closed.get());
+
+    AtomicBoolean failedClosed = new AtomicBoolean();
+    assertThrows(UncheckedIOException.class, () -> storage.put(new InputStream() {
+      @Override
+      public int read() throws IOException {
+        throw new IOException("Broken stream.");
+      }
+
+      @Override
+      public void close() {
+        failedClosed.set(true);
+      }
+    }));
+    assertTrue(failedClosed.get(), "The stream is closed even if the put fails.");
+  }
+
   static Stream<Arguments> testCases() throws IOException {
     Path storage = Files.createTempDirectory("storage");
     return Stream.of(
         arguments(Storage.createPersistent(storage)),
         arguments(Storage.createPersistent(storage)),
         arguments(Storage.createInMemory(), Storage.createInMemory()),
-        arguments(Storage.createCopyOnAccess(Storage.createInMemory()))
+        arguments(Storage.createCopyOnAccess(Storage.createInMemory())),
+        arguments(Storage.createLayered(Storage.createInMemory(), Storage.createInMemory()))
     );
   }
 

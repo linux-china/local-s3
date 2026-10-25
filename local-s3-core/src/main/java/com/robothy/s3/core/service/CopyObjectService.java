@@ -11,6 +11,8 @@ import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.request.RequestChecksum;
 import com.robothy.s3.datatypes.enums.CheckSumAlgorithm;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,42 +35,50 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
     GetObjectAns srcObjectAns = getCopySource(options.getSourceBucket(), options.getSourceKey(), srcVersion, null,
         options.getSourcePreconditions(), options.getSourceCustomerEncryption());
 
-    if (srcObjectAns.isDeleteMarker()) {
-      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
-          "The source of a copy request may not specifically refer to a delete marker by version id.");
+    PutObjectAns putObjectAns;
+    try {
+      if (srcObjectAns.isDeleteMarker()) {
+        throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
+            "The source of a copy request may not specifically refer to a delete marker by version id.");
+      }
+      if (isCopyToItselfWithoutChanges(bucket, key, options)) {
+        throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "This copy request is illegal because it is "
+            + "trying to copy an object to itself without changing the object's metadata, storage class, website "
+            + "redirect location or encryption attributes.");
+      }
+
+      boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
+      Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
+      String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
+      SystemMetadata systemMetadataToUse = SystemMetadata.withWebsiteRedirectLocation(
+          SystemMetadata.withStorageClass(replaceMetadata ? options.getSystemMetadata()
+              : srcObjectAns.getSystemMetadata(), options.getStorageClass()), options.getWebsiteRedirectLocation());
+
+      String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE
+          ? options.getTagging().orElse(null)
+          : srcObjectAns.getTagging();
+
+      // putObject stores the content before commitPutObject write locks the destination bucket.
+      putObjectAns = putObject(bucket, key, PutObjectOptions.builder()
+          .content(srcObjectAns.getContent())
+          .contentType(contentTypeToUse)
+          .systemMetadata(systemMetadataToUse)
+          .size(srcObjectAns.getSize())
+          .userMetadata(metadataToUse)
+          .tagging(taggingToUse)
+          // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
+          .preconditions(options.getPreconditions())
+          .checksum(copyChecksum(options, srcObjectAns))
+          .objectLock(options.getObjectLock())
+          .customerEncryption(options.getCustomerEncryption())
+          .serverSideEncryption(options.getServerSideEncryption())
+          .build());
+    } catch (Throwable e) {
+      // The content is closed once it is stored; close it if it never got that far, so that the parts of a source
+      // stored in parts aren't retained.
+      closeQuietly(srcObjectAns.getContent(), e);
+      throw e;
     }
-    if (isCopyToItselfWithoutChanges(bucket, key, options)) {
-      throw new LocalS3RequestException(S3ErrorCode.InvalidRequest, "This copy request is illegal because it is "
-          + "trying to copy an object to itself without changing the object's metadata, storage class, website "
-          + "redirect location or encryption attributes.");
-    }
-
-    boolean replaceMetadata = options.getMetadataDirective() == CopyObjectOptions.MetadataDirective.REPLACE;
-    Map<String, String> metadataToUse = replaceMetadata ? options.getUserMetadata() : srcObjectAns.getUserMetadata();
-    String contentTypeToUse = replaceMetadata ? options.getContentType() : srcObjectAns.getContentType();
-    SystemMetadata systemMetadataToUse = SystemMetadata.withWebsiteRedirectLocation(
-        SystemMetadata.withStorageClass(replaceMetadata ? options.getSystemMetadata()
-            : srcObjectAns.getSystemMetadata(), options.getStorageClass()), options.getWebsiteRedirectLocation());
-
-    String[][] taggingToUse = options.getTaggingDirective() == CopyObjectOptions.TaggingDirective.REPLACE
-        ? options.getTagging().orElse(null)
-        : srcObjectAns.getTagging();
-
-    // putObject stores the content before commitPutObject write locks the destination bucket.
-    PutObjectAns putObjectAns = putObject(bucket, key, PutObjectOptions.builder()
-        .content(srcObjectAns.getContent())
-        .contentType(contentTypeToUse)
-        .systemMetadata(systemMetadataToUse)
-        .size(srcObjectAns.getSize())
-        .userMetadata(metadataToUse)
-        .tagging(taggingToUse)
-        // Evaluated by commitPutObject, under the write lock of the destination bucket that the copy is added under.
-        .preconditions(options.getPreconditions())
-        .checksum(copyChecksum(options, srcObjectAns))
-        .objectLock(options.getObjectLock())
-        .customerEncryption(options.getCustomerEncryption())
-        .serverSideEncryption(options.getServerSideEncryption())
-        .build());
 
     return CopyObjectAns.builder()
         .sourceVersionId(srcObjectAns.getVersionId())
@@ -91,6 +101,18 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         && Objects.isNull(options.getChecksumAlgorithm())
         && Objects.isNull(options.getServerSideEncryption())
         && Objects.isNull(options.getCustomerEncryption());
+  }
+
+  private static void closeQuietly(InputStream content, Throwable cause) {
+    if (content == null) {
+      return;
+    }
+
+    try {
+      content.close();
+    } catch (IOException e) {
+      cause.addSuppressed(e);
+    }
   }
 
   private static RequestChecksum copyChecksum(CopyObjectOptions options, GetObjectAns source) {

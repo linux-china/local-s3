@@ -108,17 +108,24 @@ class InMemoryStorage implements Storage {
   public Long put(Long id, InputStream data) {
     // The bytes of the chunks read so far, which are reserved.
     long length = 0;
-    try {
-      List<byte[]> chunks = new ArrayList<>();
+    List<byte[]> chunks = new ArrayList<>();
+    // Close the stream before storing, so that what it holds, e.g. the retention of the parts of a composite object,
+    // is released, and a failure to close can't leave stored content with its space released.
+    try (InputStream in = data) {
       byte[] chunk;
-      while ((chunk = readChunk(data)) != null) {
+      while ((chunk = readChunk(in)) != null) {
         length += chunk.length;
         chunks.add(chunk);
       }
-      return putContent(id, new Content(chunks.toArray(byte[][]::new), length));
     } catch (IOException e) {
       release(length);
       throw new UncheckedIOException("Failed to store object " + id + ".", e);
+    } catch (RuntimeException | Error e) {
+      release(length);
+      throw e;
+    }
+    try {
+      return putContent(id, new Content(chunks.toArray(byte[][]::new), length));
     } catch (RuntimeException | Error e) {
       release(length);
       throw e;

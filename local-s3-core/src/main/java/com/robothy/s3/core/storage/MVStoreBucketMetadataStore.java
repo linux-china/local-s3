@@ -144,6 +144,11 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   private final boolean commitEveryChange;
 
   /**
+   * The store of the service, which runs {@linkplain #whenDurable} once MVStore has committed what it was left.
+   */
+  private final LocalS3Store localS3Store;
+
+  /**
    * Create a store over the MVStore of a LocalS3 service.
    *
    * @param localS3Store the store of the service.
@@ -153,7 +158,7 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     Objects.requireNonNull(localS3Store, "localS3Store");
     // A store that keeps its metadata in memory has nothing to read a bucket back from, so its buckets hold every
     // object they were given; one over a file reads an object when it is needed, within a bounded heap.
-    return new MVStoreBucketMetadataStore(localS3Store.store(),
+    return new MVStoreBucketMetadataStore(localS3Store,
         localS3Store.isInMemory() ? ObjectMetadataCache.unbounded() : ObjectMetadataCache.bounded(),
         localS3Store.commitsEveryChange());
   }
@@ -168,13 +173,14 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
   public static MetadataStore<BucketMetadata> create(LocalS3Store localS3Store,
                                                      ObjectMetadataCache objectMetadataCache) {
     Objects.requireNonNull(localS3Store, "localS3Store");
-    return new MVStoreBucketMetadataStore(localS3Store.store(),
+    return new MVStoreBucketMetadataStore(localS3Store,
         Objects.requireNonNull(objectMetadataCache, "objectMetadataCache"), localS3Store.commitsEveryChange());
   }
 
-  private MVStoreBucketMetadataStore(MVStore store, ObjectMetadataCache objectMetadataCache,
+  private MVStoreBucketMetadataStore(LocalS3Store localS3Store, ObjectMetadataCache objectMetadataCache,
                                      boolean commitEveryChange) {
-    this.store = store;
+    this.localS3Store = localS3Store;
+    this.store = localS3Store.store();
     this.objectMetadataCache = objectMetadataCache;
     this.commitEveryChange = commitEveryChange;
   }
@@ -202,6 +208,11 @@ public class MVStoreBucketMetadataStore implements MetadataStore<BucketMetadata>
     if (commitEveryChange) {
       store.commit();
     }
+  }
+
+  @Override
+  public void whenDurable(Runnable action) {
+    localS3Store.whenDurable(action);
   }
 
   private MVMap<String, String> buckets() {
