@@ -123,7 +123,11 @@ public interface LifecycleExecutionService extends LocalS3MetadataApplicable, St
 
     object = bucket.getObjectMetadataRef(key).map(ObjectMetadataRef::get).orElseThrow();
     if (object.getVersionedObjectMap().size() == 1 && object.getLatest().isDeleted()) {
-      LifecycleRule removing = rules.stream().filter(LifecycleRule::expiredObjectDeleteMarker).findFirst().orElse(null);
+      // A configuration stored before tag filters were refused with ExpiredObjectDeleteMarker may still have one; a
+      // delete marker has no tags, so such a rule never selects it.
+      LifecycleRule removing = rules.stream()
+          .filter(rule -> rule.expiredObjectDeleteMarker() && rule.filter().tags().isEmpty())
+          .findFirst().orElse(null);
       if (removing != null) {
         String versionId = object.getLatestVersion();
         String returnedVersionId = returnedVersionId(object, versionId);

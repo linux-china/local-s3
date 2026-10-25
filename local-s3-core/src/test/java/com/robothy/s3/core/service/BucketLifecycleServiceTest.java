@@ -131,6 +131,18 @@ class BucketLifecycleServiceTest extends LocalS3ServiceTestBase {
   }
 
   @Test
+  void acceptsExpiredObjectDeleteMarkerWithoutATagFilter() {
+    BucketService bucketService = LocalS3Manager.createInMemoryS3Manager().bucketService();
+    bucketService.createBucket(BUCKET);
+    bucketService.putBucketLifecycleConfiguration(BUCKET, rule("<ID>r</ID><Status>Enabled</Status>"
+        + "<Filter><And><Prefix>a/</Prefix><ObjectSizeGreaterThan>1</ObjectSizeGreaterThan></And></Filter>"
+        + "<Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>"), null);
+    bucketService.putBucketLifecycleConfiguration(BUCKET, rule("<ID>r</ID><Status>Enabled</Status>"
+        + "<Filter><Tag><Key>k</Key><Value>v</Value></Tag></Filter>"
+        + "<Expiration><ExpiredObjectDeleteMarker>false</ExpiredObjectDeleteMarker></Expiration>"), null);
+  }
+
+  @Test
   void acceptsTheMaxNumberOfRules() {
     BucketService bucketService = LocalS3Manager.createInMemoryS3Manager().bucketService();
     bucketService.createBucket(BUCKET);
@@ -184,6 +196,14 @@ class BucketLifecycleServiceTest extends LocalS3ServiceTestBase {
             + "</Expiration>"), null, S3ErrorCode.InvalidArgument),
         Arguments.of(rule("<ID>r</ID><Status>Enabled</Status><Transition><Date>1970-08-23T00:55:27Z</Date>"
             + "<StorageClass>GLACIER</StorageClass></Transition>"), null, S3ErrorCode.InvalidArgument),
+        // A delete marker has no tags, so a tag filter can't select one.
+        Arguments.of(rule("<ID>r</ID><Status>Enabled</Status><Filter><Tag><Key>k</Key><Value>v</Value></Tag>"
+            + "</Filter><Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>"), null,
+            S3ErrorCode.InvalidArgument),
+        Arguments.of(rule("<ID>r</ID><Status>Enabled</Status><Filter><And><Prefix>a/</Prefix><Tag><Key>k</Key>"
+            + "<Value>v</Value></Tag></And></Filter>"
+            + "<Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>"), null,
+            S3ErrorCode.InvalidArgument),
         // A document type could declare entities that read files or URLs; it is refused rather than resolved.
         Arguments.of("<!DOCTYPE LifecycleConfiguration [<!ENTITY id SYSTEM \"file:///etc/passwd\">]>"
             + rule("<ID>&id;</ID><Status>Enabled</Status>" + expire), null, S3ErrorCode.MalformedXML)

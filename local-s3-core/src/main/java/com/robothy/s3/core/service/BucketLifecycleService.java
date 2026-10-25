@@ -126,6 +126,8 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     String id = null;
     String status = null;
     boolean hasAction = false;
+    boolean tagFilter = false;
+    boolean expiredObjectDeleteMarker = false;
     while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
       String element = reader.getLocalName();
       if ("ID".equals(element)) {
@@ -134,7 +136,9 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         status = reader.getElementText();
       } else if ("Expiration".equals(element) || "Transition".equals(element)) {
         hasAction = true;
-        validateDateOfAction(reader);
+        expiredObjectDeleteMarker |= validateDateOfAction(reader);
+      } else if ("Filter".equals(element)) {
+        tagFilter = hasTag(reader);
       } else {
         hasAction |= RULE_ACTIONS.contains(element);
         skipElement(reader);
@@ -146,6 +150,10 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     if (!hasAction) {
       throw new LocalS3RequestException(S3ErrorCode.InvalidRequest,
           "At least one action needs to be specified in a rule.");
+    }
+    if (tagFilter && expiredObjectDeleteMarker) {
+      throw new LocalS3InvalidArgumentException("ExpiredObjectDeleteMarker", "true",
+          "ExpiredObjectDeleteMarker cannot be specified with a tag-based filter.");
     }
     if (id != null) {
       if (id.length() > MAX_RULE_ID_LENGTH) {
@@ -160,9 +168,18 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
     return id != null;
   }
 
-  /** Leaves the reader at the end element of the date. */
-  private static void validateDateOfAction(XMLStreamReader reader) throws XMLStreamException {
+  /**
+   * Leaves the reader at the end element of the action.
+   *
+   * @return whether the action has {@code ExpiredObjectDeleteMarker} set to {@code true}.
+   */
+  private static boolean validateDateOfAction(XMLStreamReader reader) throws XMLStreamException {
+    boolean expiredObjectDeleteMarker = false;
     while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
+      if ("ExpiredObjectDeleteMarker".equals(reader.getLocalName())) {
+        expiredObjectDeleteMarker = Boolean.parseBoolean(reader.getElementText().trim());
+        continue;
+      }
       if (!"Date".equals(reader.getLocalName())) {
         skipElement(reader);
         continue;
@@ -178,6 +195,22 @@ public interface BucketLifecycleService extends LocalS3MetadataApplicable {
         throw new LocalS3InvalidArgumentException("Date", date, "'Date' must be at midnight GMT");
       }
     }
+    return expiredObjectDeleteMarker;
+  }
+
+  /** Leaves the reader at the end element of the filter, or of its {@code And}. */
+  private static boolean hasTag(XMLStreamReader reader) throws XMLStreamException {
+    boolean tag = false;
+    while (nextElement(reader) == XMLStreamConstants.START_ELEMENT) {
+      String element = reader.getLocalName();
+      if ("And".equals(element)) {
+        tag |= hasTag(reader);
+      } else {
+        tag |= "Tag".equals(element);
+        skipElement(reader);
+      }
+    }
+    return tag;
   }
 
   private static int nextElement(XMLStreamReader reader) throws XMLStreamException {

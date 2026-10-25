@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.event.S3ChangePublisher;
+import com.robothy.s3.core.model.BucketLifecycleConfiguration;
 import com.robothy.s3.core.model.answers.LifecycleActionAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -85,6 +86,23 @@ class LifecycleExecutionServiceTest {
     assertTrue(actions.stream().allMatch(a -> a.type() == LifecycleActionAns.Type.OBJECT_EXPIRED));
     assertEquals(EXPIRING - expired + 1, bucket().getObjectMap().size());
     assertFalse(bucket().getUploads().isEmpty());
+  }
+
+  @Test
+  void aStoredTagFilterDoesNotRemoveExpiredDeleteMarkers() {
+    bucketService.setVersioningEnabled(BUCKET, true);
+    objectService.deleteObject(BUCKET, "gone");
+    // Put is refused now, but a configuration stored before that may still have the combination.
+    bucket().setLifecycle(new BucketLifecycleConfiguration("""
+        <LifecycleConfiguration>
+          <Rule><ID>tagged</ID><Status>Enabled</Status><Filter><Tag><Key>k</Key><Value>v</Value></Tag></Filter>
+            <Expiration><ExpiredObjectDeleteMarker>true</ExpiredObjectDeleteMarker></Expiration>
+          </Rule>
+        </LifecycleConfiguration>
+        """, "all_storage_classes_128K"));
+
+    objectService.applyLifecycle(BUCKET, Instant.now().plus(Duration.ofDays(3)));
+    assertTrue(bucket().getObjectMap().containsKey("gone"));
   }
 
   private BucketMetadata bucket() {
