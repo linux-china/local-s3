@@ -339,6 +339,8 @@ of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the 
   `404 NoSuchUpload`, like Amazon S3.
 + `ListParts` answers `400 InvalidArgument` for a `max-parts` or `part-number-marker` that isn't a non-negative
   integer. `max-parts=0` answers an empty page, and a marker beyond the last part an empty list, like Amazon S3.
++ `ListMultipartUploads` answers at most 1000 uploads: a larger `max-uploads` is capped, and answered as 1000 in
+  `MaxUploads`, rather than rejected, like Amazon S3; one that isn't a non-negative integer answers `400 InvalidArgument`.
 
 ## Browser form uploads (POST Object)
 

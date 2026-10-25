@@ -83,26 +83,42 @@ public class RequestAssertions {
    * @throws LocalS3InvalidArgumentException if {@code max-keys} isn't a number, or is negative.
    */
   public static int assertMaxKeysIsValid(RouterHttpRequest request) {
-    String maxKeys = request.parameter("max-keys").orElse(null);
-    if (maxKeys == null) {
+    return assertListingLimitIsValid(request, "max-keys");
+  }
+
+  /**
+   * Assert that {@code max-uploads} is a number and not negative, and cap it at {@linkplain #DEFAULT_MAX_KEYS},
+   * like {@linkplain #assertMaxKeysIsValid(RouterHttpRequest)}.
+   *
+   * @param request HTTP request.
+   * @return the number of uploads to return at most; {@linkplain #DEFAULT_MAX_KEYS} if the request doesn't ask.
+   * @throws LocalS3InvalidArgumentException if {@code max-uploads} isn't a number, or is negative.
+   */
+  public static int assertMaxUploadsIsValid(RouterHttpRequest request) {
+    return assertListingLimitIsValid(request, "max-uploads");
+  }
+
+  private static int assertListingLimitIsValid(RouterHttpRequest request, String name) {
+    String limit = request.parameter(name).orElse(null);
+    if (limit == null) {
       return DEFAULT_MAX_KEYS;
     }
 
     int value;
     try {
-      value = Integer.parseInt(maxKeys.trim());
+      value = Integer.parseInt(limit.trim());
     } catch (NumberFormatException _) {
-      throw invalidMaxKeys(maxKeys);
+      throw invalidListingLimit(name, limit);
     }
     if (value < 0) {
-      throw invalidMaxKeys(maxKeys);
+      throw invalidListingLimit(name, limit);
     }
     return Math.min(DEFAULT_MAX_KEYS, value);
   }
 
-  private static LocalS3InvalidArgumentException invalidMaxKeys(String maxKeys) {
-    return new LocalS3InvalidArgumentException("max-keys", maxKeys,
-        "Argument max-keys must be an integer between 0 and " + Integer.MAX_VALUE);
+  private static LocalS3InvalidArgumentException invalidListingLimit(String name, String limit) {
+    return new LocalS3InvalidArgumentException(name, limit,
+        "Argument " + name + " must be an integer between 0 and " + Integer.MAX_VALUE);
   }
 
   /**

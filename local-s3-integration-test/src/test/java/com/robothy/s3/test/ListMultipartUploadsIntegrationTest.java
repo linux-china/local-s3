@@ -228,4 +228,21 @@ public class ListMultipartUploadsIntegrationTest {
     assertEquals("dir with space/", response.prefix());
     assertEquals(List.of(key), response.uploads().stream().map(MultipartUpload::key).toList());
   }
+
+  @LocalS3
+  @Test
+  void capsMaxUploadsAndRejectsANegativeOne(S3Client s3Client) {
+    String bucketName = "test-bucket-" + UUID.randomUUID();
+    s3Client.createBucket(b -> b.bucket(bucketName));
+    s3Client.createMultipartUpload(b -> b.bucket(bucketName).key("a"));
+
+    ListMultipartUploadsResponse response = s3Client.listMultipartUploads(b -> b.bucket(bucketName).maxUploads(100000));
+    assertEquals(1000, response.maxUploads());
+    assertEquals(1, response.uploads().size());
+
+    S3Exception exception = assertThrows(S3Exception.class,
+        () -> s3Client.listMultipartUploads(b -> b.bucket(bucketName).maxUploads(-1)));
+    assertEquals(400, exception.statusCode());
+    assertEquals("InvalidArgument", exception.awsErrorDetails().errorCode());
+  }
 }

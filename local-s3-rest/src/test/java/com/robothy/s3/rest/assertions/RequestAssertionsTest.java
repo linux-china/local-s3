@@ -53,4 +53,18 @@ class RequestAssertionsTest {
     assertEquals(maxKeys, thrown.getArgumentValue());
   }
 
+  @Test
+  void maxUploadsIsCappedAndRejectedLikeMaxKeys() {
+    RouterHttpRequest request = RouterHttpRequest.builder().build();
+    assertEquals(RequestAssertions.DEFAULT_MAX_KEYS, RequestAssertions.assertMaxUploadsIsValid(request));
+    request.putParameter("max-uploads", List.of("2"));
+    assertEquals(2, RequestAssertions.assertMaxUploadsIsValid(request));
+    request.putParameter("max-uploads", List.of("100000"));
+    assertEquals(RequestAssertions.DEFAULT_MAX_KEYS, RequestAssertions.assertMaxUploadsIsValid(request));
+    request.putParameter("max-uploads", List.of("-1"));
+    LocalS3InvalidArgumentException thrown = assertThrows(LocalS3InvalidArgumentException.class,
+        () -> RequestAssertions.assertMaxUploadsIsValid(request));
+    assertEquals("max-uploads", thrown.getArgumentName());
+  }
+
 }
