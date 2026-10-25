@@ -558,6 +558,10 @@ A commit of this API is the client writing the next `metadata.json` itself and t
 every change, so a commit built on a stale read is answered `409 ConflictException` and the client refreshes and
 retries — which is what the `s3-tables-catalog` library does.
 
+`DeleteTable` and `RenameTable` honour an optional `versionToken` the same way, and atomically: the token is claimed
+before the table is dropped or renamed, so a delete or a rename racing a commit made with the same token loses with
+`409 ConflictException` rather than purging or moving the version that commit just wrote.
+
 The token follows commits made over the Iceberg REST endpoint of the same table bucket as well: when a table's pointer
 moved without going through this API, the next read draws a new token, so a client still holding the one from before that
 commit loses rather than silently overwriting a commit it never saw.

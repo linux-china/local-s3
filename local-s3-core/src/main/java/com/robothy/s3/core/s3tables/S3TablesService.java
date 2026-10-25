@@ -584,6 +584,7 @@ public final class S3TablesService {
       throw S3TablesException.conflict("A table named '" + newName + "' already exists in the namespace '"
           + newNamespace + "'.");
     }
+    TableAttributes claimed = claimVersion(bucket, table, request.path("versionToken").asString(null));
 
     ObjectNode rename = IcebergJson.newObject();
     rename.set("source", identifierNode(namespace, name));
@@ -591,9 +592,14 @@ public final class S3TablesService {
     // The catalog's rename is what decides: it refuses a source that moved after it was read. The attributes follow
     // it, the new ones first so that the ID never resolves to nothing, and they replace any that a reader gave the
     // destination meanwhile, so that the table keeps its ARN.
-    catalog(bucket).renameTable(rename, false);
-    store.putTable(bucket.name(), table.renamedTo(newNamespace, newName));
-    store.removeTableIfSame(bucket.name(), table);
+    try {
+      catalog(bucket).renameTable(rename, false);
+    } catch (RuntimeException e) {
+      releaseVersion(bucket, table, claimed);
+      throw e;
+    }
+    store.putTable(bucket.name(), claimed.renamedTo(newNamespace, newName));
+    store.removeTableIfSame(bucket.name(), claimed);
   }
 
   /**
@@ -610,10 +616,16 @@ public final class S3TablesService {
     TableBucketRecord bucket = located.bucket();
     TableAttributes table = located.table();
     requireCurrentVersion(table, versionToken);
+    TableAttributes claimed = claimVersion(bucket, table, versionToken);
     // Purged: a table bucket owns the files of its tables, so a deleted table takes its data with it, which is what
     // Amazon does and what keeps a test's storage from filling up with the tables it dropped.
-    catalog(bucket).dropTable(IcebergIdentifier.of(List.of(namespace), name), false, true);
-    store.removeTable(bucket.name(), table);
+    try {
+      catalog(bucket).dropTable(IcebergIdentifier.of(List.of(namespace), name), false, true);
+    } catch (RuntimeException e) {
+      releaseVersion(bucket, table, claimed);
+      throw e;
+    }
+    store.removeTable(bucket.name(), claimed);
     store.removeTags(tableArn(bucket.name(), table.tableId()));
   }
 
@@ -1534,6 +1546,38 @@ public final class S3TablesService {
     if (versionToken != null && !versionToken.isBlank() && !versionToken.equals(table.versionToken())) {
       throw S3TablesException.conflict("The version token of the request is not the current one of the table '"
           + table.name() + "'. Read the table again and retry.");
+    }
+  }
+
+  /**
+   * Claim the version token a client sent before a change that the token guards, the way
+   * {@linkplain #updateTableMetadataLocation} does: the token is moved on with a compare-and-set, so a commit that
+   * landed after the table was read makes this request lose, rather than be dropped or renamed away under it.
+   *
+   * @param versionToken the token the client sent; {@code null} or blank for a request that carries none, which claims
+   *     nothing.
+   * @return the attributes the table is now at, which are {@code table} itself if nothing was claimed.
+   * @throws S3TablesException if the table changed since it was read.
+   */
+  private TableAttributes claimVersion(TableBucketRecord bucket, TableAttributes table,
+                                       @Nullable String versionToken) {
+    if (versionToken == null || versionToken.isBlank()) {
+      return table;
+    }
+    TableAttributes claimed = table.committed(table.metadataLocation());
+    if (!store.replaceTable(bucket.name(), table, claimed)) {
+      throw S3TablesException.conflict("The table '" + table.name() + "' changed while this request was being"
+          + " prepared. Read it again and retry.");
+    }
+    return claimed;
+  }
+
+  /**
+   * Give back a token {@linkplain #claimVersion} claimed, for a change that didn't land.
+   */
+  private void releaseVersion(TableBucketRecord bucket, TableAttributes table, TableAttributes claimed) {
+    if (claimed != table) {
+      store.replaceTable(bucket.name(), claimed, table);
     }
   }
 

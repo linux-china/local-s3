@@ -16,6 +16,10 @@ import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.s3tables.LocalS3TablesManager;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.ObjectNode;
@@ -241,6 +245,52 @@ class S3TablesServiceTest {
     s3Tables.deleteTable(arn, "db", "t", null);
     assertTrue(buckets.getBucket(bucket) != null);
     assertFalse(s3Tables.listTables(arn, null, null, null, null).path("tables").iterator().hasNext());
+  }
+
+  @Test
+  void a_delete_and_a_commit_with_the_same_token_never_both_win() throws Exception {
+    String arn = createTableBucket("races");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      for (int i = 0; i < 50; i++) {
+        String name = "t" + i;
+        String token = createTable(arn, "db", name).path("versionToken").asString();
+        String first = s3Tables.getTableMetadataLocation(arn, "db", name).path("metadataLocation").asString();
+        ObjectNode commit = IcebergJson.newObject();
+        commit.put("versionToken", token);
+        commit.put("metadataLocation", copyOfMetadata(arn, first, "00001"));
+
+        CountDownLatch start = new CountDownLatch(1);
+        Future<Boolean> committed = executor.submit(() -> wins(start,
+            () -> s3Tables.updateTableMetadataLocation(arn, "db", name, commit)));
+        Future<Boolean> deleted = executor.submit(() -> wins(start,
+            () -> s3Tables.deleteTable(arn, "db", name, token)));
+        start.countDown();
+
+        boolean commitWon = committed.get();
+        boolean deleteWon = deleted.get();
+        assertFalse(commitWon && deleteWon, "Both requests held the same token, so only one of them may win.");
+        if (commitWon) {
+          assertEquals(commit.path("metadataLocation").asString(),
+              s3Tables.getTableMetadataLocation(arn, "db", name).path("metadataLocation").asString());
+        }
+      }
+    }
+  }
+
+  /**
+   * Run a request once the latch opens; {@code false} if it was refused as a conflict, or found the table already
+   * deleted.
+   */
+  private static boolean wins(CountDownLatch start, Runnable request) throws InterruptedException {
+    start.await();
+    try {
+      request.run();
+      return true;
+    } catch (S3TablesException e) {
+      assertTrue(e.status() == 409 || e.status() == 404, e.getMessage());
+      return false;
+    }
   }
 
   @Test
