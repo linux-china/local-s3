@@ -38,6 +38,7 @@ class UploadPartController implements RouterHttpRequestHandler {
     String key = RequestAssertions.assertObjectKeyProvided(request);
     int partNumber = RequestAssertions.assertPartNumberIsValid(request);
     String uploadId = RequestAssertions.assertUploadIdIsProvided(request);
+    String contentMd5 = RequestUtils.contentMd5(request);
     DecodedAmzRequestBody decodedBody = RequestUtils.getBody(request);
     RequestUtils.assertContentLengthAccepted(decodedBody, acceptChunkedUploads);
     CustomerEncryption customerEncryption = CustomerEncryptionHeaders.fromRequest(request);
@@ -47,6 +48,7 @@ class UploadPartController implements RouterHttpRequestHandler {
         .dataFile(decodedBody.getBodyFile())
         .heapData(decodedBody.getHeapContent())
         .etag(RequestUtils.getETag(request).orElse(null))
+        .contentMd5(contentMd5)
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .customerEncryption(customerEncryption)
         .build());

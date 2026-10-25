@@ -110,8 +110,9 @@ like Amazon S3. They're dropped when a re-creation of a bucket in us-east-1 answ
   [limits](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html) of Amazon S3: at most 10, each
   with a unique key of 1 to 128 characters and a value of at most 256; otherwise `400 InvalidTag`, and the object keeps
   the tags it has.
-+ A `Content-MD5` that isn't the base64 of an MD5 digest, e.g. an empty one, answers `400 InvalidDigest` before the
-  content is read; one that doesn't match the content answers `400 BadDigest`.
++ A `Content-MD5` of `PutObject` or `UploadPart` that isn't the base64 of an MD5 digest, e.g. an empty one, answers
+  `400 InvalidDigest` before the content is read; one that doesn't match the content answers `400 BadDigest`, and a
+  rejected part isn't stored.
 + `DeleteObjects` takes 1 to 1000 objects, otherwise `400 MalformedXML`. An object that can't be deleted is reported as
   an `<Error>` of its own, with its S3 error, or `InternalError` for an unexpected failure, whose message is logged
   rather than answered, and the other objects are still deleted.

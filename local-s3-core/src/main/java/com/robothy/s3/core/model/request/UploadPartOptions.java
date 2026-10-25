@@ -33,6 +33,11 @@ public class UploadPartOptions {
   private String etag;
 
   /**
+   * The base64 encoded {@code Content-MD5} of the request; {@code null} for none.
+   */
+  private String contentMd5;
+
+  /**
    * The checksum to upload the part with; {@code null} for the one of the upload, if it has one.
    */
   private RequestChecksum checksum;

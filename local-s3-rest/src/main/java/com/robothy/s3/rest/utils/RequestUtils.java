@@ -17,10 +17,12 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import com.robothy.s3.core.util.Strings;
 
@@ -131,6 +133,22 @@ public class RequestUtils {
       // Rejected below.
     }
     throw new LocalS3InvalidArgumentException(headerName, value, "The value of " + headerName + " is not valid.");
+  }
+
+  // Rejected before the content is read, like Amazon S3; see docs/semantics.md#request-validation.
+  public static String contentMd5(RouterHttpRequest request) {
+    String value = request.header(HttpHeaderNames.CONTENT_MD5).orElse(null);
+    if (Objects.isNull(value)) {
+      return null;
+    }
+    try {
+      if (Base64.getDecoder().decode(value).length == 16) {
+        return value;
+      }
+    } catch (IllegalArgumentException _) {
+      // Rejected below.
+    }
+    throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
   }
 
   public static Optional<String> getETag(RouterHttpRequest request) {

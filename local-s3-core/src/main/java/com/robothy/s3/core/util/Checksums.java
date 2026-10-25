@@ -11,6 +11,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -212,6 +213,31 @@ public final class Checksums {
     if (!MessageDigest.isEqual(decode(checksum.algorithm(), expected), computed)) {
       throw new LocalS3BadDigestException(
           "The " + checksum.algorithm() + " you specified did not match the calculated checksum.");
+    }
+  }
+
+  /**
+   * Verify that content matches the {@code Content-MD5} that the client sent for it, if it sent one.
+   *
+   * @param contentMd5 the base64 encoded MD5 digest of the request; {@code null} if there is none.
+   * @param md5 the hex encoded MD5 digest computed from the content.
+   * @throws LocalS3BadDigestException if the digests differ.
+   */
+  public static void verifyContentMd5(String contentMd5, String md5) {
+    if (Objects.isNull(contentMd5)) {
+      return;
+    }
+    // Compared as bytes, since a base64 digest without padding is accepted as well.
+    byte[] expected;
+    byte[] computed;
+    try {
+      expected = Base64.getDecoder().decode(contentMd5.trim());
+      computed = HexFormat.of().parseHex(md5);
+    } catch (IllegalArgumentException _) {
+      throw new LocalS3BadDigestException("Invalid Content-MD5 header.");
+    }
+    if (!MessageDigest.isEqual(expected, computed)) {
+      throw new LocalS3BadDigestException("The Content-MD5 you specified did not match what we received.");
     }
   }
 

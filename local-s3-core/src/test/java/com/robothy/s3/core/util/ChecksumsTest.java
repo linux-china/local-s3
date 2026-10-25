@@ -117,4 +117,17 @@ class ChecksumsTest {
         .formatHex(Checksums.compute(algorithm, new ByteArrayInputStream(content)));
   }
 
+
+  /**
+   * A {@code Content-MD5} is compared as a digest, so one without its base64 padding matches as well.
+   */
+  @Test
+  void verifiesContentMd5() {
+    String md5 = "d41d8cd98f00b204e9800998ecf8427e"; // MD5 of the empty content
+    assertDoesNotThrow(() -> Checksums.verifyContentMd5(null, md5));
+    assertDoesNotThrow(() -> Checksums.verifyContentMd5("1B2M2Y8AsgTpgAmY7PhCfg==", md5));
+    assertDoesNotThrow(() -> Checksums.verifyContentMd5("1B2M2Y8AsgTpgAmY7PhCfg", md5));
+    assertThrows(LocalS3BadDigestException.class, () -> Checksums.verifyContentMd5("AAAAAAAAAAAAAAAAAAAAAA==", md5));
+  }
+
 }

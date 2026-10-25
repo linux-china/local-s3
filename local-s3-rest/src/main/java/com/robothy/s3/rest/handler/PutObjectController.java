@@ -1,8 +1,6 @@
 package com.robothy.s3.rest.handler;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
-import com.robothy.s3.core.exception.LocalS3RequestException;
-import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.rest.utils.ChecksumHeaders;
 import com.robothy.netty.http.RouterHttpRequest;
@@ -22,7 +20,6 @@ import com.robothy.s3.rest.utils.ServerSideEncryptionHeaders;
 import com.robothy.s3.rest.utils.SystemMetadataHeaders;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.util.Base64;
 import java.util.Objects;
 
 class PutObjectController extends ObjectHttpRequestHandler {
@@ -57,7 +54,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .content(decodedBody.getDecodedBody())
         .contentFile(decodedBody.getBodyFile())
         .heapContent(decodedBody.getHeapContent())
-        .contentMd5(contentMd5(request))
+        .contentMd5(RequestUtils.contentMd5(request))
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .tagging(RequestUtils.extractTagging(request).orElse(null))
         .userMetadata(RequestUtils.extractUserMetadata(request))
@@ -85,22 +82,6 @@ class PutObjectController extends ObjectHttpRequestHandler {
     ResponseUtils.addServerHeader(response);
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
-  }
-
-  // Rejected before the content is read, like Amazon S3; see docs/semantics.md#request-validation.
-  private static String contentMd5(RouterHttpRequest request) {
-    String value = request.header(HttpHeaderNames.CONTENT_MD5).orElse(null);
-    if (Objects.isNull(value)) {
-      return null;
-    }
-    try {
-      if (Base64.getDecoder().decode(value).length == 16) {
-        return value;
-      }
-    } catch (IllegalArgumentException _) {
-      // Rejected below.
-    }
-    throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
   }
 
   private static Long writeOffsetBytes(RouterHttpRequest request) {

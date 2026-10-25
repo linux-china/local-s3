@@ -38,6 +38,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     // Like putObject, a failure to deliver the changes of a committed part doesn't delete its data.
     return deliverChangesAfter(() -> {
       try {
+        Checksums.verifyContentMd5(options.getContentMd5(), data.md5());
         if (Objects.nonNull(checksum)) {
           Checksums.verify(checksum, data.checksum());
         }

@@ -7,7 +7,6 @@ import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.event.S3ChangeType;
-import com.robothy.s3.core.exception.LocalS3BadDigestException;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
@@ -31,8 +30,6 @@ import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -75,7 +72,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         }
         versionedObjectMetadata.setFileId(fileId);
         versionedObjectMetadata.setEtag(content.md5());
-        checkRequestingMd5Header(options, versionedObjectMetadata.getEtag());
+        Checksums.verifyContentMd5(options.getContentMd5(), versionedObjectMetadata.getEtag());
         if (Objects.nonNull(checksum)) {
           Checksums.verify(checksum, content.checksum());
         }
@@ -153,7 +150,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
     Long fileId = content.fileId();
     return deliverChangesAfter(() -> {
       try {
-        checkRequestingMd5Header(options, appended.etag());
+        Checksums.verifyContentMd5(options.getContentMd5(), appended.etag());
         if (Objects.nonNull(requestChecksum)) {
           Checksums.verify(requestChecksum, appendedChecksum.digest());
         }
@@ -301,21 +298,6 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   private static void applyBucketDefaultEncryption(BucketMetadata bucketMetadata, VersionedObjectMetadata version) {
     if (Objects.isNull(version.getServerSideEncryption()) && Objects.isNull(version.getCustomerEncryption())) {
       version.setServerSideEncryption(bucketMetadata.getDefaultEncryption());
-    }
-  }
-
-  private static void checkRequestingMd5Header(PutObjectOptions options, String etag) {
-    if (Objects.nonNull(options.getContentMd5())) {
-      byte[] md5Bytes;
-      try {
-        md5Bytes = HexFormat.of().parseHex(etag);
-      } catch (IllegalArgumentException _) {
-        throw new LocalS3BadDigestException("Invalid Content-MD5 header.");
-      }
-      String computedBase64 = Base64.getEncoder().encodeToString(md5Bytes);
-      if (!computedBase64.equals(options.getContentMd5())) {
-        throw new LocalS3BadDigestException("The Content-MD5 you specified did not match what we received.");
-      }
     }
   }
 
