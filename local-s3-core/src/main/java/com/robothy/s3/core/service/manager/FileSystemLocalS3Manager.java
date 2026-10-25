@@ -70,7 +70,7 @@ final class FileSystemLocalS3Manager implements LocalS3Manager {
   }
 
   private BucketService createBucketService() {
-    return DefaultBucketService.create(s3Metadata, bucketGuard);
+    return DefaultBucketService.create(s3Metadata, storage, bucketGuard);
   }
 
   private ObjectService createObjectService() {

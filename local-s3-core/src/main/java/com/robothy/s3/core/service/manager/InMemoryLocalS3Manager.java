@@ -223,7 +223,7 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   }
 
   private BucketService createBucketService() {
-    return DefaultBucketService.create(() -> data.metadata(), bucketGuard);
+    return DefaultBucketService.create(() -> data.metadata(), () -> data.storage(), bucketGuard);
   }
 
   private ObjectService createObjectService() {

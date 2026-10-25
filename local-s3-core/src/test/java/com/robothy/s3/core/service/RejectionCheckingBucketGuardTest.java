@@ -21,8 +21,9 @@ class RejectionCheckingBucketGuardTest {
   void guardRecordsARejectionThatChangedTheBucket() {
     LocalS3Metadata metadata = new LocalS3Metadata();
     RejectionCheckingBucketGuard checking = new RejectionCheckingBucketGuard(() -> metadata);
-    ObjectService objects = DefaultObjectService.create(metadata, Storage.createInMemory(), checking);
-    DefaultBucketService.create(metadata, checking).createBucket("bucket");
+    Storage storage = Storage.createInMemory();
+    ObjectService objects = DefaultObjectService.create(metadata, storage, checking);
+    DefaultBucketService.create(metadata, storage, checking).createBucket("bucket");
     objects.putObject("bucket", "a",
         PutObjectOptions.builder().content(new ByteArrayInputStream(new byte[] {'a'})).size(1).build());
     objects.createMultipartUpload("bucket", "upload", CreateMultipartUploadOptions.builder().build());

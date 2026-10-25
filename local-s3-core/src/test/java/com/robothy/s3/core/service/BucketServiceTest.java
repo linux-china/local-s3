@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.model.Bucket;
+import com.robothy.s3.core.model.internal.UploadPartMetadata;
+import com.robothy.s3.core.model.request.CreateMultipartUploadOptions;
+import com.robothy.s3.core.model.request.UploadPartOptions;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -23,6 +27,26 @@ class BucketServiceTest extends LocalS3ServiceTestBase {
     Bucket bucket = bucketService.createBucket("bucket");
     Bucket deletedBucket = bucketService.deleteBucket("bucket");
     assertEquals(bucket, deletedBucket);
+  }
+
+  @MethodSource("localS3Services")
+  @ParameterizedTest
+  void deleteBucketDeletesThePartsOfItsUploads(BucketService bucketService, ObjectService objectService) {
+    bucketService.createBucket("uploads");
+    String uploadId = objectService.createMultipartUpload("uploads", "a.txt",
+        CreateMultipartUploadOptions.builder().build());
+    objectService.uploadPart("uploads", "a.txt", uploadId, 1, UploadPartOptions.builder()
+        .contentLength(5)
+        .data(new ByteArrayInputStream("Hello".getBytes()))
+        .build());
+    List<Long> fileIds = objectService.localS3Metadata().getBucketMetadata("uploads").orElseThrow()
+        .getUploads().get("a.txt").get(uploadId).getParts().values().stream()
+        .map(UploadPartMetadata::getFileId).toList();
+    assertEquals(1, fileIds.size());
+    assertTrue(objectService.storage().isExist(fileIds.get(0)));
+
+    bucketService.deleteBucket("uploads");
+    assertFalse(objectService.storage().isExist(fileIds.get(0)));
   }
 
   @MethodSource("bucketServices")

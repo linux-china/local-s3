@@ -53,8 +53,9 @@ class RejectedChangeLeavesMetadataUnchangedTest {
   void setUp() {
     LocalS3Metadata metadata = new LocalS3Metadata();
     guard = new RejectionCheckingBucketGuard(() -> metadata);
-    bucketService = DefaultBucketService.create(metadata, guard);
-    objectService = DefaultObjectService.create(metadata, Storage.createInMemory(), guard);
+    Storage storage = Storage.createInMemory();
+    bucketService = DefaultBucketService.create(metadata, storage, guard);
+    objectService = DefaultObjectService.create(metadata, storage, guard);
     bucketService.createBucket(BUCKET);
     bucketService.createBucket(LOCKED_BUCKET, null, true);
   }

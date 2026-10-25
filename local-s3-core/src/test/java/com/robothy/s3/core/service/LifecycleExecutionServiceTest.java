@@ -50,8 +50,9 @@ class LifecycleExecutionServiceTest {
   void setUp() {
     metadata = new LocalS3Metadata();
     guard = new CountingBucketGuard();
-    bucketService = DefaultBucketService.create(metadata, guard);
-    objectService = DefaultObjectService.create(metadata, Storage.createInMemory(), guard);
+    Storage storage = Storage.createInMemory();
+    bucketService = DefaultBucketService.create(metadata, storage, guard);
+    objectService = DefaultObjectService.create(metadata, storage, guard);
     bucketService.createBucket(BUCKET);
     for (int i = 0; i < EXPIRING; i++) {
       put("tmp/" + i);

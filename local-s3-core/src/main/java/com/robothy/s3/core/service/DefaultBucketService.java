@@ -7,31 +7,39 @@ import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.Bucket;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
+import com.robothy.s3.core.storage.Storage;
 import java.util.Objects;
 import java.util.function.Supplier;
 
 public class DefaultBucketService implements BucketService {
 
   public static BucketService create(LocalS3Metadata s3Metadata) {
-    return create(s3Metadata, BucketGuard.inMemory());
+    return create(s3Metadata, Storage.createInMemory(), BucketGuard.inMemory());
   }
 
-  public static BucketService create(LocalS3Metadata s3Metadata, BucketGuard bucketGuard) {
+  // The storage must be the one of the object service: deleting a bucket deletes the parts of its uploads.
+  public static BucketService create(LocalS3Metadata s3Metadata, Storage storage, BucketGuard bucketGuard) {
     Objects.requireNonNull(s3Metadata);
-    return create(() -> s3Metadata, bucketGuard);
+    Objects.requireNonNull(storage);
+    return create(() -> s3Metadata, () -> storage, bucketGuard);
   }
 
-  // Looked up for every operation, so that a reset can replace it within BucketGuard#exclusive.
-  public static BucketService create(Supplier<LocalS3Metadata> s3Metadata, BucketGuard bucketGuard) {
-    return new DefaultBucketService(Objects.requireNonNull(s3Metadata), bucketGuard);
+  // Looked up for every operation, so that a reset can replace them within BucketGuard#exclusive.
+  public static BucketService create(Supplier<LocalS3Metadata> s3Metadata, Supplier<Storage> storage,
+                                     BucketGuard bucketGuard) {
+    return new DefaultBucketService(Objects.requireNonNull(s3Metadata), Objects.requireNonNull(storage), bucketGuard);
   }
 
   private final Supplier<LocalS3Metadata> s3Metadata;
 
+  private final Supplier<Storage> storage;
+
   private final BucketGuard bucketGuard;
 
-  private DefaultBucketService(Supplier<LocalS3Metadata> metadata, BucketGuard bucketGuard) {
+  private DefaultBucketService(Supplier<LocalS3Metadata> metadata, Supplier<Storage> storage,
+                               BucketGuard bucketGuard) {
     this.s3Metadata = metadata;
+    this.storage = storage;
     this.bucketGuard = Objects.requireNonNull(bucketGuard);
   }
 
@@ -51,6 +59,12 @@ public class DefaultBucketService implements BucketService {
       BucketAssertions.assertBucketNameIsValid(bucketName);
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
       BucketAssertions.assertBucketIsEmpty(bucketMetadata);
+      // Uploads in progress don't keep a bucket from being deleted, as in AWS, but nothing else references their
+      // parts. Deleted before the bucket is removed, like AbortMultipartUpload does, so that an IN_MEMORY service
+      // still references the parts left if a deletion fails; a storage transaction defers them to its commit.
+      Storage storage = this.storage.get();
+      bucketMetadata.getUploads().values().forEach(uploads -> uploads.values().forEach(upload ->
+          upload.getParts().values().forEach(part -> storage.delete(part.getFileId()))));
       localS3Metadata().getBucketMetadataMap().remove(bucketName);
       publishChange(S3Change.bucketDeleted("DeleteBucket", bucketName, bucketMetadata.getRegion()));
       return Bucket.fromBucketMetadata(bucketMetadata);
