@@ -354,8 +354,10 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
       return redirect.getReplaceKeyWith();
     }
     String replacement = redirect.getReplaceKeyPrefixWith();
-    if (replacement != null && matchedPrefix != null && key.startsWith(matchedPrefix)) {
-      return replacement + key.substring(matchedPrefix.length());
+    // A condition without a key prefix matches the empty one, so the replacement is prepended to the key, as AWS does.
+    String prefix = isNotBlank(matchedPrefix) ? matchedPrefix : "";
+    if (replacement != null && key.startsWith(prefix)) {
+      return replacement + key.substring(prefix.length());
     }
     return key;
   }

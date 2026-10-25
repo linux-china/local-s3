@@ -329,6 +329,22 @@ class StaticWebsiteIntegrationTest {
       assertTrue(response.toLowerCase().contains("location: http://" + host + "/docs/index.html\r\n"), response);
     }
 
+    @Test
+    void aRoutingRuleOnAnErrorCodeAlonePrependsItsKeyPrefix() throws Exception {
+      start(authenticated().build());
+      s3.putBucketWebsite(b -> b.bucket(PUBLIC_BUCKET).websiteConfiguration(w -> w
+          .indexDocument(i -> i.suffix("index.html"))
+          .routingRules(r -> r
+              .condition(c -> c.httpErrorCodeReturnedEquals("404"))
+              .redirect(to -> to.replaceKeyPrefixWith("report-404/").httpRedirectCode("302")))));
+
+      // Without KeyPrefixEquals the matched prefix is the empty one, rather than redirecting back to the same key.
+      HttpResponse<String> response = get("/" + PUBLIC_BUCKET + "/missing.html");
+      assertEquals(302, response.statusCode());
+      assertEquals(endpoint + "/" + PUBLIC_BUCKET + "/report-404/missing.html",
+          response.headers().firstValue("Location").orElseThrow());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"-1", "200", "404", "abc"})
     void aRoutingRuleWithARedirectCodeThatIsNotA3xxRedirectsWith301(String code) throws Exception {
