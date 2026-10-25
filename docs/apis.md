@@ -216,6 +216,9 @@ has no direction: `PutVectors` and `QueryVectors` answer it with `ValidationExce
 A vector that contains `NaN` or an infinite value is rejected the same way by `PutVectors` and `QueryVectors`, for every
 distance metric, since its distance to any vector is `NaN`.
 
+In the metadata filter of `QueryVectors`, every key of an object is a condition that must hold, `$and` and `$or`
+included: `{"genre": "drama", "$or": [{"year": 2020}, {"year": 2021}]}` matches a drama of 2020 or 2021.
+
 `ListVectors` lists the vectors of an index in the order of their keys. Its `nextToken` marks the last key of the page
 it answers, so a listing continues after that key however the vectors change between the pages: no vector that exists
 for the whole listing is skipped or listed twice. With `segmentCount` and `segmentIndex`, a vector belongs to a segment

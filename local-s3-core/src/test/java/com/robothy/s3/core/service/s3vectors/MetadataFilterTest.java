@@ -245,6 +245,23 @@ class MetadataFilterTest {
     }
 
     @Test
+    void testLogicalOperatorWithFieldConditions() throws Exception {
+        // genre = comedy AND (year = 2020 OR year = 2021): the field condition must not be dropped
+        JsonNode filter = objectMapper.readTree(
+            "{\"genre\":\"comedy\",\"$or\":[{\"year\":2020},{\"year\":2021}]}");
+        List<VectorObjectMetadata> result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
+        assertEquals(1, result.size());
+        assertEquals("vector3", result.get(0).getVectorId());
+
+        // $and and $or side by side: both apply
+        filter = objectMapper.readTree(
+            "{\"$and\":[{\"available\":true}],\"$or\":[{\"year\":2019},{\"year\":2020}]}");
+        result = MetadataFilter.applyFilter(testVectors, MetadataFilterExpression.fromJson(filter));
+        assertEquals(1, result.size());
+        assertEquals("vector1", result.get(0).getVectorId());
+    }
+
+    @Test
     void testMultipleConditionsOnSameField() throws Exception {
         // Test price range: rating >= 7.0 AND rating <= 8.0
         ObjectNode filter = objectMapper.createObjectNode();

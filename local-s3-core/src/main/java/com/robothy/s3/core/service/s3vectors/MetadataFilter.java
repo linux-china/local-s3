@@ -79,20 +79,15 @@ public class MetadataFilter {
 
         ObjectNode filterObj = (ObjectNode) filter;
 
-        // Handle logical operators
-        if (filterObj.has("$and")) {
-            return evaluateAndOperator(vector, filterObj.get("$and"));
-        }
-        if (filterObj.has("$or")) {
-            return evaluateOrOperator(vector, filterObj.get("$or"));
-        }
-
-        // Handle field-based filters
-        // Check all field filters
-        for (String fieldName : filterObj.propertyNames()) {
-            JsonNode fieldFilter = filterObj.get(fieldName);
-            
-            if (!evaluateFieldFilter(vector, fieldName, fieldFilter)) {
+        // Every key, a logical operator included, is one more condition of an implicit $and, so none is dropped
+        for (String key : filterObj.propertyNames()) {
+            JsonNode condition = filterObj.get(key);
+            boolean matched = switch (key) {
+                case "$and" -> evaluateAndOperator(vector, condition);
+                case "$or" -> evaluateOrOperator(vector, condition);
+                default -> evaluateFieldFilter(vector, key, condition);
+            };
+            if (!matched) {
                 return false;
             }
         }
