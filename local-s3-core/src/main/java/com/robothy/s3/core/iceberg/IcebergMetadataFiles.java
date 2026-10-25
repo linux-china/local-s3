@@ -144,7 +144,13 @@ public final class IcebergMetadataFiles {
       log.warn("Skipped purging {}: {}", location, e.getMessage());
       return;
     }
-    String prefix = parsed.key().isEmpty() ? "" : IcebergJson.stripTrailingSlash(parsed.key()) + "/";
+    String key = IcebergJson.stripTrailingSlash(parsed.key());
+    if (key.isEmpty()) {
+      // The location is the whole bucket, which holds more than the table: a purge would take everything with it.
+      log.warn("Skipped purging {}: it is the root of the bucket {}.", location, parsed.bucket());
+      return;
+    }
+    String prefix = key + "/";
     try {
       // Every version is deleted by its ID: a delete without one only stacks a delete marker on a versioned bucket.
       String keyMarker = null;

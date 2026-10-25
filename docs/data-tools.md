@@ -451,7 +451,8 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   deletes everything under the location of the table — every version of every object, delete markers included, so
   a versioned warehouse bucket keeps nothing of it — and is **skipped** when another table of the catalog keeps its
   metadata under that location — which happens when a table is created under the name of a dropped or renamed one,
-  because the default location of a table is derived from its name. `icebergCatalog(iceberg ->
+  because the default location of a table is derived from its name — or when the location is the **root of a bucket**
+  (`s3://bucket`), which holds more than the table. `icebergCatalog(iceberg ->
   iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the
   `unique-table-location` of the Iceberg catalogs.
 

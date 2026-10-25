@@ -47,6 +47,26 @@ class IcebergMetadataFilesTest {
         versions(objectService, "db/").stream().map(VersionItem::key).toList());
   }
 
+  /**
+   * A table located at the root of a bucket shares it with whatever else the bucket holds.
+   */
+  @ParameterizedTest
+  @ValueSource(strings = {"s3://warehouse", "s3://warehouse/"})
+  void purge_skips_the_root_of_a_bucket(String location) {
+    LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
+    BucketService bucketService = s3Manager.bucketService();
+    ObjectService objectService = s3Manager.objectService();
+    bucketService.createBucket("warehouse");
+    IcebergMetadataFiles files = new IcebergMetadataFiles(bucketService, objectService);
+    files.write("s3://warehouse/metadata/00000.metadata.json", "{}");
+    files.write("s3://warehouse/unrelated.txt", "{}");
+
+    files.purge(location);
+
+    assertEquals(List.of("metadata/00000.metadata.json", "unrelated.txt"),
+        versions(objectService, "").stream().map(VersionItem::key).toList());
+  }
+
   private static List<VersionItem> versions(ObjectService objectService, String prefix) {
     return objectService.listObjectVersions("warehouse", null, null, 10_000, prefix, null).getVersions();
   }
