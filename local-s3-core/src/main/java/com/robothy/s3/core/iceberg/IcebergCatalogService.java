@@ -490,10 +490,14 @@ public final class IcebergCatalogService {
    */
   private void rollback(List<Commit> applied) {
     for (Commit commit : applied) {
-      if (commit.base() == null) {
-        store.removeTable(commit.identifier());
-      } else {
-        store.replaceTable(commit.base().committed(commit.metadataLocation()), commit.base());
+      // Compare-and-set back, so that a commit that landed on the new pointer in the meantime is not overwritten.
+      boolean restored = commit.base() == null
+          ? store.removeTable(new IcebergTableRecord(commit.identifier().namespace(), commit.identifier().name(),
+              false, commit.metadataLocation(), null, 0))
+          : store.replaceTable(commit.base().committed(commit.metadataLocation()), commit.base());
+      if (!restored) {
+        log.warn("Cannot roll back {} of a failed transaction: it changed after the transaction moved it to {}, so the"
+            + " transaction is left partially applied.", commit.identifier(), commit.metadataLocation());
       }
     }
   }
