@@ -564,7 +564,7 @@ own, and LocalS3 applies it:
 | `IndexDocument/Suffix` | The object that a request for a directory is answered with, e.g. `home.html`. |
 | `ErrorDocument/Key` | The object that a `404` is answered with, under the status of the failure rather than `200`. It is always answered whole: `Range` and the conditional headers (`If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since`, `If-Range`) of the request apply to the page that wasn't found, not to the error document, so they are ignored rather than answered with a `206`, `304` or `412`. |
 | `RedirectAllRequestsTo` | Answers every request of the bucket with a `301` to that host, keeping the key. |
-| `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. An `HttpRedirectCode` that isn't a `3xx` status is answered as `301`. |
+| `RoutingRules` | Redirects the requests that a rule matches: `Condition` by `KeyPrefixEquals`, by `HttpErrorCodeReturnedEquals`, or by both; `Redirect` by `HostName`, `Protocol`, `HttpRedirectCode`, `ReplaceKeyWith` and `ReplaceKeyPrefixWith`. The first rule that matches wins. An `HttpRedirectCode` that isn't a `3xx` status is answered as `301`. A redirect without a `HostName` stays on the host of the request, and on the bucket: a path-style request keeps its `/<bucket>` segment, e.g. `/my-site/old/index.html` to `/my-site/docs/index.html`. |
 
 `website(website -> website.indexDocument(...).errorDocument(...))`, or the matching variables and properties,
 change the documents of the buckets that have no configuration of their own.

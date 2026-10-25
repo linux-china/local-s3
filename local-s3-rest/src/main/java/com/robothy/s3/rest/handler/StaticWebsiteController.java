@@ -383,9 +383,25 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
   private String location(RouterHttpRequest request, String protocol, String hostName, String key) {
     String scheme = isNotBlank(protocol) ? protocol.trim()
         : ConnectionSchemes.of(request).orElse(ConnectionSchemes.HTTP);
-    String host = isNotBlank(hostName) ? hostName.trim()
-        : Objects.toString(request.getHeaders().get(HttpHeaderNames.HOST.toString()), "");
-    return scheme + "://" + host + "/" + encodePath(key);
+    if (isNotBlank(hostName)) {
+      return scheme + "://" + hostName.trim() + "/" + encodePath(key);
+    }
+    String host = Objects.toString(request.getHeaders().get(HttpHeaderNames.HOST.toString()), "");
+    return scheme + "://" + host + bucketSegment(request) + "/" + encodePath(key);
+  }
+
+  /**
+   * The {@code /<bucket>} segment of a path-style request, which a redirect on its own host has to keep so as not to
+   * land on another bucket; empty for a virtual-hosted request. The router takes the key of a virtual-hosted request
+   * as its whole path, so only that request has a path of {@code "/" + key}.
+   */
+  private static String bucketSegment(RouterHttpRequest request) {
+    String path = Objects.toString(request.getPath(), "");
+    String key = request.parameter("key").orElse("");
+    if (path.equals("/" + key) || path.isEmpty()) {
+      return "";
+    }
+    return "/" + encodePath(request.parameter("bucket").orElse(""));
   }
 
   private static void redirect(RouterHttpResponse response, HttpResponseStatus status, String location) {

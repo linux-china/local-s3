@@ -307,10 +307,26 @@ class StaticWebsiteIntegrationTest {
               .condition(c -> c.keyPrefixEquals("old/"))
               .redirect(to -> to.replaceKeyPrefixWith("docs/").httpRedirectCode("301")))));
 
+      // A path-style request stays on its bucket rather than landing on a bucket named "docs".
       HttpResponse<String> response = get("/" + PUBLIC_BUCKET + "/old/index.html");
       assertEquals(301, response.statusCode());
-      assertTrue(response.headers().firstValue("Location").orElseThrow().endsWith("/docs/index.html"),
+      assertEquals(endpoint + "/" + PUBLIC_BUCKET + "/docs/index.html",
           response.headers().firstValue("Location").orElseThrow());
+    }
+
+    @Test
+    void aRoutingRuleRedirectsAVirtualHostedRequestOnItsHost() throws Exception {
+      start(authenticated().build());
+      s3.putBucketWebsite(b -> b.bucket(PUBLIC_BUCKET).websiteConfiguration(w -> w
+          .indexDocument(i -> i.suffix("index.html"))
+          .routingRules(r -> r
+              .condition(c -> c.keyPrefixEquals("old/"))
+              .redirect(to -> to.replaceKeyPrefixWith("docs/").httpRedirectCode("301")))));
+
+      String host = PUBLIC_BUCKET + ".localhost:" + localS3.getPort();
+      String response = sendRaw("GET /old/index.html HTTP/1.1", host);
+      assertTrue(response.startsWith("HTTP/1.1 301"), response);
+      assertTrue(response.toLowerCase().contains("location: http://" + host + "/docs/index.html\r\n"), response);
     }
 
     @ParameterizedTest
