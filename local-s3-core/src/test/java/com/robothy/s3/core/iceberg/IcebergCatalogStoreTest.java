@@ -3,14 +3,21 @@ package com.robothy.s3.core.iceberg;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.robothy.s3.core.storage.LocalS3Store;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 
 /**
- * The compare-and-set removal a rename relies on, which is awkward to race through the service itself.
+ * The compare-and-set removal a rename relies on, and the namespace checks that must be atomic with the write they
+ * guard, which are awkward to race through the service itself.
  */
 class IcebergCatalogStoreTest {
 
@@ -19,7 +26,7 @@ class IcebergCatalogStoreTest {
   @Test
   void a_table_that_was_committed_to_after_it_was_read_is_not_removed() {
     try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
-      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store);
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
       IcebergTableRecord read = record("s3://warehouse/db/orders/metadata/00000.metadata.json");
       assertTrue(store.putTableIfAbsent(read));
       IcebergTableRecord committed = read.committed("s3://warehouse/db/orders/metadata/00001.metadata.json");
@@ -36,7 +43,7 @@ class IcebergCatalogStoreTest {
   @Test
   void a_table_created_again_under_the_name_is_not_removed() {
     try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
-      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store);
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
       IcebergTableRecord read = record("s3://warehouse/db/orders-1/metadata/00000.metadata.json");
       assertTrue(store.putTableIfAbsent(read));
       store.removeTable(ORDERS);
@@ -46,6 +53,107 @@ class IcebergCatalogStoreTest {
       assertFalse(store.removeTable(read));
       assertEquals(recreated, store.getTable(ORDERS));
     }
+  }
+
+  @Test
+  void a_table_is_not_created_in_a_namespace_that_does_not_exist() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store);
+      IcebergCatalogException e = assertThrows(IcebergCatalogException.class,
+          () -> store.putTableIfAbsent(record("s3://warehouse/db/orders/metadata/00000.metadata.json")));
+      assertEquals(404, e.status());
+      assertEquals("NoSuchNamespaceException", e.type());
+      assertNull(store.getTable(ORDERS));
+    }
+  }
+
+  @Test
+  void a_namespace_that_holds_a_table_is_not_removed() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
+      assertTrue(store.putTableIfAbsent(record("s3://warehouse/db/orders/metadata/00000.metadata.json")));
+      IcebergCatalogException e = assertThrows(IcebergCatalogException.class,
+          () -> store.removeEmptyNamespace(ORDERS.namespace()));
+      assertEquals("NamespaceNotEmptyException", e.type());
+
+      store.removeTable(ORDERS);
+      store.removeEmptyNamespace(ORDERS.namespace());
+      assertNull(store.getNamespace("db"));
+      assertThrows(IcebergCatalogException.class, () -> store.removeEmptyNamespace(ORDERS.namespace()));
+    }
+  }
+
+  @Test
+  void an_update_of_a_dropped_namespace_does_not_bring_it_back() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
+      IcebergNamespaceRecord read = store.getNamespace("db");
+      store.removeEmptyNamespace(ORDERS.namespace());
+
+      assertFalse(store.replaceNamespace(read.withProperties(Map.of("owner", "me"))));
+      assertNull(store.getNamespace("db"));
+    }
+  }
+
+  @Test
+  void a_table_created_while_its_namespace_is_dropped_never_outlives_it() throws Exception {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory();
+         ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store);
+      for (int round = 0; round < 500; round++) {
+        store.putNamespaceIfAbsent(new IcebergNamespaceRecord(ORDERS.namespace(), Map.of()));
+        CountDownLatch start = new CountDownLatch(1);
+        Future<?> create = executor.submit(() -> {
+          start.await();
+          try {
+            store.putTableIfAbsent(record("s3://warehouse/db/orders/metadata/00000.metadata.json"));
+          } catch (IcebergCatalogException _) {
+            // The drop won.
+          }
+          return null;
+        });
+        Future<?> drop = executor.submit(() -> {
+          start.await();
+          try {
+            store.removeEmptyNamespace(ORDERS.namespace());
+          } catch (IcebergCatalogException _) {
+            // The create won.
+          }
+          return null;
+        });
+        start.countDown();
+        create.get();
+        drop.get();
+
+        boolean namespaceExists = store.getNamespace("db") != null;
+        boolean tableExists = store.getTable(ORDERS) != null;
+        assertTrue(namespaceExists || !tableExists, "Round " + round + " left a table in a dropped namespace.");
+        store.clear();
+      }
+    }
+  }
+
+  @Test
+  void nothing_is_created_in_a_closed_catalog() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
+      assertFalse(store.closeIfEmpty(), "A catalog that holds a namespace is not closed.");
+
+      store.removeEmptyNamespace(ORDERS.namespace());
+      assertTrue(store.closeIfEmpty());
+      assertThrows(IcebergCatalogException.class,
+          () -> store.putNamespaceIfAbsent(new IcebergNamespaceRecord(ORDERS.namespace(), Map.of())));
+      assertThrows(IcebergCatalogException.class,
+          () -> store.putTableIfAbsent(new IcebergTableRecord(List.of(), "orders", false,
+              "s3://warehouse/orders/metadata/00000.metadata.json", null, 0)));
+      assertEquals(0, store.size());
+    }
+  }
+
+  private static IcebergCatalogStore storeWithNamespace(LocalS3Store localS3Store) {
+    IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store);
+    store.putNamespaceIfAbsent(new IcebergNamespaceRecord(ORDERS.namespace(), Map.of()));
+    return store;
   }
 
   private static IcebergTableRecord record(String metadataLocation) {

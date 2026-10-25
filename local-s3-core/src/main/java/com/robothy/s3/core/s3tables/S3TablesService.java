@@ -134,6 +134,7 @@ public final class S3TablesService {
     if (!store.putBucketIfAbsent(record)) {
       throw S3TablesException.conflict("A table bucket named '" + name + "' already exists.");
     }
+    catalogs.remove(name);
     createWarehouseBucket(record);
     Map<String, String> tags = IcebergJson.toStringMap(request.get("tags"));
     if (!tags.isEmpty()) {
@@ -221,13 +222,15 @@ public final class S3TablesService {
    */
   public void deleteTableBucket(String tableBucketArn) {
     TableBucketRecord record = requireBucket(tableBucketArn);
-    if (!namespaceNames(record).isEmpty()) {
+    // Closing the catalog, rather than only finding it empty, is what refuses a namespace that a request which found
+    // the table bucket just before creates now. The closed catalog stays in `catalogs` so that such a request gets it
+    // rather than a new one; createTableBucket replaces it.
+    if (!catalog(record).closeIfEmpty()) {
       throw S3TablesException.conflict("The table bucket '" + record.name()
           + "' is not empty: delete its namespaces first.");
     }
     store.removeBucket(record.name());
     store.removeTags(bucketArn(record.name()));
-    catalogs.remove(record.name());
     deleteWarehouseBucket(record);
   }
 

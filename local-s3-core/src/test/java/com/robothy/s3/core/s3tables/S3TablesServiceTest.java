@@ -215,6 +215,22 @@ class S3TablesServiceTest {
   }
 
   @Test
+  void a_request_that_found_a_table_bucket_before_it_was_deleted_creates_nothing_in_it() {
+    String arn = createTableBucket("closing");
+    // What an Iceberg REST request holds once it has resolved its warehouse.
+    IcebergCatalogService stale = s3Tables.catalogOfWarehouse(arn);
+    s3Tables.deleteTableBucket(arn);
+
+    assertEquals(404, assertThrows(IcebergCatalogException.class,
+        () -> stale.createNamespace(IcebergJson.read("{\"namespace\":[\"db\"]}"))).status());
+
+    // A table bucket created again under the name starts from an empty catalog of its own.
+    createTableBucket("closing");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    assertEquals(1, s3Tables.listNamespaces(arn, null, null, null).path("namespaces").size());
+  }
+
+  @Test
   void deleting_a_table_takes_its_files_with_it() {
     String arn = createTableBucket("purged");
     s3Tables.createNamespace(arn, namespaceRequest("db"));

@@ -142,6 +142,15 @@ public class IcebergCatalogException extends RuntimeException {
         + ". " + (destinationIsView ? "View" : "Table") + " already exists");
   }
 
+  /**
+   * A create in a catalog whose table bucket has been deleted, by a request that found the table bucket just before.
+   *
+   * @return the exception.
+   */
+  public static IcebergCatalogException catalogClosed() {
+    return new IcebergCatalogException(404, "NoSuchNamespaceException", "The catalog has been deleted.");
+  }
+
   public static IcebergCatalogException namespaceNotEmpty(List<String> namespace) {
     return new IcebergCatalogException(409, "NamespaceNotEmptyException",
         "Namespace is not empty: " + IcebergIdentifier.toString(namespace));

@@ -161,6 +161,16 @@ public final class IcebergCatalogService {
   }
 
   /**
+   * Close the catalog if it holds neither a namespace nor a table, after which nothing can be created in it; deleting
+   * a table bucket does this to its catalog.
+   *
+   * @return {@code true} if it is closed; {@code false} if it isn't empty.
+   */
+  public boolean closeIfEmpty() {
+    return store.closeIfEmpty();
+  }
+
+  /**
    * Drop a namespace, which must hold neither a table nor another namespace.
    *
    * @param namespace the levels of the namespace.
@@ -168,10 +178,7 @@ public final class IcebergCatalogService {
    */
   public void dropNamespace(List<String> namespace) {
     requireNamespace(namespace);
-    if (store.hasTables(namespace) || store.hasChildNamespaces(namespace)) {
-      throw IcebergCatalogException.namespaceNotEmpty(namespace);
-    }
-    store.removeNamespace(IcebergIdentifier.namespaceKey(namespace));
+    store.removeEmptyNamespace(namespace);
   }
 
   /**
@@ -202,7 +209,9 @@ public final class IcebergCatalogService {
       properties.put(update.getKey(), update.getValue());
       updated.add(update.getKey());
     }
-    store.putNamespace(record.withProperties(properties));
+    if (!store.replaceNamespace(record.withProperties(properties))) {
+      throw IcebergCatalogException.noSuchNamespace(namespace);
+    }
 
     ObjectNode response = IcebergJson.newObject();
     response.set("removed", removed);
@@ -456,10 +465,17 @@ public final class IcebergCatalogService {
 
     List<Commit> applied = new ArrayList<>();
     for (Commit commit : commits) {
-      boolean moved = commit.base() == null
-          ? store.putTableIfAbsent(new IcebergTableRecord(commit.identifier().namespace(),
-              commit.identifier().name(), false, commit.metadataLocation(), null, 0))
-          : store.replaceTable(commit.base(), commit.base().committed(commit.metadataLocation()));
+      boolean moved;
+      try {
+        moved = commit.base() == null
+            ? store.putTableIfAbsent(new IcebergTableRecord(commit.identifier().namespace(),
+                commit.identifier().name(), false, commit.metadataLocation(), null, 0))
+            : store.replaceTable(commit.base(), commit.base().committed(commit.metadataLocation()));
+      } catch (IcebergCatalogException e) {
+        // The namespace of a created table was dropped after it was prepared.
+        rollback(applied);
+        throw e;
+      }
       if (!moved) {
         rollback(applied);
         throw IcebergCatalogException.commitFailed("Cannot commit the transaction: " + commit.identifier()
@@ -502,6 +518,10 @@ public final class IcebergCatalogService {
     if (base == null && !hasCreateRequirement(request)) {
       throw views ? IcebergCatalogException.noSuchView(identifier)
           : IcebergCatalogException.noSuchTable(identifier);
+    }
+    if (base == null) {
+      // Refused here rather than only when the pointer is stored, so no metadata file is written for it.
+      requireNamespace(identifier.namespace());
     }
 
     ObjectNode starting = base != null ? base : emptyMetadata(views);

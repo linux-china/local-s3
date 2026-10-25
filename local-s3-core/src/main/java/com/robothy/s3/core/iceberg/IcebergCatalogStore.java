@@ -19,6 +19,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>{@linkplain #replaceTable} is a compare-and-set on a thread-safe {@linkplain MVMap}, which is what makes a commit
  * atomic: the loser of two commits from the same metadata file is answered {@code 409 CommitFailedException}.
+ *
+ * <p>The steps that read one map and write the other — a table created in a namespace, a namespace dropped once it is
+ * empty, a catalog closed once it is empty — are serialized on the namespaces map, see
+ * {@code docs/iceberg-impl.md#提交与并发}.
  */
 public final class IcebergCatalogStore {
 
@@ -38,6 +42,11 @@ public final class IcebergCatalogStore {
   private final MVMap<String, String> namespaces;
 
   private final MVMap<String, String> tables;
+
+  /**
+   * Set once the table bucket of this catalog is deleted; guarded by {@linkplain #namespaces}.
+   */
+  private boolean closed;
 
   private IcebergCatalogStore(LocalS3Store localS3Store, String namespacesMap, String tablesMap) {
     this.localS3Store = Objects.requireNonNull(localS3Store);
@@ -118,13 +127,18 @@ public final class IcebergCatalogStore {
   }
 
   /**
-   * Store a namespace, replacing the one of the same key.
+   * Replace a namespace, if it still exists: an update of its properties must not bring back a namespace that was
+   * dropped meanwhile.
    *
    * @param record the namespace.
+   * @return {@code true} if it was replaced; {@code false} if the namespace is gone.
    */
-  public void putNamespace(IcebergNamespaceRecord record) {
-    namespaces.put(record.key(), JsonUtils.toJson(record));
-    commit();
+  public boolean replaceNamespace(IcebergNamespaceRecord record) {
+    boolean replaced = namespaces.replace(record.key(), JsonUtils.toJson(record)) != null;
+    if (replaced) {
+      commit();
+    }
+    return replaced;
   }
 
   /**
@@ -134,7 +148,11 @@ public final class IcebergCatalogStore {
    * @return {@code true} if it was stored; {@code false} if the namespace already exists.
    */
   public boolean putNamespaceIfAbsent(IcebergNamespaceRecord record) {
-    boolean created = namespaces.putIfAbsent(record.key(), JsonUtils.toJson(record)) == null;
+    boolean created;
+    synchronized (namespaces) {
+      requireOpen();
+      created = namespaces.putIfAbsent(record.key(), JsonUtils.toJson(record)) == null;
+    }
     if (created) {
       commit();
     }
@@ -142,17 +160,38 @@ public final class IcebergCatalogStore {
   }
 
   /**
-   * Remove a namespace. Its tables aren't removed: the caller checks that it holds none.
+   * Remove a namespace that holds neither a table nor another namespace. The check and the removal are one step, so a
+   * table created meanwhile either lands before it, and the namespace stays, or is refused after it.
    *
-   * @param key the key of the namespace.
-   * @return {@code true} if it was removed; {@code false} if there was none.
+   * @param namespace the levels of the namespace.
+   * @throws IcebergCatalogException if the namespace doesn't exist, or isn't empty.
    */
-  public boolean removeNamespace(String key) {
-    boolean removed = namespaces.remove(key) != null;
-    if (removed) {
-      commit();
+  public void removeEmptyNamespace(List<String> namespace) {
+    synchronized (namespaces) {
+      if (hasTables(namespace) || hasChildNamespaces(namespace)) {
+        throw IcebergCatalogException.namespaceNotEmpty(namespace);
+      }
+      if (namespaces.remove(IcebergIdentifier.namespaceKey(namespace)) == null) {
+        throw IcebergCatalogException.noSuchNamespace(namespace);
+      }
     }
-    return removed;
+    commit();
+  }
+
+  /**
+   * Close the catalog if it holds neither a namespace nor a table, after which nothing can be created in it, which is
+   * what deleting its table bucket does: a namespace created by a request that found the table bucket just before it
+   * was deleted would otherwise be left behind in it.
+   *
+   * @return {@code true} if it is closed; {@code false} if it isn't empty.
+   */
+  public boolean closeIfEmpty() {
+    synchronized (namespaces) {
+      if (namespaces.isEmpty() && tables.isEmpty()) {
+        closed = true;
+      }
+      return closed;
+    }
   }
 
   /**
@@ -198,13 +237,23 @@ public final class IcebergCatalogStore {
 
   /**
    * Store a table if its identifier holds none, which is how a table is created without overwriting one that another
-   * request created meanwhile.
+   * request created meanwhile. Its namespace is checked in the same step, so a namespace dropped meanwhile can't be
+   * left holding it.
    *
    * @param record the table.
    * @return {@code true} if it was stored; {@code false} if the identifier is taken.
+   * @throws IcebergCatalogException if its namespace doesn't exist.
    */
   public boolean putTableIfAbsent(IcebergTableRecord record) {
-    boolean created = tables.putIfAbsent(record.key(), JsonUtils.toJson(record)) == null;
+    boolean created;
+    synchronized (namespaces) {
+      requireOpen();
+      List<String> namespace = record.namespace();
+      if (!namespace.isEmpty() && !namespaces.containsKey(IcebergIdentifier.namespaceKey(namespace))) {
+        throw IcebergCatalogException.noSuchNamespace(namespace);
+      }
+      created = tables.putIfAbsent(record.key(), JsonUtils.toJson(record)) == null;
+    }
     if (created) {
       commit();
     }
@@ -326,6 +375,12 @@ public final class IcebergCatalogStore {
     String prefix = IcebergIdentifier.namespaceKey(namespace) + IcebergIdentifier.SEPARATOR;
     Iterator<String> keys = namespaces.keyIterator(prefix);
     return keys.hasNext() && keys.next().startsWith(prefix);
+  }
+
+  private void requireOpen() {
+    if (closed) {
+      throw IcebergCatalogException.catalogClosed();
+    }
   }
 
   /**
