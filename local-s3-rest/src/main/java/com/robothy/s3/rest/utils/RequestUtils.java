@@ -151,10 +151,6 @@ public class RequestUtils {
     throw new LocalS3RequestException(S3ErrorCode.InvalidDigest);
   }
 
-  public static Optional<String> getETag(RouterHttpRequest request) {
-    return request.header(HttpHeaderNames.ETAG.toString());
-  }
-
   /**
    * Extract tagging from the HTTP header.
    *

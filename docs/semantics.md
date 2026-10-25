@@ -292,6 +292,9 @@ A header that isn't a non-negative number answers `400 InvalidArgument`.
 
 ## Entity tags of multipart uploads
 
+A part gets the MD5 of its content as its entity tag, like Amazon S3; an `ETag` header of the `UploadPart` request
+is ignored.
+
 The object of a completed multipart upload gets the entity tag of Amazon S3: the MD5 of the concatenated MD5 digests
 of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the MD5 of the whole content instead;
 `s3Api(s3 -> s3.compositeMultipartEtags(false))`, `@LocalS3(compositeMultipartEtags = false)` or

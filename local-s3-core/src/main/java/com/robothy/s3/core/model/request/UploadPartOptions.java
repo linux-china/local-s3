@@ -4,7 +4,6 @@ import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.storage.HeapContent;
 import java.io.InputStream;
 import java.nio.file.Path;
-import java.util.Optional;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -30,8 +29,6 @@ public class UploadPartOptions {
    */
   private HeapContent heapData;
 
-  private String etag;
-
   /**
    * The base64 encoded {@code Content-MD5} of the request; {@code null} for none.
    */
@@ -47,9 +44,5 @@ public class UploadPartOptions {
    * none.
    */
   private CustomerEncryption customerEncryption;
-
-  public Optional<String> getETag() {
-    return Optional.ofNullable(etag);
-  }
 
 }

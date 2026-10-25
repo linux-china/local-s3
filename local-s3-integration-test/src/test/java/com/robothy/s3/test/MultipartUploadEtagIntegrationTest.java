@@ -107,7 +107,8 @@ public class MultipartUploadEtagIntegrationTest {
 
   /**
    * The entity tag of a part stays the digest of the part, which is what the composite entity tag of the
-   * object is built from, and what a client sends back in the {@code CompleteMultipartUpload} request.
+   * object is built from, and what a client sends back in the {@code CompleteMultipartUpload} request, even when
+   * the request carries an {@code ETag} header, e.g. one that a proxy passed through.
    */
   @Test
   @LocalS3
@@ -118,7 +119,8 @@ public class MultipartUploadEtagIntegrationTest {
     CreateMultipartUploadResponse created = s3.createMultipartUpload(b -> b.bucket(bucket).key(key));
 
     UploadPartResponse part = s3.uploadPart(b -> b.bucket(bucket).key(key)
-        .uploadId(created.uploadId()).partNumber(1), RequestBody.fromString("Hello"));
+        .uploadId(created.uploadId()).partNumber(1)
+        .overrideConfiguration(o -> o.putHeader("ETag", "\"not-a-digest\"")), RequestBody.fromString("Hello"));
 
     assertEquals(Etags.md5("Hello"), part.eTag());
     assertEquals(Etags.md5("Hello"),

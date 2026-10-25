@@ -47,7 +47,7 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
             .lastModified(System.currentTimeMillis())
             // The length of the data that was stored, which the length declared by the request may not match.
             .size(data.size())
-            .etag(options.getETag().orElse(data.md5()))
+            .etag(data.md5())
             .contentMd5(data.md5())
             .checksum(Objects.isNull(checksum) ? null
                 : ObjectChecksum.fullObject(checksum.algorithm(), Checksums.encode(data.checksum())))

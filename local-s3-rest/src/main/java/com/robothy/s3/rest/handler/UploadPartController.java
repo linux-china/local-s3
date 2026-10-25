@@ -47,7 +47,6 @@ class UploadPartController implements RouterHttpRequestHandler {
         .data(decodedBody.getDecodedBody())
         .dataFile(decodedBody.getBodyFile())
         .heapData(decodedBody.getHeapContent())
-        .etag(RequestUtils.getETag(request).orElse(null))
         .contentMd5(contentMd5)
         .checksum(ChecksumHeaders.fromRequest(request, decodedBody))
         .customerEncryption(customerEncryption)

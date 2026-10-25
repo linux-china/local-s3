@@ -109,36 +109,6 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
   }
 
   /**
-   * The entity tag is computed from the parts as they were stored, so an upload whose parts reported an
-   * entity tag that isn't their digest, which LocalS3 lets a request supply, still gets the entity tag that
-   * describes its content.
-   */
-  @ParameterizedTest
-  @MethodSource("localS3Services")
-  void completeMultipartUploadIgnoresTheReportedPartEtags(BucketService bucketService,
-                                                           ObjectService objectService) {
-    String bucket = "my-bucket";
-    String key = "a.txt";
-    bucketService.createBucket(bucket);
-    String uploadId = objectService.createMultipartUpload(bucket, key, CreateMultipartUploadOptions.builder()
-        .contentType("plain/text")
-        .build());
-    objectService.uploadPart(bucket, key, uploadId, 1, UploadPartOptions.builder()
-        .data(new ByteArrayInputStream("Hello".getBytes()))
-        .contentLength(5)
-        .etag("not-a-digest")
-        .build());
-    objectService.uploadPart(bucket, key, uploadId, 2, UploadPartOptions.builder()
-        .data(new ByteArrayInputStream("World".getBytes()))
-        .contentLength(5)
-        .etag("not-a-digest-either")
-        .build());
-
-    assertEquals("64d1e57a34042883053ec1c5d8d60167-2",
-        complete(objectService, bucket, key, uploadId, 2).getEtag());
-  }
-
-  /**
    * A service configured to answer the entity tags that LocalS3 answered before 2.5 gives the object the
    * digest of its whole content, so that a test that asserts that entity tag keeps working.
    */
