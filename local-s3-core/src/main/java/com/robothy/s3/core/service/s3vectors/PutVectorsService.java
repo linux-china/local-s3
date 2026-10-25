@@ -7,6 +7,7 @@ import com.robothy.s3.core.exception.vectors.LocalS3VectorErrorType;
 import com.robothy.s3.core.model.internal.s3vectors.VectorBucketMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorIndexMetadata;
 import com.robothy.s3.core.model.internal.s3vectors.VectorObjectMetadata;
+import com.robothy.s3.datatypes.s3vectors.DistanceMetric;
 import com.robothy.s3.datatypes.s3vectors.response.PutVectorsResponse;
 import com.robothy.s3.datatypes.s3vectors.request.PutInputVector;
 import java.util.List;
@@ -31,7 +32,7 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
       VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
       VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
       // Every vector is validated before any is stored, so that a rejected request changes nothing.
-      validateVectors(vectors, indexMetadata.getDimension());
+      validateVectors(vectors, indexMetadata.getDimension(), indexMetadata.getDistanceMetric());
 
       for (PutInputVector inputVector : vectors) {
         putVector(inputVector, indexMetadata);
@@ -40,7 +41,7 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
     });
   }
 
-  private void validateVectors(List<PutInputVector> vectors, int dimension) {
+  private void validateVectors(List<PutInputVector> vectors, int dimension, DistanceMetric distanceMetric) {
     if (vectors == null || vectors.isEmpty()) {
       throw invalid("Vectors list cannot be null or empty");
     }
@@ -48,11 +49,12 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
       throw invalid("Cannot put more than " + MAX_VECTORS_PER_REQUEST + " vectors at once");
     }
     for (int i = 0; i < vectors.size(); i++) {
-      validateVector(vectors.get(i), i, dimension);
+      validateVector(vectors.get(i), i, dimension, distanceMetric);
     }
   }
 
-  private void validateVector(PutInputVector inputVector, int position, int dimension) {
+  private void validateVector(PutInputVector inputVector, int position, int dimension,
+      DistanceMetric distanceMetric) {
     if (inputVector == null) {
       throw invalid("Vector at position " + position + " is required");
     }
@@ -72,6 +74,9 @@ public interface PutVectorsService extends S3VectorsMetadataAware, S3VectorsStor
       if (!Float.isFinite(values[i])) {
         throw invalid("Vector data of key '" + key + "' contains invalid value at index " + i + ": " + values[i]);
       }
+    }
+    if (distanceMetric == DistanceMetric.COSINE && VectorSearchEngine.isZeroVector(values)) {
+      throw invalid("Vector data of key '" + key + "' is a zero vector, which a cosine index does not accept");
     }
   }
 

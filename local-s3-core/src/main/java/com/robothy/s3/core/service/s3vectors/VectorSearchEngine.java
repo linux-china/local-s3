@@ -26,6 +26,19 @@ public interface VectorSearchEngine {
   }
 
   /**
+   * Whether every value of the vector is {@code 0}, so that it has no direction and no cosine distance, see
+   * {@code docs/apis.md#supported-amazon-s3-vectors-apis}.
+   */
+  static boolean isZeroVector(float[] vector) {
+    for (float value : vector) {
+      if (value != 0.0f) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Calculate the distance between two vectors using the specified metric.
    *
    * @param vector1 the first vector

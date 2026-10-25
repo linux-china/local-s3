@@ -179,9 +179,10 @@ class BasicVectorSearchEngine implements VectorSearchEngine {
 
     normB = Math.sqrt(normB);
 
-    // Handle zero vectors (avoid division by zero)
+    // PutVectors and QueryVectors reject zero vectors of a cosine index, but data stored before that check may hold
+    // one; having no direction, it is treated as orthogonal to everything rather than dividing by zero.
     if (normA == 0.0 || normB == 0.0) {
-      return 1.0; // Maximum cosine distance for zero vectors
+      return 1.0;
     }
 
     double cosineSimilarity = dotProduct / (normA * normB);

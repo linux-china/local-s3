@@ -210,6 +210,9 @@ Besides the S3 API, a service answers a health check and a few admin endpoints; 
 + ListVectors
 + DeleteVectors
 
+An index of the `cosine` distance metric rejects a zero vector — one whose values are all `0` — as AWS does, since it
+has no direction: `PutVectors` and `QueryVectors` answer it with `ValidationException`.
+
 **Vector Bucket Policy Operations:**
 + PutVectorBucketPolicy
 + GetVectorBucketPolicy

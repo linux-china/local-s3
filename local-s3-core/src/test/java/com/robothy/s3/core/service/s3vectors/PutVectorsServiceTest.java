@@ -125,6 +125,36 @@ class PutVectorsServiceTest {
   }
 
   @Test
+  void aCosineIndexRejectsZeroVectors() {
+    S3VectorsService service = S3VectorsService.create(new LocalS3VectorsMetadata(), VectorStorage.createInMemory());
+    service.createVectorBucket(BUCKET, null);
+    service.createIndex(BUCKET, INDEX, VectorDataType.FLOAT32, 2, DistanceMetric.COSINE, null);
+    service.putVectors(BUCKET, INDEX, List.of(vector("a", 1.0f, 0.0f)));
+
+    LocalS3VectorException putThrown = assertThrows(LocalS3VectorException.class,
+        () -> service.putVectors(BUCKET, INDEX, List.of(vector("b", 1.0f, 1.0f), vector("c", 0.0f, -0.0f))));
+    assertEquals(LocalS3VectorErrorType.VALIDATION, putThrown.getErrorType(), putThrown.getMessage());
+    assertTrue(service.getVectors(BUCKET, INDEX, List.of("b", "c"), true, false).vectors().isEmpty());
+
+    LocalS3VectorException queryThrown = assertThrows(LocalS3VectorException.class,
+        () -> service.queryVectors(BUCKET, INDEX, PutInputVector.VectorData.builder().values(new float[2]).build(),
+            1, true, false, null));
+    assertEquals(LocalS3VectorErrorType.VALIDATION, queryThrown.getErrorType(), queryThrown.getMessage());
+  }
+
+  @Test
+  void aEuclideanIndexAcceptsZeroVectors() {
+    S3VectorsService service = S3VectorsService.create(new LocalS3VectorsMetadata(), VectorStorage.createInMemory());
+    createIndex(service);
+
+    service.putVectors(BUCKET, INDEX, List.of(vector("zero", 0.0f, 0.0f)));
+
+    assertArrayEquals(new float[] {0.0f, 0.0f}, getVector(service, "zero"));
+    assertEquals(1, service.queryVectors(BUCKET, INDEX,
+        PutInputVector.VectorData.builder().values(new float[2]).build(), 1, true, false, null).vectors().size());
+  }
+
+  @Test
   void aRejectedPutLeavesNothingInThePersistentService() {
     S3VectorsService service = LocalS3VectorsManager.createFileSystem(dataPath).s3VectorsService();
     createIndex(service);

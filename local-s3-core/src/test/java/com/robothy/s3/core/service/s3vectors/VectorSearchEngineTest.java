@@ -225,7 +225,7 @@ class VectorSearchEngineTest {
 
     double distance = searchEngine.calculateDistance(vector1, vector2, DistanceMetric.COSINE);
 
-    // Zero vector case should return distance = 1.0 (maximum distance)
+    // A zero vector, which only data stored before the cosine check may hold, is treated as orthogonal
     assertEquals(1.0, distance, 0.0001);
   }
 

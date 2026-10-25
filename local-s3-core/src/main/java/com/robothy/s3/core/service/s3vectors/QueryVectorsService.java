@@ -37,7 +37,8 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
         return withBucketReadLock(vectorBucketName, () -> {
             VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
             VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
-            float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension());
+            float[] queryVectorData = validateQueryVector(queryVector, indexMetadata.getDimension(),
+                indexMetadata.getDistanceMetric());
             int validatedTopK = validateTopK(topK);
 
             Collection<VectorObjectMetadata> candidateVectors = indexMetadata.getVectorObjects().values();
@@ -55,7 +56,8 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
         });
     }
 
-    private float[] validateQueryVector(PutInputVector.VectorData queryVector, int indexDimension) {
+    private float[] validateQueryVector(PutInputVector.VectorData queryVector, int indexDimension,
+                                        DistanceMetric distanceMetric) {
         if (queryVector == null || queryVector.getValues() == null) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST, "Query vector is required");
         }
@@ -69,6 +71,11 @@ public interface QueryVectorsService extends S3VectorsMetadataAware, S3VectorsSt
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
                 "Query vector dimension " + queryVectorData.length
                     + " does not match index dimension " + indexDimension);
+        }
+
+        if (distanceMetric == DistanceMetric.COSINE && VectorSearchEngine.isZeroVector(queryVectorData)) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.VALIDATION,
+                "Query vector is a zero vector, which a cosine index does not accept");
         }
 
         return queryVectorData;
