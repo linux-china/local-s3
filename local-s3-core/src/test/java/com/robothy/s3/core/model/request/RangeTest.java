@@ -54,6 +54,15 @@ class RangeTest {
   }
 
   @Test
+  void tryParseClipsNumbersBeyondLong() {
+    assertArrayEquals(new long[] {0, 9}, Range.tryParse("bytes=0-99999999999999999999").orElseThrow().resolve(10));
+    assertArrayEquals(new long[] {0, 9}, Range.tryParse("bytes=-99999999999999999999").orElseThrow().resolve(10));
+    assertThrows(InvalidRangeException.class,
+        () -> Range.tryParse("bytes=99999999999999999999-").orElseThrow().resolve(10));
+    assertTrue(Range.tryParse("bytes=99999999999999999999-5").isEmpty());
+  }
+
+  @Test
   void resolveRejectsUnsatisfiedRanges() {
     assertThrows(InvalidRangeException.class, () -> Range.of(10, 12).resolve(10));
     assertThrows(InvalidRangeException.class, () -> Range.of(1, 2).resolve(0));

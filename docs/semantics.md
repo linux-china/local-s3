@@ -174,7 +174,8 @@ losing its protection. See [architecture.md](architecture.md#bucketguard-the-con
 
 No byte of an empty object can be read, so any range of it is unsatisfiable, `bytes=0-` included: a reader that probes
 an empty object, e.g. a `_SUCCESS` marker, with a range gets `416`, and reads it without one. A header that isn't a
-single valid byte range is ignored, as RFC 9110 allows. `RangeEdgeCaseIntegrationTest` checks these answers, and runs
+single valid byte range is ignored, as RFC 9110 allows. A position too large for a 64-bit number, e.g.
+`bytes=0-99999999999999999999`, is taken as beyond the end of the object: clipped as an end, `416` as a start. `RangeEdgeCaseIntegrationTest` checks these answers, and runs
 the same scenarios against Amazon S3 with `./gradlew :local-s3-integration-test:realS3Test` and the credentials of an
 AWS account.
 

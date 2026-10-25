@@ -90,14 +90,25 @@ public class Range {
     }
   }
 
-  /** A sign would make {@code Long.parseLong} accept {@code +1} and {@code -1}. */
+  /**
+   * A sign would make {@code Long.parseLong} accept {@code +1} and {@code -1}. A number too large for a long saturates
+   * rather than fails, so that {@link #resolve(long)} clips it to the object as Amazon S3 does, instead of the header
+   * being ignored.
+   */
   private static long parseUnsigned(String value) {
+    if (value.isEmpty()) {
+      throw new NumberFormatException(value);
+    }
     for (int i = 0; i < value.length(); i++) {
       if (value.charAt(i) < '0' || value.charAt(i) > '9') {
         throw new NumberFormatException(value);
       }
     }
-    return Long.parseLong(value);
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException _) {
+      return Long.MAX_VALUE;
+    }
   }
 
   /** Empty unless both ends are given. */
