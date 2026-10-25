@@ -448,7 +448,8 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
   compare-and-sets can see part of it.
 + Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`. A purge
-  deletes everything under the location of the table, and is **skipped** when another table of the catalog keeps its
+  deletes everything under the location of the table — every version of every object, delete markers included, so
+  a versioned warehouse bucket keeps nothing of it — and is **skipped** when another table of the catalog keeps its
   metadata under that location — which happens when a table is created under the name of a dropped or renamed one,
   because the default location of a table is derived from its name. `icebergCatalog(iceberg ->
   iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the

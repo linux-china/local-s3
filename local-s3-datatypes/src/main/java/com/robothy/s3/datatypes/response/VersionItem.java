@@ -7,6 +7,8 @@ public sealed interface VersionItem permits ObjectVersion, DeleteMarkerEntry {
 
   String key();
 
+  String versionId();
+
   /**
    * A copy of the entry with another key, e.g. the key encoded for {@code encoding-type=url}.
    */

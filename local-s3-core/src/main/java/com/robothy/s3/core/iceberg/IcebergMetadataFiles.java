@@ -3,12 +3,12 @@ package com.robothy.s3.core.iceberg;
 import com.robothy.s3.core.exception.BucketNotExistException;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.model.answers.GetObjectAns;
-import com.robothy.s3.core.model.answers.ListObjectsV2Ans;
+import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.ObjectService;
-import com.robothy.s3.datatypes.response.S3Object;
+import com.robothy.s3.datatypes.response.VersionItem;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -146,15 +146,18 @@ public final class IcebergMetadataFiles {
     }
     String prefix = parsed.key().isEmpty() ? "" : IcebergJson.stripTrailingSlash(parsed.key()) + "/";
     try {
-      String continuationToken = null;
+      // Every version is deleted by its ID: a delete without one only stacks a delete marker on a versioned bucket.
+      String keyMarker = null;
+      String versionIdMarker = null;
       do {
-        ListObjectsV2Ans page = objectService.listObjectsV2(parsed.bucket(), continuationToken, null, null,
-            false, PURGE_PAGE_SIZE, prefix, null);
-        for (S3Object object : page.getObjects()) {
-          objectService.deleteObject(parsed.bucket(), object.key());
+        ListObjectVersionsAns page = objectService.listObjectVersions(parsed.bucket(), null, keyMarker,
+            PURGE_PAGE_SIZE, prefix, versionIdMarker);
+        for (VersionItem version : page.getVersions()) {
+          objectService.deleteObject(parsed.bucket(), version.key(), version.versionId());
         }
-        continuationToken = page.isTruncated() ? page.getNextContinuationToken().orElse(null) : null;
-      } while (continuationToken != null);
+        keyMarker = page.getNextKeyMarker().orElse(null);
+        versionIdMarker = page.getNextVersionIdMarker().orElse(null);
+      } while (keyMarker != null);
     } catch (RuntimeException e) {
       log.warn("Failed to purge {} of the dropped Iceberg table: {}", location, e.toString());
     }
