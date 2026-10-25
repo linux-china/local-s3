@@ -621,6 +621,11 @@ time a version became noncurrent, i.e. the creation of the next version, or the 
 up to the next midnight UTC, like Amazon S3 does. The changes are published with the operation `LifecycleExpiration`,
 see [change events](#change-events).
 
+The objects of a bucket are applied in batches of 1,000 keys, in key order, each batch under the lock of the bucket and
+persisted on its own, so that a run on a large bucket doesn't hold up the writes to it until the run ends. A run is
+therefore not atomic: a write between two batches is seen by the later batches, a run stops at the batch that finds
+the bucket deleted or its configuration removed, and the incomplete multipart uploads are aborted with the last batch.
+
 What is checked is the structure that Amazon S3 checks, so a configuration that Amazon S3 rejects isn't accepted:
 
 | Configuration | Answer |

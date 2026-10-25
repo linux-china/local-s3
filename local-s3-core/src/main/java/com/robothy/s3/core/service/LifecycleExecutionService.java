@@ -38,27 +38,57 @@ public interface LifecycleExecutionService extends LocalS3MetadataApplicable, St
     return actions;
   }
 
+  // Keys scanned per hold of the write lock.
+  int LIFECYCLE_BATCH_SIZE = 1000;
+
+  // The keys are applied in batches, each under the write lock of the bucket and persisted on its own, so a run on a
+  // large bucket doesn't hold up its writes for the whole scan. A batch re-reads the bucket and its rules, as they may
+  // have changed, or the bucket may have been deleted or restored, while the lock was released.
   default List<LifecycleActionAns> applyLifecycle(String bucketName, Instant now) {
     Objects.requireNonNull(now, "now");
-    return changeBucket(bucketName, () -> {
-      BucketMetadata bucket = BucketAssertions.assertBucketExists(localS3Metadata(), bucketName);
-      if (bucket.getLifecycle().isEmpty()) {
-        return List.of();
-      }
-      List<LifecycleRule> rules = LifecycleRule.parse(bucket.getLifecycle().get().configuration()).stream()
-          .filter(LifecycleRule::enabled)
-          .toList();
-      List<LifecycleActionAns> actions = new ArrayList<>();
-      long at = now.toEpochMilli();
-      for (String key : List.copyOf(bucket.getObjectMap().keySet())) {
-        List<LifecycleRule> matching = rules.stream().filter(rule -> rule.filter().matchesKey(key)).toList();
-        if (!matching.isEmpty() && bucket.getObjectMetadataRef(key).isPresent()) {
-          applyToObject(bucket, key, matching, at, actions);
+    long at = now.toEpochMilli();
+    List<LifecycleActionAns> actions = new ArrayList<>();
+    String after = null;
+    boolean first = true;
+    do {
+      boolean firstBatch = first;
+      String from = after;
+      after = changeBucket(bucketName, () -> {
+        BucketMetadata bucket = firstBatch
+            ? BucketAssertions.assertBucketExists(localS3Metadata(), bucketName)
+            : localS3Metadata().getBucketMetadata(bucketName).orElse(null);
+        List<LifecycleRule> rules = enabledRules(bucket);
+        if (rules.isEmpty()) {
+          return null;
         }
-      }
-      abortUploads(bucket, rules, at, actions);
-      return actions;
-    });
+        NavigableMap<String, ObjectMetadataRef> objects = bucket.getObjectMap();
+        List<String> keys = (from == null ? objects : objects.tailMap(from, false)).keySet().stream()
+            .limit(LIFECYCLE_BATCH_SIZE)
+            .toList();
+        for (String key : keys) {
+          List<LifecycleRule> matching = rules.stream().filter(rule -> rule.filter().matchesKey(key)).toList();
+          if (!matching.isEmpty() && bucket.getObjectMetadataRef(key).isPresent()) {
+            applyToObject(bucket, key, matching, at, actions);
+          }
+        }
+        if (keys.size() < LIFECYCLE_BATCH_SIZE) {
+          abortUploads(bucket, rules, at, actions);
+          return null;
+        }
+        return keys.getLast();
+      });
+      first = false;
+    } while (after != null);
+    return actions;
+  }
+
+  private static List<LifecycleRule> enabledRules(BucketMetadata bucket) {
+    if (bucket == null || bucket.getLifecycle().isEmpty()) {
+      return List.of();
+    }
+    return LifecycleRule.parse(bucket.getLifecycle().get().configuration()).stream()
+        .filter(LifecycleRule::enabled)
+        .toList();
   }
 
   private void applyToObject(BucketMetadata bucket, String key, List<LifecycleRule> rules, long now,
