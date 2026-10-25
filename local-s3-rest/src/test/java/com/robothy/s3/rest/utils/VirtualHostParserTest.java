@@ -36,6 +36,52 @@ class VirtualHostParserTest {
     assertEquals(new BucketRegion("local", "www.example.com"),
         VirtualHostParser.getBucketRegionFromHost("www.example.com.s3.amazonaws.com").get());
     assertFalse(VirtualHostParser.getBucketRegionFromHost(".s3.amazonaws.com").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("s3.amazonaws.com").isPresent());
+  }
+
+  @Test
+  void getBucketRegionFromHostUnderAwsDomainIgnoringCase() {
+    assertEquals(new BucketRegion("us-west-2", "My-Bucket"),
+        VirtualHostParser.getBucketRegionFromHost("My-Bucket.S3.US-West-2.AmazonAWS.com:443").get());
+    assertEquals(new BucketRegion("local", "My-Bucket"),
+        VirtualHostParser.getBucketRegionFromHost("My-Bucket.S3.AMAZONAWS.COM").get());
+  }
+
+  @Test
+  void getBucketRegionFromOtherAwsEndpoints() {
+    // The legacy dash-region endpoints.
+    assertEquals(new BucketRegion("us-west-2", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3-us-west-2.amazonaws.com").get());
+    assertEquals(new BucketRegion("us-west-2", "www.example.com"),
+        VirtualHostParser.getBucketRegionFromHost("www.example.com.s3-us-west-2.amazonaws.com").get());
+    assertEquals(new BucketRegion("us-west-2", null),
+        VirtualHostParser.getBucketRegionFromHost("s3-us-west-2.amazonaws.com").get());
+    assertEquals(new BucketRegion("local", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3-external-1.amazonaws.com").get());
+
+    // Transfer acceleration.
+    assertEquals(new BucketRegion("local", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3-accelerate.amazonaws.com").get());
+    assertEquals(new BucketRegion("local", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3-accelerate.dualstack.amazonaws.com").get());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("s3-accelerate.amazonaws.com").isPresent());
+
+    // Dual-stack and FIPS endpoints.
+    assertEquals(new BucketRegion("us-east-1", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3.dualstack.us-east-1.amazonaws.com").get());
+    assertEquals(new BucketRegion("us-east-1", "bucket1"),
+        VirtualHostParser.getBucketRegionFromHost("bucket1.s3-fips.us-east-1.amazonaws.com").get());
+
+    // A bucket name may contain an endpoint label.
+    assertEquals(new BucketRegion("us-east-1", "logs.s3.backup"),
+        VirtualHostParser.getBucketRegionFromHost("logs.s3.backup.s3.us-east-1.amazonaws.com").get());
+
+    // Other AWS services are path-style.
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("s3tables.us-east-1.amazonaws.com").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("s3vectors.us-east-1.amazonaws.com").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("123456789012.s3-control.us-west-2.amazonaws.com").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("bucket1.s3-.amazonaws.com").isPresent());
+    assertFalse(VirtualHostParser.getBucketRegionFromHost("sts.amazonaws.com").isPresent());
   }
 
 

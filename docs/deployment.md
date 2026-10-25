@@ -242,6 +242,19 @@ LocalS3 takes the bucket from the host when the host is a subdomain of a base do
 `0.0.0.0` and `127-0-0-1.nip.io` always are, besides those of `LOCAL_S3_VIRTUAL_HOST_DOMAINS`. A request to a base
 domain itself is path-style.
 
+Amazon S3 hosts work too, e.g. for a client whose `/etc/hosts` points them to LocalS3. The domain is matched
+case-insensitively and the bucket keeps its case:
+
+| Host | Bucket region |
+|---|---|
+| `my-bucket.s3.us-west-2.amazonaws.com`, `my-bucket.s3.dualstack.us-west-2.amazonaws.com`, `my-bucket.s3-fips.us-west-2.amazonaws.com` | `us-west-2` |
+| `my-bucket.s3-us-west-2.amazonaws.com` (legacy dash-region) | `us-west-2` |
+| `my-bucket.s3.amazonaws.com`, `my-bucket.s3-external-1.amazonaws.com` | `local` |
+| `my-bucket.s3-accelerate.amazonaws.com`, `my-bucket.s3-accelerate.dualstack.amazonaws.com` | `local` |
+
+The regional endpoints themselves, e.g. `s3.us-west-2.amazonaws.com` or `s3-us-west-2.amazonaws.com`, are path-style
+with that region; other AWS hosts, e.g. `s3tables.us-east-1.amazonaws.com`, are path-style.
+
 The client still has to resolve the host to LocalS3. `*.localhost` resolves to the loopback address in browsers and
 in curl, but not in every client, e.g. not in the resolver of the JVM; a configured domain needs an `/etc/hosts`
 entry or a DNS record per bucket. [nip.io](https://nip.io) is a public wildcard DNS that resolves every name under

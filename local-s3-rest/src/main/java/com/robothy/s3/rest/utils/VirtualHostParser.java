@@ -135,12 +135,11 @@ public class VirtualHostParser {
 
     host = removePortIfExist(host.trim());
 
-    if (host.endsWith(AWS_DOMAIN)) {
-      return parseHostUnderAwsDomain(host);
-    }
-
     // Host names are case-insensitive; the bucket name keeps its case.
     String lowerCaseHost = host.toLowerCase(Locale.ROOT);
+    if (lowerCaseHost.endsWith(AWS_DOMAIN)) {
+      return parseHostUnderAwsDomain(host);
+    }
     if (lowerCaseHost.endsWith(ALIYUN_DOMAIN)) {
       return parseHostUnderAliyunDomain(host);
     }
@@ -159,29 +158,74 @@ public class VirtualHostParser {
     return Optional.empty();
   }
 
+  /**
+   * Parse a host of Amazon S3, see {@code docs/deployment.md#virtual-hosted-style-requests}. The last label that names
+   * an S3 endpoint splits the host, since a bucket name may contain such labels too.
+   */
   static Optional<BucketRegion> parseHostUnderAwsDomain(String host) {
-    String domain = AWS_DOMAIN.substring(1);
-    if (isLegacyGlobalEndpoint(host, domain)) { // {bucketName}.s3.{domain}
-      return parseLegacyEndpoint(host, domain);
+    List<String> labels = List.of(host.substring(0, host.length() - AWS_DOMAIN.length()).split("\\.", -1));
+    int endpointIndex = labels.size() - 1;
+    while (endpointIndex >= 0 && !isS3EndpointLabel(labels.get(endpointIndex))) {
+      endpointIndex--;
     }
-
-
-    String hostWithoutDomain = host.substring(0, host.length() - domain.length() - 1);
-    Optional<String> regionOpt = getRegion(hostWithoutDomain);
-    if (!regionOpt.isPresent()) {
+    if (endpointIndex < 0) {
+      // Another AWS service, e.g. s3tables.{region}.amazonaws.com.
       return Optional.empty();
     }
 
-    String region = regionOpt.get();
-    String s3RegionDomain = ".s3." + region + "." + domain;
-    if (s3RegionDomain.equals("." + host)) {
-      // s3.{region}.{domain}
-      return Optional.of(new BucketRegion(region, null));
+    String endpoint = labels.get(endpointIndex).toLowerCase(Locale.ROOT);
+    List<String> rest = labels.subList(endpointIndex + 1, labels.size()).stream()
+        .map(label -> label.toLowerCase(Locale.ROOT))
+        .toList();
+    String region = endpointRegion(endpoint, rest);
+    if (region == null) {
+      return Optional.empty();
     }
 
-    // {bucketName}.s3.{region}.{domain}
-    String bucketName = host.substring(0, host.length() - s3RegionDomain.length());
-    return Optional.of(new BucketRegion(region, bucketName));
+    if (endpointIndex == 0) {
+      // A global endpoint without a bucket names no region.
+      return LOCAL_REGION.equals(region) ? Optional.empty() : Optional.of(new BucketRegion(region, null));
+    }
+    String bucketName = String.join(".", labels.subList(0, endpointIndex));
+    return bucketName.isEmpty() ? Optional.empty() : Optional.of(new BucketRegion(region, bucketName));
+  }
+
+  private static boolean isS3EndpointLabel(String label) {
+    String lowerCaseLabel = label.toLowerCase(Locale.ROOT);
+    return lowerCaseLabel.equals("s3") || lowerCaseLabel.startsWith("s3-");
+  }
+
+  /**
+   * @param endpoint the S3 endpoint label, in lower case.
+   * @param rest     the labels between the endpoint and the AWS domain, in lower case.
+   * @return the region of the endpoint; {@code null} if the labels don't form an S3 endpoint, e.g. {@code s3-control}.
+   */
+  private static String endpointRegion(String endpoint, List<String> rest) {
+    switch (endpoint) {
+      case "s3", "s3-fips" -> {
+        // s3, s3.{region}, s3.dualstack.{region}
+        if (rest.isEmpty()) {
+          return LOCAL_REGION;
+        }
+        if (rest.size() == 1 && !rest.get(0).isEmpty() && !rest.get(0).equals("dualstack")) {
+          return rest.get(0);
+        }
+        if (rest.size() == 2 && rest.get(0).equals("dualstack") && !rest.get(1).isEmpty()) {
+          return rest.get(1);
+        }
+        return null;
+      }
+      case "s3-accelerate" -> {
+        return rest.isEmpty() || rest.equals(List.of("dualstack")) ? LOCAL_REGION : null;
+      }
+      case "s3-external-1" -> {
+        return rest.isEmpty() ? LOCAL_REGION : null;
+      }
+      default -> {
+        // The legacy dash-region endpoint s3-{region}.
+        return rest.isEmpty() && endpoint.length() > "s3-".length() ? endpoint.substring("s3-".length()) : null;
+      }
+    }
   }
 
   /**
@@ -226,38 +270,6 @@ public class VirtualHostParser {
 
     String bucketName = String.join(".", labels.subList(0, accountIndex));
     return Optional.of(new BucketRegion(R2_REGION, bucketName.isEmpty() ? null : bucketName));
-  }
-
-  private static Optional<BucketRegion> parseLegacyEndpoint(String host, String domain) {
-    int bucketNameLength = host.length() - ".s3.".length() - domain.length();
-    if (bucketNameLength > 0) {
-      return Optional.of(new BucketRegion("local", host.substring(0, bucketNameLength)));
-    }
-    // .s3.{domain}
-    return Optional.empty();
-  }
-
-
-  static Optional<String> getRegion(String hostWithoutDomain) {
-    if (hostWithoutDomain.startsWith("s3.")) {
-      // s3.{region}.domain
-      return Optional.of(hostWithoutDomain.substring(3));
-    }
-
-    int regionDelimiterIdx = hostWithoutDomain.lastIndexOf(".s3.");
-    if (regionDelimiterIdx <= 0) {
-      // .s3.{region}.domain
-      return Optional.empty();
-    }
-    return Optional.of(hostWithoutDomain.substring(regionDelimiterIdx + ".s3.".length()));
-  }
-
-  /**
-   * <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html#VirtualHostingBackwardsCompatibility">Backward compatibility</a>
-   */
-  static boolean isLegacyGlobalEndpoint(String hostWithDomain, String domain) {
-    String s3WithDomain = ".s3." + domain;
-    return hostWithDomain.endsWith(s3WithDomain);
   }
 
   static String removePortIfExist(String host) {
