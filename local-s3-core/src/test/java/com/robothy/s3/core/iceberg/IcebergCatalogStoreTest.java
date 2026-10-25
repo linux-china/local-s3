@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.h2.mvstore.MVMap;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -37,6 +38,27 @@ class IcebergCatalogStoreTest {
 
       assertTrue(store.removeTable(committed));
       assertNull(store.getTable(ORDERS));
+    }
+  }
+
+  @Test
+  void a_table_stored_in_another_field_order_can_still_be_committed_to() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store, "test/namespaces", "test/tables");
+      store.putNamespaceIfAbsent(new IcebergNamespaceRecord(ORDERS.namespace(), Map.of()));
+      IcebergTableRecord created = record("s3://warehouse/db/orders/metadata/00000.metadata.json");
+      assertTrue(store.putTableIfAbsent(created));
+      MVMap<String, String> raw = localS3Store.store().openMap("test/tables");
+      raw.put(created.key(), "{\"version\":0,\"previousMetadataLocation\":null,"
+          + "\"metadataLocation\":\"s3://warehouse/db/orders/metadata/00000.metadata.json\",\"view\":false,"
+          + "\"name\":\"orders\",\"namespace\":[\"db\"]}");
+
+      IcebergTableRecord read = store.getTable(ORDERS);
+      assertEquals(created, read);
+      IcebergTableRecord committed = read.committed("s3://warehouse/db/orders/metadata/00001.metadata.json");
+      assertTrue(store.replaceTable(read, committed));
+      assertEquals(committed, store.getTable(ORDERS));
+      assertFalse(store.replaceTable(read, read.committed("s3://warehouse/db/orders/metadata/00002.metadata.json")));
     }
   }
 

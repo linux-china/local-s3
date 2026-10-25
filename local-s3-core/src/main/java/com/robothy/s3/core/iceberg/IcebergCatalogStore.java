@@ -270,11 +270,19 @@ public final class IcebergCatalogStore {
    * @return {@code true} if the pointer was replaced; {@code false} if the table has changed or is gone.
    */
   public boolean replaceTable(IcebergTableRecord expected, IcebergTableRecord updated) {
-    boolean replaced = tables.replace(expected.key(), JsonUtils.toJson(expected), JsonUtils.toJson(updated));
-    if (replaced) {
-      commit();
+    String updatedJson = JsonUtils.toJson(updated);
+    while (true) {
+      // Compared as values, not as the JSON of `expected`, so that a record written by an older LocalS3 can still be
+      // committed to.
+      String json = tables.get(expected.key());
+      if (json == null || !JsonUtils.fromJson(json, IcebergTableRecord.class).equals(expected)) {
+        return false;
+      }
+      if (tables.replace(expected.key(), json, updatedJson)) {
+        commit();
+        return true;
+      }
     }
-    return replaced;
   }
 
   /**

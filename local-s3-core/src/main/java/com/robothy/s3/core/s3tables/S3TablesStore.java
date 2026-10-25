@@ -340,12 +340,20 @@ public final class S3TablesStore {
    */
   public boolean replaceTable(String tableBucket, TableAttributes expected, TableAttributes updated) {
     String key = tableKey(tableBucket, expected.namespace(), expected.name());
-    boolean replaced = tables.replace(key, JsonUtils.toJson(expected), JsonUtils.toJson(updated));
-    if (replaced) {
-      tableIds.put(tableIdKey(tableBucket, updated.tableId()), key);
-      commit();
+    String updatedJson = JsonUtils.toJson(updated);
+    while (true) {
+      // Compared as values, not as the JSON of `expected`: the stored text may have been written by an older
+      // TableAttributes, whose JSON never equals what this one writes, and the table could then never be committed to.
+      String json = tables.get(key);
+      if (json == null || !JsonUtils.fromJson(json, TableAttributes.class).equals(expected)) {
+        return false;
+      }
+      if (tables.replace(key, json, updatedJson)) {
+        tableIds.put(tableIdKey(tableBucket, updated.tableId()), key);
+        commit();
+        return true;
+      }
     }
-    return replaced;
   }
 
   /**
