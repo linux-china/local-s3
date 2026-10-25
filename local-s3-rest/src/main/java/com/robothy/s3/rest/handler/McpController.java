@@ -33,6 +33,9 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLDecoder;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -699,9 +702,10 @@ class McpController implements RouterHttpRequestHandler {
           object.getVersionId());
     }
     boolean truncated = bytes.length < length;
-    boolean text = isText(contentType, bytes);
-    if (truncated && text) {
-      bytes = Arrays.copyOf(bytes, completeUtf8Length(bytes));
+    int textLength = truncated ? completeUtf8Length(bytes) : bytes.length;
+    boolean text = isText(contentType, bytes, textLength);
+    if (text && textLength < bytes.length) {
+      bytes = Arrays.copyOf(bytes, textLength);
     }
     return new ObjectContent(bytes, contentType, size, start, start + bytes.length - 1, truncated, text,
         object.getEtag(), object.getVersionId());
@@ -748,9 +752,10 @@ class McpController implements RouterHttpRequestHandler {
 
   /**
    * Whether content is handed to the model as text: content of a text type, or, of a type that says nothing, e.g.
-   * {@code application/octet-stream}, content without a NUL byte, which no text has.
+   * {@code application/octet-stream}, valid UTF-8 without a NUL byte, which no text has. Decoding anything else
+   * would replace bytes with {@code U+FFFD}, and the agent couldn't tell its content was changed.
    */
-  private static boolean isText(String contentType, byte[] bytes) {
+  private static boolean isText(String contentType, byte[] bytes, int length) {
     String type = contentType.toLowerCase(Locale.ROOT);
     if (type.startsWith("text/") || type.contains("json") || type.contains("xml") || type.contains("yaml")
         || type.contains("csv") || type.contains("javascript") || type.contains("markdown")
@@ -760,12 +765,20 @@ class McpController implements RouterHttpRequestHandler {
     if (!type.startsWith("application/octet-stream")) {
       return false;
     }
-    for (byte b : bytes) {
-      if (b == 0) {
+    for (int i = 0; i < length; i++) {
+      if (bytes[i] == 0) {
         return false;
       }
     }
-    return true;
+    try {
+      StandardCharsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(bytes, 0, length));
+      return true;
+    } catch (CharacterCodingException _) {
+      return false;
+    }
   }
 
   /*

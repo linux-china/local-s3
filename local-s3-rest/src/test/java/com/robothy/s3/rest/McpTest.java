@@ -196,6 +196,33 @@ class McpTest {
   }
 
   @Test
+  void readsUntypedContentAsTextOnlyWhenItIsUtf8() throws Exception {
+    LocalS3 localS3 = start();
+    try {
+      // No NUL byte, but 0xFF and a lone continuation byte are not UTF-8.
+      byte[] binary = {'a', (byte) 0xFF, (byte) 0x80, 'b'};
+      String data = Base64.getEncoder().encodeToString(binary);
+      call(localS3, "put_object", Map.of("bucket", "bucket", "key", "blob", "content", data, "encoding", "base64"));
+      JsonNode read = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "blob"));
+      assertEquals("base64", read.at("/structuredContent/encoding").asString());
+      assertEquals(data, read.at("/content/1/resource/blob").asString());
+
+      String utf8 = Base64.getEncoder().encodeToString("a中文".getBytes(StandardCharsets.UTF_8));
+      call(localS3, "put_object", Map.of("bucket", "bucket", "key", "note", "content", utf8, "encoding", "base64"));
+      JsonNode text = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "note"));
+      assertEquals("utf-8", text.at("/structuredContent/encoding").asString());
+      assertEquals("a中文", text.at("/content/0/text").asString());
+
+      // A read that cuts a character is still text, stopped before it.
+      JsonNode head = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "note", "max_bytes", 5));
+      assertEquals("utf-8", head.at("/structuredContent/encoding").asString());
+      assertEquals("a中", head.at("/content/0/text").asString());
+    } finally {
+      localS3.shutdown();
+    }
+  }
+
+  @Test
   void presignsAUrlThatReadsTheObjectWithoutCredentials() throws Exception {
     String accessKeyId = "AKIAIOSFODNN7EXAMPLE";
     String secretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
