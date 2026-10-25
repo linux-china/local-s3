@@ -97,7 +97,9 @@ like Amazon S3. They're dropped when a re-creation of a bucket in us-east-1 answ
   the request time and the server time. The clock of a Docker Desktop, WSL2 or Colima VM often drifts after the host
   sleeps, so the tolerance is configurable: `s3Api(s3 -> s3.allowedClockSkew(Duration.ofHours(1)))`,
   `LOCAL_S3_ALLOWED_CLOCK_SKEW=1h` (`--allowed-clock-skew 1h`) or `local-s3.allowed-clock-skew=1h`. `0` turns the
-  time check off, so that only the signature itself is verified, and a presigned URL doesn't expire either.
+  time check off, so that only the signature itself is verified, and a presigned URL doesn't expire either: its
+  `X-Amz-Expires` isn't checked. The Docker images set `0` by default, so a test that an expired presigned URL is
+  answered `403` runs against a container started with a duration, e.g. `LOCAL_S3_ALLOWED_CLOCK_SKEW=15m`.
 + `PutObject` and `UploadPart` **accept a body sent with `Transfer-Encoding: chunked` and no `Content-Length`**, i.e.
   a stream whose length the client didn't know when it started, e.g. `curl -T -`, a streaming `fetch` of Node.js or
   Deno, or a lightweight S3 library that streams. Amazon S3 answers such a request with `411 MissingContentLength`;

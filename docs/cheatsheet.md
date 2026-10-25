@@ -228,6 +228,6 @@ delta-kernel.
 | `NoSuchBucket` on the first write, e.g. of DuckLake or delta-rs | The bucket doesn't exist | `AWS_BUCKETS=...`, `local-s3.buckets` or `aws s3 mb` |
 | `InvalidBucketName` | Bucket names have 3 to 63 characters, like on Amazon S3 | Use a longer name |
 | The host `demo.<endpoint>` can't be resolved or connected to | The client sends virtual-hosted-style requests, which only work for `localhost`, `127-0-0-1.nip.io` and the configured virtual host domains | Path-style: `URL_STYLE 'path'`, `forcePathStyle(true)`, `s3.path-style-access=true`; the endpoint `http://127-0-0-1.nip.io:29090`, see [virtual-hosted-style requests](deployment.md#virtual-hosted-style-requests); or `LOCAL_S3_VIRTUAL_HOST_DOMAINS` |
-| `403 RequestTimeTooSkewed` | The clock of the client is more than 15 minutes off | `LOCAL_S3_ALLOWED_CLOCK_SKEW=1h`, or `0` to turn the check off |
+| `403 RequestTimeTooSkewed` | The clock of the client is more than 15 minutes off | `LOCAL_S3_ALLOWED_CLOCK_SKEW=1h`, or `0` to turn the check off (presigned URLs then don't expire either) |
 | `507 InsufficientStorage` | `IN_MEMORY` mode holds at most a quarter of the heap by default | `LOCAL_S3_IN_MEMORY_MAX_BYTES`, or `PERSISTENCE` mode |
 | `501 NotImplemented` | The operation isn't implemented | See [Supported APIs](apis.md); `GET /_admin/stats` counts them under `notImplemented` |

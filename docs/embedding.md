@@ -228,6 +228,8 @@ String uploadUrl = localS3.presign("artifacts", "input.csv", Duration.ofMinutes(
 
 + **The same signature the service verifies**: the URL is path-style, signed with AWS Signature Version 4 for the
   credentials of the service, and expires after the given duration — between 1 second and 7 days, as with Amazon S3.
+  With `s3Api(s3 -> s3.allowedClockSkew(Duration.ZERO))` the request time isn't checked, so the URL doesn't expire;
+  see [request validation](semantics.md#request-validation).
   A request of another method, another key or with an edited signature is answered `403`.
 + **Without `credentials(...)`** the service answers unsigned requests, so the plain URL of the object is returned
   instead, which doesn't expire.
