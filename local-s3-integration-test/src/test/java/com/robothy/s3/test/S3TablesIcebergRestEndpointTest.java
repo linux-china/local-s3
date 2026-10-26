@@ -130,6 +130,21 @@ class S3TablesIcebergRestEndpointTest {
     });
   }
 
+  @Test
+  @Timeout(120)
+  void a_table_bucket_named_like_a_route_is_reached_by_its_arn(S3TablesClient tables, LocalS3Endpoint endpoint)
+      throws IOException {
+    String arn = tables.createTableBucket(request -> request.name("namespaces")).arn();
+    tables.createNamespace(request -> request.tableBucketARN(arn).namespace("shop"));
+
+    try (RESTCatalog catalog = restCatalog(endpoint, arn)) {
+      assertEquals(List.of(Namespace.of("shop")), catalog.listNamespaces());
+      TableIdentifier identifier = TableIdentifier.of(Namespace.of("shop"), "orders");
+      catalog.createTable(identifier, SCHEMA);
+      assertNotNull(tables.getTable(request -> request.tableBucketARN(arn).namespace("shop").name("orders")));
+    }
+  }
+
   /**
    * A {@code RESTCatalog} configured the way Amazon S3 Tables documents its Iceberg REST endpoint: the endpoint under
    * {@code /iceberg}, and the ARN of the table bucket as the warehouse. The service answers the prefix of that table

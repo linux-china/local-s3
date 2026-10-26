@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,14 +130,19 @@ public final class IcebergCatalogService {
    *
    * @param parent the levels of the parent; empty for the top-level namespaces.
    * @return a {@code ListNamespacesResponse}.
-   * @throws IcebergCatalogException if the parent doesn't exist.
+   * @throws IcebergCatalogException if the parent neither exists nor is the parent of a namespace.
    */
   public ObjectNode listNamespaces(List<String> parent) {
-    requireNamespace(parent);
+    List<List<String>> children = store.listNamespaces(parent);
+    // A parent that was never created but holds a namespace is listed like InMemoryCatalog of Iceberg does, so that
+    // what was created under it can be found, see {@code docs/data-tools.md#limits}.
+    if (children.isEmpty()) {
+      requireNamespace(parent);
+    }
     ArrayNode namespaces = IcebergJson.newArray();
-    for (IcebergNamespaceRecord record : store.listNamespaces(parent)) {
+    for (List<String> child : children) {
       ArrayNode levels = IcebergJson.newArray();
-      record.levels().forEach(levels::add);
+      child.forEach(levels::add);
       namespaces.add(levels);
     }
     ObjectNode response = IcebergJson.newObject();
@@ -205,15 +212,25 @@ public final class IcebergCatalogService {
   }
 
   /**
-   * Set and remove the properties of a namespace. A property that is both removed and set is set: the updates are
-   * applied after the removals, like the REST catalog specifies.
+   * Set and remove the properties of a namespace.
    *
    * @param namespace the levels of the namespace.
    * @param request an {@code UpdateNamespacePropertiesRequest}: its {@code removals} and its {@code updates}.
    * @return an {@code UpdateNamespacePropertiesResponse}, naming what was removed, updated and missing.
-   * @throws IcebergCatalogException if the namespace doesn't exist.
+   * @throws IcebergCatalogException if the namespace doesn't exist, or a property is both removed and set.
    */
   public ObjectNode updateNamespaceProperties(List<String> namespace, ObjectNode request) {
+    Set<String> conflicting = new TreeSet<>();
+    Map<String, String> updates = IcebergJson.toStringMap(request.get("updates"));
+    for (JsonNode removal : request.path("removals")) {
+      if (updates.containsKey(removal.asString())) {
+        conflicting.add(removal.asString());
+      }
+    }
+    if (!conflicting.isEmpty()) {
+      throw new IcebergCatalogException(422, "UnprocessableEntityException",
+          "Invalid namespace update, cannot simultaneously set and remove keys: " + conflicting);
+    }
     ArrayNode removed;
     ArrayNode missing;
     ArrayNode updated;
@@ -232,7 +249,7 @@ public final class IcebergCatalogService {
           missing.add(name);
         }
       }
-      for (Map.Entry<String, String> update : IcebergJson.toStringMap(request.get("updates")).entrySet()) {
+      for (Map.Entry<String, String> update : updates.entrySet()) {
         properties.put(update.getKey(), update.getValue());
         updated.add(update.getKey());
       }
@@ -315,8 +332,11 @@ public final class IcebergCatalogService {
    * Register a table, or a view, that already has a metadata file, e.g. one written by another catalog or one left
    * behind by a table that was dropped without purging it.
    *
+   * <p>{@code overwrite} applies only to a table: see {@code docs/data-tools.md#commits-and-conflicts}.
+   *
    * @param namespace the levels of the namespace.
-   * @param request a {@code RegisterTableRequest}: its {@code name} and its {@code metadata-location}.
+   * @param request a {@code RegisterTableRequest}: its {@code name}, its {@code metadata-location} and its
+   *     {@code overwrite}.
    * @param views whether to register a view rather than a table.
    * @return a {@code LoadTableResult}, or a {@code LoadViewResult}.
    * @throws IcebergCatalogException if the namespace doesn't exist, the name is taken, or the metadata can't be read.
@@ -325,16 +345,32 @@ public final class IcebergCatalogService {
     requireNamespace(namespace);
     String name = requireName(request);
     IcebergIdentifier identifier = IcebergIdentifier.of(namespace, name);
-    requireNameFree(identifier, views);
+    boolean overwrite = !views && request.path("overwrite").asBoolean(false);
+    if (!overwrite) {
+      requireNameFree(identifier, views);
+    }
     String metadataLocation = request.path("metadata-location").asString(null);
     if (metadataLocation == null || metadataLocation.isBlank()) {
       throw IcebergCatalogException.badRequest("Invalid register request: metadata-location is required.");
     }
     ObjectNode metadata = IcebergJson.read(files.read(metadataLocation));
-    IcebergTableRecord record = new IcebergTableRecord(namespace, name, views, metadataLocation, null,
-        versionOf(metadataLocation));
-    if (!store.putTableIfAbsent(record)) {
-      throw nameTaken(identifier, views);
+    int version = versionOf(metadataLocation);
+    while (true) {
+      IcebergTableRecord existing = overwrite ? store.getTable(identifier) : null;
+      if (existing == null) {
+        if (store.putTableIfAbsent(new IcebergTableRecord(namespace, name, views, metadataLocation, null, version))) {
+          break;
+        }
+        if (!overwrite) {
+          throw nameTaken(identifier, views);
+        }
+      } else if (existing.view()) {
+        throw nameTaken(identifier, false);
+      } else if (store.replaceTable(existing, new IcebergTableRecord(namespace, name, false, metadataLocation,
+          existing.metadataLocation(), version))) {
+        break;
+      }
+      // Another request created, committed to or dropped the table in between: overwrite what is there now.
     }
     return views ? loadViewResult(metadataLocation, metadata) : loadTableResult(metadataLocation, metadata);
   }
@@ -482,14 +518,25 @@ public final class IcebergCatalogService {
     if (changes == null || !changes.isArray()) {
       throw IcebergCatalogException.badRequest("Invalid commit transaction request: table-changes is required.");
     }
-    List<Commit> commits = new ArrayList<>();
+    if (changes.isEmpty()) {
+      throw IcebergCatalogException.badRequest("Invalid table changes: empty");
+    }
+    List<IcebergIdentifier> identifiers = new ArrayList<>();
     for (JsonNode change : changes) {
       if (!change.isObject()) {
         throw IcebergCatalogException.badRequest("Invalid table change: expected an object.");
       }
-      ObjectNode tableChange = (ObjectNode) change;
-      IcebergIdentifier identifier = identifier(tableChange.get("identifier"));
-      commits.add(prepareCommit(identifier, tableChange, false));
+      IcebergIdentifier identifier = identifier(change.get("identifier"));
+      // Both changes of a table would be prepared from the same base, so the second could only lose its
+      // compare-and-set to the first, and a client retrying the 409 would lose it again every time.
+      if (identifiers.contains(identifier)) {
+        throw IcebergCatalogException.badRequest("Invalid table changes: " + identifier + " is changed more than once");
+      }
+      identifiers.add(identifier);
+    }
+    List<Commit> commits = new ArrayList<>();
+    for (int i = 0; i < changes.size(); i++) {
+      commits.add(prepareCommit(identifiers.get(i), (ObjectNode) changes.get(i), false));
     }
 
     List<Commit> applied = new ArrayList<>();

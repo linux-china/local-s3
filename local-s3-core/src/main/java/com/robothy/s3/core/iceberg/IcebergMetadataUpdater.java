@@ -1,11 +1,13 @@
 package com.robothy.s3.core.iceberg;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +30,10 @@ import tools.jackson.databind.node.ObjectNode;
  * would answer a client with metadata that isn't what it asked for.
  */
 final class IcebergMetadataUpdater {
+
+  private static final String REPLACE_DROP_DIALECT_ALLOWED = "replace.drop-dialect.allowed";
+  private static final String VERSION_HISTORY_SIZE = "version.history.num-entries";
+  private static final int VERSION_HISTORY_SIZE_DEFAULT = 10;
 
   private IcebergMetadataUpdater() {
   }
@@ -138,9 +144,76 @@ final class IcebergMetadataUpdater {
       for (JsonNode update : updates) {
         applyTableUpdate(metadata, update);
       }
+      updateSnapshotLog(metadata, updates);
     }
-    metadata.put("last-updated-ms", System.currentTimeMillis());
+    // Never back in time: the next commit logs this value in metadata-log, which Iceberg also requires to be sorted,
+    // and a snapshot is dated by the clock of its client.
+    metadata.put("last-updated-ms", Math.max(lastUpdatedMillis(metadata), base.path("last-updated-ms").asLong(0)));
     return metadata;
+  }
+
+  /**
+   * Rebuild the snapshot log once all the updates of a commit are applied, the way Iceberg's
+   * {@code TableMetadata.Builder} does: a snapshot added and published on {@code main} by this commit but then
+   * replaced by another one of it was never current to a reader, so it isn't logged; and once a snapshot is removed,
+   * the log before its last entry is dropped, since keeping it would let a time-travel read between that entry and the
+   * next land on an older snapshot instead of failing.
+   */
+  private static void updateSnapshotLog(ObjectNode metadata, JsonNode updates) {
+    long current = metadata.path("current-snapshot-id").asLong(-1);
+    Set<Long> added = new HashSet<>();
+    Set<Long> intermediate = new HashSet<>();
+    boolean removed = false;
+    for (JsonNode update : updates) {
+      switch (update.path("action").asString("")) {
+        case "add-snapshot" -> added.add(update.path("snapshot").path("snapshot-id").asLong(-1));
+        case "set-snapshot-ref" -> {
+          long snapshotId = update.path("snapshot-id").asLong(-1);
+          if ("main".equals(update.path("ref-name").asString("")) && added.contains(snapshotId)
+              && snapshotId != current) {
+            intermediate.add(snapshotId);
+          }
+        }
+        case "remove-snapshots" -> removed = true;
+        default -> {
+        }
+      }
+    }
+    if (intermediate.isEmpty() && !removed) {
+      return;
+    }
+    Set<Long> snapshots = new HashSet<>();
+    for (JsonNode snapshot : metadata.path("snapshots")) {
+      snapshots.add(snapshot.path("snapshot-id").asLong(-1));
+    }
+    ArrayNode log = array(metadata, "snapshot-log");
+    ArrayNode kept = IcebergJson.newArray();
+    for (JsonNode entry : log) {
+      long snapshotId = entry.path("snapshot-id").asLong(-1);
+      if (snapshots.contains(snapshotId)) {
+        if (!intermediate.contains(snapshotId)) {
+          kept.add(entry);
+        }
+      } else if (removed) {
+        kept.removeAll();
+      }
+    }
+    metadata.set("snapshot-log", kept);
+  }
+
+  /**
+   * The time of this commit, the way Iceberg's {@code TableMetadata.Builder} picks it: the timestamp of the snapshot
+   * of this commit that was last added or had a ref moved to it, otherwise the time it is first asked for, which then
+   * stays fixed for the rest of the commit.
+   */
+  private static long lastUpdatedMillis(ObjectNode metadata) {
+    JsonNode time = metadata.get("__last-updated-ms");
+    if (time != null && time.isIntegralNumber()) {
+      return time.asLong();
+    }
+    long now = System.currentTimeMillis();
+    metadata.put("__last-updated-ms", now);
+    return now;
   }
 
   /**
@@ -158,7 +231,95 @@ final class IcebergMetadataUpdater {
         applyViewUpdate(metadata, update);
       }
     }
+    // Like ViewMetadata.Builder.build(): one history entry per commit, then the checks and the expiry that look at the
+    // view as the whole commit leaves it.
+    JsonNode historyEntry = metadata.get("__history-entry");
+    if (historyEntry != null && historyEntry.isObject()) {
+      array(metadata, "version-log").add(historyEntry);
+    }
+    JsonNode previous = base.has("current-version-id") && base.get("versions") instanceof ArrayNode baseVersions
+        ? findById(baseVersions, "version-id", base.path("current-version-id").asInt())
+        : null;
+    if (previous != null && !"true".equalsIgnoreCase(
+        metadata.path("properties").path(REPLACE_DROP_DIALECT_ALLOWED).asString("false"))) {
+      checkNoDialectDropped(previous, findById(array(metadata, "versions"), "version-id",
+          metadata.path("current-version-id").asInt()));
+    }
+    expireViewVersions(metadata);
     return metadata;
+  }
+
+  private static void checkNoDialectDropped(JsonNode previous, @Nullable JsonNode current) {
+    Set<String> before = sqlDialects(previous);
+    Set<String> after = current == null ? Set.of() : sqlDialects(current);
+    if (!after.containsAll(before)) {
+      throw IcebergCatalogException.badRequest("Cannot replace view due to loss of view dialects ("
+          + REPLACE_DROP_DIALECT_ALLOWED + "=false):\nPrevious dialects: " + before + "\nNew dialects: " + after);
+    }
+  }
+
+  private static Set<String> sqlDialects(JsonNode version) {
+    Set<String> dialects = new TreeSet<>();
+    for (JsonNode representation : version.path("representations")) {
+      if ("sql".equals(representation.path("type").asString(""))) {
+        dialects.add(representation.path("dialect").asString("").toLowerCase(Locale.ROOT));
+      }
+    }
+    return dialects;
+  }
+
+  /**
+   * Keep the newest {@code version.history.num-entries} versions of a view, like {@code ViewMetadata.Builder} does, but
+   * never one this commit added or the current one. The history before an entry of an expired version is dropped as
+   * well, for the same reason as the snapshot log's: a lookup by time would otherwise land on an older version.
+   */
+  private static void expireViewVersions(ObjectNode metadata) {
+    int historySize;
+    String property = metadata.path("properties").path(VERSION_HISTORY_SIZE).asString(null);
+    try {
+      historySize = property == null ? VERSION_HISTORY_SIZE_DEFAULT : Integer.parseInt(property.trim());
+    } catch (NumberFormatException e) {
+      throw IcebergCatalogException.badRequest("Invalid " + VERSION_HISTORY_SIZE + ": " + property);
+    }
+    if (historySize <= 0) {
+      throw IcebergCatalogException.badRequest(VERSION_HISTORY_SIZE + " must be positive but was " + historySize);
+    }
+    int current = metadata.path("current-version-id").asInt();
+    Set<Integer> mustKeep = new HashSet<>(ids(metadata, "__added-version-ids"));
+    mustKeep.add(current);
+    int numVersionsToKeep = Math.max(mustKeep.size(), historySize);
+    ArrayNode versions = array(metadata, "versions");
+    if (versions.size() <= numVersionsToKeep) {
+      return;
+    }
+
+    List<Integer> newestFirst = new ArrayList<>();
+    versions.forEach(version -> newestFirst.add(version.path("version-id").asInt()));
+    newestFirst.sort(Comparator.reverseOrder());
+    Set<Integer> retained = new HashSet<>(mustKeep);
+    for (int versionId : newestFirst) {
+      if (retained.size() >= numVersionsToKeep) {
+        break;
+      }
+      retained.add(versionId);
+    }
+
+    ArrayNode keptVersions = IcebergJson.newArray();
+    versions.forEach(version -> {
+      if (retained.contains(version.path("version-id").asInt())) {
+        keptVersions.add(version);
+      }
+    });
+    metadata.set("versions", keptVersions);
+    ArrayNode keptHistory = IcebergJson.newArray();
+    for (JsonNode entry : array(metadata, "version-log")) {
+      if (retained.contains(entry.path("version-id").asInt())) {
+        keptHistory.add(entry);
+      } else {
+        keptHistory.removeAll();
+      }
+    }
+    metadata.set("version-log", keptHistory);
   }
 
   private static void applyTableUpdate(ObjectNode metadata, JsonNode update) {
@@ -199,10 +360,10 @@ final class IcebergMetadataUpdater {
   private static void applyViewUpdate(ObjectNode metadata, JsonNode update) {
     String action = update.path("action").asString("");
     switch (action) {
-      case "assign-uuid" -> metadata.put("view-uuid", required(update, "uuid").asString());
+      case "assign-uuid" -> assignViewUuid(metadata, update);
       case "upgrade-format-version" -> metadata.put("format-version",
           Math.max(metadata.path("format-version").asInt(1), required(update, "format-version").asInt()));
-      case "add-schema" -> addSchema(metadata, update);
+      case "add-schema" -> registerSchema(metadata, update);
       case "add-view-version" -> addViewVersion(metadata, update);
       case "set-current-view-version" -> setCurrentViewVersion(metadata, update);
       case "set-location" -> metadata.put("location", required(update, "location").asString());
@@ -242,6 +403,15 @@ final class IcebergMetadataUpdater {
    * must not overwrite the schema that the snapshots of the first already point at.
    */
   private static void addSchema(ObjectNode metadata, JsonNode update) {
+    ObjectNode schema = registerSchema(metadata, update);
+    metadata.put("last-column-id",
+        Math.max(metadata.path("last-column-id").asInt(0), IcebergJson.maxFieldId(schema)));
+  }
+
+  /**
+   * Register a schema the way {@link #addSchema} does, without {@code last-column-id}, which only a table has.
+   */
+  private static ObjectNode registerSchema(ObjectNode metadata, JsonNode update) {
     ObjectNode schema = objectField(update, "schema");
     ArrayNode schemas = array(metadata, "schemas");
     JsonNode same = findSame(schemas, existing -> sameSchema(existing, schema));
@@ -250,9 +420,8 @@ final class IcebergMetadataUpdater {
       schema.put("schema-id", schemaId);
       schemas.add(schema);
     }
-    metadata.put("last-column-id",
-        Math.max(metadata.path("last-column-id").asInt(0), IcebergJson.maxFieldId(schema)));
     metadata.put("__last-added-schema-id", schemaId);
+    return schema;
   }
 
   private static void setCurrentSchema(ObjectNode metadata, JsonNode update) {
@@ -351,6 +520,10 @@ final class IcebergMetadataUpdater {
       advanceRowId(metadata, snapshot);
     }
     snapshots.add(snapshot);
+    array(metadata, "__added-snapshot-ids").add(snapshotId);
+    if (snapshot.path("timestamp-ms").isIntegralNumber()) {
+      metadata.put("__last-updated-ms", snapshot.path("timestamp-ms").asLong());
+    }
   }
 
   /**
@@ -397,12 +570,7 @@ final class IcebergMetadataUpdater {
       }
     }
     danglingRefs.forEach(refs::remove);
-    ArrayNode log = array(metadata, "snapshot-log");
-    for (int i = log.size() - 1; i >= 0; i--) {
-      if (removed.contains(log.get(i).path("snapshot-id").asLong(-1))) {
-        log.remove(i);
-      }
-    }
+    // The snapshot log is rebuilt once the whole commit is applied, see updateSnapshotLog().
     // Expiring a snapshot deletes its puffin files as unreferenced, so statistics left behind would point at nothing.
     for (String collection : List.of("statistics", "partition-statistics")) {
       ArrayNode collected = array(metadata, collection);
@@ -429,24 +597,42 @@ final class IcebergMetadataUpdater {
       throw IcebergCatalogException.badRequest(
           "Cannot set " + name + " to unknown snapshot: " + snapshotId);
     }
+    String type = update.path("type").asString("branch");
+    if ("main".equals(name) && !"branch".equals(type)) {
+      throw IcebergCatalogException.badRequest("Cannot set main to a tag, it must be a branch");
+    }
     ObjectNode ref = IcebergJson.newObject();
     ref.put("snapshot-id", snapshotId);
-    ref.put("type", update.path("type").asString("branch"));
+    ref.put("type", type);
     copyIfPresent(update, ref, "min-snapshots-to-keep");
     copyIfPresent(update, ref, "max-snapshot-age-ms");
     copyIfPresent(update, ref, "max-ref-age-ms");
     object(metadata, "refs").set(name, ref);
 
+    if (addedInThisCommit(metadata, snapshotId) && snapshot.path("timestamp-ms").isIntegralNumber()) {
+      metadata.put("__last-updated-ms", snapshot.path("timestamp-ms").asLong());
+    }
     if ("main".equals(name)) {
       long previous = metadata.path("current-snapshot-id").asLong(-1);
       metadata.put("current-snapshot-id", snapshotId);
       if (previous != snapshotId) {
+        // A rollback to an existing snapshot is logged at the time of the commit, not of the snapshot: Iceberg refuses
+        // to load a log that goes back in time, and a time-travel read would land on the snapshot rolled back from.
         ObjectNode entry = IcebergJson.newObject();
-        entry.put("timestamp-ms", snapshot.path("timestamp-ms").asLong(System.currentTimeMillis()));
+        entry.put("timestamp-ms", lastUpdatedMillis(metadata));
         entry.put("snapshot-id", snapshotId);
         array(metadata, "snapshot-log").add(entry);
       }
     }
+  }
+
+  private static boolean addedInThisCommit(ObjectNode metadata, long snapshotId) {
+    for (JsonNode id : metadata.path("__added-snapshot-ids")) {
+      if (id.asLong() == snapshotId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static void removeSnapshotRef(ObjectNode metadata, JsonNode update) {
@@ -590,6 +776,7 @@ final class IcebergMetadataUpdater {
     }
     if (findById(versions, "version-id", versionId) == null) {
       versions.add(version);
+      array(metadata, "__added-version-ids").add(versionId);
     }
     metadata.put("__last-added-version-id", versionId);
   }
@@ -661,17 +848,34 @@ final class IcebergMetadataUpdater {
     if (version == null) {
       throw IcebergCatalogException.badRequest("Cannot set current version to unknown version: " + versionId);
     }
+    if (metadata.has("current-version-id") && metadata.path("current-version-id").asInt() == versionId) {
+      return;
+    }
     metadata.put("current-version-id", versionId);
+    // Re-activating an older version happens now, not when that version was made: a lookup of the history by time
+    // would otherwise find it current over a stretch in which another one was.
+    boolean added = ids(metadata, "__added-version-ids").contains(versionId);
     ObjectNode entry = IcebergJson.newObject();
-    entry.put("timestamp-ms", version.path("timestamp-ms").asLong(System.currentTimeMillis()));
+    entry.put("timestamp-ms", added ? version.path("timestamp-ms").asLong(System.currentTimeMillis())
+        : System.currentTimeMillis());
     entry.put("version-id", versionId);
-    array(metadata, "version-log").add(entry);
+    metadata.set("__history-entry", entry);
+  }
+
+  private static void assignViewUuid(ObjectNode metadata, JsonNode update) {
+    String uuid = required(update, "uuid").asString();
+    String current = metadata.path("view-uuid").asString(null);
+    if (current != null && !current.equals(uuid)) {
+      throw IcebergCatalogException.badRequest("Cannot reassign uuid");
+    }
+    metadata.put("view-uuid", uuid);
   }
 
   /*
-   * The tree helpers. The "__last-added-*" fields are LocalS3's own, and removed before the metadata is written,
-   * see stripInternalFields(): a commit may say "the schema I just added" with -1, which is only resolvable while
-   * the updates of that commit are being applied.
+   * The tree helpers. The "__*" fields are LocalS3's own, and removed before the metadata is written, see
+   * stripInternalFields(): a commit may say "the schema I just added" with -1, and whether a snapshot is new to the
+   * table decides the time its publication is logged at, which are only known while the updates of that commit are
+   * being applied.
    */
 
   /**

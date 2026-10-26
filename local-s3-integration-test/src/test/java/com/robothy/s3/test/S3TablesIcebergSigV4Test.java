@@ -50,7 +50,39 @@ class S3TablesIcebergSigV4Test {
     HttpResponse<String> response = send(config(endpoint, arn), "s3tables", SECRET_KEY);
     assertEquals(200, response.statusCode(), response.body());
     // The config of a client that named a table bucket carries the prefix its catalog is served under.
-    assertTrue(response.body().contains("\"prefix\":\"signed-catalog\""), response.body());
+    // It is the ARN of the table bucket as one path segment, as Amazon S3 Tables answers.
+    assertTrue(response.body().contains("\"prefix\":\"" + encode(arn) + "\""), response.body());
+  }
+
+  @Test
+  void a_table_bucket_named_like_a_route_is_served_under_its_prefix(S3TablesClient tables, LocalS3Endpoint endpoint)
+      throws Exception {
+    String arn = tables.createTableBucket(request -> request.name("namespaces")).arn();
+    tables.createNamespace(request -> request.tableBucketARN(arn).namespace("shop"));
+
+    HttpResponse<String> listed = send(URI.create(endpoint.icebergCatalogUri() + "/v1/" + encode(arn) + "/namespaces"),
+        "s3tables", SECRET_KEY);
+    assertEquals(200, listed.statusCode(), listed.body());
+    assertTrue(listed.body().contains("\"shop\""), listed.body());
+    // Without a prefix, the same segment is the route of the catalog of the service, which has no namespace "shop".
+    assertEquals(404, send(URI.create(endpoint.icebergCatalogUri() + "/v1/namespaces/shop"), "s3tables", SECRET_KEY)
+        .statusCode());
+  }
+
+  @Test
+  void a_prefix_of_no_table_bucket_is_not_served_by_the_catalog_of_the_service(S3TablesClient tables,
+      LocalS3Endpoint endpoint) throws Exception {
+    String arn = tables.createTableBucket(request -> request.name("dropped")).arn();
+    tables.deleteTableBucket(request -> request.tableBucketARN(arn));
+
+    HttpResponse<String> response = send(
+        URI.create(endpoint.icebergCatalogUri() + "/v1/" + encode(arn) + "/namespaces"), "s3tables", SECRET_KEY);
+    assertEquals(404, response.statusCode(), response.body());
+    assertTrue(response.body().contains("NoSuchTableBucketException"), response.body());
+  }
+
+  private static String encode(String arn) {
+    return java.net.URLEncoder.encode(arn, java.nio.charset.StandardCharsets.UTF_8);
   }
 
   @Test

@@ -380,6 +380,13 @@ the Iceberg client retries on — it refreshes the table, replays its changes an
 converge instead of overwriting one another. `IcebergRestCatalogIntegrationTest` asserts exactly that: four writers
 appending at once end with four snapshots and every writer's rows.
 
+`register` (`POST /v1/namespaces/{namespace}/register`) points a name at a metadata file that already exists. With
+`overwrite=true` — `registerTable(identifier, metadataFileLocation, true)` of Iceberg 1.12 — a table that already holds
+the name is moved to that file with the same compare-and-set as a commit, which is how a table is pointed back at an
+earlier metadata file of its own. The number of the next metadata file is still read from the name of the registered
+one. A name held by a view, or any taken name without `overwrite`, is answered `409 AlreadyExistsException`; the
+`register` of a view takes no `overwrite`.
+
 ### What it is checked against
 
 LocalS3 builds the table metadata itself, without the Iceberg library, which is what keeps `local-s3-core` free of a
@@ -416,6 +423,21 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   or row IDs;
 + `remove-snapshots` also drops the `statistics` and `partition-statistics` of the removed snapshots, like Iceberg
   does, since expiring a snapshot deletes their files;
++ the **snapshot log** is rebuilt the way Iceberg's `TableMetadata.Builder` does: of the new snapshots that one commit
+  makes current one after the other, only the last is logged, and a commit that removes snapshots also drops every
+  entry before the last one that points at a removed snapshot, so that a time-travel read into the expired history
+  fails instead of landing on an older snapshot;
++ `set-snapshot-ref` refuses to make `main` a tag (400), like Iceberg does: `main` must be a branch;
++ the **versions of a view** are kept the way Iceberg's `ViewMetadata.Builder` does: making the current version
+  current again changes nothing and logs nothing; a commit logs at most one entry in `version-log`, dated by the version
+  if the commit added it and by the time of the commit otherwise, so re-activating an old version is logged when it
+  happened; only the newest `version.history.num-entries` versions (default 10, and never those the commit added or the
+  current one) are kept, and the entries of `version-log` before the last one of a dropped version are dropped too; a
+  replace that loses a SQL dialect of the current version is refused (400) unless `replace.drop-dialect.allowed` is
+  `true`; `assign-uuid` can't change the UUID of a view (400); and a view's `add-schema` doesn't add the table-only
+  `last-column-id`;
++ `UpdateNamespaceProperties` that both removes and sets the same key gets `422 UnprocessableEntityException`, as the
+  REST spec requires;
 + `add-schema`, `add-spec` and `add-sort-order` ignore the ID the client names, like Iceberg does: one with the same
   content as an existing entry reuses its ID, anything else gets the highest ID + 1, and an existing entry is never
   overwritten, so a schema that a snapshot points at can't change under it;
@@ -429,13 +451,19 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   that a client configured with `credential` starts. The S3 requests the engine then makes are verified as usual.
 + The catalog of the service serves **one warehouse**, and answers no `prefix`. The catalogs of the
   [table buckets](#amazon-s3-tables) of the same service are served under a `prefix` each, which `GET /v1/config`
-  answers to a client that names a table bucket as its warehouse; a prefix that names no table bucket is read as if it
-  weren't there.
+  answers to a client that names a table bucket as its warehouse. Like Amazon S3 Tables, the prefix is the ARN of
+  the table bucket encoded as one path segment, so a table bucket named, say, `namespaces` doesn't clash with a route.
+  A prefix that names no table bucket, e.g. one cached by a client after its table bucket was deleted, gets
+  `404 NoSuchTableBucketException` rather than reaching the catalog of the service.
 + A table, a view and their metadata files live **in LocalS3**. A create request whose `location`, or whose
   `write.metadata.path`, names anything but an `s3://` URI of a bucket of this service is refused: the catalog has no
   way to write a `file:` or `gs:` location.
 + The **empty namespace** is not served, and neither is it by the REST catalog of Iceberg itself: a table lives in a
   namespace of at least one level.
++ A **nested namespace** can be created without its parent, like the `InMemoryCatalog` of Iceberg allows: creating
+  `a.b` alone lists `a` among the top-level namespaces, and `a.b` under `a`, so that it can be browsed to. `a` itself
+  isn't created, though: loading or dropping it answers `404 NoSuchNamespaceException`, and so does listing under a
+  parent that is neither a namespace nor the parent of one.
 + `GET /v1/config` answers the routes it serves in `endpoints`, and the ones it doesn't are therefore not called:
   **scan planning** (`/plan`, `/tasks`) — a client reads the table itself.
 + The **credentials endpoint** of a table, `GET /v1/{prefix}/namespaces/{namespace}/tables/{table}/credentials`,
@@ -456,7 +484,9 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   catalog can have any S3 request of this service signed. The payload is signed as `UNSIGNED-PAYLOAD`.
 + A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
   the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
-  compare-and-sets can see part of it.
+  compare-and-sets can see part of it. A transaction with no `table-changes`, or with two changes to the same table,
+  gets `400 BadRequestException`: the changes of a table are prepared from the same base, so the second could only
+  ever lose its compare-and-set to the first, and a client would retry it forever.
 + Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`. Unlike
   the purge of Iceberg itself, which deletes only the files the metadata refers to, a purge here deletes **everything
   under the location** of the table — every version of every object, delete markers included, so a versioned

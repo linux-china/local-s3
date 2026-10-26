@@ -4,8 +4,10 @@ import com.robothy.s3.core.storage.LocalS3Store;
 import com.robothy.s3.core.util.JsonUtils;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.h2.mvstore.MVMap;
 import org.jspecify.annotations.Nullable;
 
@@ -204,13 +206,14 @@ public final class IcebergCatalogStore {
 
   /**
    * The namespaces directly under a parent, i.e. the ones with one level more than it, e.g. {@code db.schema} under
-   * {@code db} but not {@code db.schema.inner}.
+   * {@code db} but not {@code db.schema.inner}. A namespace that was never created itself but is the parent of one
+   * that was is among them: {@code db.schema.inner} alone lists {@code db.schema} under {@code db}.
    *
    * @param parent the levels of the parent; empty for the top-level namespaces.
-   * @return the namespaces, ordered by key.
+   * @return the levels of the namespaces, ordered by key.
    */
-  public List<IcebergNamespaceRecord> listNamespaces(List<String> parent) {
-    List<IcebergNamespaceRecord> children = new ArrayList<>();
+  public List<List<String>> listNamespaces(List<String> parent) {
+    Set<List<String>> children = new LinkedHashSet<>();
     int depth = parent.size() + 1;
     String prefix = parent.isEmpty() ? "" : IcebergIdentifier.namespaceKey(parent) + IcebergIdentifier.SEPARATOR;
     Iterator<String> keys = namespaces.keyIterator(prefix);
@@ -219,12 +222,12 @@ public final class IcebergCatalogStore {
       if (!key.startsWith(prefix)) {
         break;
       }
-      IcebergNamespaceRecord record = getNamespace(key);
-      if (record != null && record.levels().size() == depth) {
-        children.add(record);
+      List<String> levels = IcebergIdentifier.parseNamespace(key);
+      if (levels.size() >= depth) {
+        children.add(levels.subList(0, depth));
       }
     }
-    return children;
+    return List.copyOf(children);
   }
 
   /*

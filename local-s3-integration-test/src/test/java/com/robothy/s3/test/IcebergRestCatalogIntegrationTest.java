@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.robothy.s3.rest.LocalS3;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.HasTableOperations;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
@@ -131,6 +136,33 @@ class IcebergRestCatalogIntegrationTest {
 
   @Test
   @Timeout(60)
+  void a_namespace_created_without_its_parent_can_be_browsed_to() {
+    Namespace nested = Namespace.of("a", "b");
+    catalog.createNamespace(nested);
+
+    assertTrue(catalog.listNamespaces().contains(Namespace.of("a")));
+    assertEquals(List.of(nested), catalog.listNamespaces(Namespace.of("a")));
+    assertThrows(NoSuchNamespaceException.class, () -> catalog.listNamespaces(Namespace.of("nope")));
+  }
+
+  @Test
+  @Timeout(60)
+  void register_with_overwrite_points_a_table_at_another_metadata_file() {
+    Namespace db = Namespace.of("db");
+    catalog.createNamespace(db);
+    Table one = catalog.createTable(TableIdentifier.of(db, "one"), SCHEMA);
+    catalog.createTable(TableIdentifier.of(db, "two"), SCHEMA);
+    String metadataFile = ((HasTableOperations) one).operations().current().metadataFileLocation();
+    TableIdentifier two = TableIdentifier.of(db, "two");
+
+    assertThrows(AlreadyExistsException.class, () -> catalog.registerTable(two, metadataFile, false));
+    Table registered = catalog.registerTable(two, metadataFile, true);
+    assertEquals(one.uuid(), registered.uuid());
+    assertEquals(one.uuid(), catalog.loadTable(two).uuid());
+  }
+
+  @Test
+  @Timeout(60)
   void a_created_table_round_trips_through_the_catalog() {
     Namespace db = Namespace.of("db");
     catalog.createNamespace(db);
@@ -206,6 +238,53 @@ class IcebergRestCatalogIntegrationTest {
       rows.forEach(row -> earlier.add((Long) row.getField("id")));
     }
     assertEquals(List.of(1L, 2L), earlier.stream().sorted().toList());
+  }
+
+  /**
+   * A rollback to a snapshot older than the last entry of the snapshot log, which the client must still load: Iceberg
+   * refuses a log that goes back in time by more than a minute. The snapshots are committed in the documents of the
+   * protocol, since the client dates every snapshot it produces with the current time.
+   */
+  @Test
+  @Timeout(120)
+  void a_table_rolled_back_to_an_older_snapshot_still_loads() throws Exception {
+    Namespace db = Namespace.of("db");
+    catalog.createNamespace(db);
+    TableIdentifier identifier = TableIdentifier.of(db, "rollback");
+    String location = catalog.createTable(identifier, SCHEMA).location();
+    long now = System.currentTimeMillis();
+    String tableUri = "http://127.0.0.1:" + localS3.getPort() + "/iceberg/v1/namespaces/db/tables/rollback";
+
+    commit(tableUri, """
+        {"requirements":[],"updates":[
+          {"action":"add-snapshot","snapshot":{"snapshot-id":1,"sequence-number":1,"timestamp-ms":%d,
+            "manifest-list":"%s/metadata/snap-1.avro","summary":{"operation":"append"}}},
+          {"action":"set-snapshot-ref","ref-name":"main","type":"branch","snapshot-id":1}]}"""
+        .formatted(now - 600_000, location));
+    commit(tableUri, """
+        {"requirements":[],"updates":[
+          {"action":"add-snapshot","snapshot":{"snapshot-id":2,"parent-snapshot-id":1,"sequence-number":2,
+            "timestamp-ms":%d,"manifest-list":"%s/metadata/snap-2.avro","summary":{"operation":"append"}}},
+          {"action":"set-snapshot-ref","ref-name":"main","type":"branch","snapshot-id":2}]}"""
+        .formatted(now - 300_000, location));
+    commit(tableUri, """
+        {"requirements":[{"type":"assert-ref-snapshot-id","ref":"main","snapshot-id":2}],
+         "updates":[{"action":"set-snapshot-ref","ref-name":"main","type":"branch","snapshot-id":1}]}""");
+
+    Table table = catalog.loadTable(identifier);
+    assertEquals(1, table.currentSnapshot().snapshotId());
+    assertEquals(3, table.history().size());
+    assertTrue(table.history().get(2).timestampMillis() >= now);
+  }
+
+  private static void commit(String tableUri, String body) throws IOException, InterruptedException {
+    try (HttpClient http = HttpClient.newHttpClient()) {
+      HttpResponse<String> response = http.send(HttpRequest.newBuilder(URI.create(tableUri))
+          .header("Content-Type", "application/json")
+          .POST(HttpRequest.BodyPublishers.ofString(body))
+          .build(), HttpResponse.BodyHandlers.ofString());
+      assertEquals(200, response.statusCode(), response.body());
+    }
   }
 
   @Test

@@ -177,10 +177,12 @@ public final class IcebergCatalogController implements RouterHttpRequestHandler 
     HttpMethod method = request.getMethod();
     Parsed parsed = parse(request);
     List<String> path = parsed.segments();
+    String operation = operationOf(method, path);
     // Shadows the field on purpose: every operation below answers through the catalog the prefix of the request names,
     // which is the one of a table bucket for a client that named one, and the catalog of the service for any other.
-    IcebergCatalogService catalog = catalogOf(parsed.prefix());
-    switch (operationOf(method, path)) {
+    // A path that is no route is a NotFoundException whatever its first segment, rather than a missing table bucket.
+    IcebergCatalogService catalog = UNKNOWN_OPERATION.equals(operation) ? this.catalog : catalogOf(parsed.prefix());
+    switch (operation) {
       case "IcebergGetConfig" -> writeJson(response, 200, config(request));
       case "IcebergGetToken" -> writeJson(response, 200, token());
       case "IcebergListNamespaces" -> writeJson(response, 200,
@@ -455,8 +457,7 @@ public final class IcebergCatalogController implements RouterHttpRequestHandler 
    *
    * <p>The REST catalog allows a {@code prefix} segment between the version and the resource, which a catalog that
    * serves several warehouses uses, and LocalS3 does: a service that serves table buckets answers the name of one as
-   * the prefix of the catalog of that table bucket, see {@linkplain #catalogOf}. A prefix that names no table bucket
-   * is read as if it weren't there, which is what a client configured against an older LocalS3 sends.
+   * the prefix of the catalog of that table bucket, see {@linkplain #catalogOf}.
    */
   private static Parsed parse(RouterHttpRequest request) {
     String path = RequestPaths.rawPath(request);
@@ -487,14 +488,21 @@ public final class IcebergCatalogController implements RouterHttpRequestHandler 
 
   /**
    * The catalog that a prefix addresses: the one of the table bucket it names, or the catalog that the service serves
-   * by default.
+   * by default when there is no prefix.
+   *
+   * @throws IcebergCatalogException if the prefix names no table bucket: falling back to the default catalog would let
+   *     a client that still holds the prefix of a deleted table bucket write its tables there without an error.
    */
   private IcebergCatalogService catalogOf(@Nullable String prefix) {
-    if (prefix == null || s3Tables == null) {
+    if (prefix == null) {
       return catalog;
     }
-    IcebergCatalogService tableBucket = s3Tables.catalogOfWarehouse(prefix);
-    return tableBucket != null ? tableBucket : catalog;
+    IcebergCatalogService tableBucket = s3Tables == null ? null : s3Tables.catalogOfWarehouse(prefix);
+    if (tableBucket == null) {
+      throw new IcebergCatalogException(404, "NoSuchTableBucketException",
+          "No table bucket of the prefix " + prefix + " in this LocalS3 service.");
+    }
+    return tableBucket;
   }
 
   /**
@@ -516,15 +524,24 @@ public final class IcebergCatalogController implements RouterHttpRequestHandler 
         throw new IcebergCatalogException(404, "NoSuchTableBucketException",
             "No table bucket of the ARN " + warehouse + " in this LocalS3 service.");
       }
-      return clientConfig.configResponse(request, warehouse, tableBucket);
+      return clientConfig.configResponse(request, warehouse, prefixOf(tableBucket));
     }
     if (warehouse != null && s3Tables != null) {
       String tableBucket = s3Tables.tableBucketNameOf(warehouse);
       if (tableBucket != null) {
-        return clientConfig.configResponse(request, s3Tables.bucketArn(tableBucket), tableBucket);
+        return clientConfig.configResponse(request, s3Tables.bucketArn(tableBucket), prefixOf(tableBucket));
       }
     }
     return clientConfig.configResponse(request, catalog.warehouse());
+  }
+
+  /**
+   * The prefix that the catalog of a table bucket is served under: its ARN, encoded as one path segment, as the
+   * Iceberg REST endpoint of Amazon S3 Tables answers. Its name alone could be a resource, e.g. a table bucket named
+   * {@code namespaces}, which would make {@code /v1/namespaces/...} mean two things.
+   */
+  private String prefixOf(String tableBucket) {
+    return RequestPaths.encode(Objects.requireNonNull(s3Tables).bucketArn(tableBucket));
   }
 
   /**
