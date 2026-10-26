@@ -2,6 +2,7 @@ package com.robothy.s3.core.service;
 
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.assertions.BucketAssertions;
+import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.model.answers.ListObjectVersionsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
@@ -38,6 +39,7 @@ public interface ListObjectVersionsService extends LocalS3MetadataApplicable {
         throw new LocalS3InvalidArgumentException("version-id-marker", startVersionId,
             "A version-id marker cannot be specified without a key marker.");
       }
+      VersionedObjectAssertions.assertVersionIdMarkerIsValid(startVersionId);
 
       List<VersionItem> versionItems = new LinkedList<>();
       List<String> commonPrefixes = new LinkedList<>();

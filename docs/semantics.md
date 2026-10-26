@@ -257,7 +257,9 @@ that version reports `null`.
   its place even if the null version is deleted or replaced in between, without listing a version twice. The ID is
   only a marker; it addresses no version. If the null version that a
   `null` marker names is gone, every version left of its key is listed, so that none is skipped. An empty marker is no
-  marker. A page is truncated only if something is left after it.
+  marker. A `version-id-marker` that is neither `null` nor a version ID that LocalS3 could have given, e.g. one from
+  another S3 implementation, answers `400 InvalidArgument`, like Amazon S3, rather than skipping the versions of its
+  key. A page is truncated only if something is left after it.
 + Noncurrent versions and delete markers are never removed by themselves: a `NoncurrentVersionExpiration` or
   `ExpiredObjectDeleteMarker` rule removes them when a test [applies the lifecycle rules](#lifecycle-configuration).
 

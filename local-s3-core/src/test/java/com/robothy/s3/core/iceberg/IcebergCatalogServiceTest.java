@@ -135,6 +135,123 @@ class IcebergCatalogServiceTest {
   }
 
   @Test
+  void removing_a_snapshot_removes_its_statistics_too() {
+    catalog.createNamespace(namespaceRequest("db"));
+    createTable("db", "orders");
+    IcebergIdentifier orders = IcebergIdentifier.of(List.of("db"), "orders");
+
+    catalog.updateTable(orders, IcebergJson.read("""
+        {"requirements":[],
+         "updates":[
+           {"action":"add-snapshot","snapshot":{"snapshot-id":1,"sequence-number":1,"timestamp-ms":1700000000000,
+             "manifest-list":"s3://warehouse/db/orders/metadata/snap-1.avro","summary":{"operation":"append"}}},
+           {"action":"add-snapshot","snapshot":{"snapshot-id":2,"parent-snapshot-id":1,"sequence-number":2,
+             "timestamp-ms":1700000001000,"manifest-list":"s3://warehouse/db/orders/metadata/snap-2.avro",
+             "summary":{"operation":"append"}}},
+           {"action":"set-snapshot-ref","ref-name":"main","type":"branch","snapshot-id":2},
+           {"action":"set-statistics","statistics":{"snapshot-id":1,"statistics-path":"s3://warehouse/s1.puffin",
+             "file-size-in-bytes":10,"file-footer-size-in-bytes":5,"blob-metadata":[]}},
+           {"action":"set-statistics","statistics":{"snapshot-id":2,"statistics-path":"s3://warehouse/s2.puffin",
+             "file-size-in-bytes":10,"file-footer-size-in-bytes":5,"blob-metadata":[]}},
+           {"action":"set-partition-statistics","partition-statistics":{"snapshot-id":1,
+             "statistics-path":"s3://warehouse/p1.parquet","file-size-in-bytes":10}}]}"""), false);
+
+    ObjectNode committed = catalog.updateTable(orders, IcebergJson.read("""
+        {"requirements":[],"updates":[{"action":"remove-snapshots","snapshot-ids":[1]}]}"""), false);
+
+    ObjectNode metadata = (ObjectNode) committed.get("metadata");
+    assertEquals(1, metadata.path("snapshots").size());
+    assertEquals(1, metadata.path("statistics").size(),
+        "Expiring a snapshot deletes its puffin file, so the metadata must stop referring to it.");
+    assertEquals(2, metadata.path("statistics").get(0).path("snapshot-id").asLong());
+    assertEquals(0, metadata.path("partition-statistics").size());
+  }
+
+  @Test
+  void an_added_schema_spec_or_sort_order_never_overwrites_an_existing_one() {
+    catalog.createNamespace(namespaceRequest("db"));
+    createTable("db", "orders");
+    IcebergIdentifier orders = IcebergIdentifier.of(List.of("db"), "orders");
+
+    // Each names ID 0, which is taken by something different: like Iceberg, the ID is re-assigned.
+    ObjectNode metadata = (ObjectNode) catalog.updateTable(orders, IcebergJson.read("""
+        {"requirements":[],
+         "updates":[
+           {"action":"add-schema","schema":{"type":"struct","schema-id":0,"fields":[
+             {"id":1,"name":"zzz","required":true,"type":"string"}]}},
+           {"action":"add-spec","spec":{"spec-id":0,"fields":[
+             {"source-id":1,"field-id":1000,"name":"id_bucket","transform":"bucket[4]"}]}},
+           {"action":"set-default-spec","spec-id":-1},
+           {"action":"add-sort-order","sort-order":{"order-id":0,"fields":[
+             {"source-id":1,"transform":"identity","direction":"asc","null-order":"nulls-first"}]}},
+           {"action":"set-default-sort-order","sort-order-id":-1}]}"""), false).get("metadata");
+
+    assertEquals(2, metadata.path("schemas").size());
+    assertEquals(0, metadata.path("current-schema-id").asInt(), "No set-current-schema was sent.");
+    assertEquals("long", metadata.path("schemas").get(0).path("fields").get(0).path("type").asString());
+    assertEquals(1, metadata.path("schemas").get(1).path("schema-id").asInt());
+    assertEquals(2, metadata.path("partition-specs").size());
+    assertEquals(1, metadata.path("default-spec-id").asInt());
+    assertEquals(2, metadata.path("sort-orders").size());
+    assertEquals(1, metadata.path("default-sort-order-id").asInt());
+
+    // Adding one that is already there, under whatever ID, reuses it, and -1 resolves to it.
+    metadata = (ObjectNode) catalog.updateTable(orders, IcebergJson.read("""
+        {"requirements":[],
+         "updates":[
+           {"action":"add-schema","schema":%s},
+           {"action":"set-current-schema","schema-id":-1},
+           {"action":"add-spec","spec":{"spec-id":7,"fields":[]}},
+           {"action":"set-default-spec","spec-id":-1}]}""".formatted(SCHEMA.replace("\"schema-id\":0",
+        "\"schema-id\":5"))), false).get("metadata");
+    assertEquals(2, metadata.path("schemas").size());
+    assertEquals(0, metadata.path("current-schema-id").asInt());
+    assertEquals(2, metadata.path("partition-specs").size());
+    assertEquals(0, metadata.path("default-spec-id").asInt());
+  }
+
+  @Test
+  void a_snapshot_built_on_a_stale_table_is_refused_even_on_another_branch() {
+    catalog.createNamespace(namespaceRequest("db"));
+    catalog.createTable(List.of("db"), IcebergJson.read("""
+        {"name":"orders","schema":%s,"properties":{"format-version":"3"}}""".formatted(SCHEMA)));
+    IcebergIdentifier orders = IcebergIdentifier.of(List.of("db"), "orders");
+    catalog.updateTable(orders, IcebergJson.read(snapshotCommit("main", 1, null, 1, 0)), false);
+
+    // Two writers read the table at snapshot 1, and each commits to a branch of its own.
+    ObjectNode committed = catalog.updateTable(orders, IcebergJson.read(snapshotCommit("main", 2, 1L, 2, 10)), false);
+    assertEquals(20, committed.path("metadata").path("next-row-id").asLong());
+    IcebergCatalogException stale = assertThrows(IcebergCatalogException.class,
+        () -> catalog.updateTable(orders, IcebergJson.read(snapshotCommit("b", 3, 1L, 2, 10)), false));
+    assertEquals(409, stale.status());
+    assertEquals("CommitFailedException", stale.type(),
+        "The second writer must refresh and retry, or its rows would reuse the row IDs of the first.");
+
+    // A snapshot built on the refreshed table is accepted.
+    committed = catalog.updateTable(orders, IcebergJson.read(snapshotCommit("b", 3, 1L, 3, 20)), false);
+    assertEquals(30, committed.path("metadata").path("next-row-id").asLong());
+    assertEquals(3, committed.path("metadata").path("last-sequence-number").asLong());
+
+    IcebergCatalogException missing = assertThrows(IcebergCatalogException.class,
+        () -> catalog.updateTable(orders, IcebergJson.read(snapshotCommit("c", 4, 3L, 4, null)), false));
+    assertEquals(400, missing.status());
+  }
+
+  /** A commit that adds a snapshot of 10 rows and points {@code ref} at it. */
+  private static String snapshotCommit(String ref, long snapshotId, Long parentId, long sequenceNumber,
+                                       Integer firstRowId) {
+    return """
+        {"requirements":[],
+         "updates":[
+           {"action":"add-snapshot","snapshot":{"snapshot-id":%d,%s"sequence-number":%d,%s"added-rows":10,
+             "timestamp-ms":1700000000000,"manifest-list":"s3://warehouse/db/orders/metadata/snap-%d.avro",
+             "summary":{"operation":"append"}}},
+           {"action":"set-snapshot-ref","ref-name":"%s","type":"branch","snapshot-id":%d}]}""".formatted(
+        snapshotId, parentId == null ? "" : "\"parent-snapshot-id\":" + parentId + ",", sequenceNumber,
+        firstRowId == null ? "" : "\"first-row-id\":" + firstRowId + ",", snapshotId, ref, snapshotId);
+  }
+
+  @Test
   void a_staged_create_writes_nothing_until_its_transaction_commits() {
     catalog.createNamespace(namespaceRequest("db"));
     ObjectNode request = IcebergJson.read(

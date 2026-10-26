@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -236,16 +237,19 @@ final class IcebergMetadataUpdater {
   }
 
   /**
-   * Register a schema, under the ID it names or the next free one, and carry {@code last-column-id} forward. A
-   * schema that is already registered under the same ID replaces it, which is how Iceberg reuses an identical schema.
+   * Register a schema and carry {@code last-column-id} forward. Like Iceberg's {@code reuseOrCreateNewSchemaId}, the
+   * ID the client names is ignored: two replace transactions from the same base name the same new ID, and the second
+   * must not overwrite the schema that the snapshots of the first already point at.
    */
   private static void addSchema(ObjectNode metadata, JsonNode update) {
     ObjectNode schema = objectField(update, "schema");
     ArrayNode schemas = array(metadata, "schemas");
-    int schemaId = schema.hasNonNull("schema-id") ? schema.path("schema-id").asInt()
-        : nextId(schemas, "schema-id");
-    schema.put("schema-id", schemaId);
-    replaceById(schemas, "schema-id", schemaId, schema);
+    JsonNode same = findSame(schemas, existing -> sameSchema(existing, schema));
+    int schemaId = same != null ? same.path("schema-id").asInt() : nextId(schemas, "schema-id");
+    if (same == null) {
+      schema.put("schema-id", schemaId);
+      schemas.add(schema);
+    }
     metadata.put("last-column-id",
         Math.max(metadata.path("last-column-id").asInt(0), IcebergJson.maxFieldId(schema)));
     metadata.put("__last-added-schema-id", schemaId);
@@ -263,7 +267,13 @@ final class IcebergMetadataUpdater {
   private static void addSpec(ObjectNode metadata, JsonNode update) {
     ObjectNode spec = objectField(update, "spec");
     ArrayNode specs = array(metadata, "partition-specs");
-    int specId = spec.hasNonNull("spec-id") ? spec.path("spec-id").asInt() : nextId(specs, "spec-id");
+    // Field IDs don't take part, like PartitionSpec.compatibleWith: a client re-adding a spec may not know them.
+    JsonNode same = findSame(specs, existing -> samePartitionFields(existing.path("fields"), spec.path("fields")));
+    if (same != null) {
+      metadata.put("__last-added-spec-id", same.path("spec-id").asInt());
+      return;
+    }
+    int specId = nextId(specs, "spec-id");
     spec.put("spec-id", specId);
     // A field the client didn't assign an ID gets the next free one, like an unassigned field of a create request.
     int nextFieldId = Math.max(metadata.path("last-partition-id").asInt(TableMetadataFactory.PARTITION_FIELD_ID_START
@@ -273,7 +283,7 @@ final class IcebergMetadataUpdater {
         partitionField.put("field-id", nextFieldId++);
       }
     }
-    replaceById(specs, "spec-id", specId, spec);
+    specs.add(spec);
     metadata.put("last-partition-id",
         Math.max(metadata.path("last-partition-id").asInt(TableMetadataFactory.PARTITION_FIELD_ID_START - 1),
             TableMetadataFactory.lastPartitionId(spec)));
@@ -283,9 +293,16 @@ final class IcebergMetadataUpdater {
   private static void addSortOrder(ObjectNode metadata, JsonNode update) {
     ObjectNode order = objectField(update, "sort-order");
     ArrayNode orders = array(metadata, "sort-orders");
-    int orderId = order.hasNonNull("order-id") ? order.path("order-id").asInt() : nextId(orders, "order-id");
-    order.put("order-id", orderId);
-    replaceById(orders, "order-id", orderId, order);
+    JsonNode same = findSame(orders, existing -> existing.path("fields").equals(order.path("fields")));
+    int orderId;
+    if (same != null) {
+      orderId = same.path("order-id").asInt();
+    } else {
+      // Iceberg reserves 0 for the unsorted order, so a sorted one starts at 1.
+      orderId = order.path("fields").isEmpty() ? 0 : Math.max(1, nextId(orders, "order-id"));
+      order.put("order-id", orderId);
+      orders.add(order);
+    }
     metadata.put("__last-added-sort-order-id", orderId);
   }
 
@@ -320,8 +337,15 @@ final class IcebergMetadataUpdater {
     }
     int formatVersion = metadata.path("format-version").asInt(TableMetadataFactory.DEFAULT_FORMAT_VERSION);
     if (formatVersion > 1) {
+      // assert-ref-snapshot-id only guards the ref being moved, so two writers that start from the same base and
+      // commit to different branches both pass the requirements; this is what tells the second one it is stale.
       long sequenceNumber = snapshot.path("sequence-number").asLong(0);
-      metadata.put("last-sequence-number", Math.max(metadata.path("last-sequence-number").asLong(0), sequenceNumber));
+      long lastSequenceNumber = metadata.path("last-sequence-number").asLong(0);
+      if (sequenceNumber <= lastSequenceNumber && snapshot.hasNonNull("parent-snapshot-id")) {
+        throw IcebergCatalogException.commitFailed("Cannot add snapshot with sequence number " + sequenceNumber
+            + " older than last sequence number " + lastSequenceNumber);
+      }
+      metadata.put("last-sequence-number", Math.max(lastSequenceNumber, sequenceNumber));
     }
     if (formatVersion >= TableMetadataFactory.ROW_LINEAGE_FORMAT_VERSION) {
       advanceRowId(metadata, snapshot);
@@ -334,14 +358,20 @@ final class IcebergMetadataUpdater {
    * IDs of its own.
    *
    * <p>The client takes the first row ID of the snapshot it builds from the {@code next-row-id} of the table it read,
-   * and the catalog is what makes that count go up. A catalog that left it alone would hand two appends the same range,
-   * and the rows of a v3 table would share IDs — which is exactly the kind of thing row lineage exists to prevent.
+   * and the catalog is what makes that count go up. A snapshot that starts below it was built on a stale table, and
+   * accepting it would hand two snapshots the same range — which is exactly what row lineage exists to prevent.
    */
   private static void advanceRowId(ObjectNode metadata, ObjectNode snapshot) {
+    if (!snapshot.hasNonNull("first-row-id")) {
+      throw IcebergCatalogException.badRequest("Cannot add a snapshot: first-row-id is null");
+    }
     long nextRowId = metadata.path("next-row-id").asLong(0);
-    long firstRowId = snapshot.path("first-row-id").asLong(nextRowId);
-    long addedRows = snapshot.path("added-rows").asLong(0);
-    metadata.put("next-row-id", Math.max(nextRowId, firstRowId + addedRows));
+    long firstRowId = snapshot.path("first-row-id").asLong();
+    if (firstRowId < nextRowId) {
+      throw IcebergCatalogException.commitFailed("Cannot add a snapshot, first-row-id is behind table next-row-id: "
+          + firstRowId + " < " + nextRowId);
+    }
+    metadata.put("next-row-id", nextRowId + snapshot.path("added-rows").asLong(0));
   }
 
   private static void removeSnapshots(ObjectNode metadata, JsonNode update) {
@@ -371,6 +401,15 @@ final class IcebergMetadataUpdater {
     for (int i = log.size() - 1; i >= 0; i--) {
       if (removed.contains(log.get(i).path("snapshot-id").asLong(-1))) {
         log.remove(i);
+      }
+    }
+    // Expiring a snapshot deletes its puffin files as unreferenced, so statistics left behind would point at nothing.
+    for (String collection : List.of("statistics", "partition-statistics")) {
+      ArrayNode collected = array(metadata, collection);
+      for (int i = collected.size() - 1; i >= 0; i--) {
+        if (removed.contains(collected.get(i).path("snapshot-id").asLong(-1))) {
+          collected.remove(i);
+        }
       }
     }
     if (removed.contains(metadata.path("current-snapshot-id").asLong(-1))) {
@@ -722,14 +761,35 @@ final class IcebergMetadataUpdater {
     return null;
   }
 
-  private static void replaceById(ArrayNode collection, String idField, int id, ObjectNode element) {
-    for (int i = 0; i < collection.size(); i++) {
-      if (collection.get(i).path(idField).asInt(-1) == id) {
-        collection.set(i, element);
-        return;
+  @Nullable
+  private static JsonNode findSame(ArrayNode collection, Predicate<JsonNode> same) {
+    for (JsonNode element : collection) {
+      if (same.test(element)) {
+        return element;
       }
     }
-    collection.add(element);
+    return null;
+  }
+
+  /** Like {@code Schema.sameSchema}: the same fields and the same identifier fields, whatever the schema ID. */
+  private static boolean sameSchema(JsonNode existing, JsonNode schema) {
+    return existing.path("fields").equals(schema.path("fields"))
+        && ids(existing, "identifier-field-ids").equals(ids(schema, "identifier-field-ids"));
+  }
+
+  private static boolean samePartitionFields(JsonNode existing, JsonNode fields) {
+    if (existing.size() != fields.size()) {
+      return false;
+    }
+    for (int i = 0; i < fields.size(); i++) {
+      JsonNode a = existing.get(i);
+      JsonNode b = fields.get(i);
+      if (!a.path("source-id").equals(b.path("source-id")) || !a.path("transform").equals(b.path("transform"))
+          || !a.path("name").equals(b.path("name"))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static int nextId(ArrayNode collection, String idField) {

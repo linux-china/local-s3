@@ -111,9 +111,16 @@ public class Range {
     }
   }
 
-  /** Empty unless both ends are given. */
+  /**
+   * Empty unless both ends are given. Saturates like {@link #parseUnsigned(String)}: {@code bytes=0-<Long.MAX_VALUE>}
+   * would otherwise overflow to a negative length, and an empty one would let a copy range skip its size check.
+   */
   public Optional<Long> length() {
-    return start != null && end != null ? Optional.of(end - start + 1) : Optional.empty();
+    if (start == null || end == null) {
+      return Optional.empty();
+    }
+    long span = end - start;
+    return Optional.of(span == Long.MAX_VALUE ? Long.MAX_VALUE : span + 1);
   }
 
   /**

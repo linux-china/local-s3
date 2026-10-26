@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import com.robothy.s3.core.Digests;
+import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -332,6 +333,26 @@ class ListObjectVersionsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(List.of("b"), keys(objectService.listObjectVersions(bucket, null, "a", 100, null, null)));
     // An empty marker, which some clients send on their first request, is no marker.
     assertEquals(List.of("a", "a", "b"), keys(objectService.listObjectVersions(bucket, null, "", 100, null, "")));
+  }
+
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void malformedVersionIdMarkerIsAnInvalidArgument(BucketService bucketService, ObjectService objectService) {
+    String bucket = "versioned-bucket";
+    bucketService.createBucket(bucket);
+    bucketService.setVersioningEnabled(bucket, true);
+    String older = put(objectService, bucket, "a").getVersionId();
+    String newer = put(objectService, bucket, "a").getVersionId();
+
+    for (String malformed : new String[] {"abc", "12a", "-", "１２"}) {
+      LocalS3InvalidArgumentException e = assertThrows(LocalS3InvalidArgumentException.class,
+          () -> objectService.listObjectVersions(bucket, null, "a", 100, null, malformed), malformed);
+      assertEquals("version-id-marker", e.getArgumentName());
+    }
+    // A well-formed marker, even of a version that doesn't exist, still has its place.
+    assertEquals(List.of(newer, older), objectService.listObjectVersions(bucket, null, "a", 100, null,
+        String.valueOf(Long.MAX_VALUE)).getVersions().stream()
+        .map(item -> ((ObjectVersion) item).versionId()).toList());
   }
 
   @ParameterizedTest

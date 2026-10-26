@@ -407,8 +407,18 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   `IcebergProtocolCoverageTest` checks by reading the names out of the parsers of the Iceberg library rather than from a
   list of its own. An update, or a requirement, that LocalS3 doesn't know is **refused** rather than ignored, because
   applying a commit only in part would hand a client metadata that isn't what it asked for;
-+ a table created at, or upgraded to, **v3** carries `next-row-id`, and a commit that adds a snapshot advances it past
++ a table created at, or upgraded to, **v3** carries `next-row-id`, and a commit that adds a snapshot advances it by
   the rows the snapshot added, so the row IDs of two appends don't overlap;
++ `add-snapshot` refuses a snapshot that is behind the table, like Iceberg does: a snapshot with a parent must have a
+  `sequence-number` above `last-sequence-number` (v2+), and a v3 snapshot must carry a `first-row-id` (400 otherwise)
+  that is not below `next-row-id`. A stale snapshot gets `409 CommitFailedException`, so a client refreshes and retries,
+  which is what keeps two writers committing to different branches from the same base from sharing sequence numbers
+  or row IDs;
++ `remove-snapshots` also drops the `statistics` and `partition-statistics` of the removed snapshots, like Iceberg
+  does, since expiring a snapshot deletes their files;
++ `add-schema`, `add-spec` and `add-sort-order` ignore the ID the client names, like Iceberg does: one with the same
+  content as an existing entry reuses its ID, anything else gets the highest ID + 1, and an existing entry is never
+  overwritten, so a schema that a snapshot points at can't change under it;
 + the field IDs of a new table are **re-assigned from 1**, like `TableMetadata.newTableMetadata` does, and the
   `source-id` of every partition and sort field moves with them.
 

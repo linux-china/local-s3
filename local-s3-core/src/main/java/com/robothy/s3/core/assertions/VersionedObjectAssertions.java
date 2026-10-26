@@ -18,8 +18,27 @@ public class VersionedObjectAssertions {
    * @throws LocalS3InvalidArgumentException if the version ID is malformed.
    */
   public static void assertVersionIdIsValid(String versionId) {
+    if (!isWellFormed(versionId)) {
+      throw invalidVersionId(versionId);
+    }
+  }
+
+  /**
+   * Assert that a {@code version-id-marker} is one that LocalS3 could have given; a malformed one has no place among the
+   * versions, so that it would otherwise skip all the versions of its key.
+   *
+   * @param versionIdMarker the marker; {@code null} if the request has none.
+   * @throws LocalS3InvalidArgumentException if the marker is malformed.
+   */
+  public static void assertVersionIdMarkerIsValid(String versionIdMarker) {
+    if (!isWellFormed(versionIdMarker)) {
+      throw new LocalS3InvalidArgumentException("version-id-marker", versionIdMarker, "Invalid version id specified");
+    }
+  }
+
+  private static boolean isWellFormed(String versionId) {
     if (Objects.isNull(versionId) || ObjectMetadata.NULL_VERSION.equals(versionId)) {
-      return;
+      return true;
     }
     int start = versionId.startsWith("-") ? 1 : 0;
     boolean valid = versionId.length() > start && versionId.length() <= start + 19;
@@ -27,9 +46,7 @@ public class VersionedObjectAssertions {
       char c = versionId.charAt(i);
       valid = c >= '0' && c <= '9';
     }
-    if (!valid) {
-      throw invalidVersionId(versionId);
-    }
+    return valid;
   }
 
   /**

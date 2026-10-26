@@ -1,6 +1,7 @@
 package com.robothy.s3.core.model.request;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -60,6 +61,15 @@ class RangeTest {
     assertThrows(InvalidRangeException.class,
         () -> Range.tryParse("bytes=99999999999999999999-").orElseThrow().resolve(10));
     assertTrue(Range.tryParse("bytes=99999999999999999999-5").isEmpty());
+  }
+
+  @Test
+  void lengthSaturatesInsteadOfOverflowing() {
+    assertEquals(Optional.of(3L), Range.parse("bytes=1-3").length());
+    assertEquals(Optional.of(Long.MAX_VALUE), Range.parse("bytes=0-99999999999999999999").length());
+    assertEquals(Optional.of(Long.MAX_VALUE), Range.parse("bytes=1-99999999999999999999").length());
+    assertTrue(Range.parse("bytes=4-").length().isEmpty());
+    assertTrue(Range.parse("bytes=-3").length().isEmpty());
   }
 
   @Test
