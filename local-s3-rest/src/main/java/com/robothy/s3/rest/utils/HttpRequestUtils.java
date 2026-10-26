@@ -8,6 +8,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpResponse;
+import java.nio.charset.StandardCharsets;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -51,7 +52,7 @@ public final class HttpRequestUtils {
      */
     public static <T> T parseRequestOrDefault(byte[] bodyBytes, Class<T> requestClass, 
                                               ObjectMapper objectMapper) throws Exception {
-        if (bodyBytes.length == 0 || new String(bodyBytes).trim().isEmpty()) {
+        if (bodyBytes.length == 0 || new String(bodyBytes, StandardCharsets.UTF_8).trim().isEmpty()) {
             return createDefaultRequest(requestClass);
         }
         return objectMapper.readValue(bodyBytes, requestClass);
@@ -70,7 +71,7 @@ public final class HttpRequestUtils {
      */
     public static <T> T parseRequiredRequest(byte[] bodyBytes, Class<T> requestClass, 
                                              ObjectMapper objectMapper) throws Exception {
-        if (bodyBytes.length == 0 || new String(bodyBytes).trim().isEmpty()) {
+        if (bodyBytes.length == 0 || new String(bodyBytes, StandardCharsets.UTF_8).trim().isEmpty()) {
             throw new LocalS3VectorException(LocalS3VectorErrorType.INVALID_REQUEST,
                 "Request body is required for " + requestClass.getSimpleName());
         }

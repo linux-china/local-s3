@@ -10,6 +10,7 @@ import com.robothy.s3.rest.utils.ResponseUtils;
 import com.robothy.s3.rest.netty.RequestBodies;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 
 class BucketEncryptionController {
@@ -23,7 +24,7 @@ class BucketEncryptionController {
   void put(RouterHttpRequest request, RouterHttpResponse response) throws Exception {
     String bucketName = RequestAssertions.assertBucketNameProvided(request);
     try(InputStream in = RequestBodies.inputStream(request.getBody())) {
-      this.encryptionService.putBucketEncryption(bucketName, new String(in.readAllBytes()));
+      this.encryptionService.putBucketEncryption(bucketName, new String(in.readAllBytes(), StandardCharsets.UTF_8));
     }
     ResponseUtils.addCommonHeaders(response)
         .status(HttpResponseStatus.OK);

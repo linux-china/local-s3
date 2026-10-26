@@ -488,7 +488,7 @@ A `PERSISTENCE` service commits the metadata of every change before it answers t
 `DURABLE` means: **a process that is killed, or that crashes, loses nothing it answered a request for.** It is not an
 `fsync`: a commit writes `buckets.mvstore` without syncing it to the disk, so the operating system holds the last
 commits until it writes them back, and a power loss or an operating system crash may lose them. Neither policy protects
-against that.
+against that. The content of objects isn't synced either: after a power loss, an object's metadata may survive while its content is truncated or missing.
 
 A commit appends a chunk to `buckets.mvstore` rather than replacing what it supersedes. The requests that change a
 bucket at the same time share a commit: each commits once the lock of the bucket is released, and a commit that starts

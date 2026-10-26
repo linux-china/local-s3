@@ -216,7 +216,7 @@ the store is open once most of it is room that superseded chunks take.
 
 **Commits.** `PersistencePolicy.DURABLE` commits every change before its request is answered; `FAST` lets MVStore
 commit in the background, at most a second later, and commits the rest on close. `DURABLE` survives a killed process,
-not a power loss: MVStore doesn't `fsync` a commit. The `BucketGuard` writes a change into the maps under the lock of the
+not a power loss: MVStore doesn't `fsync` a commit, and `LocalFileSystemStorage` doesn't `fsync` content before it renames it into place. After a power loss, a version's metadata may therefore survive while its content is truncated or missing; LocalS3 is a service for development and tests, and syncing every write would cost far more than it protects. The `BucketGuard` writes a change into the maps under the lock of the
 bucket, and commits it (`MetadataStore.sync()`) once the lock is released, so the concurrent writers of a bucket share a
 commit; the content that the change deleted is deleted after that commit. A `FAST` store has no commit to wait for:
 `LocalS3Store.whenDurable` holds the deletion until MVStore has written the chunk that holds the change, checked every
