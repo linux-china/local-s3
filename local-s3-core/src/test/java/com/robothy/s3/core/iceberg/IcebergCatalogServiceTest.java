@@ -215,6 +215,20 @@ class IcebergCatalogServiceTest {
   }
 
   @Test
+  void a_purge_leaves_a_location_outside_the_warehouse_alone() {
+    files.createBucketIfAbsent("s3://app-data");
+    files.write("s3://app-data/shared/unrelated.csv", "not the table's");
+    catalog.createNamespace(namespaceRequest("db"));
+    catalog.createTable(List.of("db"), IcebergJson.read("""
+        {"name":"orders","schema":%s,"location":"s3://app-data/shared"}""".formatted(SCHEMA)));
+
+    catalog.dropTable(IcebergIdentifier.of(List.of("db"), "orders"), false, true);
+
+    assertNotNull(files.read("s3://app-data/shared/unrelated.csv"));
+    assertFalse(catalog.tableExists(IcebergIdentifier.of(List.of("db"), "orders"), false));
+  }
+
+  @Test
   void a_purge_keeps_a_metadata_directory_another_table_still_uses() {
     catalog.createNamespace(namespaceRequest("db"));
     String request = """

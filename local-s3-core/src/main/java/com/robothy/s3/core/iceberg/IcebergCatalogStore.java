@@ -127,18 +127,26 @@ public final class IcebergCatalogStore {
   }
 
   /**
-   * Replace a namespace, if it still exists: an update of its properties must not bring back a namespace that was
-   * dropped meanwhile.
+   * Replace a namespace, if it is still the record the caller read: an update of its properties must neither bring
+   * back a namespace that was dropped meanwhile nor overwrite the properties another update set meanwhile.
    *
-   * @param record the namespace.
-   * @return {@code true} if it was replaced; {@code false} if the namespace is gone.
+   * @param expected the record the caller read.
+   * @param updated the record to leave.
+   * @return {@code true} if it was replaced; {@code false} if the namespace has changed or is gone.
    */
-  public boolean replaceNamespace(IcebergNamespaceRecord record) {
-    boolean replaced = namespaces.replace(record.key(), JsonUtils.toJson(record)) != null;
-    if (replaced) {
-      commit();
+  public boolean replaceNamespace(IcebergNamespaceRecord expected, IcebergNamespaceRecord updated) {
+    String updatedJson = JsonUtils.toJson(updated);
+    while (true) {
+      // Compared as values, like replaceTable, so that a record written by an older LocalS3 can still be updated.
+      String json = namespaces.get(expected.key());
+      if (json == null || !JsonUtils.fromJson(json, IcebergNamespaceRecord.class).equals(expected)) {
+        return false;
+      }
+      if (namespaces.replace(expected.key(), json, updatedJson)) {
+        commit();
+        return true;
+      }
     }
-    return replaced;
   }
 
   /**
@@ -309,11 +317,17 @@ public final class IcebergCatalogStore {
    * @return {@code true} if it was removed; {@code false} if the table has changed or is gone.
    */
   public boolean removeTable(IcebergTableRecord expected) {
-    boolean removed = tables.remove(expected.key(), JsonUtils.toJson(expected));
-    if (removed) {
-      commit();
+    while (true) {
+      // Compared as values, like replaceTable.
+      String json = tables.get(expected.key());
+      if (json == null || !JsonUtils.fromJson(json, IcebergTableRecord.class).equals(expected)) {
+        return false;
+      }
+      if (tables.remove(expected.key(), json)) {
+        commit();
+        return true;
+      }
     }
-    return removed;
   }
 
   /**

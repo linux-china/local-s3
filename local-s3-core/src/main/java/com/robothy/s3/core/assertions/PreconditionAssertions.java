@@ -250,7 +250,7 @@ public class PreconditionAssertions {
    * ever derives an entity tag from the content of an object, i.e. a strong one, so {@code W/} never tells
    * two of them apart.
    */
-  static String normalizeEtag(String etag) {
+  public static String normalizeEtag(String etag) {
     String value = etag.trim();
     if (value.startsWith("W/")) {
       value = value.substring("W/".length()).trim();

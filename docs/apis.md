@@ -216,6 +216,10 @@ has no direction: `PutVectors` and `QueryVectors` answer it with `ValidationExce
 A vector that contains `NaN` or an infinite value is rejected the same way by `PutVectors` and `QueryVectors`, for every
 distance metric, since its distance to any vector is `NaN`.
 
+`PutVectors` also applies the limits of AWS to each vector, with `ValidationException`: a key of at most 1024
+characters, metadata of at most 40 KB, and filterable metadata — the metadata without the `nonFilterableMetadataKeys`
+of the index — of at most 2 KB. A size is the one of the metadata written as JSON in UTF-8.
+
 In the metadata filter of `QueryVectors`, every key of an object is a condition that must hold, `$and` and `$or`
 included: `{"genre": "drama", "$or": [{"year": 2020}, {"year": 2021}]}` matches a drama of 2020 or 2021.
 `$gt`, `$gte`, `$lt` and `$lte` take a number, and a filter that compares with anything else is rejected with

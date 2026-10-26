@@ -42,9 +42,9 @@ final class InMemoryLocalS3TablesManager implements LocalS3TablesManager {
                                ObjectService objectService, String region, String accountId) {
     this.initialDataDirectory = initialDataDirectory;
     loadInitialRecords();
-    this.s3TablesService = new S3TablesService(tablesStore, bucketService,
-        S3TablesCatalogs.factory(localS3Store, new IcebergMetadataFiles(bucketService, objectService)),
-        region, accountId);
+    IcebergMetadataFiles files = new IcebergMetadataFiles(bucketService, objectService);
+    this.s3TablesService = new S3TablesService(tablesStore, bucketService, files,
+        S3TablesCatalogs.factory(localS3Store, files), region, accountId);
   }
 
   private void loadInitialRecords() {

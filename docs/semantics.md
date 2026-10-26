@@ -334,11 +334,14 @@ of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the 
   algorithm other than the one of the upload answers `400 InvalidRequest`.
 + A `CompleteMultipartUpload` that is retried after the upload was completed, e.g. after a timeout, gets the answer of
   the completion again, without a change, for as long as the key holds the version that the upload stored; after that
-  version is overwritten without versioning, or deleted, it answers `NoSuchUpload`, as Amazon S3 does.
+  version is overwritten without versioning, or deleted, it answers `NoSuchUpload`, as Amazon S3 does. Only a retry
+  with the part numbers that completed the upload, and their entity tags if it sends them, is answered so; a request
+  with other parts answers `NoSuchUpload`.
 + `AbortMultipartUpload` of an upload that doesn't exist, or was already aborted or completed, answers
   `404 NoSuchUpload`, like Amazon S3.
 + `ListParts` answers `400 InvalidArgument` for a `max-parts` or `part-number-marker` that isn't a non-negative
-  integer. `max-parts=0` answers an empty page, and a marker beyond the last part an empty list, like Amazon S3.
+  integer. `max-parts=0` answers an empty page that isn't truncated, so that a client paging by marker stops, and a
+  marker beyond the last part an empty list, like Amazon S3.
 + `ListMultipartUploads` answers at most 1000 uploads: a larger `max-uploads` is capped, and answered as 1000 in
   `MaxUploads`, rather than rejected, like Amazon S3; one that isn't a non-negative integer answers `400 InvalidArgument`.
 
@@ -556,6 +559,10 @@ bucket doesn't take it away:
   `s3:GetObject`, and a `NotResource` when it covers the key.
 
 `IgnorePublicAcls` takes the ACL away, `BlockPublicPolicy` the policy, and `RestrictPublicBuckets` either of them.
+
+What a request is answered with must be public as well: an index document, an error document, or the directory that a
+key is redirected to, e.g. `public/docs/`, that isn't public is treated as not there, so a policy that publishes
+`my-site/public/*` answers `public/missing` with the generic error page rather than with a private error document.
 
 Every other bucket stays private, and an unsigned request of it is rejected as before. To serve **every** bucket
 without publishing it, which is meant for local development, set `LOCAL_S3_WEBSITE_ALL_BUCKETS=true`,

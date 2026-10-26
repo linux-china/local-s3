@@ -194,6 +194,32 @@ class CompleteMultipartUploadServiceTest extends LocalS3ServiceTestBase {
   }
 
   /**
+   * A retry of a completed upload gets the answer of the completion again; a request with other parts doesn't.
+   */
+  @ParameterizedTest
+  @MethodSource("localS3Services")
+  void onlyARetryOfACompletedUploadIsAnsweredAsCompleted(BucketService bucketService, ObjectService objectService) {
+    String bucket = "my-bucket";
+    String key = "a.txt";
+    bucketService.createBucket(bucket);
+    String uploadId = upload(objectService, bucket, key, "Hello", "World");
+    List<CompleteMultipartUploadPartOption> parts = List.of(
+        CompleteMultipartUploadPartOption.builder().partNumber(1).etag(Digests.md5Hex("Hello")).build(),
+        CompleteMultipartUploadPartOption.builder().partNumber(2).etag("\"" + Digests.md5Hex("World") + "\"").build());
+    CompleteMultipartUploadAns completed = objectService.completeMultipartUpload(bucket, key, uploadId, parts);
+
+    assertEquals(completed.getEtag(), objectService.completeMultipartUpload(bucket, key, uploadId, parts).getEtag());
+    assertEquals(completed.getEtag(), complete(objectService, bucket, key, uploadId, 2).getEtag());
+
+    assertThrows(UploadNotExistException.class, () -> complete(objectService, bucket, key, uploadId, 1));
+    assertThrows(UploadNotExistException.class, () -> objectService.completeMultipartUpload(bucket, key, uploadId,
+        List.of(parts.get(0), CompleteMultipartUploadPartOption.builder().partNumber(3).build())));
+    assertThrows(UploadNotExistException.class, () -> objectService.completeMultipartUpload(bucket, key, uploadId,
+        List.of(parts.get(0), CompleteMultipartUploadPartOption.builder().partNumber(2)
+            .etag(Digests.md5Hex("Hello")).build())));
+  }
+
+  /**
    * Start an upload of the given parts, in the order they are given.
    *
    * @return the upload ID.

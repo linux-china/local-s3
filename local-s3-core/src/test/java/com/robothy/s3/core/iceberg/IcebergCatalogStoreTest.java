@@ -112,8 +112,39 @@ class IcebergCatalogStoreTest {
       IcebergNamespaceRecord read = store.getNamespace("db");
       store.removeEmptyNamespace(ORDERS.namespace());
 
-      assertFalse(store.replaceNamespace(read.withProperties(Map.of("owner", "me"))));
+      assertFalse(store.replaceNamespace(read, read.withProperties(Map.of("owner", "me"))));
       assertNull(store.getNamespace("db"));
+    }
+  }
+
+  @Test
+  void an_update_of_a_namespace_updated_after_it_was_read_is_refused() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = storeWithNamespace(localS3Store);
+      IcebergNamespaceRecord read = store.getNamespace("db");
+      IcebergNamespaceRecord first = read.withProperties(Map.of("owner", "me"));
+      assertTrue(store.replaceNamespace(read, first));
+
+      assertFalse(store.replaceNamespace(read, read.withProperties(Map.of("comment", "lost"))),
+          "An update built on the stale record would drop the owner the first one set.");
+      assertEquals(first, store.getNamespace("db"));
+    }
+  }
+
+  @Test
+  void a_table_stored_in_another_field_order_can_still_be_removed() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      IcebergCatalogStore store = IcebergCatalogStore.create(localS3Store, "test/namespaces", "test/tables");
+      store.putNamespaceIfAbsent(new IcebergNamespaceRecord(ORDERS.namespace(), Map.of()));
+      IcebergTableRecord created = record("s3://warehouse/db/orders/metadata/00000.metadata.json");
+      assertTrue(store.putTableIfAbsent(created));
+      MVMap<String, String> raw = localS3Store.store().openMap("test/tables");
+      raw.put(created.key(), "{\"version\":0,\"previousMetadataLocation\":null,"
+          + "\"metadataLocation\":\"s3://warehouse/db/orders/metadata/00000.metadata.json\",\"view\":false,"
+          + "\"name\":\"orders\",\"namespace\":[\"db\"]}");
+
+      assertTrue(store.removeTable(store.getTable(ORDERS)));
+      assertNull(store.getTable(ORDERS));
     }
   }
 

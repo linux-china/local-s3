@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -150,23 +151,37 @@ public final class IcebergMetadataFiles {
       log.warn("Skipped purging {}: it is the root of the bucket {}.", location, parsed.bucket());
       return;
     }
-    String prefix = key + "/";
     try {
-      // Every version is deleted by its ID: a delete without one only stacks a delete marker on a versioned bucket.
-      String keyMarker = null;
-      String versionIdMarker = null;
-      do {
-        ListObjectVersionsAns page = objectService.listObjectVersions(parsed.bucket(), null, keyMarker,
-            PURGE_PAGE_SIZE, prefix, versionIdMarker);
-        for (VersionItem version : page.getVersions()) {
-          objectService.deleteObject(parsed.bucket(), version.key(), version.versionId());
-        }
-        keyMarker = page.getNextKeyMarker().orElse(null);
-        versionIdMarker = page.getNextVersionIdMarker().orElse(null);
-      } while (keyMarker != null);
+      deleteAll(parsed.bucket(), key + "/");
     } catch (RuntimeException e) {
       log.warn("Failed to purge {} of the dropped Iceberg table: {}", location, e.toString());
     }
+  }
+
+  /**
+   * Delete every object of a bucket, so that the bucket itself can be deleted.
+   *
+   * @param bucket the name of the bucket.
+   * @throws LocalS3Exception if an object can't be deleted, e.g. one that Object Lock
+   *     protects.
+   */
+  public void empty(String bucket) {
+    deleteAll(bucket, null);
+  }
+
+  private void deleteAll(String bucket, @Nullable String prefix) {
+    // Every version is deleted by its ID: a delete without one only stacks a delete marker on a versioned bucket.
+    String keyMarker = null;
+    String versionIdMarker = null;
+    do {
+      ListObjectVersionsAns page = objectService.listObjectVersions(bucket, null, keyMarker, PURGE_PAGE_SIZE, prefix,
+          versionIdMarker);
+      for (VersionItem version : page.getVersions()) {
+        objectService.deleteObject(bucket, version.key(), version.versionId());
+      }
+      keyMarker = page.getNextKeyMarker().orElse(null);
+      versionIdMarker = page.getNextVersionIdMarker().orElse(null);
+    } while (keyMarker != null);
   }
 
   /**

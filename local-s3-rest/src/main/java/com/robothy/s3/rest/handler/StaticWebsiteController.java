@@ -169,6 +169,14 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
   }
 
   /**
+   * Whether an anonymous request may read a key of a bucket that it was allowed into, i.e. one that
+   * {@linkplain #isAllowed} accepted for the key of the request.
+   */
+  private boolean readsAnonymously(String bucket, String key) {
+    return settings.allBuckets() || bucketService.allowsAnonymousRead(bucket, key);
+  }
+
+  /**
    * Whether the request is answered with the semantics of a website: the index document of a directory, the redirect
    * to a directory, the error document of a key that isn't there, and the content type of a file that was stored
    * without one. An object that exists is served by {@code GetObject} either way, so only the root of a bucket that
@@ -208,7 +216,8 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     String indexDocument = configuration.indexDocumentSuffix().orElse(settings.indexDocument());
     // A request for a directory is answered with the index document of that directory.
     String target = key.isEmpty() || key.endsWith("/") ? key + indexDocument : key;
-    if (objectExists(bucket, target)) {
+    // The key of the request was checked by the router; the object served in its place may be one that isn't public.
+    if (readsAnonymously(bucket, target) && objectExists(bucket, target)) {
       // An object stored with a website redirect location redirects instead of serving its content, like the website
       // endpoint of Amazon S3 does.
       Optional<String> redirectLocation = websiteRedirectLocation(bucket, target);
@@ -222,7 +231,8 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
 
     // A key that names a directory is redirected to it with a trailing slash, so that the relative links of its
     // index document resolve under the directory rather than beside it.
-    if (!key.isEmpty() && !key.endsWith("/") && hasObjectsUnder(bucket, key + "/")) {
+    if (!key.isEmpty() && !key.endsWith("/") && readsAnonymously(bucket, key + "/")
+        && hasObjectsUnder(bucket, key + "/")) {
       redirect(response, HttpResponseStatus.FOUND, encodePath(request.getPath()) + "/" + rawQuery(request));
       return;
     }
@@ -242,7 +252,7 @@ class StaticWebsiteController implements RouterHttpRequestHandler {
     }
 
     String errorDocument = configuration.errorDocumentKey().orElse(settings.errorDocument());
-    if (errorDocument != null && objectExists(bucket, errorDocument)) {
+    if (errorDocument != null && readsAnonymously(bucket, errorDocument) && objectExists(bucket, errorDocument)) {
       serve(withoutRangeAndPreconditions(request), response, errorDocument);
       // After the object is served: it is answered with the status of the failure, not with its own 200.
       response.status(status);

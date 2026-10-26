@@ -88,6 +88,16 @@ class S3TablesServiceTest {
   }
 
   @Test
+  void a_table_bucket_created_twice_leaves_no_bucket_behind() {
+    String arn = createTableBucket("sales");
+    int before = buckets.listBuckets().size();
+
+    assertEquals(409, assertThrows(S3TablesException.class, () -> createTableBucket("sales")).status());
+    assertEquals(before, buckets.listBuckets().size());
+    assertEquals("s3://sales--table-s3", s3Tables.catalogOfWarehouse(arn).warehouse());
+  }
+
+  @Test
   void a_table_is_created_in_a_namespace_and_answered_by_name_and_by_arn() {
     String arn = createTableBucket("lake");
     s3Tables.createNamespace(arn, namespaceRequest("db"));
@@ -216,6 +226,25 @@ class S3TablesServiceTest {
     assertEquals(404, assertThrows(S3TablesException.class, () -> s3Tables.getTableBucket(arn)).status());
     // The bucket behind the table bucket goes with it.
     assertThrows(RuntimeException.class, () -> buckets.getBucket("ordered--table-s3"));
+  }
+
+  @Test
+  void deleting_a_table_bucket_takes_the_files_of_tables_dropped_without_a_purge_with_it() {
+    String arn = createTableBucket("leftover");
+    IcebergCatalogService catalog = s3Tables.catalogOfWarehouse(arn);
+    catalog.createNamespace(IcebergJson.read("{\"namespace\":[\"db\"]}"));
+    catalog.createTable(List.of("db"), IcebergJson.read("""
+        {"name":"t","schema":{"type":"struct","fields":[{"id":1,"name":"id","required":true,"type":"long"}]}}"""));
+    // What an engine on the Iceberg REST endpoint does when it drops a table without purgeRequested.
+    catalog.dropTable(IcebergIdentifier.of(List.of("db"), "t"), false, false);
+    catalog.dropNamespace(List.of("db"));
+
+    s3Tables.deleteTableBucket(arn);
+    assertThrows(RuntimeException.class, () -> buckets.getBucket("leftover--table-s3"));
+
+    // A table bucket created again under the name gets the bucket of the name, rather than one beside the orphan.
+    String again = createTableBucket("leftover");
+    assertEquals("s3://leftover--table-s3", s3Tables.catalogOfWarehouse(again).warehouse());
   }
 
   @Test

@@ -164,6 +164,11 @@ class ListPartsServiceTest extends LocalS3ServiceTestBase {
     assertEquals(10, empty.getNextPartNumberMarker());
     assertFalse(empty.isTruncated());
 
+    ListPartsAns zero = objectService.listParts(bucketName, "a.txt", uploadId, 0, 0);
+    assertEquals(0, zero.getParts().size());
+    assertEquals(0, zero.getNextPartNumberMarker());
+    assertFalse(zero.isTruncated());
+
     ListPartsAns nearMax = objectService.listParts(bucketName, "a.txt", uploadId, 1000, Integer.MAX_VALUE - 1);
     assertEquals(0, nearMax.getParts().size());
     assertFalse(nearMax.isTruncated());

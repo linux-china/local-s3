@@ -106,7 +106,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
       uploadMetadata = prepareCompleteMultipartUpload(bucket, key, uploadId, completeParts);
     } catch (UploadNotExistException e) {
       // A client retries a CompleteMultipartUpload whose response it didn't receive.
-      return completedMultipartUpload(bucket, key, uploadId).orElseThrow(() -> e);
+      return completedMultipartUpload(bucket, key, uploadId, completeParts).orElseThrow(() -> e);
     }
     UploadAssertions.assertPartsAreLargeEnough(uploadMetadata, completeParts, minimumPartSize);
     NavigableMap<Integer, UploadPartMetadata> partsToComplete = uploadMetadata.getParts();
@@ -159,19 +159,21 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           preconditions);
     } catch (UploadNotExistException e) {
       // A concurrent request with the same upload completed it first, e.g. the retry of a client that timed out.
-      return completedMultipartUpload(bucket, key, uploadId).orElseThrow(() -> e);
+      return completedMultipartUpload(bucket, key, uploadId, completeParts).orElseThrow(() -> e);
     }
   }
 
   /**
    * Read off the version that the upload stored; nothing changes, and no change is published.
    */
-  default Optional<CompleteMultipartUploadAns> completedMultipartUpload(String bucket, String key, String uploadId) {
+  default Optional<CompleteMultipartUploadAns> completedMultipartUpload(String bucket, String key, String uploadId,
+                                                                        List<CompleteMultipartUploadPartOption> completeParts) {
     return withBucketReadLock(bucket, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
       return bucketMetadata.getObjectMetadata(key).flatMap(object -> object.getVersionedObjectMap().entrySet()
           .stream()
           .filter(version -> !version.getValue().isDeleted() && uploadId.equals(version.getValue().getUploadId()))
+          .filter(version -> completedWith(version.getValue(), completeParts))
           .findFirst()
           .map(version -> CompleteMultipartUploadAns.builder()
               .location("/" + bucket + "/" + key)
@@ -182,6 +184,47 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
               .serverSideEncryption(version.getValue().getServerSideEncryption())
               .build()));
     });
+  }
+
+  /**
+   * Only a retry of the completion gets its answer again, so a request with other parts, which would have failed
+   * against the upload, isn't answered as a success. A version stored by a LocalS3 before 2.5 has no parts to compare
+   * with, and the content digest that stands for the entity tag when composite entity tags are off can't be compared.
+   */
+  private static boolean completedWith(VersionedObjectMetadata version,
+                                       List<CompleteMultipartUploadPartOption> completeParts) {
+    if (Objects.isNull(completeParts) || completeParts.isEmpty()) {
+      return false;
+    }
+    List<ObjectPartMetadata> layout = version.getParts().orElse(List.of());
+    if (layout.isEmpty()) {
+      return true;
+    }
+    if (layout.size() != completeParts.size()) {
+      return false;
+    }
+
+    List<byte[]> partDigests = new ArrayList<>(layout.size());
+    for (int i = 0; i < layout.size(); i++) {
+      CompleteMultipartUploadPartOption completePart = completeParts.get(i);
+      if (completePart.getPartNumber() != layout.get(i).getPartNumber()) {
+        return false;
+      }
+      if (Objects.isNull(partDigests) || Objects.isNull(completePart.getEtag())) {
+        partDigests = null;
+        continue;
+      }
+      try {
+        partDigests.add(HexFormat.of().parseHex(PreconditionAssertions.normalizeEtag(completePart.getEtag())));
+      } catch (IllegalArgumentException _) {
+        return false;
+      }
+    }
+    String etag = version.getEtag();
+    if (Objects.isNull(partDigests) || Objects.isNull(etag) || !etag.endsWith("-" + layout.size())) {
+      return true;
+    }
+    return etag.equals(S3ObjectUtils.compositeEtag(partDigests));
   }
 
   /**

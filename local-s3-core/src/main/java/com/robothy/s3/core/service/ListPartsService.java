@@ -3,8 +3,6 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.model.internal.SystemMetadata;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
-import com.robothy.s3.core.exception.ObjectNotExistException;
-import com.robothy.s3.core.exception.UploadNotExistException;
 import com.robothy.s3.core.model.answers.ListPartsAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
@@ -25,12 +23,7 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
     return withBucketReadLock(bucket, () -> {
       LocalS3Metadata s3Metadata = localS3Metadata();
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(s3Metadata, bucket);
-      UploadMetadata uploadMetadata;
-      try{
-        uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
-      } catch (ObjectNotExistException _) {
-        throw new UploadNotExistException(key, uploadId);
-      }
+      UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
 
       int marker = Objects.isNull(partNumberMarker) ? 0 : partNumberMarker;
       int max = Objects.isNull(maxParts) || maxParts > 1000 ? 1000 : maxParts;
@@ -61,7 +54,8 @@ public interface ListPartsService extends LocalS3MetadataApplicable {
           .partNumberMarker(marker)
           .nextPartNumberMarker(parts.isEmpty() ? marker : parts.getLast().getPartNumber())
           .maxParts(max)
-          .isTruncated(remaining.hasNext())
+          // An empty page of max-parts=0 hands back the marker it got; truncated, it would be requested forever.
+          .isTruncated(max > 0 && remaining.hasNext())
           .parts(parts)
           .build();
     });

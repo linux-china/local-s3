@@ -214,26 +214,32 @@ public final class IcebergCatalogService {
    * @throws IcebergCatalogException if the namespace doesn't exist.
    */
   public ObjectNode updateNamespaceProperties(List<String> namespace, ObjectNode request) {
-    IcebergNamespaceRecord record = requireNamespace(namespace);
-    Map<String, String> properties = new LinkedHashMap<>(record.properties());
-    ArrayNode removed = IcebergJson.newArray();
-    ArrayNode missing = IcebergJson.newArray();
-    ArrayNode updated = IcebergJson.newArray();
+    ArrayNode removed;
+    ArrayNode missing;
+    ArrayNode updated;
+    while (true) {
+      IcebergNamespaceRecord record = requireNamespace(namespace);
+      Map<String, String> properties = new LinkedHashMap<>(record.properties());
+      removed = IcebergJson.newArray();
+      missing = IcebergJson.newArray();
+      updated = IcebergJson.newArray();
 
-    for (JsonNode removal : request.path("removals")) {
-      String name = removal.asString();
-      if (properties.remove(name) != null) {
-        removed.add(name);
-      } else {
-        missing.add(name);
+      for (JsonNode removal : request.path("removals")) {
+        String name = removal.asString();
+        if (properties.remove(name) != null) {
+          removed.add(name);
+        } else {
+          missing.add(name);
+        }
       }
-    }
-    for (Map.Entry<String, String> update : IcebergJson.toStringMap(request.get("updates")).entrySet()) {
-      properties.put(update.getKey(), update.getValue());
-      updated.add(update.getKey());
-    }
-    if (!store.replaceNamespace(record.withProperties(properties))) {
-      throw IcebergCatalogException.noSuchNamespace(namespace);
+      for (Map.Entry<String, String> update : IcebergJson.toStringMap(request.get("updates")).entrySet()) {
+        properties.put(update.getKey(), update.getValue());
+        updated.add(update.getKey());
+      }
+      // Applied to the record read, so a concurrent update makes this one start over on top of it rather than lose it.
+      if (store.replaceNamespace(record, record.withProperties(properties))) {
+        break;
+      }
     }
 
     ObjectNode response = IcebergJson.newObject();

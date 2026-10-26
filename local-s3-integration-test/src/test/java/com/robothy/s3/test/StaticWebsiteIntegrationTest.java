@@ -373,6 +373,37 @@ class StaticWebsiteIntegrationTest {
     }
 
     @Test
+    void aPublicPrefixIsNotAnsweredWithWhatIsOutsideIt() throws Exception {
+      start(authenticated().build());
+      put(PRIVATE_BUCKET, "private/error.html", "<html><body>secret</body></html>");
+      put(PRIVATE_BUCKET, "public/page.html", "<html><body>public</body></html>");
+      put(PRIVATE_BUCKET, "public/hidden/index.html", "<html><body>hidden</body></html>");
+      put(PRIVATE_BUCKET, "public/secret/a.txt", "a");
+      s3.putBucketWebsite(b -> b.bucket(PRIVATE_BUCKET).websiteConfiguration(w -> w
+          .indexDocument(i -> i.suffix("index.html"))
+          .errorDocument(e -> e.key("private/error.html"))));
+      s3.putBucketPolicy(b -> b.bucket(PRIVATE_BUCKET).policy("""
+          {"Version": "2012-10-17", "Statement": [
+            {"Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::%1$s/public/*"},
+            {"Effect": "Deny", "Principal": "*", "Action": "s3:GetObject",
+             "Resource": ["arn:aws:s3:::%1$s/public/hidden/index.html", "arn:aws:s3:::%1$s/public/secret/*"]}]}
+          """.formatted(PRIVATE_BUCKET)));
+
+      assertEquals("<html><body>public</body></html>", get("/" + PRIVATE_BUCKET + "/public/page.html").body());
+
+      HttpResponse<String> missing = get("/" + PRIVATE_BUCKET + "/public/missing.html");
+      assertEquals(404, missing.statusCode());
+      assertFalse(missing.body().contains("secret"), missing.body());
+      assertTrue(missing.body().contains("NoSuchKey"), missing.body());
+
+      // Neither an index document that isn't public, nor the redirect that tells a directory that isn't public exists.
+      HttpResponse<String> directory = get("/" + PRIVATE_BUCKET + "/public/hidden/");
+      assertEquals(404, directory.statusCode());
+      assertFalse(directory.body().contains("hidden</body>"), directory.body());
+      assertEquals(404, get("/" + PRIVATE_BUCKET + "/public/secret").statusCode());
+    }
+
+    @Test
     void aSignedRequestReadsAPrivateBucketAsBefore() {
       start(authenticated().build());
 

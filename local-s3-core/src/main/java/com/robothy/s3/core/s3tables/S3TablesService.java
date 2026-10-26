@@ -1,8 +1,9 @@
 package com.robothy.s3.core.s3tables;
 
-import com.robothy.s3.core.exception.BucketNotExistException;
+import com.robothy.s3.core.exception.BucketAlreadyExistsException;
 import com.robothy.s3.core.exception.LocalS3Exception;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
+import com.robothy.s3.core.iceberg.IcebergMetadataFiles;
 import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.core.service.BucketService;
@@ -82,6 +83,8 @@ public final class S3TablesService {
 
   private final BucketService bucketService;
 
+  private final IcebergMetadataFiles files;
+
   private final S3TablesCatalogFactory catalogFactory;
 
   /**
@@ -100,14 +103,16 @@ public final class S3TablesService {
    * @param store the table buckets of the service.
    * @param bucketService the buckets of the service, which the bucket behind a table bucket is created and deleted
    *     through.
+   * @param files the objects of the service, which the bucket behind a deleted table bucket is emptied through.
    * @param catalogFactory opens the Iceberg catalog of a table bucket.
    * @param region the region that the ARNs of this service name.
    * @param accountId the account that the ARNs of this service name.
    */
-  public S3TablesService(S3TablesStore store, BucketService bucketService, S3TablesCatalogFactory catalogFactory,
-                         String region, String accountId) {
+  public S3TablesService(S3TablesStore store, BucketService bucketService, IcebergMetadataFiles files,
+                         S3TablesCatalogFactory catalogFactory, String region, String accountId) {
     this.store = Objects.requireNonNull(store, "store");
     this.bucketService = Objects.requireNonNull(bucketService, "bucketService");
+    this.files = Objects.requireNonNull(files, "files");
     this.catalogFactory = Objects.requireNonNull(catalogFactory, "catalogFactory");
     this.region = Objects.requireNonNull(region, "region");
     this.accountId = Objects.requireNonNull(accountId, "accountId");
@@ -131,13 +136,19 @@ public final class S3TablesService {
     put(configuration, TableBucketRecord.ENCRYPTION, request.get("encryptionConfiguration"));
     put(configuration, TableBucketRecord.STORAGE_CLASS, request.get("storageClassConfiguration"));
 
+    if (store.getBucket(name) != null) {
+      throw S3TablesException.conflict("A table bucket named '" + name + "' already exists.");
+    }
+    // The warehouse is settled before the record is stored: a request that finds the record must open its catalog on
+    // the bucket it keeps, not on the default name that may belong to another table bucket.
+    String warehouse = createWarehouseBucket(name);
     TableBucketRecord record = TableBucketRecord.created(name, UUID.randomUUID().toString(), accountId,
-        "s3://" + warehouseBucket(name), configuration);
+        "s3://" + warehouse, configuration);
     if (!store.putBucketIfAbsent(record)) {
+      deleteWarehouseBucket(record);
       throw S3TablesException.conflict("A table bucket named '" + name + "' already exists.");
     }
     catalogs.remove(name);
-    createWarehouseBucket(record);
     Map<String, String> tags = IcebergJson.toStringMap(request.get("tags"));
     if (!tags.isEmpty()) {
       store.putTags(bucketArn(name), tags);
@@ -1670,21 +1681,22 @@ public final class S3TablesService {
   /**
    * Create the bucket that the tables of a table bucket are written to. A name that another table bucket already took
    * is made unique rather than shared, so that deleting one table bucket can't take the files of another with it.
+   *
+   * @return the name of the bucket created.
    */
-  private void createWarehouseBucket(TableBucketRecord record) {
-    String bucket = warehouseBucket(record.name());
+  private String createWarehouseBucket(String tableBucket) {
+    String bucket = warehouseBucket(tableBucket);
     try {
-      bucketService.getBucket(bucket);
-    } catch (BucketNotExistException _) {
       bucketService.createBucket(bucket);
-      log.info("Created the bucket '{}' of the table bucket '{}'.", bucket, record.name());
-      return;
+      log.info("Created the bucket '{}' of the table bucket '{}'.", bucket, tableBucket);
+      return bucket;
+    } catch (BucketAlreadyExistsException _) {
+      // Taken by another table bucket, or by a bucket of the service: this table bucket gets one of its own.
     }
-    // Taken by another table bucket, or by a bucket of the service: this table bucket gets one of its own.
     String unique = bucket + "-" + UUID.randomUUID().toString().substring(0, 8);
     bucketService.createBucket(unique);
-    updateBucket(bucketArn(record.name()), stored -> stored.withWarehouse("s3://" + unique));
-    log.info("Created the bucket '{}' of the table bucket '{}'; '{}' was taken.", unique, record.name(), bucket);
+    log.info("Created the bucket '{}' of the table bucket '{}'; '{}' was taken.", unique, tableBucket, bucket);
+    return unique;
   }
 
   /**
@@ -1695,6 +1707,9 @@ public final class S3TablesService {
   private void deleteWarehouseBucket(TableBucketRecord record) {
     String bucket = record.warehouse().substring("s3://".length());
     try {
+      // The bucket belongs to this table bucket alone, see createWarehouseBucket, so what is left in it, e.g. the files
+      // of a table dropped over the Iceberg REST endpoint without a purge, is referenced by nothing any more.
+      files.empty(bucket);
       bucketService.deleteBucket(bucket);
     } catch (LocalS3Exception e) {
       log.warn("Deleted the table bucket '{}' but not its bucket '{}': {}", record.name(), bucket, e.getMessage());

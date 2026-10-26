@@ -29,8 +29,9 @@ final class FileSystemLocalS3IcebergManager implements LocalS3IcebergManager {
     Objects.requireNonNull(dataPath, "A data directory is required to persist the Iceberg catalog.");
     Objects.requireNonNull(persistencePolicy, "persistencePolicy");
     this.localS3Store = LocalS3Store.persistent(dataPath, persistencePolicy);
+    // A purge deletes a whole prefix, so only one the catalog owns, see {@code docs/data-tools.md#limits}.
     this.icebergCatalogService = new IcebergCatalogService(IcebergCatalogStore.create(localS3Store),
-        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation);
+        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation, true);
   }
 
   @Override

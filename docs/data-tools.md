@@ -447,16 +447,21 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
 + A multi-table transaction (`POST /v1/transactions/commit`) prepares every commit, then moves the pointers, rolling
   the moved ones back if one fails. The tables end up all committed or all unchanged, but a reader during those few
   compare-and-sets can see part of it.
-+ Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`. A purge
-  deletes everything under the location of the table — every version of every object, delete markers included, so
-  a versioned warehouse bucket keeps nothing of it — and is **skipped** when another table of the catalog keeps its
++ Dropping a table forgets it; the files stay in the bucket unless the drop asks for `purgeRequested=true`. Unlike
+  the purge of Iceberg itself, which deletes only the files the metadata refers to, a purge here deletes **everything
+  under the location** of the table — every version of every object, delete markers included, so a versioned
+  warehouse bucket keeps nothing of it, and neither does any object that isn't the table's but sits under that prefix.
+  It is therefore **skipped** when the location is **outside the warehouse** (e.g. a table created with
+  `location=s3://my-app-data/orders`), whose files stay where they are; when another table of the catalog keeps its
   metadata under that location — which happens when a table is created under the name of a dropped or renamed one,
-  because the default location of a table is derived from its name — or when the location is the **root of a bucket**
-  (`s3://bucket`), which holds more than the table. `icebergCatalog(iceberg ->
+  because the default location of a table is derived from its name; or when the location is the **root of a bucket**
+  (`s3://bucket`), which holds more than the table. A table given an explicit `location` that shares its prefix with
+  other objects of the warehouse takes them with it when purged, so keep such a location to the table alone. `icebergCatalog(iceberg ->
   iceberg.uniqueTableLocation(true))` gives every table a location of its own instead, which is the
   `unique-table-location` of the Iceberg catalogs.
   A table that keeps its metadata elsewhere with `write.metadata.path` has that directory purged as well, under the
-  same rules: it is skipped when another table keeps its metadata there too, or when it is the root of a bucket.
+  same rules: it is skipped when it is outside the warehouse, when another table keeps its metadata there too, or when
+  it is the root of a bucket.
 
 ## Amazon S3 Tables
 
@@ -547,7 +552,9 @@ A table bucket of Amazon S3 keeps its files out of reach of the S3 API. LocalS3 
 same service**, named `<table-bucket>--table-s3` and created with the table bucket, which is what a table's
 `warehouseLocation` points into. So the engine that loaded a table writes its data files there with its own `S3FileIO`,
 against the same endpoint and with the same credentials, and a test can look at what was written with an `S3Client` —
-which against the real service it could not. Deleting the table bucket deletes that bucket too.
+which against the real service it could not. Deleting the table bucket deletes that bucket too, with whatever is left
+in it, e.g. the files of a table dropped over the Iceberg REST endpoint without `purgeRequested`, which nothing
+references any more.
 
 The namespaces and the table pointers of each table bucket live in the store of the service, in maps of their own, so a
 `PERSISTENCE` service finds its table buckets where it left them and an `IN_MEMORY` one drops them on `reset()`, like the

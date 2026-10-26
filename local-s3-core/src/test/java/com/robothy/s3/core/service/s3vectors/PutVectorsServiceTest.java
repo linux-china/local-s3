@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Putting a vector with the key of an existing vector replaces it, and deletes the data of the replaced vector. A put is
@@ -125,6 +126,26 @@ class PutVectorsServiceTest {
   }
 
   @Test
+  void theLimitsOfAwsOnKeysAndMetadataAreApplied() {
+    S3VectorsService service = S3VectorsService.create(new LocalS3VectorsMetadata(), VectorStorage.createInMemory());
+    service.createVectorBucket(BUCKET, null);
+    service.createIndex(BUCKET, INDEX, VectorDataType.FLOAT32, 2, DistanceMetric.EUCLIDEAN, List.of("text"));
+
+    service.putVectors(BUCKET, INDEX, List.of(vector("k".repeat(1024), 1.0f, 0.0f),
+        vector("text", Map.of("text", "x".repeat(30 * 1024), "genre", "drama"), 1.0f, 0.0f)));
+
+    List<PutInputVector> rejected = List.of(
+        vector("k".repeat(1025), 1.0f, 0.0f),
+        vector("big", Map.of("text", "x".repeat(41 * 1024)), 1.0f, 0.0f),
+        vector("filterable", Map.of("genre", "x".repeat(3 * 1024)), 1.0f, 0.0f));
+    for (PutInputVector vector : rejected) {
+      LocalS3VectorException thrown = assertThrows(LocalS3VectorException.class,
+          () -> service.putVectors(BUCKET, INDEX, List.of(vector)));
+      assertEquals(LocalS3VectorErrorType.VALIDATION, thrown.getErrorType(), thrown.getMessage());
+    }
+  }
+
+  @Test
   void aCosineIndexRejectsZeroVectors() {
     S3VectorsService service = S3VectorsService.create(new LocalS3VectorsMetadata(), VectorStorage.createInMemory());
     service.createVectorBucket(BUCKET, null);
@@ -176,6 +197,11 @@ class PutVectorsServiceTest {
 
   private static PutInputVector vector(String key, float... values) {
     return PutInputVector.builder().key(key).data(PutInputVector.VectorData.builder().values(values).build()).build();
+  }
+
+  private static PutInputVector vector(String key, Map<String, String> metadata, float... values) {
+    return PutInputVector.builder().key(key).data(PutInputVector.VectorData.builder().values(values).build())
+        .metadata(JsonUtils.fromJson(JsonUtils.toJson(metadata), JsonNode.class)).build();
   }
 
   private static float[] getVector(S3VectorsService service, String key) {

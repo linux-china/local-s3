@@ -30,9 +30,9 @@ final class FileSystemLocalS3TablesManager implements LocalS3TablesManager {
     Objects.requireNonNull(dataPath, "A data directory is required to persist the table buckets.");
     Objects.requireNonNull(persistencePolicy, "persistencePolicy");
     this.localS3Store = LocalS3Store.persistent(dataPath, persistencePolicy);
-    this.s3TablesService = new S3TablesService(S3TablesStore.create(localS3Store), bucketService,
-        S3TablesCatalogs.factory(localS3Store, new IcebergMetadataFiles(bucketService, objectService)),
-        region, accountId);
+    IcebergMetadataFiles files = new IcebergMetadataFiles(bucketService, objectService);
+    this.s3TablesService = new S3TablesService(S3TablesStore.create(localS3Store), bucketService, files,
+        S3TablesCatalogs.factory(localS3Store, files), region, accountId);
   }
 
   @Override

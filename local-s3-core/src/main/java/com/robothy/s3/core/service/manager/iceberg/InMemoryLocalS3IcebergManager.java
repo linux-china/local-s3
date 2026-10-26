@@ -41,8 +41,9 @@ final class InMemoryLocalS3IcebergManager implements LocalS3IcebergManager {
                                 ObjectService objectService, String warehouse, boolean uniqueTableLocation) {
     this.initialDataDirectory = initialDataDirectory;
     loadInitialRecords();
+    // A purge deletes a whole prefix, so only one the catalog owns, see {@code docs/data-tools.md#limits}.
     this.icebergCatalogService = new IcebergCatalogService(catalogStore,
-        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation);
+        new IcebergMetadataFiles(bucketService, objectService), warehouse, uniqueTableLocation, true);
   }
 
   private void loadInitialRecords() {

@@ -99,7 +99,8 @@ public class BucketMetadata {
   private String region;
 
   /**
-   * key - object key.
+   * key - object key. Both levels must stay concurrent maps: UploadPart and UploadPartCopy check the upload without
+   * the bucket lock, before they store the data, and check it again under the lock when they commit.
    */
   @JsonDeserialize(converter = UploadMetadataMapConverter.class)
   private NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = ObjectKeys.newMap();
