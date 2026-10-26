@@ -79,7 +79,7 @@ Manual steps with the DuckDB CLI against a running LocalS3:
 
 ```sql
 CREATE
-SECRET (TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false, KEY_ID 'admin', SECRET 'admin');
+SECRET (TYPE s3, ENDPOINT 'localhost:29090', URL_STYLE 'path', USE_SSL false, KEY_ID 'admin', SECRET 'admin', REGION 'us-east-1');
 COPY
 (
 SELECT *
