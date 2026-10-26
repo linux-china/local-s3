@@ -66,6 +66,27 @@ class S3TablesStoreTest {
     }
   }
 
+  @Test
+  void removing_a_table_bucket_forgets_its_namespaces_and_tables_but_not_those_of_another() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      S3TablesStore store = S3TablesStore.create(localS3Store);
+      for (String bucket : List.of(BUCKET, BUCKET + "-2")) {
+        store.putBucketIfAbsent(new TableBucketRecord(bucket, "id-" + bucket, "111122223333", 0L,
+            TableBucketRecord.TYPE_CUSTOMER, "s3://" + bucket, Map.of()));
+        store.putNamespace(bucket, "db", new NamespaceAttributes("ns-" + bucket, 0L, "111122223333"));
+        store.putTable(bucket, TableAttributes.created("t-" + bucket, "db", "orders", "111122223333",
+            "s3://" + bucket + "/orders", null, Map.of()));
+      }
+
+      assertTrue(store.removeBucket(BUCKET));
+      assertEquals(null, store.getNamespace(BUCKET, "db"));
+      assertEquals(null, store.getTable(BUCKET, "db", "orders"));
+      assertEquals(null, store.getTableById(BUCKET, "t-" + BUCKET));
+      assertEquals("t-" + BUCKET + "-2", store.getTable(BUCKET + "-2", "db", "orders").tableId());
+      assertEquals("ns-" + BUCKET + "-2", store.getNamespace(BUCKET + "-2", "db").namespaceId());
+    }
+  }
+
   @SuppressWarnings("unchecked")
   private static String reversed(String json) {
     Map<String, Object> fields = JsonUtils.fromJson(json, LinkedHashMap.class);

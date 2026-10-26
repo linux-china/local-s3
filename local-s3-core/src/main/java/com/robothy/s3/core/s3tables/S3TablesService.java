@@ -242,8 +242,10 @@ public final class S3TablesService {
       throw S3TablesException.conflict("The table bucket '" + record.name()
           + "' is not empty: delete its namespaces first.");
     }
+    List<TableAttributes> leftovers = store.listTables(record.name(), null);
     store.removeBucket(record.name());
     store.removeTags(bucketArn(record.name()));
+    leftovers.forEach(table -> store.removeTags(tableArn(record.name(), table.tableId())));
     deleteWarehouseBucket(record);
   }
 
@@ -1464,7 +1466,7 @@ public final class S3TablesService {
   private TableAttributes tableOf(TableBucketRecord bucket, String namespace, String name) {
     TableAttributes stored = store.getTable(bucket.name(), namespace, name);
     if (stored != null) {
-      return stored;
+      return inCatalog(bucket, stored);
     }
     IcebergIdentifier identifier = IcebergIdentifier.of(List.of(namespace), name);
     IcebergCatalogService catalog = catalog(bucket);
@@ -1480,6 +1482,27 @@ public final class S3TablesService {
     // Another request gave it its attributes first; those are the ones that count, so that its ARN is stable.
     TableAttributes raced = store.getTable(bucket.name(), namespace, name);
     return raced != null ? raced : created;
+  }
+
+  /**
+   * Stored attributes of a table, if the catalog still holds the table; forgotten, with its tags, if it doesn't.
+   *
+   * <p>A drop or a rename over the Iceberg REST endpoint doesn't pass through this API, so the attributes of the table
+   * outlive it. Kept, they would answer for a table that is gone and refuse a new one under the name.
+   *
+   * @return the attributes; {@code null} if the table is gone.
+   */
+  @Nullable
+  private TableAttributes inCatalog(TableBucketRecord bucket, TableAttributes stored) {
+    if (catalog(bucket).tableExists(IcebergIdentifier.of(List.of(stored.namespace()), stored.name()), false)) {
+      return stored;
+    }
+    // The ID is still indexed if a RenameTable of this API moved the attributes to the new name meanwhile; the tags
+    // are then the renamed table's.
+    if (store.removeTableIfSame(bucket.name(), stored) && store.getTableById(bucket.name(), stored.tableId()) == null) {
+      store.removeTags(tableArn(bucket.name(), stored.tableId()));
+    }
+    return null;
   }
 
   /**
@@ -1518,6 +1541,9 @@ public final class S3TablesService {
         throw S3TablesException.notFound("No table bucket named '" + arn.bucket() + "'.");
       }
       TableAttributes table = store.getTableById(bucket.name(), arn.tableId());
+      if (table != null) {
+        table = inCatalog(bucket, table);
+      }
       if (table == null) {
         throw S3TablesException.notFound("No table of the ARN " + tableArn + ".");
       }

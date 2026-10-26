@@ -471,6 +471,12 @@ through the Iceberg REST endpoint of the table bucket. LocalS3 answers both, on 
 one catalog** — a table an engine creates over REST is the table `GetTable` answers, and a commit made through either is
 what the other then reads. Nothing has to be turned on.
 
+The catalog decides which tables exist. A table dropped over REST is gone from this API too: `GetTable` answers 404,
+`CreateTable` takes its name again, and its ARN and tags are forgotten. A table renamed over REST is a new table to this
+API, with a new ARN and no tags, because the REST rename doesn't pass through it; `RenameTable` of this API keeps both.
+Deleting a table bucket forgets everything it knew about the bucket's namespaces and tables, so a table bucket created
+again under the same name starts empty.
+
 ```java
 S3TablesClient tables = S3TablesClient.builder()
     .endpointOverride(URI.create("http://localhost:29090"))

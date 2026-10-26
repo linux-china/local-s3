@@ -217,17 +217,34 @@ public final class S3TablesStore {
   }
 
   /**
-   * Remove a table bucket.
+   * Remove a table bucket, with the attributes of its namespaces and tables. Its catalog is empty by then, but the
+   * attributes of a table or a namespace dropped over the Iceberg REST endpoint may still be here, and would otherwise
+   * be handed to a table bucket created again under the name.
    *
    * @param name the name.
    * @return {@code true} if it was removed.
    */
   public boolean removeBucket(String name) {
     boolean removed = buckets.remove(name) != null;
-    if (removed) {
-      commit();
-    }
+    String prefix = name + SEPARATOR;
+    removeByPrefix(namespaces, prefix);
+    removeByPrefix(tables, prefix);
+    removeByPrefix(tableIds, prefix);
+    commit();
     return removed;
+  }
+
+  private static void removeByPrefix(MVMap<String, String> map, String prefix) {
+    List<String> keys = new ArrayList<>();
+    Iterator<String> iterator = map.keyIterator(prefix);
+    while (iterator.hasNext()) {
+      String key = iterator.next();
+      if (!key.startsWith(prefix)) {
+        break;
+      }
+      keys.add(key);
+    }
+    keys.forEach(map::remove);
   }
 
   /**

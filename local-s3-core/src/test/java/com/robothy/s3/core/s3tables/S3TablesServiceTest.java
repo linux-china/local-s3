@@ -212,6 +212,62 @@ class S3TablesServiceTest {
   }
 
   @Test
+  void a_table_dropped_over_the_iceberg_endpoint_is_gone_from_this_api() {
+    String arn = createTableBucket("probe");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    String tableArn = createTable(arn, "db", "t").path("tableARN").asString();
+    s3Tables.tagResource(tableArn, IcebergJson.read("{\"tags\":{\"team\":\"data\"}}"));
+
+    // What an engine on the Iceberg REST endpoint does on DROP TABLE: nothing of this API is involved.
+    s3Tables.catalogOfWarehouse(arn).dropTable(IcebergIdentifier.of(List.of("db"), "t"), false, true);
+
+    assertEquals(404, assertThrows(S3TablesException.class, () -> s3Tables.getTable(arn, "db", "t", null)).status());
+    assertEquals(404, assertThrows(S3TablesException.class,
+        () -> s3Tables.getTable(null, null, null, tableArn)).status());
+    assertEquals(404, assertThrows(S3TablesException.class, () -> s3Tables.listTagsForResource(tableArn)).status());
+
+    // The name can be taken again, by a table of its own.
+    String again = createTable(arn, "db", "t").path("tableARN").asString();
+    assertNotEquals(tableArn, again);
+    assertEquals(0, s3Tables.listTagsForResource(again).path("tags").size());
+    assertEquals(again, s3Tables.getTable(arn, "db", "t", null).path("tableARN").asString());
+  }
+
+  @Test
+  void a_table_renamed_over_the_iceberg_endpoint_leaves_its_old_name_free() {
+    String arn = createTableBucket("moved");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    String tableArn = createTable(arn, "db", "t").path("tableARN").asString();
+
+    s3Tables.catalogOfWarehouse(arn).renameTable(IcebergJson.read("""
+        {"source":{"namespace":["db"],"name":"t"},"destination":{"namespace":["db"],"name":"u"}}"""), false);
+
+    assertEquals(404, assertThrows(S3TablesException.class, () -> s3Tables.getTable(arn, "db", "t", null)).status());
+    assertEquals(404, assertThrows(S3TablesException.class,
+        () -> s3Tables.getTable(null, null, null, tableArn)).status());
+    assertEquals("u", s3Tables.getTable(arn, "db", "u", null).path("name").asString());
+    createTable(arn, "db", "t");
+    assertEquals(2, s3Tables.listTables(arn, "db", null, null, null).path("tables").size());
+  }
+
+  @Test
+  void a_table_bucket_created_again_under_a_name_knows_nothing_of_the_old_one() {
+    String arn = createTableBucket("reborn");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    createTable(arn, "db", "t");
+    // Dropped over the Iceberg REST endpoint, and the table bucket deleted before this API was asked about the table.
+    IcebergCatalogService catalog = s3Tables.catalogOfWarehouse(arn);
+    catalog.dropTable(IcebergIdentifier.of(List.of("db"), "t"), false, true);
+    catalog.dropNamespace(List.of("db"));
+    s3Tables.deleteTableBucket(arn);
+
+    String again = createTableBucket("reborn");
+    s3Tables.createNamespace(again, namespaceRequest("db"));
+    createTable(again, "db", "t");
+    assertEquals(1, s3Tables.listTables(again, "db", null, null, null).path("tables").size());
+  }
+
+  @Test
   void a_table_bucket_and_a_namespace_are_deleted_only_once_they_are_empty() {
     String arn = createTableBucket("ordered");
     s3Tables.createNamespace(arn, namespaceRequest("db"));
