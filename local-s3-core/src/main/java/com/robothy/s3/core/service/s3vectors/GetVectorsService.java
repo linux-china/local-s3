@@ -18,18 +18,24 @@ import java.util.List;
 
 public interface GetVectorsService extends S3VectorsMetadataAware, S3VectorsStorageAware {
 
+    /**
+     * Get vectors under the read lock of the vector bucket, so that the data of a vector isn't dropped by a concurrent
+     * PutVectors or DeleteVectors between reading its storage ID and its data.
+     */
     default GetVectorsResponse getVectors(String vectorBucketName, String indexName,
                                          List<String> keys, Boolean returnData, Boolean returnMetadata) {
-        VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
-        VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
-        validateKeys(keys);
-        
-        List<GetOutputVector> vectors = new ArrayList<>();
-        List<String> errorVectorKeys = new ArrayList<>();
-        
-        processVectorKeys(keys, indexMetadata, returnData, returnMetadata, vectors, errorVectorKeys);
-        
-        return buildResponse(vectors, errorVectorKeys);
+        return withBucketReadLock(vectorBucketName, () -> {
+            VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
+            VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
+            validateKeys(keys);
+
+            List<GetOutputVector> vectors = new ArrayList<>();
+            List<String> errorVectorKeys = new ArrayList<>();
+
+            processVectorKeys(keys, indexMetadata, returnData, returnMetadata, vectors, errorVectorKeys);
+
+            return buildResponse(vectors, errorVectorKeys);
+        });
     }
 
     private void validateKeys(List<String> keys) {
@@ -82,14 +88,16 @@ public interface GetVectorsService extends S3VectorsMetadataAware, S3VectorsStor
         return Boolean.TRUE.equals(returnMetadata);
     }
 
+    /**
+     * A vector whose data is missing is answered among the error keys, as a {@code data} without values would read as
+     * if returnData weren't set.
+     */
     private PutInputVector.VectorData vectorData(VectorObjectMetadata vectorMetadata) {
         Long storageId = vectorMetadata.getStorageId();
-        if (storageId == null) {
-            return null;
-        }
-        float[] vectorData = vectorStorage().getVectorData(storageId);
+        float[] vectorData = storageId == null ? null : vectorStorage().getVectorData(storageId);
         if (vectorData == null) {
-            return null;
+            throw new LocalS3VectorException(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR,
+                "The data of vector " + vectorMetadata.getVectorId() + " is missing");
         }
         PutInputVector.VectorData data = new PutInputVector.VectorData();
         data.setValues(vectorData);

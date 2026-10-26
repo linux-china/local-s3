@@ -28,36 +28,42 @@ public interface ListVectorsService extends S3VectorsMetadataAware, S3VectorsSto
      */
     String NEXT_TOKEN_PREFIX = "v1:";
 
+    /**
+     * List vectors under the read lock of the vector bucket, for the same reason as
+     * {@linkplain GetVectorsService#getVectors}.
+     */
     default ListVectorsResponse listVectors(String vectorBucketName, String indexName,
                                            Integer maxResults, String nextToken, Boolean returnData,
                                            Boolean returnMetadata, Integer segmentCount, Integer segmentIndex) {
-        VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
-        VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
+        return withBucketReadLock(vectorBucketName, () -> {
+            VectorBucketMetadata bucketMetadata = VectorBucketAssertions.assertVectorBucketExists(this, vectorBucketName);
+            VectorIndexMetadata indexMetadata = VectorIndexAssertions.assertVectorIndexExists(bucketMetadata, indexName);
 
-        int maxResultsValue = validateAndSetMaxResults(maxResults);
-        validateSegmentParameters(segmentCount, segmentIndex);
+            int maxResultsValue = validateAndSetMaxResults(maxResults);
+            validateSegmentParameters(segmentCount, segmentIndex);
 
-        String lastKey = parseNextToken(nextToken);
-        NavigableMap<String, VectorObjectMetadata> vectors = indexMetadata.getVectorObjects();
-        NavigableMap<String, VectorObjectMetadata> remaining = lastKey == null ? vectors : vectors.tailMap(lastKey, false);
+            String lastKey = parseNextToken(nextToken);
+            NavigableMap<String, VectorObjectMetadata> vectors = indexMetadata.getVectorObjects();
+            NavigableMap<String, VectorObjectMetadata> remaining = lastKey == null ? vectors : vectors.tailMap(lastKey, false);
 
-        List<VectorObjectMetadata> pageVectors = new ArrayList<>();
-        boolean truncated = false;
-        for (VectorObjectMetadata vector : remaining.values()) {
-            if (!inSegment(vector.getVectorId(), segmentCount, segmentIndex)) {
-                continue;
+            List<VectorObjectMetadata> pageVectors = new ArrayList<>();
+            boolean truncated = false;
+            for (VectorObjectMetadata vector : remaining.values()) {
+                if (!inSegment(vector.getVectorId(), segmentCount, segmentIndex)) {
+                    continue;
+                }
+                if (pageVectors.size() == maxResultsValue) {
+                    truncated = true;
+                    break;
+                }
+                pageVectors.add(vector);
             }
-            if (pageVectors.size() == maxResultsValue) {
-                truncated = true;
-                break;
-            }
-            pageVectors.add(vector);
-        }
 
-        List<ListOutputVector> outputVectors = buildOutputVectors(pageVectors, returnData, returnMetadata);
-        String responseNextToken = truncated ? encodeNextToken(pageVectors.getLast().getVectorId()) : null;
+            List<ListOutputVector> outputVectors = buildOutputVectors(pageVectors, returnData, returnMetadata);
+            String responseNextToken = truncated ? encodeNextToken(pageVectors.getLast().getVectorId()) : null;
 
-        return new ListVectorsResponse(outputVectors, responseNextToken);
+            return new ListVectorsResponse(outputVectors, responseNextToken);
+        });
     }
 
     private int validateAndSetMaxResults(Integer maxResults) {
@@ -157,6 +163,10 @@ public interface ListVectorsService extends S3VectorsMetadataAware, S3VectorsSto
             // A vector without data would read as if returnData weren't set.
             throw new LocalS3VectorException(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR,
                 "Failed to read the data of vector " + vectorMetadata.getVectorId(), e);
+        }
+        if (vectorData == null) {
+            throw new LocalS3VectorException(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR,
+                "The data of vector " + vectorMetadata.getVectorId() + " is missing");
         }
         builder.data(PutInputVector.VectorData.builder().values(vectorData).build());
     }

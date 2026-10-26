@@ -4,8 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.robothy.s3.core.exception.LocalS3RequestException;
+import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -16,6 +19,8 @@ import com.robothy.s3.core.model.request.GetObjectOptions;
 import com.robothy.s3.core.model.request.PutObjectOptions;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -27,6 +32,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import com.robothy.s3.core.Digests;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -114,6 +120,48 @@ class PutObjectServiceTest extends LocalS3ServiceTestBase {
         .contentType("plain/text")
         .size(bytes.length)
         .build());
+  }
+
+  /**
+   * An overwrite with the same content within the same millisecond leaves the creation date, size and entity tag of the
+   * object as they were; the append must still see that the object it read is gone, or it would replace the metadata
+   * of the overwrite with the metadata of the version it appended to.
+   */
+  @Test
+  void appendRejectsAnOverwriteWithTheSameContentWithinTheSameMillisecond() {
+    LocalS3Manager manager = LocalS3Manager.createInMemoryS3Manager();
+    ObjectService objectService = manager.objectService();
+    String bucketName = "my-bucket";
+    manager.bucketService().createBucket(bucketName);
+    putText(objectService, bucketName, "appended", "Hello");
+    ObjectMetadata objectMetadata = objectService.localS3Metadata().getBucketMetadata(bucketName).orElseThrow()
+        .getObjectMetadata("appended").orElseThrow();
+    long creationDate = objectMetadata.getLatest().getCreationDate();
+
+    InputStream overwritingContent = new FilterInputStream(new ByteArrayInputStream(" World".getBytes())) {
+      private boolean overwritten;
+
+      @Override
+      public int read(byte[] b, int off, int len) throws IOException {
+        if (!overwritten) {
+          overwritten = true;
+          objectService.putObject(bucketName, "appended", PutObjectOptions.builder()
+              .content(new ByteArrayInputStream("Hello".getBytes()))
+              .contentType("application/json")
+              .userMetadata(Map.of("written-by", "overwrite"))
+              .build());
+          objectMetadata.getLatest().setCreationDate(creationDate);
+        }
+        return super.read(b, off, len);
+      }
+    };
+
+    LocalS3RequestException e = assertThrows(LocalS3RequestException.class, () -> objectService.putObject(bucketName,
+        "appended", PutObjectOptions.builder().content(overwritingContent).writeOffsetBytes(5L).build()));
+    assertEquals(S3ErrorCode.InvalidWriteOffset, e.getS3ErrorCode());
+    VersionedObjectMetadata latest = objectMetadata.getLatest();
+    assertEquals("application/json", latest.getContentType());
+    assertEquals(Map.of("written-by", "overwrite"), latest.getUserMetadata());
   }
 
   @MethodSource("localS3Managers")

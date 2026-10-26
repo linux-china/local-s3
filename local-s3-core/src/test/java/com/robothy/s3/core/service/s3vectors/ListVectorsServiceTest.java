@@ -20,7 +20,11 @@ import java.util.Base64;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -521,6 +525,57 @@ class ListVectorsServiceTest {
     LocalS3VectorException e = assertThrows(LocalS3VectorException.class,
         () -> service.listVectors("bucket", "index", null, null, true, false, null, null));
     assertEquals(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR, e.getErrorType());
+  }
+
+  @Test
+  void listVectors_withMissingData_throwsInternalServerError() {
+    TestListVectorsService service = serviceWithOneVector();
+    when(service.mockVectorStorage.getVectorData(1L)).thenReturn(null);
+
+    LocalS3VectorException e = assertThrows(LocalS3VectorException.class,
+        () -> service.listVectors("bucket", "index", null, null, true, false, null, null));
+    assertEquals(LocalS3VectorErrorType.INTERNAL_SERVER_ERROR, e.getErrorType());
+  }
+
+  @Test
+  void listVectors_waitsForAChangeOfTheBucket() throws Exception {
+    TestListVectorsService service = serviceWithOneVector();
+    when(service.mockVectorStorage.getVectorData(1L)).thenReturn(new float[]{1.0f, 2.0f});
+
+    CountDownLatch locked = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    Thread writer = Thread.ofVirtual().start(() -> service.bucketGuard().write("bucket", () -> {
+      locked.countDown();
+      try {
+        release.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+      return null;
+    }));
+    assertTrue(locked.await(5, TimeUnit.SECONDS));
+
+    CompletableFuture<ListVectorsResponse> listed = CompletableFuture.supplyAsync(
+        () -> service.listVectors("bucket", "index", null, null, true, false, null, null));
+    assertThrows(TimeoutException.class, () -> listed.get(200, TimeUnit.MILLISECONDS));
+
+    release.countDown();
+    writer.join();
+    assertEquals(1, listed.get(5, TimeUnit.SECONDS).vectors().size());
+  }
+
+  private TestListVectorsService serviceWithOneVector() {
+    TestListVectorsService service = new TestListVectorsService();
+    VectorBucketMetadata bucketMetadata = new VectorBucketMetadata();
+    bucketMetadata.setVectorBucketName("bucket");
+    VectorIndexMetadata indexMetadata = new VectorIndexMetadata();
+    indexMetadata.setIndexName("index");
+    bucketMetadata.putIndexMetadata("index", indexMetadata);
+    Map<String, VectorObjectMetadata> vectorObjects = new ConcurrentHashMap<>();
+    vectorObjects.put("vector1", createVectorMetadata("vector1", 1L));
+    indexMetadata.setVectorObjects(vectorObjects);
+    service.bucketMap.put("bucket", bucketMetadata);
+    return service;
   }
 
   @Test

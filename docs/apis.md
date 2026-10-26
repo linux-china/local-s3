@@ -239,7 +239,9 @@ it answers, so a listing continues after that key however the vectors change bet
 for the whole listing is skipped or listed twice. With `segmentCount` and `segmentIndex`, a vector belongs to a segment
 by a hash of its key, so it is listed by one segment only, whatever other vectors are put or deleted. A `nextToken`
 that `ListVectors` didn't answer with is rejected with `ValidationException`, and so is a vector whose data can't be
-read when `returnData` is set, with `InternalServerException`.
+read when `returnData` is set, with `InternalServerException`. `GetVectors` answers such a vector among the error keys
+instead of with an empty `data`. Both read under the read lock of the vector bucket, as `QueryVectors` does, so a
+concurrent `PutVectors` or `DeleteVectors` doesn't drop the data of a vector while it's being read.
 
 `ListVectorBuckets` and `ListIndexes` list in the order of the names, and their `nextToken` marks the last name of the
 page in the same way: a listing continues after that name however buckets or indexes are created or deleted between

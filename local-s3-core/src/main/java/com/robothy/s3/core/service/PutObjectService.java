@@ -207,14 +207,16 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
   }
 
   /**
-   * Whether two versions are the same one, which may have been read into two instances.
+   * Whether two versions are the same one, which may have been read into two instances. Every write stores its content
+   * under new file IDs, so they tell apart two writes of the same content within the same millisecond.
    */
   private static boolean isSameVersion(VersionedObjectMetadata left, VersionedObjectMetadata right) {
     if (Objects.isNull(left) || Objects.isNull(right)) {
       return left == right;
     }
     return left.getCreationDate() == right.getCreationDate() && left.getSize() == right.getSize()
-        && Objects.equals(left.getEtag(), right.getEtag());
+        && Objects.equals(left.getEtag(), right.getEtag())
+        && ObjectContentUtils.fileIds(left).equals(ObjectContentUtils.fileIds(right));
   }
 
   default PutObjectAns commitPutObject(String bucketName, String key, VersionedObjectMetadata versionedObjectMetadata) {
