@@ -273,7 +273,9 @@ class ApiAndAdminImageTest {
         + URLEncoder.encode(arn, StandardCharsets.UTF_8));
     HttpResponse<String> response = signed("GET", config);
     assertEquals(200, response.statusCode(), response.body());
-    assertTrue(response.body().contains("\"prefix\":\"native-tables\""), response.body());
+    // The prefix is the ARN encoded as one path segment, see {@code docs/data-tools.md#the-same-table-bucket-as-an-iceberg-rest-catalog}.
+    assertTrue(response.body().contains("\"prefix\":\"" + URLEncoder.encode(arn, StandardCharsets.UTF_8) + "\""),
+        response.body());
   }
 
   @Test
