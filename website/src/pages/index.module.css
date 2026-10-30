@@ -1,0 +1,77 @@
+.heroBanner {
+  padding: 5rem 0 4rem;
+  text-align: center;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 146, 43, 0.18), transparent 50%),
+    radial-gradient(circle at 80% 100%, rgba(217, 72, 15, 0.14), transparent 50%);
+}
+
+.heroLogo {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 1rem;
+}
+
+.heroTitle {
+  font-size: 3.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.heroSubtitle {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.heroDetail {
+  max-width: 640px;
+  margin: 0 auto 2rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.command {
+  max-width: 720px;
+  margin: 2.5rem auto 0;
+  text-align: left;
+}
+
+.sectionTitle {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.quickStart {
+  padding: 4rem 0;
+  background: var(--ifm-color-emphasis-100);
+}
+
+.quickStart :global(.tabs-container) {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.useCases {
+  padding: 4rem 0;
+}
+
+.useCaseTitle {
+  font-size: 1.1rem;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 3rem 1rem;
+  }
+
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+}

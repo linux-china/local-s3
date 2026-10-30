@@ -1,0 +1,32 @@
+/**
+ * Global styles. The classic template bundles Infima; its variables are overridden here.
+ */
+
+:root {
+  --ifm-color-primary: #d9480f;
+  --ifm-color-primary-dark: #c3410e;
+  --ifm-color-primary-darker: #b83d0d;
+  --ifm-color-primary-darkest: #98320b;
+  --ifm-color-primary-light: #ef5011;
+  --ifm-color-primary-lighter: #f05a1e;
+  --ifm-color-primary-lightest: #f27645;
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #ff922b;
+  --ifm-color-primary-dark: #ff8410;
+  --ifm-color-primary-darker: #ff7c03;
+  --ifm-color-primary-darkest: #d76600;
+  --ifm-color-primary-light: #ffa046;
+  --ifm-color-primary-lighter: #ffa853;
+  --ifm-color-primary-lightest: #ffbe7c;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* The reference pages have wide tables of operations and variables. */
+.markdown table {
+  font-size: 0.92rem;
+}
