@@ -56,6 +56,16 @@ const FeatureList: FeatureItem[] = [
     ),
   },
   {
+    title: 'Embedded S3 listener',
+    to: '/docs/embedding#listen-to-bucket-and-object-changes',
+    description: (
+      <>
+        Embed the service in your application and listen to object events: a <code>changeListener</code>, or an{' '}
+        <code>@EventListener</code> with the Spring Boot starter, receives every committed change, with no queue to run.
+      </>
+    ),
+  },
+  {
     title: 'JetBrains plugin',
     to: '/docs/jetbrains-plugin',
     description: (
