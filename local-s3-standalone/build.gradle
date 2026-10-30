@@ -164,7 +164,7 @@ tasks.register('buildGraalVMNativeBasedDockerImage', Exec) {
             .withPathSensitivity(PathSensitivity.RELATIVE)
 
     commandLine shellCommand(executor,
-            "docker build -t linuxchina/local-s3:native-${imageVersion} -f GraalVMNativeImage.dockerfile .")
+            "docker build  -t linuxchina/local-s3:latest -t linuxchina/local-s3:native-${imageVersion} -f GraalVMNativeImage.dockerfile .")
 }
 
 tasks.register('buildJvmBasedDockerImage', Exec) {
@@ -225,6 +225,7 @@ tasks.register('pushGraalVMNativeBasedDockerImage', Exec) {
     dependsOn 'buildGraalVMNativeBasedDockerImage', 'dockerImageTest'
     group = "docker-image"
     commandLine shellCommand(executor, "docker push linuxchina/local-s3:native-${imageVersion}")
+    commandLine shellCommand(executor, "docker push linuxchina/local-s3:latest")
 }
 
 tasks.register('pushLatestImage', Exec) {
@@ -240,9 +241,7 @@ tasks.register('buildAndPushMultiPlatformDockerImage', Exec) {
     description = "Builds and pushes a multi-platform (linux/amd64 + linux/arm64) Docker image using buildx."
 
     commandLine shellCommand(executor, "docker buildx build --platform linux/amd64,linux/arm64 --push" +
-            " -t linuxchina/local-s3:latest" +
-            " -t linuxchina/local-s3:${imageVersion}" +
-            " .")
+            " -t linuxchina/local-s3:${imageVersion}  .")
 }
 
 
