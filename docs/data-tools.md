@@ -621,6 +621,24 @@ The token follows commits made over the Iceberg REST endpoint of the same table 
 moved without going through this API, the next read draws a new token, so a client still holding the one from before that
 commit loses rather than silently overwriting a commit it never saw.
 
+### Naming rules
+
+LocalS3 checks names against the
+[naming rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-buckets-naming.html) of Amazon S3 Tables,
+so that a name a test gets away with locally doesn't fail on AWS. A name that breaks a rule is answered
+`400 BadRequestException`.
+
+| Resource     | Length | Characters                              | Also                                                                                                                                                  |
+|--------------|--------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Table bucket | 3–63   | lower-case letters, digits, `-`         | begins and ends with a letter or a digit; doesn't begin with `xn--`, `sthree-`, `amzn-s3-demo-` or `aws`, nor end with `-s3alias`, `--ol-s3`, `--x-s3` or `--table-s3` |
+| Namespace    | 1–255  | lower-case letters, digits, `_`         | begins with a letter or a digit; doesn't begin with `aws`                                                                                             |
+| Table        | 1–255  | lower-case letters, digits, `_`         | begins with a letter or a digit                                                                                                                       |
+
+The rules of a table apply to the `newName` of `RenameTable` too, so a table can't be renamed to a name that
+`CreateTable` would refuse. The rules are checked by the S3 Tables API only: a namespace or a table created over the
+[Iceberg REST endpoint](#the-same-table-bucket-as-an-iceberg-rest-catalog) of a table bucket is checked as one of the
+[built-in catalog](#the-built-in-iceberg-rest-catalog) is.
+
 ### Limits
 
 + **An unsigned client reaches the API only under `/s3tables`**, for the reason above: an unsigned request carries
@@ -628,9 +646,7 @@ commit loses rather than silently overwriting a commit it never saw.
 + Every table bucket is answered with the region and the account of LocalS3 — `us-east-1` and `000000000000` — and the
   account of an ARN a client sends is **ignored** rather than refused: a test double is not an authorization boundary.
 + A namespace is **one level**, as it is in Amazon S3 Tables, whatever the shape of the `namespace` field suggests.
-+ The name of a table bucket, a namespace or a table takes **lower-case letters, digits, `-` and `_`**, and so does the
-  `newName` of `RenameTable`; anything else is answered `400 BadRequestException`, so a table can't be renamed to a name
-  that `CreateTable` would refuse.
++ Names follow the [naming rules](#naming-rules) of Amazon S3 Tables.
 + `ICEBERG` is the only `format`, as it is in Amazon S3 Tables.
 + Encryption, storage class, resource policies, maintenance, metrics, replication and record expiration are **stored and
   read back, and nothing happens**: nothing is encrypted or tiered, no policy is enforced, no compaction or expiration

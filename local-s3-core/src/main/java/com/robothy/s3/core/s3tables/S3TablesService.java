@@ -58,11 +58,18 @@ public final class S3TablesService {
   private static final String FORMAT_ICEBERG = "ICEBERG";
 
   /**
-   * The names that a table bucket, a namespace or a table may have. Amazon allows lower-case letters, digits,
-   * hyphens and underscores; a name of another shape is refused here rather than turning into a bucket name that
-   * Amazon S3 wouldn't take.
+   * The rules are Amazon's, see {@code docs/data-tools.md#naming-rules}: a name that LocalS3 took and Amazon refused
+   * would let a test pass on a name that fails in production.
    */
-  private static final Pattern NAME = Pattern.compile("[0-9a-z_-]+");
+  private static final Pattern TABLE_BUCKET_NAME = Pattern.compile("[0-9a-z][0-9a-z-]{1,61}[0-9a-z]");
+  private static final List<String> TABLE_BUCKET_RESERVED_PREFIXES = List.of("xn--", "sthree-", "amzn-s3-demo-",
+      "aws");
+  private static final List<String> TABLE_BUCKET_RESERVED_SUFFIXES = List.of("-s3alias", "--ol-s3", "--x-s3",
+      "--table-s3");
+  /**
+   * The names of a namespace and of a table. Amazon asks only the first character to be a letter or a digit.
+   */
+  private static final Pattern TABLE_NAME = Pattern.compile("[0-9a-z][0-9a-z_]{0,254}");
 
   /**
    * The largest page that a list operation answers, and the page it answers when the request asks for none.
@@ -132,6 +139,7 @@ public final class S3TablesService {
    */
   public ObjectNode createTableBucket(ObjectNode request) {
     String name = requireName(request, "name");
+    requireTableBucketName(name);
     Map<String, String> configuration = new LinkedHashMap<>();
     put(configuration, TableBucketRecord.ENCRYPTION, request.get("encryptionConfiguration"));
     put(configuration, TableBucketRecord.STORAGE_CLASS, request.get("storageClassConfiguration"));
@@ -375,6 +383,7 @@ public final class S3TablesService {
     TableBucketRecord bucket = requireBucket(tableBucketArn);
     requireNamespace(bucket, namespace);
     String name = requireName(request, "name");
+    requireTableName("table", name);
     requireIcebergFormat(request.path("format").asString(FORMAT_ICEBERG));
     if (tableOf(bucket, namespace, name) != null) {
       throw S3TablesException.conflict("A table named '" + name + "' already exists in the namespace '"
@@ -591,6 +600,7 @@ public final class S3TablesService {
     TableAttributes table = located.table();
     String newNamespace = request.path("newNamespaceName").asString(namespace);
     String newName = request.hasNonNull("newName") ? requireName(request, "newName") : name;
+    requireTableName("table", newName);
     if (newNamespace.equals(namespace) && newName.equals(name)) {
       throw S3TablesException.badRequest("The rename names neither a new namespace nor a new name.");
     }
@@ -1699,8 +1709,7 @@ public final class S3TablesService {
    * @return the name of the bucket, e.g. {@code sales--table-s3}.
    */
   public static String warehouseBucket(String tableBucket) {
-    // A table bucket may hold '_', which an Amazon S3 bucket name may not, so it becomes '-'. Two table bucket names
-    // that differ only in that would want the same bucket; the second one gets a suffix, see createWarehouseBucket.
+    // A table bucket persisted before the name took Amazon's rules may still hold '_', which a bucket name may not.
     return tableBucket.replace('_', '-') + WAREHOUSE_BUCKET_SUFFIX;
   }
 
@@ -1816,18 +1825,38 @@ public final class S3TablesService {
   }
 
   /**
-   * A required string field of a request, checked against the names the API allows where it names a resource.
+   * A required string field of a request.
    */
   private static String requireName(ObjectNode request, String field) {
     String value = request.path(field).asString(null);
     if (value == null || value.isBlank()) {
       throw S3TablesException.missingField(field);
     }
-    if (("name".equals(field) || "newName".equals(field)) && !NAME.matcher(value).matches()) {
-      throw S3TablesException.badRequest("The name '" + value + "' is not a valid name of the S3 Tables API, which"
-          + " takes lower-case letters, digits, hyphens and underscores.");
-    }
     return value;
+  }
+
+  private static void requireTableBucketName(String name) {
+    if (!TABLE_BUCKET_NAME.matcher(name).matches()
+        || TABLE_BUCKET_RESERVED_PREFIXES.stream().anyMatch(name::startsWith)
+        || TABLE_BUCKET_RESERVED_SUFFIXES.stream().anyMatch(name::endsWith)) {
+      throw S3TablesException.badRequest("The name '" + name + "' is not a valid table bucket name: it takes 3 to 63"
+          + " lower-case letters, digits and hyphens, begins and ends with a letter or a digit, and neither begins with "
+          + String.join(", ", TABLE_BUCKET_RESERVED_PREFIXES) + " nor ends with "
+          + String.join(", ", TABLE_BUCKET_RESERVED_SUFFIXES) + ".");
+    }
+  }
+
+  /**
+   * @param kind {@code namespace} or {@code table}, for the message.
+   */
+  private static void requireTableName(String kind, String name) {
+    if (!TABLE_NAME.matcher(name).matches()) {
+      throw S3TablesException.badRequest("The name '" + name + "' is not a valid " + kind + " name: it takes 1 to 255"
+          + " lower-case letters, digits and underscores, and begins with a letter or a digit.");
+    }
+    if ("namespace".equals(kind) && name.startsWith("aws")) {
+      throw S3TablesException.badRequest("The namespace '" + name + "' begins with the reserved prefix 'aws'.");
+    }
   }
 
   /**
@@ -1855,10 +1884,10 @@ public final class S3TablesService {
           + namespace.size() + ".");
     }
     String name = namespace.get(0).asString();
-    if (name == null || name.isBlank() || !NAME.matcher(name).matches()) {
-      throw S3TablesException.badRequest("The namespace '" + name + "' is not a valid namespace of the S3 Tables"
-          + " API, which takes lower-case letters, digits, hyphens and underscores.");
+    if (name == null || name.isBlank()) {
+      throw S3TablesException.missingField("namespace");
     }
+    requireTableName("namespace", name);
     return name;
   }
 

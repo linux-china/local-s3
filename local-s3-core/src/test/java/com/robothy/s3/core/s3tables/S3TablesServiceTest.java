@@ -71,20 +71,55 @@ class S3TablesServiceTest {
   }
 
   @Test
-  void an_underscore_in_a_name_is_a_hyphen_in_the_bucket_behind_it() {
-    // A table bucket may hold '_', which an Amazon S3 bucket name may not.
-    createTableBucket("my_sales");
-    assertNotNull(buckets.getBucket("my-sales--table-s3"));
+  void a_bucket_taken_by_another_owner_gives_the_table_bucket_one_of_its_own() {
+    buckets.createBucket("my-sales--table-s3");
+    String arn = createTableBucket("my-sales");
+    String warehouse = s3Tables.catalogOfWarehouse(arn).warehouse();
+    assertTrue(warehouse.startsWith("s3://my-sales--table-s3-"), warehouse);
+    // Deleting the table bucket must not be able to take the files of the bucket with it.
+    assertNotEquals("s3://my-sales--table-s3", warehouse);
   }
 
   @Test
-  void two_table_buckets_that_want_the_same_bucket_get_one_each() {
-    createTableBucket("my_sales");
-    String second = createTableBucket("my-sales");
-    String warehouse = s3Tables.catalogOfWarehouse(second).warehouse();
-    assertTrue(warehouse.startsWith("s3://my-sales--table-s3-"), warehouse);
-    // Deleting one must not be able to take the files of the other with it.
-    assertNotEquals("s3://my-sales--table-s3", warehouse);
+  void a_table_bucket_name_follows_the_rules_of_amazon() {
+    for (String name : List.of("ab", "a".repeat(64), "my_sales", "my.sales", "Sales", "-sales", "sales-",
+        "xn--sales", "sthree-sales", "amzn-s3-demo-sales", "awssales", "sales-s3alias", "sales--ol-s3", "sales--x-s3",
+        "sales--table-s3")) {
+      assertEquals(400, assertThrows(S3TablesException.class, () -> createTableBucket(name)).status(), name);
+    }
+    createTableBucket("abc");
+    createTableBucket("a".repeat(63));
+    createTableBucket("0-sales-1");
+  }
+
+  @Test
+  void a_namespace_name_follows_the_rules_of_amazon() {
+    String arn = createTableBucket("names");
+    for (String name : List.of("my-namespace", "my.namespace", "Db", "_db", "a".repeat(256), "aws", "aws_db")) {
+      assertEquals(400, assertThrows(S3TablesException.class,
+          () -> s3Tables.createNamespace(arn, namespaceRequest(name))).status(), name);
+    }
+    for (String name : List.of("d", "db_", "0_sales", "a".repeat(255))) {
+      s3Tables.createNamespace(arn, namespaceRequest(name));
+    }
+  }
+
+  @Test
+  void a_table_name_follows_the_rules_of_amazon() {
+    String arn = createTableBucket("names");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    for (String name : List.of("my-table", "my.table", "Orders", "_orders", "a".repeat(256))) {
+      assertEquals(400, assertThrows(S3TablesException.class, () -> createTable(arn, "db", name)).status(), name);
+    }
+    createTable(arn, "db", "aws_orders");
+    createTable(arn, "db", "a".repeat(255));
+    ObjectNode table = createTable(arn, "db", "orders");
+
+    ObjectNode rename = IcebergJson.newObject();
+    rename.put("newName", "my-orders");
+    rename.put("versionToken", table.path("versionToken").asString());
+    assertEquals(400, assertThrows(S3TablesException.class,
+        () -> s3Tables.renameTable(arn, "db", "orders", rename)).status());
   }
 
   @Test
