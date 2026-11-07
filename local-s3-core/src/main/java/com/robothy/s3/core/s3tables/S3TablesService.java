@@ -259,14 +259,20 @@ public final class S3TablesService {
           + "' is not empty: delete its namespaces first.");
     }
     List<TableAttributes> leftovers;
+    boolean removed;
     try {
       leftovers = store.listTables(record.name(), null);
-      store.removeBucket(record.name());
+      removed = store.removeBucket(record);
     } catch (RuntimeException e) {
       // The record survives, so its catalog must not stay closed: `closed` lives only in memory, and would refuse
       // every namespace of the table bucket until a restart. Dropping it lets the next request open a fresh one.
       catalogs.computeIfPresent(record.name(), (name, opened) -> opened.catalog() == catalog ? null : opened);
       throw e;
+    }
+    if (!removed) {
+      // Another delete of the same table bucket won; what is under the name now, if anything, is a table bucket
+      // created again, whose tags and warehouse are not this one's to delete.
+      throw S3TablesException.notFound("No table bucket named '" + record.name() + "'.");
     }
     store.removeTags(bucketArn(record.name()));
     leftovers.forEach(table -> store.removeTags(tableArn(record.name(), table.tableId())));

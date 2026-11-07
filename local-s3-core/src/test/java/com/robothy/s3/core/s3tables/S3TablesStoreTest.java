@@ -60,7 +60,7 @@ class S3TablesStoreTest {
           "A change built from the table bucket before the last change must lose.");
       assertEquals(withPolicy, store.getBucket(BUCKET));
 
-      assertTrue(store.removeBucket(BUCKET));
+      assertTrue(store.removeBucket(store.getBucket(BUCKET)));
       assertFalse(store.replaceBucket(withPolicy, withPolicy.with(TableBucketRecord.ENCRYPTION, "{}")));
       assertEquals(null, store.getBucket(BUCKET));
     }
@@ -78,12 +78,38 @@ class S3TablesStoreTest {
             "s3://" + bucket + "/orders", null, Map.of()));
       }
 
-      assertTrue(store.removeBucket(BUCKET));
+      assertTrue(store.removeBucket(store.getBucket(BUCKET)));
       assertEquals(null, store.getNamespace(BUCKET, "db"));
       assertEquals(null, store.getTable(BUCKET, "db", "orders"));
       assertEquals(null, store.getTableById(BUCKET, "t-" + BUCKET));
       assertEquals("t-" + BUCKET + "-2", store.getTable(BUCKET + "-2", "db", "orders").tableId());
       assertEquals("ns-" + BUCKET + "-2", store.getNamespace(BUCKET + "-2", "db").namespaceId());
+    }
+  }
+
+  @Test
+  void a_late_delete_leaves_a_table_bucket_created_again_under_the_name() {
+    try (LocalS3Store localS3Store = LocalS3Store.inMemory()) {
+      S3TablesStore store = S3TablesStore.create(localS3Store);
+      TableBucketRecord first = new TableBucketRecord(BUCKET, "id-1", "111122223333", 0L,
+          TableBucketRecord.TYPE_CUSTOMER, "s3://first", Map.of());
+      assertTrue(store.putBucketIfAbsent(first));
+      assertTrue(store.removeBucket(first));
+      assertFalse(store.removeBucket(first), "A second delete of the same table bucket must lose.");
+
+      TableBucketRecord second = new TableBucketRecord(BUCKET, "id-2", "111122223333", 0L,
+          TableBucketRecord.TYPE_CUSTOMER, "s3://second", Map.of());
+      assertTrue(store.putBucketIfAbsent(second));
+      store.putNamespace(BUCKET, "db", new NamespaceAttributes("ns-2", 0L, "111122223333"));
+
+      assertFalse(store.removeBucket(first), "A late delete must leave the table bucket created again be.");
+      assertEquals(second, store.getBucket(BUCKET));
+      assertEquals("ns-2", store.getNamespace(BUCKET, "db").namespaceId());
+
+      TableBucketRecord withPolicy = second.with(TableBucketRecord.POLICY, "{}");
+      assertTrue(store.replaceBucket(second, withPolicy));
+      assertTrue(store.removeBucket(second), "A configuration change made meanwhile must not make the delete fail.");
+      assertEquals(null, store.getBucket(BUCKET));
     }
   }
 

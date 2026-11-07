@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -316,9 +315,9 @@ class S3TablesServiceTest {
     S3TablesStore store = useSpiedStore();
     String arn = createTableBucket("fragile");
 
-    doThrow(new IllegalStateException("write failed")).when(store).removeBucket(anyString());
+    doThrow(new IllegalStateException("write failed")).when(store).removeBucket(any());
     assertThrows(IllegalStateException.class, () -> s3Tables.deleteTableBucket(arn));
-    doCallRealMethod().when(store).removeBucket(anyString());
+    doCallRealMethod().when(store).removeBucket(any());
 
     // The catalog it closed on the way must not outlive the failure.
     s3Tables.createNamespace(arn, namespaceRequest("db"));
@@ -346,6 +345,32 @@ class S3TablesServiceTest {
     assertTrue(landed.get());
     s3Tables.createNamespace(arn, namespaceRequest("later"));
     assertEquals(2, s3Tables.listNamespaces(arn, null, null, null).path("namespaces").size());
+  }
+
+  @Test
+  void a_late_delete_leaves_a_table_bucket_created_again_under_the_name_be() {
+    S3TablesStore store = useSpiedStore();
+    String arn = createTableBucket("raced");
+
+    // Another delete of the table bucket, and a create under the name, land just before this delete removes it.
+    AtomicBoolean landed = new AtomicBoolean();
+    doAnswer(invocation -> {
+      if (landed.compareAndSet(false, true)) {
+        s3Tables.deleteTableBucket(arn);
+        createTableBucket("raced");
+        s3Tables.tagResource(arn, IcebergJson.read("{\"tags\":{\"team\":\"data\"}}"));
+      }
+      return invocation.callRealMethod();
+    }).when(store).removeBucket(any());
+    assertEquals(404, assertThrows(S3TablesException.class, () -> s3Tables.deleteTableBucket(arn)).status());
+    doCallRealMethod().when(store).removeBucket(any());
+
+    assertTrue(landed.get());
+    assertEquals("data", s3Tables.listTagsForResource(arn).path("tags").path("team").asString());
+    // Creating a table writes to the warehouse, which must have been left be too.
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    createTable(arn, "db", "t");
+    assertEquals(1, s3Tables.listTables(arn, "db", null, null, null).path("tables").size());
   }
 
   /**

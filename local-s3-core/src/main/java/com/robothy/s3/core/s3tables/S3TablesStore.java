@@ -221,17 +221,33 @@ public final class S3TablesStore {
    * attributes of a table or a namespace dropped over the Iceberg REST endpoint may still be here, and would otherwise
    * be handed to a table bucket created again under the name.
    *
-   * @param name the name.
-   * @return {@code true} if it was removed.
+   * <p>Only the table bucket the caller read is removed: one created again under the name since then has another
+   * {@code tableBucketId}, and a late delete must leave it be. The ID rather than the whole record is compared, so that
+   * a configuration change made meanwhile doesn't make the delete fail.
+   *
+   * @param expected the table bucket the caller read.
+   * @return {@code true} if it was removed; {@code false} if it is gone or was created again under the name.
    */
-  public boolean removeBucket(String name) {
-    boolean removed = buckets.remove(name) != null;
+  public boolean removeBucket(TableBucketRecord expected) {
+    String name = expected.name();
+    while (true) {
+      String json = buckets.get(name);
+      if (json == null
+          || !JsonUtils.fromJson(json, TableBucketRecord.class).tableBucketId().equals(expected.tableBucketId())) {
+        return false;
+      }
+      if (buckets.remove(name, json)) {
+        break;
+      }
+    }
+    // A table bucket created under the name between the removal above and here could lose attributes written in that
+    // window; it starts with no namespace, and the window is a few map operations, so it is left open.
     String prefix = name + SEPARATOR;
     removeByPrefix(namespaces, prefix);
     removeByPrefix(tables, prefix);
     removeByPrefix(tableIds, prefix);
     commit();
-    return removed;
+    return true;
   }
 
   private static void removeByPrefix(MVMap<String, String> map, String prefix) {
