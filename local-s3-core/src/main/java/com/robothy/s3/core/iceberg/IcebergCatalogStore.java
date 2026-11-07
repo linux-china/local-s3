@@ -137,6 +137,11 @@ public final class IcebergCatalogStore {
    * @return {@code true} if it was replaced; {@code false} if the namespace has changed or is gone.
    */
   public boolean replaceNamespace(IcebergNamespaceRecord expected, IcebergNamespaceRecord updated) {
+    // Only an empty catalog closes, and then the CAS below finds no record anyway; checked all the same, so that the
+    // catalog stays closed if closing ever stops requiring that.
+    synchronized (namespaces) {
+      requireOpen();
+    }
     String updatedJson = JsonUtils.toJson(updated);
     while (true) {
       // Compared as values, like replaceTable, so that a record written by an older LocalS3 can still be updated.

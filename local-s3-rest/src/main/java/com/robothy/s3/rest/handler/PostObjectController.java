@@ -177,11 +177,9 @@ class PostObjectController implements RouterHttpRequestHandler {
   }
 
   private String objectLocation(RouterHttpRequest request, String bucketName, String key) {
-    String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
     String path = request.getPath() == null ? "/" : request.getPath();
     boolean bucketInPath = !path.replace("/", "").isEmpty();
-    String scheme = ConnectionSchemes.of(request).orElse(defaultScheme);
-    return scheme + "://" + host + "/" + (bucketInPath ? S3ObjectUtils.urlEncode(bucketName, false) + "/" : "") + encodeKey(key);
+    return ResponseUtils.objectUrl(request, defaultScheme, bucketName, key, bucketInPath);
   }
 
   private static Optional<URI> redirectUri(String value) {
@@ -199,10 +197,6 @@ class PostObjectController implements RouterHttpRequestHandler {
     String base = fragment < 0 ? value : value.substring(0, fragment);
     String query = "bucket=" + encodeQuery(bucketName) + "&key=" + encodeQuery(key) + "&etag=" + encodeQuery(etag);
     return base + (redirect.getRawQuery() == null ? "?" : "&") + query + (fragment < 0 ? "" : value.substring(fragment));
-  }
-
-  private static String encodeKey(String key) {
-    return S3ObjectUtils.urlEncode(key, true);
   }
 
   private static String encodeQuery(String value) {

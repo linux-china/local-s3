@@ -100,6 +100,9 @@ public class MetadataFilter {
             throw invalid("The filter of the field '" + fieldName + "' must be a value or an object of operators");
         }
         if (!fieldFilter.isObject()) {
+            if (fieldFilter.isNull()) {
+                throw invalid("The filter of the field '" + fieldName + "' requires a string, a number or a boolean");
+            }
             return;
         }
         if (fieldFilter.isEmpty()) {
@@ -109,8 +112,9 @@ public class MetadataFilter {
             JsonNode operand = fieldFilter.get(operator);
             switch (operator) {
                 case "$eq", "$ne" -> {
-                    if (operand.isContainer()) {
-                        throw invalid(operator + " operator requires a single value");
+                    // AWS takes no null operand; a missing field is asked for with $exists.
+                    if (operand.isContainer() || operand.isNull()) {
+                        throw invalid(operator + " operator requires a string, a number or a boolean");
                     }
                 }
                 case "$gt", "$gte", "$lt", "$lte" -> {
@@ -123,8 +127,8 @@ public class MetadataFilter {
                         throw invalid(operator + " operator requires a non-empty array value");
                     }
                     for (JsonNode element : operand) {
-                        if (element.isContainer()) {
-                            throw invalid(operator + " operator requires an array of single values");
+                        if (element.isContainer() || element.isNull()) {
+                            throw invalid(operator + " operator requires an array of strings, numbers or booleans");
                         }
                     }
                 }

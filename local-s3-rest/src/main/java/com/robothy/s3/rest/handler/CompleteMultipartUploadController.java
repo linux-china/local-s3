@@ -21,7 +21,9 @@ import com.robothy.s3.core.service.ObjectService;
 import com.robothy.s3.rest.assertions.RequestAssertions;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.model.request.CompleteMultipartUpload;
+import com.robothy.s3.rest.LocalS3Config;
 import com.robothy.s3.rest.model.response.CompleteMultipartUploadResult;
+import com.robothy.s3.rest.netty.ConnectionSchemes;
 import com.robothy.s3.rest.service.MultipartUploadPolicy;
 import com.robothy.s3.rest.service.ServiceFactory;
 import com.robothy.s3.rest.utils.RequestUtils;
@@ -38,6 +40,9 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
 
   private final MultipartUploadPolicy multipartUploadPolicy;
 
+  // A port that answers both HTTP and HTTPS is told by the request, see ConnectionSchemes.
+  private final String defaultScheme;
+
   CompleteMultipartUploadController(ServiceFactory serviceFactory) {
     super(serviceFactory);
     this.uploadService = serviceFactory.getInstance(ObjectService.class);
@@ -45,6 +50,9 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     this.multipartUploadPolicy = serviceFactory.containsInstance(MultipartUploadPolicy.class)
         ? serviceFactory.getInstance(MultipartUploadPolicy.class)
         : MultipartUploadPolicy.of(true);
+    this.defaultScheme = serviceFactory.containsInstance(LocalS3Config.class)
+        && serviceFactory.getInstance(LocalS3Config.class).tlsEnabled()
+        ? ConnectionSchemes.HTTPS : ConnectionSchemes.HTTP;
   }
 
   @Override
@@ -79,7 +87,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
         .bucket(bucket)
         .key(key)
         .etag(ResponseUtils.quoteEtag(completeMultipartUploadAns.getEtag()))
-        .location(completeMultipartUploadAns.getLocation())
+        .location(ResponseUtils.objectUrl(request, defaultScheme, bucket, key, isPathStyle(request, key)))
         .checksum(ChecksumElements.of(completeMultipartUploadAns.getChecksum()))
         .build();
     response.status(HttpResponseStatus.OK)
@@ -90,6 +98,12 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     ResponseUtils.addDateHeader(response);
     ResponseUtils.addAmzRequestId(response);
     ResponseUtils.addServerHeader(response);
+  }
+
+  // The router takes the key of a virtual-hosted request as its whole path, so only that request has a path of
+  // "/" + key; a path-style one has the bucket before it.
+  private static boolean isPathStyle(RouterHttpRequest request, String key) {
+    return !Objects.toString(request.getPath(), "").equals("/" + key);
   }
 
   private static Long expectedObjectSize(RouterHttpRequest request) {

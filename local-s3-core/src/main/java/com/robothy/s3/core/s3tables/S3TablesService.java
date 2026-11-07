@@ -96,9 +96,13 @@ public final class S3TablesService {
 
   /**
    * The catalogs of the table buckets, opened once each. A catalog holds two maps of the store of the service, so
-   * opening one per request would open the same maps again and again.
+   * opening one per request would open the same maps again and again. Each is kept with the ID of the table bucket it
+   * was opened for, so that one of a table bucket that was deleted, and closed, isn't handed to its successor.
    */
-  private final Map<String, IcebergCatalogService> catalogs = new ConcurrentHashMap<>();
+  private final Map<String, OpenedCatalog> catalogs = new ConcurrentHashMap<>();
+
+  private record OpenedCatalog(String tableBucketId, IcebergCatalogService catalog) {
+  }
 
   private final String region;
 
@@ -156,7 +160,10 @@ public final class S3TablesService {
       deleteWarehouseBucket(record);
       throw S3TablesException.conflict("A table bucket named '" + name + "' already exists.");
     }
-    catalogs.remove(name);
+    // Only a catalog of the table bucket this one replaces is dropped: a request that found the new record already may
+    // have opened the catalog of it.
+    catalogs.computeIfPresent(name, (n, opened) ->
+        Objects.equals(opened.tableBucketId(), record.tableBucketId()) ? opened : null);
     Map<String, String> tags = IcebergJson.toStringMap(request.get("tags"));
     if (!tags.isEmpty()) {
       store.putTags(bucketArn(name), tags);
@@ -245,7 +252,7 @@ public final class S3TablesService {
     TableBucketRecord record = requireBucket(tableBucketArn);
     // Closing the catalog, rather than only finding it empty, is what refuses a namespace that a request which found
     // the table bucket just before creates now. The closed catalog stays in `catalogs` so that such a request gets it
-    // rather than a new one; createTableBucket replaces it.
+    // rather than a new one; a table bucket created under the name gets a catalog of its own, see catalog().
     IcebergCatalogService catalog = catalog(record);
     if (!catalog.closeIfEmpty()) {
       throw S3TablesException.conflict("The table bucket '" + record.name()
@@ -258,7 +265,7 @@ public final class S3TablesService {
     } catch (RuntimeException e) {
       // The record survives, so its catalog must not stay closed: `closed` lives only in memory, and would refuse
       // every namespace of the table bucket until a restart. Dropping it lets the next request open a fresh one.
-      catalogs.remove(record.name(), catalog);
+      catalogs.computeIfPresent(record.name(), (name, opened) -> opened.catalog() == catalog ? null : opened);
       throw e;
     }
     store.removeTags(bucketArn(record.name()));
@@ -1708,7 +1715,27 @@ public final class S3TablesService {
    * The catalog of a table bucket, opened once per table bucket.
    */
   private IcebergCatalogService catalog(TableBucketRecord bucket) {
-    return catalogs.computeIfAbsent(bucket.name(), name -> catalogFactory.create(name, bucket.warehouse()));
+    OpenedCatalog opened = catalogs.get(bucket.name());
+    if (opened != null && Objects.equals(opened.tableBucketId(), bucket.tableBucketId())) {
+      return opened.catalog();
+    }
+    opened = catalogs.compute(bucket.name(), (name, current) -> {
+      if (current != null && Objects.equals(current.tableBucketId(), bucket.tableBucketId())) {
+        return current;
+      }
+      // A catalog of another table bucket of the name is either of one deleted since, which this request replaces, or
+      // of one created since, when the record this request holds is the deleted one: it mustn't reach the new
+      // table bucket's namespaces, nor take its catalog.
+      TableBucketRecord stored = store.getBucket(name);
+      if (stored == null || !Objects.equals(stored.tableBucketId(), bucket.tableBucketId())) {
+        return current;
+      }
+      return new OpenedCatalog(bucket.tableBucketId(), catalogFactory.create(name, bucket.warehouse()));
+    });
+    if (opened == null || !Objects.equals(opened.tableBucketId(), bucket.tableBucketId())) {
+      throw S3TablesException.notFound("No table bucket named '" + bucket.name() + "'.");
+    }
+    return opened.catalog();
   }
 
   /**

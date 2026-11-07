@@ -176,7 +176,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .filter(version -> completedWith(version.getValue(), completeParts))
           .findFirst()
           .map(version -> CompleteMultipartUploadAns.builder()
-              .location("/" + bucket + "/" + key)
+              .location("/" + S3ObjectUtils.urlEncode(bucket, false) + "/" + S3ObjectUtils.urlEncode(key, true))
               .versionId(answeredVersionId(bucketMetadata, object, version.getKey()))
               .etag(version.getValue().getEtag())
               .size(version.getValue().getSize())
@@ -493,7 +493,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           putObjectAns.getVersionId(), putObjectAns.getSize(), putObjectAns.getEtag(),
           versionedObjectMetadata.getContentType(), versionedObjectMetadata.getUserMetadata()));
       return CompleteMultipartUploadAns.builder()
-          .location("/" + bucket + "/" + key)
+          .location("/" + S3ObjectUtils.urlEncode(bucket, false) + "/" + S3ObjectUtils.urlEncode(key, true))
           .versionId(putObjectAns.getVersionId())
           .etag(putObjectAns.getEtag())
           .size(putObjectAns.getSize())

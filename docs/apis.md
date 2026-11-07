@@ -229,7 +229,9 @@ The whole filter is validated before any vector is compared, so a malformed one 
 `InvalidRequestException` whatever the index holds, an empty index included, and however `$and` or `$or` would
 short-circuit: the filter must be an object (`{}` filters nothing), an operator must be one of `$eq`, `$ne`, `$gt`,
 `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$and` and `$or`, `$and`, `$or`, `$in` and `$nin` take a non-empty
-array, `$eq`, `$ne` and the elements of `$in` and `$nin` take a single value, and `$exists` takes a boolean.
+array, a field's value, `$eq`, `$ne` and the elements of `$in` and `$nin` take a string, a number or a boolean, and
+`$exists` takes a boolean. `null` is none of them, as on AWS: `{"genre": null}` and `{"genre": {"$eq": null}}` are
+rejected rather than taken to match the vectors without a `genre`, which is what `{"genre": {"$exists": false}}` asks.
 A key listed in the `nonFilterableMetadataKeys` of the index is not indexed for filtering, as on AWS: a filter treats it
 as absent from every vector, so `{"text": "hello"}` matches none of them while `{"text": {"$exists": false}}` matches
 all. Such a key is still stored and returned with `returnMetadata`.

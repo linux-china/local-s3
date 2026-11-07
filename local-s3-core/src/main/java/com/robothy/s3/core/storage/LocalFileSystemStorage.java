@@ -98,7 +98,6 @@ class LocalFileSystemStorage implements Storage {
       Files.copy(in, temp);
       Path target = createObjectDirectory(id);
       PathUtils.moveAtomically(temp, target);
-      deleteFlatObjectFile(id);
     } catch (IOException e) {
       deleteQuietly(temp, e);
       throw new UncheckedIOException("Failed to store object " + id + ".", e);
@@ -106,6 +105,7 @@ class LocalFileSystemStorage implements Storage {
       deleteQuietly(temp, e);
       throw e;
     }
+    deleteStaleFlatObjectFile(id);
     return id;
   }
 
@@ -121,13 +121,18 @@ class LocalFileSystemStorage implements Storage {
   @Override
   public Long put(Long id, Path file) {
     ensureWritable();
+    boolean renamed;
     try {
       Files.setLastModifiedTime(file, FileTime.from(Instant.now()));
       Files.move(file, createObjectDirectory(id), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-      deleteFlatObjectFile(id);
-      return id;
+      renamed = true;
     } catch (IOException | UnsupportedOperationException _) {
       // The file is left where it was; copy it.
+      renamed = false;
+    }
+    if (renamed) {
+      deleteStaleFlatObjectFile(id);
+      return id;
     }
     try (InputStream in = Files.newInputStream(file)) {
       return put(id, in);
@@ -265,6 +270,19 @@ class LocalFileSystemStorage implements Storage {
   /**
    * Delete the file of an object in the flat layout, which an object stored again replaces.
    */
+  /**
+   * Delete the file an object may have in the flat layout, once its content is stored in its subdirectory. The
+   * content is stored by then, so a failure, e.g. Windows refusing to delete a file that is open, mustn't fail the
+   * write: its caller would discard content that is in place.
+   */
+  private void deleteStaleFlatObjectFile(Long id) {
+    try {
+      deleteFlatObjectFile(id);
+    } catch (IOException e) {
+      log.warn("Stored object {}, but failed to delete its file in the flat layout {}.", id, flatObjectPath(id), e);
+    }
+  }
+
   private void deleteFlatObjectFile(Long id) throws IOException {
     Path flat = flatObjectPath(id);
     if (Files.isRegularFile(flat)) {

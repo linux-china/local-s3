@@ -6,11 +6,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.iceberg.LocalS3IcebergManager;
+import com.robothy.s3.core.storage.LocalS3Store;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -457,6 +462,38 @@ class IcebergCatalogServiceTest {
     catalog.dropTable(IcebergIdentifier.of(List.of("db"), "first"), false, true);
 
     assertNotNull(files.read(second));
+  }
+
+  @Test
+  void a_purge_follows_a_commit_that_moved_the_table_while_it_was_being_dropped() {
+    LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
+    s3Manager.bucketService().createBucket("warehouse");
+    IcebergCatalogStore store = spy(IcebergCatalogStore.create(LocalS3Store.inMemory()));
+    IcebergCatalogService racing = new IcebergCatalogService(store, files = new IcebergMetadataFiles(
+        s3Manager.bucketService(), s3Manager.objectService()), "s3://warehouse/");
+    racing.createNamespace(namespaceRequest("db"));
+    racing.createTable(List.of("db"), IcebergJson.read("""
+        {"name":"orders","schema":%s}""".formatted(SCHEMA)));
+    IcebergIdentifier orders = IcebergIdentifier.of(List.of("db"), "orders");
+    files.write("s3://warehouse/moved/orders/data/part-0.parquet", "data");
+
+    // A commit that moves the table lands between reading the locations to purge and removing the record.
+    AtomicBoolean raced = new AtomicBoolean();
+    doAnswer(invocation -> {
+      if (raced.compareAndSet(false, true)) {
+        racing.updateTable(orders, IcebergJson.read("""
+            {"requirements":[],"updates":[{"action":"set-location","location":"s3://warehouse/moved/orders"}]}"""),
+            false);
+      }
+      return invocation.callRealMethod();
+    }).when(store).removeTable(any(IcebergTableRecord.class));
+
+    racing.dropTable(orders, false, true);
+
+    assertFalse(racing.tableExists(orders, false));
+    assertThrows(IcebergCatalogException.class,
+        () -> files.read("s3://warehouse/moved/orders/data/part-0.parquet"),
+        "The location the commit moved the table to is purged, not only the one read before it.");
   }
 
   @Test

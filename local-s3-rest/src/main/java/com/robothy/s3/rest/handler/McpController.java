@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
@@ -109,6 +110,8 @@ class McpController implements RouterHttpRequestHandler {
    * content lands in the context of a model, so a large object is read a range at a time.
    */
   private static final int DEFAULT_READ_BYTES = 256 * 1024;
+
+  private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
   private static final int MAX_READ_BYTES = 4 * 1024 * 1024;
 
@@ -459,6 +462,16 @@ class McpController implements RouterHttpRequestHandler {
     return ordered("content", content, "structuredContent", metadata, "isError", false);
   }
 
+  private static byte[] decodeBase64(String content) {
+    // Line breaks and spaces are what an encoder wraps lines with, so they are dropped; anything else outside the
+    // alphabet means truncated or mixed-in text, which the MIME decoder would skip and store as corrupt bytes.
+    try {
+      return Base64.getDecoder().decode(WHITESPACE.matcher(content).replaceAll(""));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("content is not valid base64: " + e.getMessage(), e);
+    }
+  }
+
   private Map<String, Object> putObject(JsonNode arguments) {
     String bucket = required(arguments, "bucket");
     String key = required(arguments, "key");
@@ -469,7 +482,7 @@ class McpController implements RouterHttpRequestHandler {
     String encoding = Objects.requireNonNullElse(optional(arguments, "encoding"), "utf-8").toLowerCase(Locale.ROOT);
     byte[] bytes = switch (encoding) {
       case "utf-8", "utf8", "text" -> given.asString().getBytes(StandardCharsets.UTF_8);
-      case "base64" -> Base64.getMimeDecoder().decode(given.asString());
+      case "base64" -> decodeBase64(given.asString());
       default -> throw new IllegalArgumentException("encoding must be 'utf-8' or 'base64', not " + encoding + ".");
     };
     String contentType = optional(arguments, "content_type");

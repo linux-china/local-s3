@@ -190,6 +190,18 @@ class McpTest {
       assertEquals("image/png", read.at("/content/1/mimeType").asString());
       assertEquals(data, read.at("/content/1/data").asString());
       assertEquals("base64", read.at("/structuredContent/encoding").asString());
+
+      // Line breaks of a wrapped encoding are fine; text outside the alphabet is refused rather than skipped.
+      String wrapped = data.substring(0, 4) + "\r\n" + data.substring(4);
+      JsonNode again = call(localS3, "put_object", Map.of("bucket", "bucket", "key", "wrapped.png", "content", wrapped,
+          "encoding", "base64"));
+      assertEquals(png.length, again.at("/structuredContent/size").asLong(), again.toString());
+      JsonNode corrupt = call(localS3, "put_object", Map.of("bucket", "bucket", "key", "corrupt.png",
+          "content", data + "<truncated>", "encoding", "base64"));
+      assertTrue(corrupt.get("isError").asBoolean(), corrupt.toString());
+      assertTrue(corrupt.at("/content/0/text").asString().contains("content is not valid base64"), corrupt.toString());
+      JsonNode none = call(localS3, "read_object", Map.of("bucket", "bucket", "key", "corrupt.png"));
+      assertTrue(none.get("isError").asBoolean(), "Nothing is stored: " + none);
     } finally {
       localS3.shutdown();
     }

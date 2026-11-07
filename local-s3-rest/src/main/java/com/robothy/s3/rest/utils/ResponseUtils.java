@@ -1,10 +1,12 @@
 package com.robothy.s3.rest.utils;
 
+import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpResponse;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
 import com.robothy.s3.rest.constants.LocalS3Constants;
+import com.robothy.s3.rest.netty.ConnectionSchemes;
 import io.netty.handler.codec.http.HttpHeaderNames;
 
 import java.time.Instant;
@@ -23,6 +25,25 @@ public class ResponseUtils {
 
   static final DateTimeFormatter RFC_1123_DATE_TIME =
       DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'").withLocale(Locale.ENGLISH);
+
+  /**
+   * The absolute URL of an object, as the {@code Location} of a response names it, see
+   * {@code docs/semantics.md#completing-multipart-uploads}.
+   *
+   * @param request the request, whose scheme and {@code Host} the URL has.
+   * @param defaultScheme the scheme of a connection that doesn't tell its own.
+   * @param bucket the bucket.
+   * @param key the key.
+   * @param bucketInPath whether the request was path-style, so that the URL has the bucket in its path.
+   * @return the URL.
+   */
+  public static String objectUrl(RouterHttpRequest request, String defaultScheme, String bucket, String key,
+                                 boolean bucketInPath) {
+    String host = request.header(HttpHeaderNames.HOST).orElse("localhost");
+    String scheme = ConnectionSchemes.of(request).orElse(defaultScheme);
+    return scheme + "://" + host + "/" + (bucketInPath ? S3ObjectUtils.urlEncode(bucket, false) + "/" : "")
+        + S3ObjectUtils.urlEncode(key, true);
+  }
 
   /**
    * Add 'date' header.

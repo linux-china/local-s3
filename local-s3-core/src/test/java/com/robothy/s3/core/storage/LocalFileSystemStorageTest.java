@@ -13,6 +13,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
@@ -292,6 +294,30 @@ class LocalFileSystemStorageTest {
     Files.writeString(directory.resolve("43"), "flat");
     storage.delete(43L);
     assertFalse(storage.isExist(43L));
+  }
+
+  /**
+   * Once a file is renamed into place the object is stored: failing to delete the file of the flat layout it replaces
+   * mustn't fail the write, or its caller would discard the content that is in place.
+   */
+  @Test
+  @EnabledOnOs({OS.MAC, OS.LINUX})
+  void aRenamedFileStaysStoredWhenTheFileOfTheFlatLayoutCannotBeDeleted() throws IOException {
+    LocalFileSystemStorage storage = new LocalFileSystemStorage(directory);
+    Path flat = Files.writeString(directory.resolve("42"), "flat");
+    Path subdirectory = Files.createDirectories(storage.objectPath(42L).getParent());
+    // Renamed within the subdirectory, which stays writable, while the flat file can't be removed from its directory.
+    Path file = Files.writeString(subdirectory.resolve(".body.tmp"), "renamed");
+    Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(directory);
+    Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("r-xr-xr-x"));
+    try {
+      assertEquals(42L, storage.put(42L, file));
+    } finally {
+      Files.setPosixFilePermissions(directory, permissions);
+    }
+    assertFalse(Files.exists(file));
+    assertTrue(Files.exists(flat), "The flat file couldn't be deleted.");
+    assertArrayEquals("renamed".getBytes(), storage.getBytes(42L));
   }
 
   /**

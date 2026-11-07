@@ -637,28 +637,15 @@ public final class IcebergCatalogService {
    * @throws IcebergCatalogException if it doesn't exist.
    */
   public void dropTable(IcebergIdentifier identifier, boolean views, boolean purge) {
-    IcebergTableRecord record = requireTable(identifier, views);
-    List<String> locations = new ArrayList<>();
-    if (purge) {
-      // Read where the table keeps its files before the pointer to them is gone.
-      try {
-        ObjectNode metadata = IcebergJson.read(files.read(record.metadataLocation()));
-        String location = metadata.path("location").asString(null);
-        if (location != null) {
-          locations.add(IcebergJson.stripTrailingSlash(location));
-        }
-        String metadataPath = metadata.path("properties").path(METADATA_LOCATION_PROPERTY).asString(null);
-        if (metadataPath != null && !metadataPath.isBlank()) {
-          String directory = IcebergJson.stripTrailingSlash(metadataPath);
-          if (location == null || !(directory + "/").startsWith(IcebergJson.stripTrailingSlash(location) + "/")) {
-            locations.add(directory);
-          }
-        }
-      } catch (IcebergCatalogException _) {
-        locations.clear();
-      }
-    }
-    store.removeTable(identifier);
+    // Removed only if it is still the record the locations were read from: a commit landing in between may move the
+    // table's files, and purging the old locations would then leave the new ones behind. A table dropped meanwhile
+    // makes requireTable throw on the next round.
+    IcebergTableRecord record;
+    List<String> locations;
+    do {
+      record = requireTable(identifier, views);
+      locations = purge ? purgeLocations(record) : List.of();
+    } while (!store.removeTable(record));
     for (String location : locations) {
       if (purgeOnlyUnderWarehouse && !isUnderWarehouse(location)) {
         log.warn("Dropped {} without purging {}: it is outside the warehouse {}, so the files there aren't the"
@@ -670,6 +657,28 @@ public final class IcebergCatalogService {
         files.purge(location);
       }
     }
+  }
+
+  private List<String> purgeLocations(IcebergTableRecord record) {
+    List<String> locations = new ArrayList<>();
+    // Read where the table keeps its files before the pointer to them is gone.
+    try {
+      ObjectNode metadata = IcebergJson.read(files.read(record.metadataLocation()));
+      String location = metadata.path("location").asString(null);
+      if (location != null) {
+        locations.add(IcebergJson.stripTrailingSlash(location));
+      }
+      String metadataPath = metadata.path("properties").path(METADATA_LOCATION_PROPERTY).asString(null);
+      if (metadataPath != null && !metadataPath.isBlank()) {
+        String directory = IcebergJson.stripTrailingSlash(metadataPath);
+        if (location == null || !(directory + "/").startsWith(IcebergJson.stripTrailingSlash(location) + "/")) {
+          locations.add(directory);
+        }
+      }
+    } catch (IcebergCatalogException _) {
+      locations.clear();
+    }
+    return locations;
   }
 
   private boolean isUnderWarehouse(String location) {

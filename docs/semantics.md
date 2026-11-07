@@ -339,6 +339,10 @@ of its parts, followed by `-<number of parts>`. Before 2.5 LocalS3 answered the 
   version is overwritten without versioning, or deleted, it answers `NoSuchUpload`, as Amazon S3 does. Only a retry
   with the part numbers that completed the upload, and their entity tags if it sends them, is answered so; a request
   with other parts answers `NoSuchUpload`.
++ The `Location` of `CompleteMultipartUploadResult` is the absolute URL of the object, as Amazon S3 answers it: the
+  scheme and the `Host` of the request, the bucket in the path unless the request was virtual-hosted, and the key
+  percent-encoded with its `/` kept, e.g. `http://localhost:9090/bucket/a%20b` or `http://bucket.localhost:9090/a%20b`,
+  so that it is a valid URI whatever the key holds. A `POST Object` answers its `Location` the same way.
 + `AbortMultipartUpload` of an upload that doesn't exist, or was already aborted or completed, answers
   `404 NoSuchUpload`, like Amazon S3.
 + `ListParts` answers `400 InvalidArgument` for a `max-parts` or `part-number-marker` that isn't a non-negative

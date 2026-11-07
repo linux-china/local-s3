@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
@@ -24,6 +26,7 @@ import com.robothy.s3.core.storage.LocalS3Store;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
@@ -310,15 +313,7 @@ class S3TablesServiceTest {
 
   @Test
   void a_table_bucket_whose_deletion_failed_stays_usable() {
-    LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
-    LocalS3Store localS3Store = LocalS3Store.inMemory();
-    S3TablesStore store = spy(S3TablesStore.create(localS3Store));
-    IcebergMetadataFiles metadataFiles = new IcebergMetadataFiles(s3Manager.bucketService(), s3Manager.objectService());
-    s3Tables = new S3TablesService(store, s3Manager.bucketService(), metadataFiles, (tableBucket, warehouse) -> {
-      S3TablesStore.CatalogMaps maps = S3TablesStore.catalogMaps(tableBucket);
-      return new IcebergCatalogService(IcebergCatalogStore.create(localS3Store, maps.namespacesMap(), maps.tablesMap()),
-          metadataFiles, warehouse, true, true);
-    }, "us-east-1", S3TablesArn.DEFAULT_ACCOUNT_ID);
+    S3TablesStore store = useSpiedStore();
     String arn = createTableBucket("fragile");
 
     doThrow(new IllegalStateException("write failed")).when(store).removeBucket(anyString());
@@ -329,6 +324,44 @@ class S3TablesServiceTest {
     s3Tables.createNamespace(arn, namespaceRequest("db"));
     createTable(arn, "db", "t");
     assertEquals(1, s3Tables.listTables(arn, "db", null, null, null).path("tables").size());
+  }
+
+  @Test
+  void a_table_bucket_created_again_never_gets_the_closed_catalog_of_the_deleted_one() {
+    S3TablesStore store = useSpiedStore();
+    String arn = createTableBucket("reborn");
+    s3Tables.deleteTableBucket(arn);
+
+    // A request lands right after the new record is stored, before createTableBucket goes on.
+    AtomicBoolean landed = new AtomicBoolean();
+    doAnswer(invocation -> {
+      boolean stored = (boolean) invocation.callRealMethod();
+      if (stored && landed.compareAndSet(false, true)) {
+        s3Tables.createNamespace(arn, namespaceRequest("early"));
+      }
+      return stored;
+    }).when(store).putBucketIfAbsent(any());
+    assertEquals(arn, createTableBucket("reborn"));
+
+    assertTrue(landed.get());
+    s3Tables.createNamespace(arn, namespaceRequest("later"));
+    assertEquals(2, s3Tables.listNamespaces(arn, null, null, null).path("namespaces").size());
+  }
+
+  /**
+   * Replace the service with one over a store that a test can make fail or race.
+   */
+  private S3TablesStore useSpiedStore() {
+    LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
+    LocalS3Store localS3Store = LocalS3Store.inMemory();
+    S3TablesStore store = spy(S3TablesStore.create(localS3Store));
+    IcebergMetadataFiles metadataFiles = new IcebergMetadataFiles(s3Manager.bucketService(), s3Manager.objectService());
+    s3Tables = new S3TablesService(store, s3Manager.bucketService(), metadataFiles, (tableBucket, warehouse) -> {
+      S3TablesStore.CatalogMaps maps = S3TablesStore.catalogMaps(tableBucket);
+      return new IcebergCatalogService(IcebergCatalogStore.create(localS3Store, maps.namespacesMap(), maps.tablesMap()),
+          metadataFiles, warehouse, true, true);
+    }, "us-east-1", S3TablesArn.DEFAULT_ACCOUNT_ID);
+    return store;
   }
 
   @Test

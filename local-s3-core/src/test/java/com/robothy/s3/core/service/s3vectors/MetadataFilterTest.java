@@ -337,6 +337,9 @@ class MetadataFilterTest {
         for (String filter : List.of("\"abc\"", "[]", "1", "{\"a\":{\"$foo\":1}}", "{\"$foo\":1}",
             "{\"a\":{}}", "{\"a\":[1]}", "{\"a\":{\"$eq\":[1]}}", "{\"a\":{\"$in\":[[1]]}}",
             "{\"a\":{\"$nin\":[]}}", "{\"$and\":[]}", "{\"$or\":[\"abc\"]}",
+            // null is no operand on AWS, not a way to ask for a missing field
+            "{\"a\":null}", "{\"a\":{\"$eq\":null}}", "{\"a\":{\"$ne\":null}}",
+            "{\"a\":{\"$in\":[\"x\",null]}}", "{\"a\":{\"$nin\":[null]}}",
             // The invalid condition comes after one that no vector matches, where $and short-circuits
             "{\"$and\":[{\"genre\":\"none\"},{\"a\":{\"$foo\":1}}]}",
             "{\"$or\":[{\"genre\":\"drama\"},{\"a\":{\"$exists\":\"yes\"}}]}")) {
