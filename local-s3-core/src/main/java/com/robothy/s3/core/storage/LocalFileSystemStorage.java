@@ -268,9 +268,6 @@ class LocalFileSystemStorage implements Storage {
   }
 
   /**
-   * Delete the file of an object in the flat layout, which an object stored again replaces.
-   */
-  /**
    * Delete the file an object may have in the flat layout, once its content is stored in its subdirectory. The
    * content is stored by then, so a failure, e.g. Windows refusing to delete a file that is open, mustn't fail the
    * write: its caller would discard content that is in place.
@@ -283,6 +280,9 @@ class LocalFileSystemStorage implements Storage {
     }
   }
 
+  /**
+   * Delete the file of an object in the flat layout, which an object stored again replaces.
+   */
   private void deleteFlatObjectFile(Long id) throws IOException {
     Path flat = flatObjectPath(id);
     if (Files.isRegularFile(flat)) {

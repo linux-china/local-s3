@@ -23,9 +23,7 @@ import java.util.Optional;
 public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageApplicable {
 
   default DeleteObjectAns deleteObject(String bucketName, String key) {
-    return changeBucket(bucketName, () -> {
-      return deleteObject(bucketName, key, null);
-    });
+    return deleteObject(bucketName, key, null);
   }
 
   default DeleteObjectAns deleteObject(String bucketName, String key, String versionId) {
