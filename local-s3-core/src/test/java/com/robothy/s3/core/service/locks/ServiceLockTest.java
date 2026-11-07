@@ -23,6 +23,15 @@ class ServiceLockTest {
     assertEquals("after", lock.exclusive(() -> "after"));
   }
 
+  @Test
+  void anExclusiveOperationMayRunExclusiveOperationsWithinItsSharedOperations() {
+    ServiceLock lock = new ServiceLock();
+    assertEquals("nested", lock.exclusive(() -> lock.shared(() -> lock.exclusive(() -> lock.shared(() -> "nested")))));
+    // Neither the shared depth nor the exclusive lock leaks out of the nesting.
+    assertThrows(IllegalStateException.class, () -> lock.shared(() -> lock.exclusive(() -> "never")));
+    assertEquals("after", lock.exclusive(() -> "after"));
+  }
+
   /**
    * No shared operation runs alongside an exclusive one, whichever counter the threads use.
    */

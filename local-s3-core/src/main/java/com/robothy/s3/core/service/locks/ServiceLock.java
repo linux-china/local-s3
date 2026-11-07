@@ -75,14 +75,16 @@ public final class ServiceLock {
   /**
    * Run an operation that concerns every bucket, once no operation of a bucket runs, and while none starts.
    *
-   * @throws IllegalStateException if the current thread runs an operation of a bucket, which would wait for itself.
+   * @throws IllegalStateException if the current thread runs an operation of a bucket outside an exclusive operation,
+   *     which would wait for itself.
    */
   public <T> T exclusive(Supplier<T> operation) {
-    if (holders.get().depth > 0) {
-      throw new IllegalStateException("An exclusive operation can't run within an operation of a bucket.");
-    }
+    // Checked first: the shared operations within an exclusive one aren't counted, so nothing waits for them.
     if (exclusiveLock.isHeldByCurrentThread()) {
       return operation.get();
+    }
+    if (holders.get().depth > 0) {
+      throw new IllegalStateException("An exclusive operation can't run within an operation of a bucket.");
     }
     exclusiveLock.lock();
     try {
