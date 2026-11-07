@@ -924,6 +924,29 @@ table.scan(row_filter="id > 1").to_arrow()
 `test_pyiceberg.py` covers appends, scans with a filter, time travel, `delete` and `overwrite`, partition pruning,
 schema evolution, renaming and dropping.
 
+A [table bucket](#amazon-s3-tables) takes the configuration that
+[Amazon documents for PyIceberg](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-integrating-open-source.html),
+with the URI pointed at LocalS3 and its keys given, which against AWS would come from the environment:
+
+```python
+catalog = load_catalog("s3tables", **{
+    "type": "rest",
+    "warehouse": "arn:aws:s3tables:us-east-1:000000000000:bucket/lakehouse",
+    "uri": "http://localhost:29090/iceberg",
+    "rest.sigv4-enabled": "true",
+    "rest.signing-name": "s3tables",
+    "rest.signing-region": "us-east-1",
+    "client.access-key-id": "admin",
+    "client.secret-access-key": "admin",
+})
+```
+
+`test_pyiceberg_s3tables.py` creates the table bucket with the `s3tables` client of boto3 and checks that the two are
+one catalog: namespaces and tables created by either are seen by the other, a commit of PyIceberg moves the
+`metadataLocation` and the version token of `GetTable`, a stale commit is answered `409` and retried by PyIceberg, the
+files land in the `<table-bucket>--table-s3` bucket, `purge_table` deletes them, a wrong signature is refused, and two
+table buckets are two catalogs.
+
 ### delta-rs and Polars
 
 `write_deltalake` of `deltalake` and `write_delta` of Polars take the options of `object_store`:

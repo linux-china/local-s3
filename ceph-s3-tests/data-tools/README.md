@@ -7,6 +7,7 @@ an HTTP stack of its own, apart from the AWS SDK for Java that the other tests u
 | Test | Client | What it checks |
 |---|---|---|
 | `test_pyiceberg.py` | PyIceberg on the built-in Iceberg REST catalog, PyArrow's S3 file system | create, append, scan, time travel, delete, overwrite, partition pruning, schema evolution, rename and drop, with the storage vended by the catalog |
+| `test_pyiceberg_s3tables.py` | PyIceberg on the Iceberg REST endpoint of an S3 Tables table bucket, configured as the AWS documentation says (the ARN as the warehouse, SigV4 for `s3tables`), and boto3's `s3tables` client | namespaces and tables of the REST endpoint and of the S3 Tables API are one catalog, the version token follows the commits of PyIceberg, a stale commit is refused and retried, the files land in `<table-bucket>--table-s3`, purge, a wrong signature, two table buckets as two catalogs |
 | `test_delta.py` | delta-rs (`deltalake`) and Polars, Rust's `object_store` | write, append, delete, merge, overwrite, time travel; writers racing for a version, whose commits are `PUT`s with `If-None-Match: *` |
 | `test_lance.py` | Lance (`pylance`) and LanceDB, Rust's `object_store` | write, append, update, delete, overwrite, time travel, compaction and cleanup of old versions, an IVF_PQ index and nearest-neighbour search; writers racing for a version, whose manifests are `PUT`s with `If-None-Match: *`; a LanceDB table created, searched, optimized and dropped |
 | `test_s3fs_pandas.py` | fsspec's s3fs on aiobotocore, pandas | `pd.read_parquet` / `to_parquet` / `read_csv`, partitioned datasets, multipart uploads, range reads, copy, move, recursive delete |
@@ -16,6 +17,7 @@ an HTTP stack of its own, apart from the AWS SDK for Java that the other tests u
 ceph-s3-tests/data-tools/run.sh               # or: just data-tools-py
 ceph-s3-tests/data-tools/run.sh -k delta      # the arguments go to pytest
 ceph-s3-tests/data-tools/run.sh -k lance      # Lance and LanceDB
+ceph-s3-tests/data-tools/run.sh test_pyiceberg_s3tables.py   # PyIceberg on S3 Tables
 ```
 
 `conftest.py` starts the jar once, on a free port, with an access key of its own, so every request has to be signed

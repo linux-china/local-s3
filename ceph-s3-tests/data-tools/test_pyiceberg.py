@@ -49,10 +49,13 @@ def namespace(catalog, request):
     return name
 
 
-def test_the_catalog_vends_the_storage_to_pyiceberg(catalog, local_s3):
+def test_the_catalog_vends_the_storage_to_pyiceberg(catalog, namespace, local_s3):
     properties = catalog.properties
     assert properties["s3.endpoint"].rstrip("/") == local_s3.endpoint
-    assert properties["s3.access-key-id"] == local_s3.access_key
+    # GET /v1/config, which anyone may call, carries no keys; a loaded table does.
+    assert "s3.secret-access-key" not in properties
+    table = catalog.create_table(f"{namespace}.vended", schema=SCHEMA)
+    assert table.io.properties["s3.access-key-id"] == local_s3.access_key
 
 
 def test_create_append_and_scan(catalog, namespace, local_s3):
