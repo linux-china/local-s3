@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -31,7 +33,7 @@ class PathUtilsTest {
       if (attempts.incrementAndGet() < 3) {
         throw new AccessDeniedException("the file is used by another process");
       }
-    });
+    }, true);
 
     assertEquals(3, attempts.get());
   }
@@ -44,7 +46,7 @@ class PathUtilsTest {
         () -> PathUtils.retryingWhileInUse(() -> {
           attempts.incrementAndGet();
           throw new AccessDeniedException("the file is used by another process");
-        }));
+        }, true));
 
     assertEquals("the file is used by another process", failure.getFile());
     assertTrue(attempts.get() > 1, "The operation should have been repeated, but ran " + attempts.get() + " time.");
@@ -57,7 +59,47 @@ class PathUtilsTest {
     assertThrows(NoSuchFileException.class, () -> PathUtils.retryingWhileInUse(() -> {
       attempts.incrementAndGet();
       throw new NoSuchFileException("missing");
-    }));
+    }, true));
+
+    assertEquals(1, attempts.get());
+  }
+
+  @Test
+  void repeatsAnOperationThatFailsWithASharingViolation() throws IOException {
+    AtomicInteger attempts = new AtomicInteger();
+
+    PathUtils.retryingWhileInUse(() -> {
+      if (attempts.incrementAndGet() < 2) {
+        throw new FileSystemException("the file is used by another process");
+      }
+    }, true);
+
+    assertEquals(2, attempts.get());
+  }
+
+  @Test
+  void doesNotRepeatAnOperationThatFailsDeterministically() {
+    AtomicInteger attempts = new AtomicInteger();
+
+    assertThrows(DirectoryNotEmptyException.class, () -> PathUtils.retryingWhileInUse(() -> {
+      attempts.incrementAndGet();
+      throw new DirectoryNotEmptyException("directory");
+    }, true));
+
+    assertEquals(1, attempts.get());
+  }
+
+  /**
+   * Only Windows fails an operation because a file is open, so a denied access elsewhere is reported at once.
+   */
+  @Test
+  void doesNotRepeatAnOperationOutsideWindows() {
+    AtomicInteger attempts = new AtomicInteger();
+
+    assertThrows(AccessDeniedException.class, () -> PathUtils.retryingWhileInUse(() -> {
+      attempts.incrementAndGet();
+      throw new AccessDeniedException("file");
+    }, false));
 
     assertEquals(1, attempts.get());
   }

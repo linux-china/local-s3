@@ -3,10 +3,10 @@ package com.robothy.s3.core.util;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -50,22 +50,25 @@ public class PathUtils {
    * common case; a reader that keeps an object open for longer than the attempts take still fails, since
    * Windows cannot replace a file that is open however long it is waited for.
    *
-   * <p>On POSIX the first attempt always succeeds, so nothing is repeated and nothing is waited for.
+   * <p>POSIX never fails an operation because a file is open, so the operation is only repeated on Windows:
+   * elsewhere a failure, e.g. a permission denied, is deterministic and is reported at once.
    *
    * @param operation the operation to run.
    * @throws IOException if the operation keeps failing, or fails for another reason.
    */
-  // Visible for testing.
   static void retryingWhileInUse(FileOperation operation) throws IOException {
+    retryingWhileInUse(operation, IS_WINDOWS);
+  }
+
+  // Visible for testing, so that the Windows behavior is tested on every platform.
+  static void retryingWhileInUse(FileOperation operation, boolean repeat) throws IOException {
     long delay = IN_USE_RETRY_DELAY_MILLIS;
     for (int attempt = 1; ; attempt++) {
       try {
         operation.run();
         return;
-      } catch (NoSuchFileException e) {
-        throw e; // Repeating the operation won't make a missing file appear.
       } catch (FileSystemException e) {
-        if (attempt == IN_USE_ATTEMPTS) {
+        if (!repeat || !isInUse(e) || attempt == IN_USE_ATTEMPTS) {
           throw e;
         }
 
@@ -78,6 +81,15 @@ public class PathUtils {
         delay *= 2;
       }
     }
+  }
+
+  /**
+   * Windows reports replacing an open file as {@code ERROR_ACCESS_DENIED}, an {@linkplain AccessDeniedException},
+   * and deleting one as {@code ERROR_SHARING_VIOLATION}, which has no subclass of its own. The other subclasses,
+   * e.g. a missing file or a directory that is not empty, don't change however long they are waited for.
+   */
+  private static boolean isInUse(FileSystemException e) {
+    return e instanceof AccessDeniedException || e.getClass() == FileSystemException.class;
   }
 
   /**
