@@ -23,8 +23,8 @@ import org.jspecify.annotations.Nullable;
  * atomic: the loser of two commits from the same metadata file is answered {@code 409 CommitFailedException}.
  *
  * <p>The steps that read one map and write the other — a table created in a namespace, a namespace dropped once it is
- * empty, a catalog closed once it is empty — are serialized on the namespaces map, see
- * {@code docs/iceberg-impl.md#提交与并发}.
+ * empty, a catalog closed once it is empty — are serialized on the namespaces map; the commit semantics are in
+ * {@code docs/data-tools.md#commits-and-conflicts}.
  */
 public final class IcebergCatalogStore {
 
