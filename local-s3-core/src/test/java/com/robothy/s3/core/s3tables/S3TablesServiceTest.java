@@ -6,15 +6,21 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
 
 import com.robothy.s3.core.iceberg.IcebergCatalogException;
 import com.robothy.s3.core.iceberg.IcebergCatalogService;
+import com.robothy.s3.core.iceberg.IcebergCatalogStore;
 import com.robothy.s3.core.iceberg.IcebergIdentifier;
 import com.robothy.s3.core.iceberg.IcebergJson;
 import com.robothy.s3.core.iceberg.IcebergMetadataFiles;
 import com.robothy.s3.core.service.BucketService;
 import com.robothy.s3.core.service.manager.LocalS3Manager;
 import com.robothy.s3.core.service.manager.s3tables.LocalS3TablesManager;
+import com.robothy.s3.core.storage.LocalS3Store;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -300,6 +306,29 @@ class S3TablesServiceTest {
     s3Tables.createNamespace(again, namespaceRequest("db"));
     createTable(again, "db", "t");
     assertEquals(1, s3Tables.listTables(again, "db", null, null, null).path("tables").size());
+  }
+
+  @Test
+  void a_table_bucket_whose_deletion_failed_stays_usable() {
+    LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
+    LocalS3Store localS3Store = LocalS3Store.inMemory();
+    S3TablesStore store = spy(S3TablesStore.create(localS3Store));
+    IcebergMetadataFiles metadataFiles = new IcebergMetadataFiles(s3Manager.bucketService(), s3Manager.objectService());
+    s3Tables = new S3TablesService(store, s3Manager.bucketService(), metadataFiles, (tableBucket, warehouse) -> {
+      S3TablesStore.CatalogMaps maps = S3TablesStore.catalogMaps(tableBucket);
+      return new IcebergCatalogService(IcebergCatalogStore.create(localS3Store, maps.namespacesMap(), maps.tablesMap()),
+          metadataFiles, warehouse, true, true);
+    }, "us-east-1", S3TablesArn.DEFAULT_ACCOUNT_ID);
+    String arn = createTableBucket("fragile");
+
+    doThrow(new IllegalStateException("write failed")).when(store).removeBucket(anyString());
+    assertThrows(IllegalStateException.class, () -> s3Tables.deleteTableBucket(arn));
+    doCallRealMethod().when(store).removeBucket(anyString());
+
+    // The catalog it closed on the way must not outlive the failure.
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    createTable(arn, "db", "t");
+    assertEquals(1, s3Tables.listTables(arn, "db", null, null, null).path("tables").size());
   }
 
   @Test
