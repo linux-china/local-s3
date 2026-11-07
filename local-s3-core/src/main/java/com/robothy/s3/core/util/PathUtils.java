@@ -1,7 +1,7 @@
 package com.robothy.s3.core.util;
 
-import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -192,12 +192,13 @@ public class PathUtils {
     return resolved;
   }
 
+  // Files.createDirectories, unlike File#mkdirs, accepts a directory that a concurrent caller created, and reports
+  // a file that blocks the path as FileAlreadyExistsException instead of a bare failure.
   public static void createDirectoryIfNotExist(Path path) {
-    File directory = path.toFile();
-    if (!directory.exists() || !directory.isDirectory()) {
-      if (!directory.mkdirs()) {
-        throw new IllegalStateException("Cannot create directory " + path.toAbsolutePath());
-      }
+    try {
+      Files.createDirectories(path);
+    } catch (IOException e) {
+      throw new UncheckedIOException("Cannot create directory " + path.toAbsolutePath() + ": " + e, e);
     }
   }
 

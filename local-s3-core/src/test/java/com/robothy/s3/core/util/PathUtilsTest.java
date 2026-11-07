@@ -7,11 +7,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.io.UncheckedIOException;
 import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -116,6 +124,54 @@ class PathUtilsTest {
     PathUtils.delete(target);
     assertFalse(Files.exists(target));
     assertThrows(NoSuchFileException.class, () -> PathUtils.delete(target));
+  }
+
+  @Test
+  void createsMissingDirectoriesAndAcceptsExistingOnes() {
+    Path nested = directory.resolve("a").resolve("b");
+
+    PathUtils.createDirectoryIfNotExist(nested);
+    assertTrue(Files.isDirectory(nested));
+
+    PathUtils.createDirectoryIfNotExist(nested);
+    assertTrue(Files.isDirectory(nested));
+  }
+
+  @Test
+  void createsTheSameDirectoryConcurrently() throws Exception {
+    int threads = 8;
+    ExecutorService executor = Executors.newFixedThreadPool(threads);
+    try {
+      for (int round = 0; round < 20; round++) {
+        Path target = directory.resolve("round-" + round).resolve("data");
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+          futures.add(executor.submit(() -> {
+            start.await();
+            PathUtils.createDirectoryIfNotExist(target);
+            return null;
+          }));
+        }
+        start.countDown();
+        for (Future<?> future : futures) {
+          future.get();
+        }
+        assertTrue(Files.isDirectory(target));
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void reportsAFileThatBlocksTheDirectory() throws IOException {
+    Path file = Files.writeString(directory.resolve("file"), "Robothy");
+
+    UncheckedIOException e =
+        assertThrows(UncheckedIOException.class, () -> PathUtils.createDirectoryIfNotExist(file));
+    assertTrue(e.getCause() instanceof FileAlreadyExistsException);
+    assertTrue(e.getMessage().contains(file.toAbsolutePath().toString()));
   }
 
 }
