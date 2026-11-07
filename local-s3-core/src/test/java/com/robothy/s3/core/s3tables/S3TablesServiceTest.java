@@ -374,11 +374,63 @@ class S3TablesServiceTest {
   }
 
   /**
+   * The store under the service that {@linkplain #useSpiedStore} made, which a test looks at the maps of.
+   */
+  private LocalS3Store spiedLocalS3Store;
+
+  @Test
+  void deleting_a_table_bucket_removes_the_maps_of_its_catalog() {
+    useSpiedStore();
+    String arn = createTableBucket("gone");
+    s3Tables.createNamespace(arn, namespaceRequest("db"));
+    IcebergCatalogService held = s3Tables.catalogOfWarehouse(arn);
+    s3Tables.deleteNamespace(arn, "db");
+    S3TablesStore.CatalogMaps maps = S3TablesStore.catalogMaps("gone");
+    assertTrue(spiedLocalS3Store.store().hasMap(maps.namespacesMap()));
+
+    s3Tables.deleteTableBucket(arn);
+    assertFalse(spiedLocalS3Store.store().hasMap(maps.namespacesMap()));
+    assertFalse(spiedLocalS3Store.store().hasMap(maps.tablesMap()));
+    // A request that got the catalog before the delete reads it empty, and is refused a namespace.
+    assertEquals(0, held.listNamespaces(List.of()).path("namespaces").size());
+    assertThrows(IcebergCatalogException.class,
+        () -> held.createNamespace(IcebergJson.read("{\"namespace\":[\"late\"]}")));
+
+    // A table bucket created again under the name opens fresh maps.
+    String again = createTableBucket("gone");
+    s3Tables.createNamespace(again, namespaceRequest("db"));
+    assertEquals(1, s3Tables.listNamespaces(again, null, null, null).path("namespaces").size());
+  }
+
+  @Test
+  void a_delete_leaves_the_catalog_maps_of_a_table_bucket_created_again_under_the_name_be() {
+    S3TablesStore store = useSpiedStore();
+    String arn = createTableBucket("reused");
+    AtomicBoolean landed = new AtomicBoolean();
+    // Between the removal of the record and the cleanup of the catalog: the name is free, a table bucket is created
+    // under it, and its catalog — over maps of the same names — gets a namespace.
+    doAnswer(invocation -> {
+      if (landed.compareAndSet(false, true)) {
+        createTableBucket("reused");
+        s3Tables.createNamespace(arn, namespaceRequest("db"));
+      }
+      return invocation.callRealMethod();
+    }).when(store).removeTags(any());
+    s3Tables.deleteTableBucket(arn);
+    doCallRealMethod().when(store).removeTags(any());
+
+    assertTrue(landed.get());
+    assertTrue(spiedLocalS3Store.store().hasMap(S3TablesStore.catalogMaps("reused").namespacesMap()));
+    assertEquals(1, s3Tables.listNamespaces(arn, null, null, null).path("namespaces").size());
+  }
+
+  /**
    * Replace the service with one over a store that a test can make fail or race.
    */
   private S3TablesStore useSpiedStore() {
     LocalS3Manager s3Manager = LocalS3Manager.createInMemoryS3Manager();
     LocalS3Store localS3Store = LocalS3Store.inMemory();
+    spiedLocalS3Store = localS3Store;
     S3TablesStore store = spy(S3TablesStore.create(localS3Store));
     IcebergMetadataFiles metadataFiles = new IcebergMetadataFiles(s3Manager.bucketService(), s3Manager.objectService());
     s3Tables = new S3TablesService(store, s3Manager.bucketService(), metadataFiles, (tableBucket, warehouse) -> {

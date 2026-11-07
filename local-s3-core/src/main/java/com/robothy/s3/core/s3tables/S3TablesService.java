@@ -251,8 +251,8 @@ public final class S3TablesService {
   public void deleteTableBucket(String tableBucketArn) {
     TableBucketRecord record = requireBucket(tableBucketArn);
     // Closing the catalog, rather than only finding it empty, is what refuses a namespace that a request which found
-    // the table bucket just before creates now. The closed catalog stays in `catalogs` so that such a request gets it
-    // rather than a new one; a table bucket created under the name gets a catalog of its own, see catalog().
+    // the table bucket just before creates now. The closed catalog stays in `catalogs` until the record is gone, so
+    // that such a request gets it rather than a new one; after that catalog() refuses the stale record on its own.
     IcebergCatalogService catalog = catalog(record);
     if (!catalog.closeIfEmpty()) {
       throw S3TablesException.conflict("The table bucket '" + record.name()
@@ -277,6 +277,26 @@ public final class S3TablesService {
     store.removeTags(bucketArn(record.name()));
     leftovers.forEach(table -> store.removeTags(tableArn(record.name(), table.tableId())));
     deleteWarehouseBucket(record);
+    forgetCatalog(record.name(), catalog);
+  }
+
+  /**
+   * Drop the closed catalog of a deleted table bucket, and the maps it was kept in.
+   *
+   * <p>Done under the lock of {@code catalogs} on the name, which catalog() opens a catalog under: a table bucket
+   * created again under the name shares the names of the maps, so they are removed only while no catalog of it is
+   * open, and one opened later opens them afresh. A request still holding the closed catalog reads empty maps or is
+   * refused by it, as before.
+   */
+  private void forgetCatalog(String name, IcebergCatalogService closed) {
+    catalogs.compute(name, (n, current) -> {
+      if (current != null && current.catalog() != closed) {
+        // The catalog of a table bucket created again under the name, whose maps these now are.
+        return current;
+      }
+      store.removeCatalogMaps(n);
+      return null;
+    });
   }
 
   /*

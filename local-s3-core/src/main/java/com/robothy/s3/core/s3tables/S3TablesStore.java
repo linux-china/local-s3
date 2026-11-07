@@ -250,6 +250,19 @@ public final class S3TablesStore {
     return true;
   }
 
+  /**
+   * Remove the two maps of the Iceberg catalog of a table bucket, see {@linkplain #catalogMaps}, which deleting it
+   * does: they would otherwise pile up in the store, one pair per table bucket ever created.
+   *
+   * @param tableBucket the name of the table bucket, which must be one whose catalog no one opens any more.
+   */
+  public void removeCatalogMaps(String tableBucket) {
+    CatalogMaps maps = catalogMaps(tableBucket);
+    localS3Store.store().removeMap(maps.namespacesMap());
+    localS3Store.store().removeMap(maps.tablesMap());
+    commit();
+  }
+
   private static void removeByPrefix(MVMap<String, String> map, String prefix) {
     List<String> keys = new ArrayList<>();
     Iterator<String> iterator = map.keyIterator(prefix);
