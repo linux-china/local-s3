@@ -13,8 +13,13 @@ import java.util.function.Supplier;
  * the operation is implemented.
  *
  * <p>The locks are reentrant: an operation may call another operation on the same bucket, and a change nested in a
- * change of the same bucket runs within the outer one, which persists the bucket once. A read lock can't be upgraded,
- * so an operation that holds the read lock of a bucket must not call an operation that changes it.
+ * change of the same bucket runs within the outer one, which persists the bucket once.
+ *
+ * <p>A read lock can't be upgraded, and buckets share their locks (see {@linkplain BucketLock}), so the read lock of
+ * one bucket may be the lock of another one: an operation that holds the read lock of <em>any</em> bucket must not
+ * call {@linkplain #write} or {@linkplain #change} on <em>any</em> bucket, or it may wait for itself forever. An
+ * operation across buckets, e.g. a copy, reads the source under its read lock, releases it, then changes the
+ * destination.
  */
 public interface BucketGuard {
 

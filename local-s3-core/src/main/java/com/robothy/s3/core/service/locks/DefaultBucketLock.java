@@ -9,7 +9,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * The bucket locks of one LocalS3 service. Buckets share a fixed number of read-write locks, chosen by the hash of
  * the bucket name, so that the locks take bounded memory however many buckets are created and deleted.
  *
- * <p>Buckets that share a lock may wait for each other. That is safe, since an operation locks a single bucket.
+ * <p>Buckets that share a lock may wait for each other. That is safe as long as no operation takes the write lock of a
+ * bucket while it holds the read lock of another one, which may be the same lock; see {@code BucketGuard}.
  */
 class DefaultBucketLock implements BucketLock {
 
