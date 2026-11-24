@@ -63,7 +63,9 @@ class GracefulShutdownTest {
   void aResponseBeingWrittenIsWrittenBeforeTheServiceStops() throws Exception {
     LocalS3 localS3 = LocalS3.builder().port(-1).buckets("bucket").build();
     localS3.start();
-    byte[] content = new byte[16 * 1024 * 1024];
+    // Larger than what the socket buffers of both ends hold (Linux autotunes them up to 4 MiB + 6 MiB by default), so
+    // that most of the response is still to be written when the service stops.
+    byte[] content = new byte[32 * 1024 * 1024];
     new Random(16).nextBytes(content);
     try {
       try (Socket socket = new Socket("127.0.0.1", localS3.getPort())) {
@@ -78,8 +80,9 @@ class GracefulShutdownTest {
 
       AtomicReference<byte[]> body = new AtomicReference<>();
       try (Socket socket = new Socket("127.0.0.1", localS3.getPort())) {
-        // A small receive buffer, so that most of the response is still to be written when the service stops.
-        socket.setReceiveBufferSize(4096);
+        // The client doesn't read until the service is stopping, which holds the response back. Not a small receive
+        // buffer: a window below the MSS of the loopback (64 KiB) puts the sender into zero window probes, which send
+        // a few KiB per probe, and the response couldn't be written within the timeout of the shutdown at all.
         socket.setSoTimeout(30_000);
         socket.getOutputStream().write("GET /bucket/large HTTP/1.1\r\nHost: localhost\r\n\r\n"
             .getBytes(StandardCharsets.ISO_8859_1));
