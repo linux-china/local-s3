@@ -243,7 +243,8 @@ that version reports `null`.
   `x-amz-delete-marker: true`. Like Amazon S3, it is idempotent: it succeeds if the version, or the key, is already
   gone, so that the retries and the concurrent cleanups of Iceberg, Delta Lake or DuckLake don't fail. Its conditions,
   e.g. `If-Match`, still fail on a key that holds no version, see [conditional requests](#conditional-requests).
-  Unlike a read, a delete doesn't fail on a malformed version ID either; it deletes nothing.
+  Unlike a read, a delete doesn't fail on a malformed version ID either, nor on a version ID other than `null` in a
+  bucket that was never versioned; it deletes nothing, and so does each such key of a `DeleteObjects`.
 + `GetObject`, `HeadObject`, `CopyObject` (through `versionId` of the source), `GetObjectAttributes`, `RestoreObject`
   and the tagging, ACL, retention and legal hold operations address a version with `versionId`; a conditional read of a
   version is evaluated against that version. A version ID that LocalS3 couldn't have given, i.e. neither `null` nor a

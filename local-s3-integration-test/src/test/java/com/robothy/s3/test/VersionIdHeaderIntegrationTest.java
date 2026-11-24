@@ -62,6 +62,24 @@ public class VersionIdHeaderIntegrationTest {
   }
 
   /**
+   * A delete with a version ID that names no version deletes nothing, in a bucket that was never versioned as in a
+   * versioned one; see {@code docs/semantics.md#versioning}.
+   */
+  @Test
+  @LocalS3
+  void deleteWithAVersionIdOtherThanNullDeletesNothingInANeverVersionedBucket(S3Client s3) {
+    String bucket = "never-versioned-delete";
+    s3.createBucket(b -> b.bucket(bucket));
+    putObject(s3, bucket);
+
+    for (String versionId : new String[] {"bogus", "123"}) {
+      assertEquals(204, s3.deleteObject(b -> b.bucket(bucket).key(KEY).versionId(versionId))
+          .sdkHttpResponse().statusCode(), versionId);
+    }
+    assertEquals("hello", s3.getObjectAsBytes(b -> b.bucket(bucket).key(KEY)).asUtf8String());
+  }
+
+  /**
    * Once versioning is suspended, the object stored before it has the "null" version, which is reported.
    */
   @Test

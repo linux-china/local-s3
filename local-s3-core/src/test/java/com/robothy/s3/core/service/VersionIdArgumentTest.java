@@ -61,6 +61,11 @@ class VersionIdArgumentTest extends LocalS3ServiceTestBase {
         new String[][] {{"k", "v"}}));
     assertThrows(LocalS3InvalidArgumentException.class, () -> objectService.getObjectAcl(bucket, "a", "123"));
     assertDoesNotThrow(() -> objectService.getObjectTagging(bucket, "a", ObjectMetadata.NULL_VERSION));
+    // A delete never fails on its version ID, and deletes nothing.
+    for (String versionId : new String[] {"123", "bogus"}) {
+      assertDoesNotThrow(() -> objectService.deleteObject(bucket, "a", versionId), versionId);
+    }
+    assertDoesNotThrow(() -> objectService.getObject(bucket, "a", GetObjectOptions.builder().build()));
   }
 
   @ParameterizedTest

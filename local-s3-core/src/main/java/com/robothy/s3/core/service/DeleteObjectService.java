@@ -3,7 +3,6 @@ package com.robothy.s3.core.service;
 import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.ObjectLockAssertions;
 import com.robothy.s3.core.assertions.PreconditionAssertions;
-import com.robothy.s3.core.assertions.VersionedObjectAssertions;
 import com.robothy.s3.core.event.S3Change;
 import com.robothy.s3.core.model.answers.DeleteObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -46,6 +45,11 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
           bucketMetadata.getObjectMetadata(key).orElse(null));
       DeleteObjectAns ans;
       if (Objects.isNull(bucketMetadata.getVersioningEnabled())) {
+        if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
+          // Only the null version can exist here, so the version is already gone: the delete succeeds, like it does
+          // in a versioned bucket, and changes nothing to publish.
+          return DeleteObjectAns.builder().build();
+        }
         ans = deleteObjectFromUnVersionedBucket(bucketMetadata, storage(), key, versionId);
       } else if (Objects.nonNull(versionId)) {
         Optional<VersionedObjectMetadata> version = bucketMetadata.getObjectMetadataRef(key).map(ObjectMetadataRef::get)
@@ -77,10 +81,6 @@ public interface DeleteObjectService extends LocalS3MetadataApplicable, StorageA
   }
 
   static DeleteObjectAns deleteObjectFromUnVersionedBucket(BucketMetadata bucketMetadata, Storage storage, String key, String versionId) {
-    if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
-      throw VersionedObjectAssertions.invalidVersionId(versionId);
-    }
-
     ObjectMetadata removedObject = bucketMetadata.removeObjectMetadata(key);
     if (Objects.nonNull(removedObject)) { // the object exists
       VersionedObjectMetadata removedVersion = removedObject.getVersionedObjectMap().firstEntry().getValue();

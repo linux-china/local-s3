@@ -187,7 +187,6 @@ class RejectedChangeLeavesMetadataUnchangedTest {
 
     assertRejected(() -> objectService.deleteObject(BUCKET, "a", null,
         ObjectPreconditions.builder().ifMatch("\"0123456789abcdef0123456789abcdef\"").build()));
-    assertRejected(() -> objectService.deleteObject(BUCKET, "a", "no-such-version"));
   }
 
   @Test

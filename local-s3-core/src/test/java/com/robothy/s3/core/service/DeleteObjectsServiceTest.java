@@ -90,12 +90,12 @@ class DeleteObjectsServiceTest extends LocalS3ServiceTestBase {
     assertFalse(deleted.deleteMarker());
     assertNull(deleted.deleteMarkerVersionId());
 
-    S3Error s3Error = assertInstanceOf(S3Error.class, results.get(1));
-    // AmazonS3 returns NoSuchVersion code.
-    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.code());
-
-    assertInstanceOf(S3Error.class, results.get(2));
-    assertEquals(S3ErrorCode.InvalidArgument.code(), s3Error.code());
+    // A version ID other than null names no version, so it deletes nothing, like DeleteObject.
+    for (int i = 1; i < 3; i++) {
+      DeleteResult.Deleted noop = assertInstanceOf(DeleteResult.Deleted.class, results.get(i));
+      assertEquals("123", noop.versionId());
+      assertFalse(noop.deleteMarker());
+    }
 
 
     objectService.putObject(bucketName, "a.txt", PutObjectOptions.builder()
