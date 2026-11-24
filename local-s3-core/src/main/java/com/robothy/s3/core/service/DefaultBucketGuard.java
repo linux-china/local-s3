@@ -33,6 +33,8 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
 
   private final Consumer<String> bucketMetadataReloader;
 
+  private final ChangeUndo changeUndo;
+
   /**
    * Held shared by every operation of a bucket, around the lock of the bucket, and exclusively by an
    * {@linkplain #exclusive} operation.
@@ -55,6 +57,24 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
   public DefaultBucketGuard(BucketLock bucketLock, Function<String, M> bucketMetadataLoader,
                             MetadataStore<M> bucketMetaStore, StorageTransactions storage,
                             Consumer<String> bucketMetadataReloader) {
+    this(bucketLock, bucketMetadataLoader, bucketMetaStore, storage, bucketMetadataReloader, null);
+  }
+
+  /**
+   * Create a guard that undoes a failed change in memory.
+   *
+   * @param bucketLock the bucket locks, shared by all services of the same LocalS3 service.
+   * @param bucketMetadataLoader loads the in-memory metadata of a bucket; {@code null} if nothing is persisted.
+   * @param bucketMetaStore persists bucket metadata; {@code null} to not persist.
+   * @param storage the storage of the service, whose deletions wait for the bucket to be persisted; {@code null} if
+   *     data is deleted immediately.
+   * @param bucketMetadataReloader replaces the in-memory metadata of a bucket with the persisted one;
+   *     {@code null} to keep the in-memory metadata when an operation fails.
+   * @param changeUndo undoes a failed change of a persisted bucket, whatever failed it; {@code null} for none.
+   */
+  public DefaultBucketGuard(BucketLock bucketLock, Function<String, M> bucketMetadataLoader,
+                            MetadataStore<M> bucketMetaStore, StorageTransactions storage,
+                            Consumer<String> bucketMetadataReloader, ChangeUndo changeUndo) {
     this.bucketLock = Objects.requireNonNull(bucketLock);
     if (bucketMetaStore != null && bucketMetadataLoader == null) {
       throw new IllegalArgumentException("A guard that persists buckets needs to load their metadata.");
@@ -63,6 +83,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     this.bucketMetaStore = bucketMetaStore;
     this.storage = storage;
     this.bucketMetadataReloader = bucketMetadataReloader;
+    this.changeUndo = changeUndo;
   }
 
   @Override
@@ -82,8 +103,9 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
       return operation.get();
     }
     // The changes that the operation publishes are delivered once the write lock is released, and the change is
-    // durable.
-    return changePublisher.withinChange(() -> {
+    // durable: outside the service lock, so that a listener may run an exclusive operation. The transaction is begun
+    // and committed within it, so an exclusive operation that replaces the storage, e.g. a reset, can't come between.
+    return changePublisher.withinChange(() -> serviceLock.shared(() -> {
       if (Objects.isNull(bucketMetaStore)) {
         return write(bucketName, () -> changing(bucketName, operation));
       }
@@ -92,7 +114,7 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
           () -> changing(bucketName, () -> invokeAndPersist(bucketName, change, operation, ownsTransaction)));
       sync(ownsTransaction);
       return result;
-    });
+    }));
   }
 
   private <T> T changing(String bucketName, Supplier<T> operation) {
@@ -163,22 +185,27 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
    * <p>A {@linkplain LocalS3Exception} or a {@linkplain LocalS3VectorException} thrown by the operation rejects the
    * request, which services do before they change the metadata, so the in-memory metadata is kept. After any other
    * failure, or if the persistence fails, the in-memory metadata of the bucket is reloaded from the store, dropping the
-   * changes that were made in memory only.
+   * changes that were made in memory only. A {@linkplain ChangeUndo} undoes every failed change: recording costs it
+   * little more than the change, so it doesn't trust the services to reject before they change anything.
    */
   private <T> T invokeAndPersist(String bucketName, Change change, Supplier<T> operation, boolean ownsTransaction) {
+    ChangeUndo.Recording recording = Objects.isNull(changeUndo) ? null : changeUndo.record(bucketName);
     T result;
     try {
       result = operation.get();
     } catch (RuntimeException | Error e) {
-      rollback(ownsTransaction, bucketName, e, !isRejection(e));
+      rollback(ownsTransaction, bucketName, e, !isRejection(e), recording);
       throw e;
     }
 
     try {
       persistBucket(bucketName, change);
     } catch (RuntimeException | Error e) {
-      rollback(ownsTransaction, bucketName, e, true);
+      rollback(ownsTransaction, bucketName, e, true, recording);
       throw e;
+    }
+    if (Objects.nonNull(recording)) {
+      recording.forget();
     }
     return result;
   }
@@ -194,9 +221,17 @@ public final class DefaultBucketGuard<M> implements BucketGuard {
     }
   }
 
-  private void rollback(boolean ownsTransaction, String bucketName, Throwable cause, boolean reloadMetadata) {
+  private void rollback(boolean ownsTransaction, String bucketName, Throwable cause, boolean reloadMetadata,
+                        ChangeUndo.Recording recording) {
     if (ownsTransaction) {
       storage.rollback();
+    }
+    if (Objects.nonNull(recording)) {
+      try {
+        recording.undo();
+      } catch (RuntimeException e) {
+        cause.addSuppressed(e);
+      }
     }
     if (reloadMetadata && Objects.nonNull(bucketMetadataReloader) && Objects.nonNull(bucketName)) {
       try {

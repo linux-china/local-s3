@@ -90,4 +90,55 @@ class BucketMetadataTest {
     assertEquals(json, JsonUtils.toJson(deserialized));
   }
 
+
+  @Test
+  void undoRestoresWhatTheRecordedChangeChanged() {
+    BucketMetadata bucket = new BucketMetadata();
+    bucket.setBucketName("bucket");
+    bucket.setPolicy("before");
+    bucket.getStoredConfigurations().put("website", "<before/>");
+    bucket.putObjectMetadata("kept", new ObjectMetadata());
+    UploadMetadata upload = new UploadMetadata();
+    upload.getParts().put(1, new UploadPartMetadata());
+    bucket.getUploads().put("uploaded", new ConcurrentSkipListMap<>(Map.of("u1", upload)));
+
+    BucketMetadata.Undo undo = bucket.recordUndo();
+    assertThrows(IllegalStateException.class, bucket::recordUndo);
+    bucket.setPolicy("after");
+    bucket.getStoredConfigurations().put("website", "<after/>");
+    bucket.putObjectMetadata("added", new ObjectMetadata());
+    bucket.removeObjectMetadata("kept");
+    bucket.markUploadsChanged("uploaded");
+    upload.getParts().put(2, new UploadPartMetadata());
+    bucket.getUploads().get("uploaded").remove("u1");
+    bucket.markUploadsChanged("new");
+    bucket.getUploads().put("new", new ConcurrentSkipListMap<>());
+    undo.undo();
+
+    assertEquals("before", bucket.getPolicy().orElseThrow());
+    assertEquals("<before/>", bucket.getStoredConfigurations().get("website"));
+    assertTrue(bucket.getObjectMetadataRef("kept").isPresent());
+    assertFalse(bucket.getObjectMetadataRef("added").isPresent());
+    assertSame(upload, bucket.getUploads().get("uploaded").get("u1"));
+    assertEquals(List.of(1), List.copyOf(upload.getParts().keySet()));
+    assertFalse(bucket.getUploads().containsKey("new"));
+    assertThrows(IllegalStateException.class, undo::forget, "A recording ends once.");
+
+    BucketMetadata.Undo kept = bucket.recordUndo();
+    bucket.setPolicy("after");
+    kept.forget();
+    assertEquals("after", bucket.getPolicy().orElseThrow());
+  }
+
+  @Test
+  void onlyTheThreadThatRecordsAChangeIsRecorded() throws Exception {
+    BucketMetadata bucket = new BucketMetadata();
+    bucket.setBucketName("bucket");
+    BucketMetadata.Undo undo = bucket.recordUndo();
+    Thread other = new Thread(() -> bucket.putObjectMetadata("other", new ObjectMetadata()));
+    other.start();
+    other.join();
+    undo.undo();
+    assertTrue(bucket.getObjectMetadataRef("other").isPresent());
+  }
 }

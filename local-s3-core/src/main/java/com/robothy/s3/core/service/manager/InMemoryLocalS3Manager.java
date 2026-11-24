@@ -4,6 +4,7 @@ import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.LocalS3Metadata;
 import com.robothy.s3.core.service.BucketGuard;
 import com.robothy.s3.core.service.BucketService;
+import com.robothy.s3.core.service.ChangeUndo;
 import com.robothy.s3.core.service.DefaultBucketGuard;
 import com.robothy.s3.core.service.DefaultBucketService;
 import com.robothy.s3.core.service.DefaultObjectService;
@@ -13,6 +14,8 @@ import com.robothy.s3.core.service.locks.BucketLock;
 import com.robothy.s3.core.model.internal.ObjectMetadataRef;
 import com.robothy.s3.core.storage.MetadataStore;
 import com.robothy.s3.core.storage.Storage;
+import com.robothy.s3.core.storage.StorageTransactions;
+import com.robothy.s3.core.storage.TransactionalStorage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -45,11 +48,12 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
 
   /**
    * Locks the buckets of this service, shared by its bucket and object services. The metadata in heap is the only copy,
-   * so a change is not serialized anywhere: the store only forgets what the change recorded. A failed operation
-   * therefore keeps whatever it changed in the metadata, which is the trade-off of a service for tests.
+   * so a change is not serialized anywhere: the store only forgets what the change recorded, and a failed change is
+   * undone from what the bucket recorded of it instead of reloaded.
    */
   private final BucketGuard bucketGuard = new DefaultBucketGuard<>(BucketLock.create(),
-      bucketName -> data.metadata().getBucketMetadata(bucketName).get(), new HeapBucketMetadataStore(), null, null);
+      bucketName -> data.metadata().getBucketMetadata(bucketName).get(), new HeapBucketMetadataStore(),
+      new CurrentStorageTransactions(), null, this::recordChange);
 
   private static final InitialDataCache cache = new InitialDataCache();
 
@@ -62,7 +66,12 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
   /**
    * The metadata and the storage of the service.
    */
-  private record Data(LocalS3Metadata metadata, Storage storage) {
+  private record Data(LocalS3Metadata metadata, TransactionalStorage storage) {
+
+    Data(LocalS3Metadata metadata, Storage storage) {
+      this(metadata, new TransactionalStorage(storage));
+    }
+
   }
 
   /**
@@ -176,6 +185,63 @@ final class InMemoryLocalS3Manager implements LocalS3Manager {
    */
   private void forgetChanges() {
     data.metadata().getBucketMetadataMap().values().forEach(HeapBucketMetadataStore::forgetChanges);
+  }
+
+  /**
+   * The transactions of the storage of the current data. The guard begins and ends a transaction within an operation
+   * of a bucket, which a {@linkplain #reset()} doesn't run concurrently with, so both reach the same storage.
+   */
+  private final class CurrentStorageTransactions implements StorageTransactions {
+
+    @Override
+    public boolean begin() {
+      return data.storage().begin();
+    }
+
+    @Override
+    public Runnable commitLater() {
+      return data.storage().commitLater();
+    }
+
+    @Override
+    public void rollback() {
+      data.storage().rollback();
+    }
+
+    @Override
+    public void abandon() {
+      data.storage().abandon();
+    }
+
+  }
+
+  /**
+   * Record a change of a bucket, so that it can be undone: a bucket that the change creates is removed again, and a
+   * bucket that it deletes is put back, as the bucket recorded it.
+   */
+  private ChangeUndo.Recording recordChange(String bucketName) {
+    LocalS3Metadata metadata = data.metadata();
+    BucketMetadata before = metadata.getBucketMetadata(bucketName).orElse(null);
+    BucketMetadata.Undo undo = before == null ? null : before.recordUndo();
+    return new ChangeUndo.Recording() {
+      @Override
+      public void undo() {
+        if (before == null) {
+          metadata.getBucketMetadataMap().remove(bucketName);
+          return;
+        }
+        undo.undo();
+        metadata.getBucketMetadataMap().put(bucketName, before);
+        HeapBucketMetadataStore.forgetChanges(before);
+      }
+
+      @Override
+      public void forget() {
+        if (undo != null) {
+          undo.forget();
+        }
+      }
+    };
   }
 
   /**

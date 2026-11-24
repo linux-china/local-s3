@@ -42,6 +42,7 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
       ServerSideEncryption serverSideEncryption = Objects.isNull(options.getServerSideEncryption())
           && Objects.isNull(options.getCustomerEncryption())
           ? bucketMetadata.getDefaultEncryption() : options.getServerSideEncryption();
+      bucketMetadata.markUploadsChanged(key);
       NavigableMap<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
       uploads.putIfAbsent(key, new ConcurrentSkipListMap<>());
       uploads.get(key).put(uploadId, UploadMetadata.builder()
@@ -56,7 +57,6 @@ public interface CreateMultipartUploadService extends LocalS3MetadataApplicable 
           .customerEncryption(options.getCustomerEncryption())
           .serverSideEncryption(serverSideEncryption)
           .build());
-      bucketMetadata.markUploadsChanged(key);
       return CreateMultipartUploadAns.builder()
           .uploadId(uploadId)
           .serverSideEncryption(serverSideEncryption)

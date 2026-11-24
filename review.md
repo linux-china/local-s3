@@ -168,6 +168,22 @@
    `LocalS3Exception` 的异常，内存元数据会停在中间状态：旧内容已删除，新版本可能已经挂上。目前的调用链里
    `addVersion` 之后只有 `publishChange`（只入队，不投递），所以没有实际触发点。如果以后在 `addVersion` 之后加入新的
    校验，就需要注意这一点。
+
+   > **状态：已修复（2026-11-24），采用内存撤销方案。** 修正一处描述：IN_MEMORY 模式其实有 `bucketMetaStore`
+   > （`HeapBucketMetadataStore`），缺的是存储事务和回滚手段，所以走的是持久化分支，只是失败时无事可做。只做延迟删除不够：
+   > `putObject` 失败后，`discardStoredContent` 会立即删除新内容，而半途改过的元数据可能已经引用了它。修改如下：
+   > - 内存模式的存储也包上 `TransactionalStorage`。被替换的内容要等变更成功后才删除，失败时删除本次写入的内容。
+   > - 新增 `ChangeUndo`，由 `DefaultBucketGuard` 在写锁内调用。`BucketMetadata.recordUndo()` 先记下 bucket 的设置，
+   >   再在每个对象 key（`getObjectMetadata` / `putObjectMetadata` / `removeObjectMetadata`）和每个 key 的 uploads
+   >   （`markUploadsChanged`）第一次被修改前记录原状态。任何失败（包括拒绝类异常）都按记录恢复；新建的 bucket 会被移除，
+   >   被删除的 bucket 会被放回。为此，5 处修改 uploads 的服务都把 `markUploadsChanged` 移到了修改之前。
+   > - `change` 整体放进 `serviceLock.shared`，这样事务的 begin 和 commit 之间不会插入 `reset()`（`reset()` 会替换存储）。
+   >   事件仍在锁外投递。
+   > - 代价：每次变更都会深拷贝所涉 key 的元数据，开销随该 key 的版本数增长；uploads 只按 key 浅拷贝 parts 映射。
+   >   文档见 `docs/architecture.md#a-change`。
+   > - 测试：`InMemoryChangeUndoTest`（PUT 替换 null version、UploadPart 替换 part 时注入失败；撤掉修复后两条都失败）
+   >   和 `BucketMetadataTest` 中的两条 undo 用例。
+   > - 未覆盖：IN_MEMORY 的 S3 Vectors（`BucketGuard.inMemory()`）仍然不回滚。
 4. **`ListObjectsV2` 在 `max-keys=0` 时返回 `IsTruncated=false`。** 和 AWS 当前行为一致，这里只做记录，不需要修改。
 5. **生命周期规则匹配的对象没有返回 `x-amz-expiration`。** 实测在有 `Expiration.Days` 规则的 bucket 中，PUT / HEAD
    都不返回该响应头。依赖这个头的客户端（少数备份工具和 SDK 示例）拿不到过期时间。如果文档声明支持 Lifecycle，

@@ -80,11 +80,11 @@ public interface UploadPartService extends LocalS3MetadataApplicable, StorageApp
     return changeBucket(bucket, () -> {
       BucketMetadata bucketMetadata = BucketAssertions.assertBucketExists(localS3Metadata(), bucket);
       UploadMetadata uploadMetadata = UploadAssertions.assertUploadExists(bucketMetadata, key, uploadId);
+      bucketMetadata.markUploadsChanged(key);
       UploadPartMetadata replaced = uploadMetadata.getParts().put(partNumber, uploadPartMetadata);
       if (Objects.nonNull(replaced)) {
         storage().delete(replaced.getFileId());
       }
-      bucketMetadata.markUploadsChanged(key);
       return UploadPartAns.builder()
           .etag(uploadPartMetadata.getEtag())
           .lastModified(uploadPartMetadata.getLastModified())

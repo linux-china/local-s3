@@ -204,9 +204,9 @@ public interface LifecycleExecutionService extends LocalS3MetadataApplicable, St
         if (rule == null) {
           continue;
         }
+        bucket.markUploadsChanged(key);
         uploadsOfKey.remove(upload.getKey());
         upload.getValue().getParts().values().forEach(part -> storage().delete(part.getFileId()));
-        bucket.markUploadsChanged(key);
         publishChange(S3Change.multipartUploadAborted(OPERATION, bucket.getBucketName(), key, upload.getKey()));
         actions.add(new LifecycleActionAns(bucket.getBucketName(), rule.id(),
             LifecycleActionAns.Type.MULTIPART_UPLOAD_ABORTED, key, null, upload.getKey()));

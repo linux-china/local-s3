@@ -128,8 +128,13 @@ If the operation or the persistence fails:
 + the objects written during the transaction are deleted, and the recorded deletions are discarded;
 + in a `PERSISTENCE` service, the in-memory metadata of the bucket is reloaded from the store, dropping what was changed
   in memory only — unless the failure is a rejection of the request (a `LocalS3Exception`), which the services raise
-  before they change anything. An `IN_MEMORY` service has no store to reload from (see
-  [Metadata](#metadata-locals3store)), so an operation that fails after it changed the metadata keeps that change.
+  before they change anything;
++ in an `IN_MEMORY` service, which has no store to reload from (see [Metadata](#metadata-locals3store)), the change is
+  undone in memory instead: the bucket records the state of each object key and of the multipart uploads of each key
+  before the operation first changes them, together with its settings, and restores them, so a failed operation leaves
+  no part of its change behind, rejection or not. A bucket that the operation created is removed again, and one that it
+  deleted is put back. Recording copies the metadata of each key that the operation changes, which grows with the
+  number of versions of the key.
 
 Deleting only after the metadata is persisted means that persisted metadata never references a deleted object, even if
 the process dies in between; at worst an unreferenced file is left behind.
@@ -239,8 +244,8 @@ How a service combines them:
 
 | Mode | Metadata | Content |
 |---|---|---|
-| `IN_MEMORY` | heap only | `InMemoryStorage` |
-| `IN_MEMORY` with initial data | heap only, loaded from the data directory's `buckets.mvstore`, opened read-only | `LayeredStorage` over the read-only directory; with the initial data cache, `CopyOnAccessStorage` over it, shared by the services that start from the same directory |
+| `IN_MEMORY` | heap only | `TransactionalStorage` over `InMemoryStorage` |
+| `IN_MEMORY` with initial data | heap only, loaded from the data directory's `buckets.mvstore`, opened read-only | `TransactionalStorage` over a `LayeredStorage` over the read-only directory; with the initial data cache, over a `CopyOnAccessStorage` over it, shared by the services that start from the same directory |
 | `PERSISTENCE` | `buckets.mvstore` | `TransactionalStorage` over `LocalFileSystemStorage` |
 
 Vectors mirror this with `VectorStorage`: `InMemoryVectorStorage`, `FileSystemVectorStorage`, `TransactionalVectorStorage`

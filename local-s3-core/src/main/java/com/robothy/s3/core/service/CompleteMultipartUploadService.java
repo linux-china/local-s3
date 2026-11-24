@@ -482,12 +482,12 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           storage().delete(part.getFileId());
         }
       });
+      bucketMetadata.markUploadsChanged(key);
       Map<String, NavigableMap<String, UploadMetadata>> uploads = bucketMetadata.getUploads();
       uploads.get(key).remove(uploadId);
       if (uploads.get(key).isEmpty()) {
         uploads.remove(key);
       }
-      bucketMetadata.markUploadsChanged(key);
 
       publishChange(S3Change.objectVersion(S3ChangeType.OBJECT_CREATED, "CompleteMultipartUpload", bucket, key,
           putObjectAns.getVersionId(), putObjectAns.getSize(), putObjectAns.getEtag(),

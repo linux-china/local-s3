@@ -9,17 +9,21 @@ import com.robothy.s3.core.model.BucketObjectLockConfiguration;
 import com.robothy.s3.core.model.IdentifiedBucketConfiguration;
 import com.robothy.s3.core.model.StoredBucketConfiguration;
 import com.robothy.s3.core.util.BucketEncryptionConfigurations;
+import com.robothy.s3.core.util.JsonUtils;
 import com.robothy.s3.core.util.ObjectKeys;
 import com.robothy.s3.datatypes.AccessControlPolicy;
 import com.robothy.s3.datatypes.CORSConfiguration;
 import com.robothy.s3.datatypes.PublicAccessBlockConfiguration;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -167,6 +171,15 @@ public class BucketMetadata {
   private BucketObjectLockConfiguration objectLock;
 
   /**
+   * What the running change of the bucket is to restore if it fails; {@code null} unless one is recorded, see
+   * {@linkplain #recordUndo()}.
+   */
+  @JsonIgnore
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  private transient volatile Undo undo;
+
+  /**
    * Get metadata of the specified object.
    *
    * @param key the object key.
@@ -181,6 +194,7 @@ public class BucketMetadata {
       // The caller changes the object in place, e.g. adds a version or sets the tagging of one, which only the key
       // recorded here tells the metadata store about. The reference is pinned with it, so that the metadata the
       // caller is about to change isn't dropped from heap before it is written.
+      recordObjectUndo(key);
       changedObjectKeys.add(key);
       ref.pin();
     }
@@ -209,6 +223,7 @@ public class BucketMetadata {
     ObjectAssertions.assertObjectKeyIsValid(key);
     ObjectMetadataRef ref = ObjectMetadataRef.of(objectMetadata);
     ref.pin();
+    recordObjectUndo(key);
     objectMap.put(key, ref);
     changedObjectKeys.add(key);
     return objectMetadata;
@@ -232,18 +247,24 @@ public class BucketMetadata {
    * @return the removed object metadata; {@code null} if the key held none.
    */
   public ObjectMetadata removeObjectMetadata(String key) {
+    recordObjectUndo(key);
     ObjectMetadataRef removed = objectMap.remove(key);
     changedObjectKeys.add(key);
     return removed == null ? null : removed.get();
   }
 
   /**
-   * Record that the multipart uploads of a key changed, so that the metadata store writes them. The services change
-   * {@linkplain #getUploads()} in place, which the metadata can't see.
+   * Record that the multipart uploads of a key change, so that the metadata store writes them. The services change
+   * {@linkplain #getUploads()} in place, which the metadata can't see, and call this before they do, so that a change
+   * that is {@linkplain #recordUndo() recorded} can restore them.
    *
    * @param key the object key of the upload.
    */
   public void markUploadsChanged(String key) {
+    Undo recording = recording();
+    if (recording != null) {
+      recording.recordUploads(key);
+    }
     changedUploadKeys.add(key);
   }
 
@@ -484,6 +505,173 @@ public class BucketMetadata {
    */
   public void setCors(CORSConfiguration cors) {
     this.cors = cors;
+  }
+
+  /**
+   * Start recording what a change of the bucket changes, so that it can be undone: the settings of the bucket now, and
+   * the state of each object key and of the uploads of each key before the change first changes it, through
+   * {@linkplain #getObjectMetadata}, {@linkplain #putObjectMetadata}, {@linkplain #removeObjectMetadata} and
+   * {@linkplain #markUploadsChanged}. Only what the current thread changes is recorded: it holds the write lock of the
+   * bucket, while other threads read the uploads without it.
+   *
+   * <p>For a bucket whose metadata in heap is the only copy, which has nothing to reload a failed change from.
+   *
+   * @return the recording, which the change {@linkplain Undo#undo() undoes} or {@linkplain Undo#forget() forgets}.
+   * @throws IllegalStateException if a change of the bucket is recorded already.
+   */
+  public Undo recordUndo() {
+    if (undo != null) {
+      throw new IllegalStateException("A change of bucket " + bucketName + " is recorded already.");
+    }
+    Undo recording = new Undo();
+    undo = recording;
+    return recording;
+  }
+
+  private Undo recording() {
+    Undo recording = undo;
+    return recording != null && recording.owner == Thread.currentThread() ? recording : null;
+  }
+
+  private void recordObjectUndo(String key) {
+    Undo recording = recording();
+    if (recording != null) {
+      recording.recordObject(key);
+    }
+  }
+
+  /**
+   * What a change of the bucket changed, as it was before; see {@linkplain #recordUndo()}.
+   */
+  public final class Undo {
+
+    private final Thread owner = Thread.currentThread();
+
+    /**
+     * A copy of the metadata of each key as it was, {@code null} for a key that held no object. A copy rather than the
+     * instance, since the services change the metadata they are handed in place.
+     */
+    private final Map<String, ObjectMetadata> objects = new HashMap<>();
+
+    /**
+     * The uploads of each key as they were, by upload ID; {@code null} for a key that had none.
+     */
+    private final Map<String, Map<String, UploadMetadata>> uploadsByKey = new HashMap<>();
+
+    /**
+     * A copy of the parts of each recorded upload, which is all that the services change of an upload in place.
+     */
+    private final Map<UploadMetadata, NavigableMap<Integer, UploadPartMetadata>> parts = new HashMap<>();
+
+    /**
+     * The settings of the bucket, which the services replace rather than change in place, except for the two maps of
+     * configurations, which are copied.
+     */
+    private final Settings settings = new Settings(creationDate, region, versioningEnabled, mfaDeleteEnabled, tagging,
+        acl, policy, replication, encryption, publicAccessBlock, cors, lifecycle, notification,
+        new HashMap<>(storedConfigurations), copyOf(identifiedConfigurations), objectLock, maxId);
+
+    private Undo() {
+    }
+
+    private void recordObject(String key) {
+      if (objects.containsKey(key)) {
+        return;
+      }
+      ObjectMetadataRef ref = objectMap.get(key);
+      objects.put(key, ref == null ? null
+          : JsonUtils.fromTokens(JsonUtils.toTokens(ref.get()), ObjectMetadata.class));
+    }
+
+    private void recordUploads(String key) {
+      if (uploadsByKey.containsKey(key)) {
+        return;
+      }
+      NavigableMap<String, UploadMetadata> uploadsOfKey = uploads.get(key);
+      uploadsByKey.put(key, uploadsOfKey == null ? null : new HashMap<>(uploadsOfKey));
+      if (uploadsOfKey != null) {
+        uploadsOfKey.values().forEach(upload -> parts.put(upload, new TreeMap<>(upload.getParts())));
+      }
+    }
+
+    /**
+     * Restore what the change changed, and end the recording.
+     */
+    public void undo() {
+      end();
+      objects.forEach((key, before) -> {
+        if (before == null) {
+          objectMap.remove(key);
+        } else {
+          objectMap.put(key, ObjectMetadataRef.of(before));
+        }
+        changedObjectKeys.add(key);
+      });
+      parts.forEach((upload, before) -> {
+        upload.getParts().clear();
+        upload.getParts().putAll(before);
+      });
+      uploadsByKey.forEach((key, before) -> {
+        if (before == null) {
+          uploads.remove(key);
+        } else {
+          uploads.put(key, new ConcurrentSkipListMap<>(before));
+        }
+        changedUploadKeys.add(key);
+      });
+      restore(settings);
+    }
+
+    /**
+     * Keep what the change changed, and end the recording.
+     */
+    public void forget() {
+      end();
+    }
+
+    private void end() {
+      if (undo != this) {
+        throw new IllegalStateException("The change of bucket " + bucketName + " is no longer recorded.");
+      }
+      undo = null;
+    }
+
+  }
+
+  private void restore(Settings settings) {
+    creationDate = settings.creationDate();
+    region = settings.region();
+    versioningEnabled = settings.versioningEnabled();
+    mfaDeleteEnabled = settings.mfaDeleteEnabled();
+    tagging = settings.tagging();
+    acl = settings.acl();
+    policy = settings.policy();
+    replication = settings.replication();
+    encryption = settings.encryption();
+    publicAccessBlock = settings.publicAccessBlock();
+    cors = settings.cors();
+    lifecycle = settings.lifecycle();
+    notification = settings.notification();
+    storedConfigurations = new ConcurrentHashMap<>(settings.storedConfigurations());
+    identifiedConfigurations = settings.identifiedConfigurations();
+    objectLock = settings.objectLock();
+    maxId = settings.maxId();
+  }
+
+  private static Map<String, NavigableMap<String, String>> copyOf(
+      Map<String, NavigableMap<String, String>> configurations) {
+    Map<String, NavigableMap<String, String>> copy = new ConcurrentHashMap<>();
+    configurations.forEach((name, byId) -> copy.put(name, new TreeMap<>(byId)));
+    return copy;
+  }
+
+  private record Settings(long creationDate, String region, Boolean versioningEnabled, Boolean mfaDeleteEnabled,
+                          Collection<Map<String, String>> tagging, AccessControlPolicy acl, String policy,
+                          String replication, String encryption, PublicAccessBlockConfiguration publicAccessBlock,
+                          CORSConfiguration cors, BucketLifecycleConfiguration lifecycle, String notification,
+                          Map<String, String> storedConfigurations,
+                          Map<String, NavigableMap<String, String>> identifiedConfigurations,
+                          BucketObjectLockConfiguration objectLock, Long maxId) {
   }
 
   /**
