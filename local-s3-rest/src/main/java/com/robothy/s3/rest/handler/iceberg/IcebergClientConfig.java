@@ -22,7 +22,7 @@ import tools.jackson.databind.node.ObjectNode;
  * request arrived on, so a client in a container and one on the host are each told the name that works for them.
  *
  * @param region the region that the clients are told to use.
- * @param accessKeyId the access key to vend; {@code null} if the service takes unsigned requests, which vends none.
+ * @param accessKeyId the access key to vend; {@code null} if the service takes unsigned requests, which vends placeholder keys.
  * @param secretAccessKey the secret key of {@code accessKeyId}; {@code null} if it is {@code null}.
  * @param tls whether the service serves HTTPS, which the vended endpoint is then an {@code https://} one.
  * @param vendCredentials whether to vend the settings at all; {@code false} answers none, and the client is then
@@ -40,6 +40,12 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
    * The host that the endpoint names when a request carries no {@code Host} header.
    */
   private static final String DEFAULT_HOST = "localhost:29090";
+
+  /**
+   * The keys vended by a service that takes unsigned requests; see
+   * {@code docs/data-tools.md#the-built-in-iceberg-rest-catalog}.
+   */
+  private static final String PLACEHOLDER_KEY = "admin";
 
   /**
    * The routes of the catalog, as {@code GET /v1/{prefix}/namespaces}, which {@code GET /v1/config} answers so that a
@@ -164,7 +170,12 @@ public record IcebergClientConfig(String region, @Nullable String accessKeyId, @
     config.put("s3.path-style-access", "true");
     config.put("s3.region", region);
     config.put("client.region", region);
-    if (accessKeyId != null) {
+    if (accessKeyId == null) {
+      // The AWS SDK signs every request: vended no keys, it falls back to the credentials of the machine, which a CI
+      // runner doesn't have. A service that takes unsigned requests accepts any.
+      config.put("s3.access-key-id", PLACEHOLDER_KEY);
+      config.put("s3.secret-access-key", PLACEHOLDER_KEY);
+    } else {
       config.put("s3.access-key-id", accessKeyId);
       config.put("s3.secret-access-key", secretAccessKey);
       if (credentialsEndpoint != null) {

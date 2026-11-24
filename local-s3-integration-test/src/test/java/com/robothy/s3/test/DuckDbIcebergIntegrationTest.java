@@ -197,17 +197,12 @@ class DuckDbIcebergIntegrationTest {
     execute(duckdb, "CREATE TABLE ice.db.vended AS SELECT range AS id FROM range(100)");
     assertEquals(100L, single(duckdb, "SELECT count(*) FROM ice.db.vended"));
 
-    List<String> vended = column(duckdb,
-        "SELECT secret_string FROM duckdb_secrets() WHERE type = 's3' AND provider = 'iceberg'");
-    assertFalse(vended.isEmpty(), "The catalog should have vended the credentials of the storage.");
-    String secret = vended.get(0);
-    assertTrue(secret.contains("endpoint=127.0.0.1:" + localS3.getPort()), secret);
-    assertTrue(secret.contains("url_style=path"), secret);
-    assertTrue(secret.contains("use_ssl=false"), secret);
-    assertTrue(secret.contains("key_id=" + ACCESS_KEY), secret);
-    assertTrue(secret.contains("secret=redacted"), secret);
-    assertEquals(List.of("s3://" + WAREHOUSE + "/db/vended/"),
-        column(duckdb, "SELECT unnest(scope) FROM duckdb_secrets() WHERE type = 's3' AND provider = 'iceberg' LIMIT 1"));
+    // DuckDB 2 keeps the vended credentials in the attached catalog rather than in duckdb_secrets(), so what it was
+    // vended is read off the LoadTableResult it received; the read above passing the signature check is the proof
+    // that it used them.
+    assertEquals(List.of(List.of("http://127.0.0.1:" + localS3.getPort(), "true", ACCESS_KEY)),
+        rows(duckdb, "SELECT config['s3.endpoint'], config['s3.path-style-access'], config['s3.access-key-id'] "
+            + "FROM iceberg_load_table_response('ice.db.vended')"));
   }
 
   /**
@@ -575,6 +570,9 @@ class DuckDbIcebergIntegrationTest {
           .tables().stream().map(TableSummary::name).toList());
       String location = tables.getTableMetadataLocation(request -> request.tableBucketARN(arn).namespace("sales")
           .name("orders")).metadataLocation();
+      // A location is read without the catalog, which vends nothing for it.
+      execute(duckdb, "CREATE SECRET local_s3 (TYPE s3, ENDPOINT '127.0.0.1:" + localS3.getPort() + "', "
+          + "URL_STYLE 'path', USE_SSL false, KEY_ID '" + ACCESS_KEY + "', SECRET '" + SECRET_KEY + "', REGION 'us-east-1')");
       assertEquals(55L, single(duckdb, "SELECT sum(id)::BIGINT FROM iceberg_scan('" + location + "')"),
           "The metadata location of the S3 Tables API is the current version of the table DuckDB wrote.");
       assertFalse(keys("sales/").stream().findAny().isPresent(),

@@ -472,7 +472,9 @@ Currently aligned with **Iceberg 1.11.0** (spec v1, v2 and v3), and all of it th
   names the route in the `client.refresh-credentials-endpoint` of every loaded table, so the `S3FileIO` of Iceberg
   takes its credentials from there and takes new ones five minutes before they expire, as it does against Polaris or
   AWS; set `client.refresh-credentials-enabled=false` on the client to keep the keys of the `config` instead. A service
-  that takes unsigned requests names no route, since there is nothing to refresh. Like the rest of the catalog, the
+  that takes unsigned requests names no route, since there is nothing to refresh, and vends the placeholder keys
+  `admin` / `admin` instead of none: an AWS SDK signs every request, and a client vended no keys would fall back to
+  the credentials of its machine, which a CI runner doesn't have. Like the rest of the catalog, the
   route doesn't check who asks.
 + **Remote signing** is served for a client whose `S3FileIO` is configured with `s3.remote-signing-enabled=true`
   (e.g. a Spark or Trino set up for a catalog that doesn't vend credentials): the catalog signs each S3 request with
