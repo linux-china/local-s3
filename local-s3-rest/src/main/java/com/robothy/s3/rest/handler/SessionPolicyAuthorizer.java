@@ -197,7 +197,7 @@ final class SessionPolicyAuthorizer {
       return true;
     }
     String bucket = request.parameter("bucket").orElse(null);
-    String key = request.parameter("key").map(k -> k.startsWith("/") ? k.substring(1) : k).orElse("");
+    String key = request.parameter("key").orElse("");
     Optional<String> versionId = request.parameter("versionId").filter(id -> !id.isEmpty());
     if (versionId.isPresent()) {
       action = VERSION_ACTIONS.getOrDefault(action, action);

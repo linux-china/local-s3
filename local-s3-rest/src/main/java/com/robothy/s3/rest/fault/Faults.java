@@ -62,7 +62,7 @@ public final class Faults implements FaultInjector {
     }
     String method = request.getMethod().name();
     String bucket = request.parameter("bucket").orElse(null);
-    String key = request.parameter("key").map(k -> k.startsWith("/") ? k.substring(1) : k).orElse(null);
+    String key = request.parameter("key").orElse(null);
     Injection selected = null;
     // Every matching fault counts the request, so that its skip(), times() and nth() don't depend on the others.
     for (Fault fault : faults) {

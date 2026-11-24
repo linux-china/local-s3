@@ -492,6 +492,12 @@ Docker allocates its host port now, so `getPort()` is answered once the containe
 
 ### Fixed
 
++ **A key that starts with `/` keeps its `/`.** The service removed one leading `/` from the key of every object
+  request, so `PUT /bucket//a` wrote the object `a`, overwriting it if it existed, and listings showed `a`. The key is
+  now stored as named, like Amazon S3 does; see [Request validation](docs/semantics.md#request-validation). This changes
+  behavior: an object that an earlier version wrote for the key `/a` is stored as `a` in its data directory and stays
+  there, so read it as `a`, or copy it to `/a`.
+
 + **LocalS3 embedded in a GraalVM native executable**, e.g. a Spring Boot application with the starter built with
   `nativeCompile`, failed its first request: the jars carried a hand-written list of the classes that Jackson reads and
   writes reflectively, which missed many, e.g. a getter of the error document, so the request failed, and so did the

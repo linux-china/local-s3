@@ -37,7 +37,6 @@ public class RequestAssertions {
    */
   public static String assertObjectKeyProvided(RouterHttpRequest request) {
     return request.parameter("key")
-        .map(key -> key.startsWith("/") ? key.substring(1) : key)
         .orElseThrow(() -> new LocalS3RequestException(S3ErrorCode.InvalidRequest, "The object key is required."));
   }
 

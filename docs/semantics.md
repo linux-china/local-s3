@@ -81,6 +81,11 @@ like Amazon S3. They're dropped when a re-creation of a bucket in us-east-1 answ
   or `400 MetadataTooLarge`. The key of a browser form upload is checked once `${filename}` is replaced. Objects of an
   existing data path stay readable whatever their keys and metadata. `ObjectLimitsIntegrationTest` checks these answers,
   and runs the same scenarios against Amazon S3 with `./gradlew :local-s3-integration-test:realS3Test`.
++ **An object key is stored exactly as the request names it**, like Amazon S3 does: a key may start with `/`, and `/a`
+  and `a` are two objects. A path-style request names the key after the `/` that ends the bucket name, so
+  `PUT /bucket//a` writes the key `/a`, and a virtual-hosted one names it after the first `/` of the path; the
+  `x-amz-copy-source` and `x-amz-rename-source` of `/bucket//a` name the source `/a` too. Listings, events, session
+  policies and fault matchers see the same key.
 + `CompleteMultipartUpload` checks `x-amz-mp-object-size`, like Amazon S3: a size that isn't the sum of the parts
   fails with `400 InvalidRequest`, and one that isn't a non-negative number with `400 InvalidArgument`. The upload is
   kept, so it can be completed again with the right parts or aborted.
