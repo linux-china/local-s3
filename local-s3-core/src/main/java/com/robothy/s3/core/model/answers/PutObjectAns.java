@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import lombok.Builder;
@@ -28,5 +29,10 @@ public class PutObjectAns {
   private ServerSideEncryption serverSideEncryption;
 
   private long creationDate;
+
+  /**
+   * When the version expires by a lifecycle rule; {@code null} if no rule expires it.
+   */
+  private ObjectExpiration expiration;
 
 }

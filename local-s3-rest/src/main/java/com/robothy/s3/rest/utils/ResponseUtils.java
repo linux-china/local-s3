@@ -2,6 +2,7 @@ package com.robothy.s3.rest.utils;
 
 import com.robothy.netty.http.RouterHttpRequest;
 import com.robothy.netty.http.RouterHttpResponse;
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.internal.ObjectMetadata;
 import com.robothy.s3.core.util.S3ObjectUtils;
 import com.robothy.s3.rest.constants.AmzHeaderNames;
@@ -180,6 +181,25 @@ public class ResponseUtils {
   public static RouterHttpResponse putWrittenVersionId(RouterHttpResponse response, String versionId) {
     if (Objects.nonNull(versionId) && !ObjectMetadata.NULL_VERSION.equals(versionId)) {
       response.putHeader(AmzHeaderNames.X_AMZ_VERSION_ID, versionId);
+    }
+    return response;
+  }
+
+  /**
+   * Put the {@code x-amz-expiration} header of an object that a lifecycle rule expires; see
+   * {@code docs/semantics.md#lifecycle-configuration}.
+   *
+   * @param response the response.
+   * @param expiration the expiration of the object; {@code null} puts nothing.
+   * @return the response.
+   */
+  public static RouterHttpResponse putExpiration(RouterHttpResponse response, ObjectExpiration expiration) {
+    if (Objects.nonNull(expiration)) {
+      String value = "expiry-date=\"" + toRfc1123DateTime(expiration.expiryDate()) + "\"";
+      if (Objects.nonNull(expiration.ruleId())) {
+        value += ", rule-id=\"" + S3ObjectUtils.urlEncode(expiration.ruleId(), false) + "\"";
+      }
+      response.putHeader(AmzHeaderNames.X_AMZ_EXPIRATION, value);
     }
     return response;
   }

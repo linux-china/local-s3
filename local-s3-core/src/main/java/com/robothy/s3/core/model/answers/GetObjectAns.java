@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
 import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
@@ -101,4 +102,10 @@ public class GetObjectAns {
    * restored copy, i.e. it was never restored or its restored copy expired.
    */
   private Long restoreExpiryDate;
+
+  /**
+   * When the version expires by a lifecycle rule; {@code null} if no rule expires it.
+   */
+  private ObjectExpiration expiration;
+
 }

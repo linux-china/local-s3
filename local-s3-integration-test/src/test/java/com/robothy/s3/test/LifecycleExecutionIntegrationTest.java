@@ -1,6 +1,7 @@
 package com.robothy.s3.test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,7 +13,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +26,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.BucketVersioningStatus;
+import software.amazon.awssdk.services.s3.model.CompletedPart;
 import software.amazon.awssdk.services.s3.model.ExpirationStatus;
 import software.amazon.awssdk.services.s3.model.LifecycleRule;
 import software.amazon.awssdk.services.s3.model.ObjectVersion;
@@ -130,6 +135,53 @@ class LifecycleExecutionIntegrationTest {
     assertEquals(404, HttpClient.newHttpClient().send(HttpRequest.newBuilder(
             URI.create("http://127.0.0.1:" + localS3.getPort() + "/_admin/lifecycle?bucket=missing"))
         .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+  }
+
+  @Test
+  void answersTheExpirationOfAnObjectThatARuleExpires() {
+    s3.putBucketVersioning(b -> b.bucket("versioned")
+        .versioningConfiguration(v -> v.status(BucketVersioningStatus.ENABLED)));
+    s3.putBucketLifecycleConfiguration(b -> b.bucket("versioned").lifecycleConfiguration(c -> c.rules(
+        LifecycleRule.builder().id("expire tmp").status(ExpirationStatus.ENABLED)
+            .filter(f -> f.prefix("tmp/")).expiration(e -> e.days(7)).build(),
+        LifecycleRule.builder().id("expire-all").status(ExpirationStatus.ENABLED)
+            .filter(f -> f.prefix("")).expiration(e -> e.date(Instant.parse("2099-01-01T00:00:00Z"))).build(),
+        LifecycleRule.builder().id("disabled").status(ExpirationStatus.DISABLED)
+            .filter(f -> f.prefix("tmp/")).expiration(e -> e.days(1)).build(),
+        LifecycleRule.builder().id("noncurrent").status(ExpirationStatus.ENABLED)
+            .filter(f -> f.prefix("")).noncurrentVersionExpiration(n -> n.noncurrentDays(1)).build())));
+
+    // The earliest of the two rules that select the key; the rule ID is URL-encoded.
+    String firstVersion = s3.putObject(b -> b.bucket("versioned").key("tmp/a.txt"), RequestBody.fromString("a"))
+        .versionId();
+    String put = s3.putObject(b -> b.bucket("versioned").key("tmp/a.txt"), RequestBody.fromString("b"))
+        .expiration();
+    Instant lastModified = s3.headObject(b -> b.bucket("versioned").key("tmp/a.txt")).lastModified();
+    String expected = "expiry-date=\"" + rfc1123(Instant.ofEpochMilli(
+        com.robothy.s3.core.model.LifecycleRule.dueAt(lastModified.toEpochMilli(), 7))) + "\", rule-id=\"expire%20tmp\"";
+    assertEquals(expected, put);
+    assertEquals(expected, s3.headObject(b -> b.bucket("versioned").key("tmp/a.txt")).expiration());
+    assertEquals(expected, s3.getObjectAsBytes(b -> b.bucket("versioned").key("tmp/a.txt")).response().expiration());
+    // A noncurrent version isn't expired by an Expiration rule.
+    assertNull(s3.headObject(b -> b.bucket("versioned").key("tmp/a.txt").versionId(firstVersion)).expiration());
+
+    String other = "expiry-date=\"Thu, 01 Jan 2099 00:00:00 GMT\", rule-id=\"expire-all\"";
+    assertEquals(other, s3.copyObject(b -> b.sourceBucket("versioned").sourceKey("tmp/a.txt")
+        .destinationBucket("versioned").destinationKey("keep/copy.txt")).expiration());
+    String uploadId = s3.createMultipartUpload(b -> b.bucket("versioned").key("keep/big.bin")).uploadId();
+    String etag = s3.uploadPart(b -> b.bucket("versioned").key("keep/big.bin").uploadId(uploadId).partNumber(1),
+        RequestBody.fromString("part")).eTag();
+    assertEquals(other, s3.completeMultipartUpload(b -> b.bucket("versioned").key("keep/big.bin").uploadId(uploadId)
+        .multipartUpload(m -> m.parts(CompletedPart.builder().partNumber(1).eTag(etag).build()))).expiration());
+
+    // No header without a rule that expires the object.
+    s3.putObject(b -> b.bucket("plain").key("tmp/a.txt"), RequestBody.fromString("a"));
+    assertNull(s3.headObject(b -> b.bucket("plain").key("tmp/a.txt")).expiration());
+  }
+
+  private static String rfc1123(Instant instant) {
+    return DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.ENGLISH)
+        .format(instant.atOffset(ZoneOffset.UTC));
   }
 
 }

@@ -189,6 +189,20 @@
    都不返回该响应头。依赖这个头的客户端（少数备份工具和 SDK 示例）拿不到过期时间。如果文档声明支持 Lifecycle，
    建议补上，或者在文档中注明不返回。
 
+   > **状态：已修复（2026-11-24），已补上该响应头。** 行为写在 `docs/semantics.md#lifecycle-configuration`。
+   > - 新增 `ObjectExpiration.of(bucket, key, version)`：在已启用、带 `Expiration.Days` / `Date` 的规则中，按 key、标签、
+   >   大小（与执行生命周期时同一个 `Filter.matches`）选出规则，取最早的过期时间。`Days` 沿用 `LifecycleRule.dueAt`
+   >   （向上取整到 UTC 零点），与实际执行一致。
+   > - 格式与 AWS 相同：`expiry-date="Fri, 02 Jan 2026 00:00:00 GMT", rule-id="..."`，`rule-id` 做 URL 编码。
+   > - 返回该头的操作：PUT（在 `addVersion` 中计算）、CopyObject（目标对象）、CompleteMultipartUpload（含重试时的幂等应答），
+   >   以及当前版本的 GET / HEAD。非当前版本、delete marker、`304` 不返回。
+   > - 测试：`LifecycleExecutionIntegrationTest.answersTheExpirationOfAnObjectThatARuleExpires`，覆盖多规则取最早、
+   >   rule-id 编码、禁用规则、非当前版本，以及 copy / multipart / 无规则 bucket。core、rest、integration 全部测试已运行，
+   >   只剩第 4 节列出的环境类失败。
+   > - 代价：有生命周期配置的 bucket，每次读写都会解析一次配置 XML。规则数通常很少，所以没有加缓存。
+   > - 与 AWS 可能的差异：带标签过滤的规则也会返回该头（与 LocalS3 实际执行的结果一致）；AWS 对这种情况的行为没有在
+   >   文档中写明。
+
 ---
 
 ## 3. 已验证无问题的部分（供后续 review 跳过）
@@ -232,3 +246,4 @@
 3. ~~1.3：统一对非法 versionId 的删除语义，使文档与代码一致。~~ 已修复。
 4. ~~第 2 节第 1 条：把锁约束写进 `BucketGuard` 的 Javadoc，或者加运行时断言。~~ 已修复（Javadoc）。
 5. 第 4 节：让依赖环境的测试在条件不满足时跳过。
+6. ~~第 2 节第 5 条：为生命周期规则匹配的对象返回 `x-amz-expiration`。~~ 已修复。

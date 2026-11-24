@@ -88,6 +88,7 @@ public interface CopyObjectService extends GetObjectService, PutObjectService, L
         .size(putObjectAns.getSize())
         .checksum(putObjectAns.getChecksum())
         .serverSideEncryption(putObjectAns.getServerSideEncryption())
+        .expiration(putObjectAns.getExpiration())
         .build();
   }
 

@@ -670,6 +670,13 @@ time a version became noncurrent, i.e. the creation of the next version, or the 
 up to the next midnight UTC, like Amazon S3 does. The changes are published with the operation `LifecycleExpiration`,
 see [change events](#change-events).
 
+An object that an enabled `Expiration` rule with `Days` or `Date` selects, by its key, tags and size, is answered
+with the header `x-amz-expiration` whether or not the configuration is applied, like on Amazon S3, e.g.
+`expiry-date="Fri, 02 Jan 2026 00:00:00 GMT", rule-id="expire-logs"`: the time the current version expires at, and
+the URL-encoded `ID` of the rule; of several rules, the one that expires it first. `PutObject`, `CopyObject` (of the
+copy), `CompleteMultipartUpload`, and `GetObject` and `HeadObject` of the current version answer it; a noncurrent
+version, a delete marker and a `304 Not Modified` answer don't have it.
+
 The objects of a bucket are applied in batches of 1,000 keys, in key order, each batch under the lock of the bucket and
 persisted on its own, so that a run on a large bucket doesn't hold up the writes to it until the run ends. A run is
 therefore not atomic: a write between two batches is seen by the later batches, a run stops at the batch that finds

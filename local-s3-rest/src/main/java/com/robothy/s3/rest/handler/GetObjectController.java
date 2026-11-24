@@ -82,6 +82,7 @@ class GetObjectController implements RouterHttpRequestHandler {
       getObjectAns.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
       ObjectLockHeaders.addHeaders(response, getObjectAns.getObjectLock());
       RestoreObjectController.addRestoreHeader(response, getObjectAns.getRestoreExpiryDate());
+      ResponseUtils.putExpiration(response, getObjectAns.getExpiration());
       CustomerEncryptionHeaders.addHeaders(response, getObjectAns.getCustomerEncryption());
       ServerSideEncryptionHeaders.addHeaders(response, getObjectAns.getServerSideEncryption(), false);
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {

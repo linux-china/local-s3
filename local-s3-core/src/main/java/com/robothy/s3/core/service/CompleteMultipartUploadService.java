@@ -10,6 +10,7 @@ import com.robothy.s3.core.assertions.BucketAssertions;
 import com.robothy.s3.core.assertions.UploadAssertions;
 import com.robothy.s3.core.exception.InvalidPartException;
 import com.robothy.s3.core.exception.InvalidPartOrderException;
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.answers.CompleteMultipartUploadAns;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
@@ -182,6 +183,8 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
               .size(version.getValue().getSize())
               .checksum(version.getValue().getChecksum())
               .serverSideEncryption(version.getValue().getServerSideEncryption())
+              .expiration(object.getLatestVersion().equals(version.getKey())
+                  ? ObjectExpiration.of(bucketMetadata, key, version.getValue()) : null)
               .build()));
     });
   }
@@ -499,6 +502,7 @@ public interface CompleteMultipartUploadService extends LocalS3MetadataApplicabl
           .size(putObjectAns.getSize())
           .checksum(putObjectAns.getChecksum())
           .serverSideEncryption(putObjectAns.getServerSideEncryption())
+          .expiration(putObjectAns.getExpiration())
           .build();
     });
   }

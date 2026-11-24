@@ -56,6 +56,7 @@ class CopyObjectController extends ObjectHttpRequestHandler {
         .write(xmlMapper.writeValueAsString(result))
         .putHeader(HttpHeaderNames.CONTENT_TYPE.toString(), HttpHeaderValues.APPLICATION_XML);
     ResponseUtils.putWrittenVersionId(response, copyObjectAns.getVersionId());
+    ResponseUtils.putExpiration(response, copyObjectAns.getExpiration());
     ResponseUtils.putHeaderIfPresent(response, AmzHeaderNames.X_AMZ_COPY_SOURCE_VERSION_ID,
         copyObjectAns.getSourceVersionId());
     CustomerEncryptionHeaders.addHeaders(response, copyObjectOptions.getCustomerEncryption());

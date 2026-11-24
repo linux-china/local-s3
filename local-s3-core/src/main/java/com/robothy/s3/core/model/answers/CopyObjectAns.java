@@ -1,5 +1,6 @@
 package com.robothy.s3.core.model.answers;
 
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
 import com.robothy.s3.core.model.internal.ServerSideEncryption;
 import lombok.Builder;
@@ -28,5 +29,10 @@ public class CopyObjectAns {
    * The SSE-S3 or SSE-KMS encryption that the copy was stored with; {@code null} if it has none.
    */
   private ServerSideEncryption serverSideEncryption;
+
+  /**
+   * When the version expires by a lifecycle rule; {@code null} if no rule expires it.
+   */
+  private ObjectExpiration expiration;
 
 }

@@ -77,6 +77,7 @@ class HeadObjectController implements RouterHttpRequestHandler {
       object.getUserMetadata().forEach((k, v) -> response.putHeader(AmzHeaderNames.X_AMZ_META_PREFIX + k, v));
       ObjectLockHeaders.addHeaders(response, object.getObjectLock());
       RestoreObjectController.addRestoreHeader(response, object.getRestoreExpiryDate());
+      ResponseUtils.putExpiration(response, object.getExpiration());
       CustomerEncryptionHeaders.addHeaders(response, object.getCustomerEncryption());
       ServerSideEncryptionHeaders.addHeaders(response, object.getServerSideEncryption(), false);
       if (ChecksumHeaders.isChecksumModeEnabled(request)) {

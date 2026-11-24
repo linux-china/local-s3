@@ -93,6 +93,7 @@ class CompleteMultipartUploadController extends ObjectHttpRequestHandler {
     response.status(HttpResponseStatus.OK)
         .write(xmlMapper.writeValueAsString(result));
     ResponseUtils.putWrittenVersionId(response, completeMultipartUploadAns.getVersionId());
+    ResponseUtils.putExpiration(response, completeMultipartUploadAns.getExpiration());
     ServerSideEncryptionHeaders.addHeaders(response, completeMultipartUploadAns.getServerSideEncryption(), false);
 
     ResponseUtils.addDateHeader(response);

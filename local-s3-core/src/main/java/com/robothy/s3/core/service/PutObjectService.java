@@ -10,6 +10,7 @@ import com.robothy.s3.core.event.S3ChangeType;
 import com.robothy.s3.core.exception.LocalS3InvalidArgumentException;
 import com.robothy.s3.core.exception.LocalS3RequestException;
 import com.robothy.s3.core.exception.S3ErrorCode;
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.answers.PutObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.ObjectChecksum;
@@ -294,6 +295,7 @@ public interface PutObjectService extends LocalS3MetadataApplicable, StorageAppl
         .size(versionedObjectMetadata.getSize())
         .checksum(versionedObjectMetadata.getChecksum())
         .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
+        .expiration(ObjectExpiration.of(bucketMetadata, key, versionedObjectMetadata))
         .build();
   }
 

@@ -11,6 +11,7 @@ import com.robothy.s3.core.exception.ObjectNotExistException;
 import com.robothy.s3.core.exception.PreconditionFailedException;
 import com.robothy.s3.core.exception.S3ErrorCode;
 import com.robothy.s3.core.exception.VersionedObjectNotExistException;
+import com.robothy.s3.core.model.ObjectExpiration;
 import com.robothy.s3.core.model.answers.GetObjectAns;
 import com.robothy.s3.core.model.internal.BucketMetadata;
 import com.robothy.s3.core.model.internal.CustomerEncryption;
@@ -100,6 +101,7 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
         .customerEncryption(latestObject.getCustomerEncryption())
         .serverSideEncryption(latestObject.getServerSideEncryption())
         .restoreExpiryDate(RestoreObjectService.activeRestoreExpiryDate(latestObject))
+        .expiration(ObjectExpiration.of(bucketMetadata, key, latestObject))
         .build();
   }
 
@@ -169,6 +171,8 @@ public interface GetObjectService extends StorageApplicable, LocalS3MetadataAppl
           .customerEncryption(versionedObjectMetadata.getCustomerEncryption())
           .serverSideEncryption(versionedObjectMetadata.getServerSideEncryption())
           .restoreExpiryDate(RestoreObjectService.activeRestoreExpiryDate(versionedObjectMetadata))
+          .expiration(versionedObjectMetadata == objectMetadata.getLatest()
+              ? ObjectExpiration.of(bucketMetadata, key, versionedObjectMetadata) : null)
           .build();
     }
   }

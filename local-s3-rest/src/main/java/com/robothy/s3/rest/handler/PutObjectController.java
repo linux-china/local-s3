@@ -70,6 +70,7 @@ class PutObjectController extends ObjectHttpRequestHandler {
         .putHeader(HttpHeaderNames.CONTENT_LENGTH.toString(), 0);
 
     ResponseUtils.putWrittenVersionId(response, ans.getVersionId());
+    ResponseUtils.putExpiration(response, ans.getExpiration());
 
     ResponseUtils.addETag(response, ans.getEtag());
     ChecksumHeaders.addHeaders(response, ans.getChecksum());

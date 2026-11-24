@@ -5,8 +5,7 @@ import java.util.Objects;
 /**
  * The lifecycle configuration of a bucket, as a client put it.
  *
- * <p>LocalS3 stores the configuration and returns it, but never applies its rules: no object expires, no object is
- * transitioned to another storage class, and no incomplete multipart upload is aborted because of it.
+ * <p>Stored as it was put; see {@code docs/semantics.md#lifecycle-configuration} for how its rules apply.
  *
  * @param configuration the {@code LifecycleConfiguration} XML document, as it was put.
  * @param transitionDefaultMinimumObjectSize the {@code x-amz-transition-default-minimum-object-size} of the
